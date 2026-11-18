@@ -1,17 +1,17 @@
 import {
-  baselineOf,
+  AppError,
   dec,
   Decimal,
+  ErrorCode,
   GATE_MIN_CLOSED,
   gateStatus,
-  meanRange,
   NEWS_CLASSIFIER,
   NEWS_RULES,
-  replayOnCandles,
   SOURCE_HEALTH,
+  summarizeByDay,
   tradesNeeded,
-  type BaselineTrade,
-  type MeanRange,
+  type DayObs,
+  type DaySummary,
   type ResearchFact,
   type ResearchLevelRow,
   type ResearchNeeds,
@@ -44,7 +44,6 @@ import { z } from "zod";
 import type { Db } from "./client";
 import type { DbTx } from "./read-only";
 import {
-  candles1m,
   signalArticles,
   signalEvents,
   signalPaperTrades,
@@ -63,8 +62,6 @@ type ArticleRow = typeof signalArticles.$inferSelect;
 type StoryRow = typeof signalStories.$inferSelect;
 type EventRow = typeof signalEvents.$inferSelect;
 
-/** Số lệnh đã đóng tối đa được phát lại trên nến cho baseline (mới nhất trước). */
-const BASELINE_LIMIT = 500;
 const DAY_MS = 86_400_000;
 const POLL_SECS = 300;
 
@@ -164,45 +161,6 @@ const filterDetail = z.looseObject({
 });
 const classification = z.looseObject({ eventDate: z.string().nullable().optional() });
 
-// ── Baseline ──────────────────────────────────────────────────────────────────────────────────────────────────────
-
-/** Phát lại một lệnh trên nến theo cả hai chiều (cùng TP / SL / giữ), trừ cùng chi phí (phí 2 chiều + spread lúc vào). */
-async function baselineTrade(q: Q, t: TradeRow): Promise<BaselineTrade> {
-  const from = Math.floor(t.openedAt.getTime() / 60_000) * 60_000 + 60_000;
-  const until = t.maxHoldUntil.getTime();
-  const rows = await q
-    .select({ ts: candles1m.ts, high: candles1m.high, low: candles1m.low, close: candles1m.close })
-    .from(candles1m)
-    .where(
-      and(
-        eq(candles1m.market, t.market),
-        gte(candles1m.ts, new Date(from)),
-        lt(candles1m.ts, new Date(until)),
-      ),
-    )
-    .orderBy(asc(candles1m.ts));
-  const candles = rows.map((r) => ({
-    ts: r.ts.getTime(),
-    high: r.high,
-    low: r.low,
-    close: r.close,
-  }));
-  const cost = costOf(t);
-  const run = (direction: TradeDirection) => {
-    const gross = replayOnCandles({
-      direction,
-      entry: t.entryMid,
-      tpPct: t.tpPct,
-      slPct: t.slPct,
-      candles,
-      from,
-      until,
-    });
-    return gross === null ? null : gross.sub(cost);
-  };
-  return { direction: side(t.direction), longPct: run("long"), shortPct: run("short") };
-}
-
 // ── Tổng kết ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export interface SummaryLimits {
@@ -210,12 +168,22 @@ export interface SummaryLimits {
   claudeDailyInputBudget: number;
 }
 
+/** Hết hạn mức SoSoValue tháng: nguồn "Delayed" (chủ ý ngừng gọi), không phải "Down". */
+export const SOSO_MONTHLY_QUOTA_ERROR = "monthly_quota";
+
 function sourceStatus(
   key: SignalSourceKey,
   lastOk: Date | null,
   lastErr: Date | null,
   now: number,
+  lastError: string | null = null,
 ): "live" | "delayed" | "down" {
+  if (
+    lastError === SOSO_MONTHLY_QUOTA_ERROR &&
+    lastErr !== null &&
+    (lastOk === null || lastErr > lastOk)
+  )
+    return "delayed";
   if (lastOk === null) return "down";
   const age = now - lastOk.getTime();
   const t = SOURCE_HEALTH[key];
@@ -244,8 +212,8 @@ function claudeCostUsd(u: typeof signalResearchUsage.$inferSelect): Decimal {
 function needsOf(input: {
   closed: number;
   status: "collecting" | "failing" | "passing";
-  after: MeanRange | null;
-  diff: MeanRange | null;
+  after: DaySummary;
+  diff: DaySummary | null;
   weeksRunning: number | null;
 }): ResearchNeeds {
   const { closed } = input;
@@ -255,9 +223,9 @@ function needsOf(input: {
     return { kind: "pooled", more, weeks: pace === null ? null : Math.ceil(more / pace) };
   }
   if (input.status === "passing") return { kind: "passed" };
-  if (input.after?.mean.lte(0) === true) return { kind: "losesAfterFees" };
+  if (input.after.mean?.lte(0) === true) return { kind: "losesAfterFees" };
   const needed = tradesNeeded(input.diff);
-  if (input.after?.low != null && input.after.low.lte(0) && needed !== null)
+  if (input.after.ciLow?.lte(0) === true && needed !== null)
     return { kind: "rangeBelowZero", needed };
   return {
     kind: "moreTrades",
@@ -266,10 +234,15 @@ function needsOf(input: {
   };
 }
 
+/**
+ * Tổng kết. Chỉ đọc cột đã lưu (random baseline do scheduler tính một lần mỗi lệnh), không phát lại nến. `check` (tuỳ
+ * chọn) được gọi giữa các câu để transaction dừng khi quá trần tổng thời gian (`readOnlyTx` `deadlineMs`).
+ */
 export async function loadSignalResearchSummary(
   q: Q,
   now: Date,
   limits: SummaryLimits,
+  check: () => void = () => undefined,
 ): Promise<ResearchSummary> {
   const v = NEWS_RULES.version;
   const nowMs = now.getTime();
@@ -279,16 +252,20 @@ export async function loadSignalResearchSummary(
     .select()
     .from(signalResearchUsage)
     .where(gte(signalResearchUsage.day, utcDay(nowMs - 6 * DAY_MS)));
+  check();
   const [month] = await q
     .select({ n: sum(signalResearchUsage.sosoRequests) })
     .from(signalResearchUsage)
     .where(gte(signalResearchUsage.day, `${today.slice(0, 7)}-01`));
+  check();
   const health = new Map((await q.select().from(signalSourceHealth)).map((x) => [x.source, x]));
+  check();
   const [articles] = await q
     .select({ n: count(), since: min(signalArticles.collectedAt) })
     .from(signalArticles)
     .where(eq(signalArticles.ruleVersion, v));
   const enabledSince = articles?.since ?? null;
+  check();
   const [delay] = await q
     .select({
       secs: sql<
@@ -297,6 +274,7 @@ export async function loadSignalResearchSummary(
     })
     .from(signalArticles)
     .where(and(eq(signalArticles.ruleVersion, v), sql`${signalArticles.status} <> 'backlog'`));
+  check();
   const grouped = await q
     .select({
       stage: signalEvents.stage,
@@ -307,11 +285,13 @@ export async function loadSignalResearchSummary(
     .from(signalEvents)
     .where(eq(signalEvents.ruleVersion, v))
     .groupBy(signalEvents.stage, signalEvents.outcome, signalEvents.reason);
+  check();
   const stories = await q
     .select({ entry: signalStories.levelAtEntry, later: signalStories.laterLevel, n: count() })
     .from(signalStories)
     .where(eq(signalStories.ruleVersion, v))
     .groupBy(signalStories.levelAtEntry, signalStories.laterLevel);
+  check();
   const all = await q
     .select()
     .from(signalPaperTrades)
@@ -333,24 +313,40 @@ export async function loadSignalResearchSummary(
     return { n: reasons.reduce((s, r) => s + r.n, 0), reasons };
   };
 
-  // Baseline: phát lại tối đa BASELINE_LIMIT lệnh đóng gần nhất.
-  const replayed = new Map<string, BaselineTrade>();
-  for (const t of closed.slice(-BASELINE_LIMIT)) replayed.set(t.id, await baselineTrade(q, t));
-  const pct = (rows: readonly TradeRow[]) => rows.map((t) => dec(t.resultPct ?? "0"));
+  // Random baseline đã lưu khi lệnh đóng (M4); khoảng 95% và cổng theo bootstrap ngày vào lệnh (M5, DEC-321).
+  const at = (t: TradeRow) => t.openedAt.getTime();
+  const obs = (rows: readonly TradeRow[], v: (t: TradeRow) => string | null): DayObs[] =>
+    rows.flatMap((t) => {
+      const x = v(t);
+      return x === null ? [] : [{ v: dec(x), at: at(t) }];
+    });
   const compare = (rows: readonly TradeRow[]) => {
-    const base = baselineOf(rows.flatMap((t) => replayed.get(t.id) ?? []));
-    const after = meanRange(pct(rows));
+    const results = obs(rows, (t) => t.resultPct);
+    const after = summarizeByDay(results);
+    const random = summarizeByDay(obs(rows, (t) => t.randomPct));
+    const diff = summarizeByDay(
+      obs(rows, (t) =>
+        t.resultPct === null || t.randomPct === null
+          ? null
+          : dec(t.resultPct).sub(dec(t.randomPct)).toFixed(),
+      ),
+    );
     const avgCost =
       rows.length === 0
         ? null
         : rows.reduce((s, t) => s.add(costOf(t)), new Decimal(0)).div(rows.length);
     return {
       after,
-      diff: base.difference,
-      avgPct: num(after?.mean),
-      randomPct: num(base.random?.mean),
-      diffPct: num(base.difference?.mean),
-      status: gateStatus({ results: pct(rows), avgCostPct: avgCost, difference: base.difference }),
+      diff: diff.n === 0 ? null : diff,
+      avgPct: num(after.mean),
+      randomPct: num(random.mean),
+      diffPct: num(diff.mean),
+      range:
+        after.ciLow === null || after.ciHigh === null
+          ? null
+          : { lo: num(after.ciLow) ?? 0, hi: num(after.ciHigh) ?? 0 },
+      clusters: after.clusters,
+      status: gateStatus({ results, avgCostPct: avgCost, difference: diff.n === 0 ? null : diff }),
     };
   };
   const overall = compare(closed);
@@ -400,7 +396,7 @@ export async function loadSignalResearchSummary(
     sources.push({
       key: api,
       mode: "live",
-      status: sourceStatus(key, h.lastOkAt, h.lastErrorAt, nowMs),
+      status: sourceStatus(key, h.lastOkAt, h.lastErrorAt, nowMs, h.lastError),
       lastAt: h.lastOkAt === null ? null : iso(h.lastOkAt),
       gap: null,
     });
@@ -411,10 +407,6 @@ export async function loadSignalResearchSummary(
     all.length === 0
       ? null
       : all.reduce((s, t) => s.add(costOf(t)), new Decimal(0)).div(all.length);
-  const range =
-    overall.after?.low == null || overall.after.high == null
-      ? null
-      : { lo: num(overall.after.low) ?? 0, hi: num(overall.after.high) ?? 0 };
   const on = enabledSince !== null;
 
   return {
@@ -485,7 +477,8 @@ export async function loadSignalResearchSummary(
             avgPct: overall.avgPct,
             randomPct: overall.randomPct,
             diffPct: overall.diffPct,
-            range,
+            range: overall.range,
+            clusters: overall.clusters,
             status: overall.status,
             needs: needsOf({
               closed: closed.length,
@@ -496,6 +489,20 @@ export async function loadSignalResearchSummary(
             }),
           },
         ]
+      : [],
+    directions: on
+      ? (["long", "short"] as const).map((side) => {
+          const c = compare(closed.filter((t) => t.direction === side));
+          return {
+            side,
+            closed: c.after.n,
+            avgPct: c.avgPct,
+            randomPct: c.randomPct,
+            diffPct: c.diffPct,
+            range: c.range,
+            clusters: c.clusters,
+          };
+        })
       : [],
     risk: null,
     assets: [...new Set(all.map((t) => t.market))].sort(),
@@ -535,13 +542,27 @@ export async function loadSignalResearchDiagnostics(q: Q, now: Date) {
       .select()
       .from(signalPaperTrades)
       .where(liveNews())
-      .orderBy(desc(signalPaperTrades.openedAt))
+      .orderBy(asc(signalPaperTrades.openedAt))
   ).filter((t) => t.status === "closed");
-  const replays: BaselineTrade[] = [];
-  for (const t of closed.slice(0, BASELINE_LIMIT)) replays.push(await baselineTrade(q, t));
-  const b = baselineOf(replays);
-  const r = (x: MeanRange | null) =>
-    x === null ? null : { n: x.n, meanPct: num(x.mean), lowPct: num(x.low), highPct: num(x.high) };
+  const withRandom = closed.filter((t) => t.randomPct !== null && t.resultPct !== null);
+  const s = (vals: (t: TradeRow) => string | null) => {
+    const r = summarizeByDay(
+      withRandom.flatMap((t) => {
+        const x = vals(t);
+        return x === null ? [] : [{ v: dec(x), at: t.openedAt.getTime() }];
+      }),
+    );
+    return r.n === 0
+      ? null
+      : {
+          n: r.n,
+          clusters: r.clusters,
+          meanPct: num(r.mean),
+          lowPct: num(r.ciLow),
+          highPct: num(r.ciHigh),
+        };
+  };
+  const lastShare = closed.findLast((t) => t.randomLongShare !== null)?.randomLongShare ?? null;
   return {
     steps,
     catalysts,
@@ -555,13 +576,23 @@ export async function loadSignalResearchDiagnostics(q: Q, now: Date) {
       outputTokens: u.claudeOutputTokens,
       costUsd: claudeCostUsd(u).toDecimalPlaces(4).toFixed(),
     })),
+    /** Lưu thô, không phân loại (cũ hơn mốc dưới của Collect): nhóm đếm riêng, không phải "bị loại". */
+    backlog: steps
+      .filter((x) => x.stage === "collect" && x.outcome === "backlog")
+      .reduce((a, x) => a + x.n, 0),
     baseline: {
-      n: b.n,
-      skipped: b.skipped,
-      longShare: num(b.longShare),
-      newsReplay: r(b.news),
-      randomEntry: r(b.random),
-      difference: r(b.difference),
+      n: withRandom.length,
+      /** Đã đóng nhưng chưa có random: chờ hết cửa sổ giữ, hoặc thiếu nến. */
+      pending: closed.filter((t) => t.randomDoneAt === null).length,
+      missingCandles: closed.filter((t) => t.randomDoneAt !== null && t.randomPct === null).length,
+      latestLongShare: numOf(lastShare),
+      newsResult: s((t) => t.resultPct),
+      randomEntry: s((t) => t.randomPct),
+      difference: s((t) =>
+        t.resultPct === null || t.randomPct === null
+          ? null
+          : dec(t.resultPct).sub(dec(t.randomPct)).toFixed(),
+      ),
     },
   };
 }
@@ -693,24 +724,30 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
   };
 }
 
-const cursorSchema = z.object({ t: z.string(), id: z.string() });
+const cursorSchema = z.object({ t: z.iso.datetime(), id: z.uuid() });
 const encodeCursor = (t: Date, id: string) =>
   Buffer.from(JSON.stringify({ t: iso(t), id })).toString("base64url");
-function decodeCursor(c: string): { t: Date; id: string } | null {
+
+/** Cursor hỏng hoặc bị sửa tay → 400 `VALIDATION_FAILED` (C6), không bao giờ 500 hay âm thầm về trang đầu. */
+function decodeCursor(c: string): { t: Date; id: string } {
+  let raw: unknown = null;
   try {
-    const raw: unknown = JSON.parse(Buffer.from(c, "base64url").toString("utf8"));
-    const p = cursorSchema.safeParse(raw);
-    if (!p.success || Number.isNaN(Date.parse(p.data.t))) return null;
-    return { t: new Date(p.data.t), id: p.data.id };
+    raw = JSON.parse(Buffer.from(c, "base64url").toString("utf8"));
   } catch {
-    return null;
+    raw = null;
   }
+  const p = cursorSchema.safeParse(raw);
+  if (!p.success)
+    throw new AppError(ErrorCode.validationFailed, "Invalid input.", {
+      fieldErrors: { cursor: ["invalid"] },
+    });
+  return { t: new Date(p.data.t), id: p.data.id };
 }
 
 /**
  * Danh sách (mới nhất trước), phân trang bằng cursor (thời điểm, id). `entered` = lệnh giấy; `skipped` = tín hiệu bị
  * bỏ ở Filter kèm lý do; `all` = cả hai, trộn theo thời điểm. Loại / nhãn chưa có dữ liệu (replay) → trang rỗng.
- * Cursor hỏng → trang đầu.
+ * Cursor hỏng → 400.
  */
 export async function loadSignalResearchTrades(
   q: Q,
@@ -820,7 +857,6 @@ function stepsOf(input: {
   story: StoryRow;
   trade: TradeRow | null;
   skip: EventRow | null;
-  randomPct: number | null;
 }): ResearchStep[] {
   const { a, story, trade, skip } = input;
   const blank = { score: null, level: null, parts: [], checks: [], notes: [] };
@@ -889,7 +925,7 @@ function stepsOf(input: {
         hours: Math.round((trade.maxHoldUntil.getTime() - trade.openedAt.getTime()) / 3_600_000),
         at: iso(trade.maxHoldUntil),
       },
-      { key: "priceMove", pct: numOf(trade.movedBeforeEntryPct) },
+      { key: "movedBeforeEntry", pct: numOf(trade.movedBeforeEntryPct) },
     ],
   });
   if (trade.status !== "closed") return steps;
@@ -898,6 +934,21 @@ function stepsOf(input: {
       ? null
       : dec(trade.entryFee).add(dec(trade.exitFee)).toDecimalPlaces(6).toFixed();
   const exitOutcome = outcomeOf(trade.exitReason);
+  const grossPct =
+    trade.exitPrice === null
+      ? null
+      : dec(trade.exitPrice)
+          .sub(dec(trade.entryPrice))
+          .div(dec(trade.entryPrice))
+          .mul(100)
+          .mul(trade.direction === "short" ? -1 : 1);
+  const grossUsd =
+    trade.exitPrice === null
+      ? null
+      : dec(trade.exitPrice)
+          .sub(dec(trade.entryPrice))
+          .mul(dec(trade.qty))
+          .mul(trade.direction === "short" ? -1 : 1);
   const facts: ResearchFact[] = [
     {
       key: "exit",
@@ -907,9 +958,19 @@ function stepsOf(input: {
       usd: trade.resultUsdc === null ? null : dec(trade.resultUsdc).toDecimalPlaces(6).toFixed(),
       pct: numOf(trade.resultPct),
     },
+    // Giá đã chạy từ lúc vào tới lúc ra theo chiều lệnh, và kết quả tiền trước phí.
+    {
+      key: "priceMove",
+      pct: grossPct === null ? null : num(grossPct),
+      usd: grossUsd === null ? null : grossUsd.toDecimalPlaces(6).toFixed(),
+    },
+    // Phí là chi phí dương (phí vào + ra); web tự hiện dấu trừ.
     { key: "fees", usd: fees },
+    // MFE / MAE theo giá giữa, % theo chiều lệnh; null khi chưa đo được.
+    { key: "best", pct: numOf(trade.mfePct) },
+    { key: "worst", pct: numOf(trade.maePct) },
+    { key: "random", pct: numOf(trade.randomPct) },
   ];
-  if (input.randomPct !== null) facts.push({ key: "random", pct: input.randomPct });
   steps.push({ ...blank, key: "result", facts });
   return steps;
 }
@@ -948,19 +1009,6 @@ export async function loadSignalResearchTrade(
   const story = ctx.stories.get(storyId);
   if (a === undefined || story === undefined) return null;
 
-  let randomPct: number | null = null;
-  if (trade?.status === "closed") {
-    const dirs = await q
-      .select({ direction: signalPaperTrades.direction, n: count() })
-      .from(signalPaperTrades)
-      .where(and(liveNews(), eq(signalPaperTrades.status, "closed")))
-      .groupBy(signalPaperTrades.direction);
-    const total = dirs.reduce((s, x) => s + x.n, 0);
-    const p = new Decimal(dirs.find((x) => x.direction === "long")?.n ?? 0).div(Math.max(total, 1));
-    const b = await baselineTrade(q, trade);
-    if (b.longPct !== null && b.shortPct !== null)
-      randomPct = num(p.mul(b.longPct).add(new Decimal(1).sub(p).mul(b.shortPct)));
-  }
   const item =
     trade !== undefined
       ? tradeItem(trade, ctx, now.getTime())
@@ -975,6 +1023,6 @@ export async function loadSignalResearchTrade(
     sizeUsdc: trade === undefined ? null : dec(trade.sizeUsdc).toFixed(),
     heldSecs:
       trade === undefined ? null : Math.max(0, Math.round((end - trade.openedAt.getTime()) / 1000)),
-    steps: stepsOf({ a, story, trade: trade ?? null, skip, randomPct }),
+    steps: stepsOf({ a, story, trade: trade ?? null, skip }),
   };
 }

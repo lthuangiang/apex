@@ -57,6 +57,8 @@ export type SignalStage = (typeof SignalStage)[keyof typeof SignalStage];
 
 export const SignalOutcome = {
   pass: "pass",
+  /** Lưu thô, không phân loại, không giao dịch (cũ hơn mốc dưới của Collect). Không phải "bị loại". */
+  backlog: "backlog",
   drop: "drop",
   merge: "merge",
   open: "open",
@@ -68,6 +70,8 @@ export type SignalOutcome = (typeof SignalOutcome)[keyof typeof SignalOutcome];
 export const SignalReason = {
   // collect
   backlog: "BACKLOG_NOT_CLASSIFIED",
+  /** Chưa có danh sách market SoDEX: chu kỳ chỉ Collect, bài chờ Normalize ở chu kỳ sau. */
+  marketsUnknown: "MARKETS_UNKNOWN",
   // normalize
   staleNews: "STALE_NEWS",
   noSodexMarket: "NO_SODEX_MARKET",
@@ -184,8 +188,11 @@ export const NEWS_RULES = {
   startLookbackMinutes: 15,
   /** Không bao giờ bắt kịp quá ngần này phút sau thời gian ngừng (env `SIGNAL_NEWS_MAX_CATCHUP_MIN` ghi đè). */
   maxCatchUpMinutes: 30,
-  /** Bài mới (chưa có trong DB) đăng trước watermark tối đa ngần này phút vẫn được nhận (SoSoValue đưa bài lên trễ). */
-  watermarkOverlapMinutes: 10,
+  /**
+   * Mốc dưới của Collect tính theo giờ DeskLabs chạy chu kỳ trước (không theo giờ đăng): bài chưa thấy, đăng sau
+   * `lastCycleAt − ngần này phút` (và không cũ hơn `maxCatchUpMinutes`), vẫn được phân loại dù SoSoValue đưa lên trễ.
+   */
+  collectMarginMinutes: 30,
   /** Sự kiện cũ hơn ngần này so với giờ đăng → bỏ. */
   maxEventAgeHours: 24,
   /** Giá / sổ lệnh cũ hơn ngần này thì coi như không có. */
@@ -295,7 +302,9 @@ export function catalystRule(c: SignalCatalyst): CatalystRule {
 
 /** Claude phân loại tin (#271): model cố định, bảng giá để tính chi phí / ngày (USD trên 1M token, giá 2026-11). */
 export const NEWS_CLASSIFIER = {
-  model: "claude-haiku-4-5-20251001",
+  model: "claude-haiku-4-5",
+  /** TTL của prompt cache: chu kỳ 5 phút đúng bằng TTL mặc định nên dùng 1 giờ (ghi 2×, đọc 0.1×). */
+  cacheTtl: "1h",
   promptVersion: "news-classifier-v1",
   maxTokens: 400,
   /** Tối đa ngần này ký tự nội dung bài gửi cho Claude. */
@@ -303,7 +312,8 @@ export const NEWS_CLASSIFIER = {
   pricing: {
     inputPerM: "1",
     outputPerM: "5",
-    cacheWriteMultiple: "1.25",
+    /** Ghi cache TTL 1 giờ = 2× giá đầu vào (TTL 5 phút là 1.25×). */
+    cacheWriteMultiple: "2",
     cacheReadMultiple: "0.1",
   },
 } as const;
@@ -326,3 +336,17 @@ export const NEWS_LIMIT_DEFAULTS = {
   claudeMaxCallsPerCycle: 50,
   sosoMaxPages: 2,
 } as const;
+
+/**
+ * Lý do bị loại KHOÁ story key (token + loại tin, 7 ngày) cùng với việc đã mở lệnh (DEC-TBD-news-paper-trading, M3 của
+ * review PR #278): bản chất của bài, không đổi nếu thử lại. Mọi lý do khác (không có giá / sổ lệnh / lịch sử, nguồn trễ,
+ * Claude lỗi, hết ngân sách, chi phí, đang có lệnh mở) không khoá: bài sau cùng key được thử lại.
+ */
+export const LOCKING_DROP_REASONS: ReadonlySet<string> = new Set([
+  "NOT_A_SIGNAL_TYPE",
+  "CATALYST_ASSET_MISMATCH",
+  "PASSING_MENTION",
+  "PROMOTIONAL",
+  "EVENT_TOO_OLD",
+  "STALE_NEWS",
+]);

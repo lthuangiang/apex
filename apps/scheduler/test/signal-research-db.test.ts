@@ -9,12 +9,13 @@ import {
   signalEvents,
   signalPaperTrades,
   signalResearchUsage,
+  signalStories,
   type Db,
 } from "@drift/db";
 import { NEWS_RULES } from "@drift/shared";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   emptyUsage,
@@ -26,7 +27,7 @@ import {
   signalResearchEnvSchema,
   type Logger,
 } from "../src/signal-research/index";
-import type { SosoClient, SosoNewsItem } from "../src/signal-research/soso";
+import { SOSO_BASE_URL, type SosoClient, type SosoNewsItem } from "../src/signal-research/soso";
 import { saveNewsState } from "../src/signal-research/store";
 
 // Pipeline lane tin tức (#271) trên Postgres thật: SoSoValue và Claude là mock, giá đến từ "marketdata" giả (sổ lệnh NATS /
@@ -141,12 +142,34 @@ function logger(errors: unknown[]): Logger {
   return l;
 }
 
+/** Tin NATS `md.<market>.book` giả của marketdata. */
+function book(
+  sr: { books: { onMessage: (subject: string, raw: string, at: number) => void } },
+  market: string,
+  b: string,
+  a: string,
+  at: number,
+) {
+  sr.books.onMessage(
+    `md.${market.toLowerCase()}.book`,
+    JSON.stringify({ s: market, b, a, E: at, at }),
+    at,
+  );
+}
+
+const PERPS = [
+  { name: "SOL-USD", status: "TRADING", tickSize: "0.01", takerFee: "0.0004" },
+  { name: "BTC-USD", status: "TRADING", tickSize: "0.1", takerFee: "0.0004" },
+];
+
 function setup(input: {
   items: () => SosoNewsItem[];
   claude: NewsClassifier;
   now: () => number;
   env?: Record<string, string>;
   last?: Record<string, { price: string; at: number }>;
+  perps?: () => typeof PERPS | null;
+  soso?: SosoClient;
 }) {
   const errors: unknown[] = [];
   const soso = fakeSoso(input.items);
@@ -168,12 +191,9 @@ function setup(input: {
       DESK_AI_API_KEY: "c",
       ...input.env,
     }),
-    perps: () => [
-      { name: "SOL-USD", status: "TRADING", tickSize: "0.01", takerFee: "0.0004" },
-      { name: "BTC-USD", status: "TRADING", tickSize: "0.1", takerFee: "0.0004" },
-    ],
+    perps: input.perps ?? (() => PERPS),
     now: input.now,
-    soso,
+    soso: input.soso ?? soso,
     classifier: input.claude,
   });
   return { sr, soso, errors };
@@ -222,10 +242,7 @@ describe("news pipeline end to end", () => {
       "Solana exploit: attacker moved funds": hack,
     });
     const { sr, errors } = setup({ items: () => items, claude, now: () => now });
-    sr.books.onMessage(
-      JSON.stringify({ s: "SOL-USD", b: "99.99", a: "100.01", E: now, at: now }),
-      now,
-    );
+    book(sr, "SOL-USD", "99.99", "100.01", now);
     await sr.runCycle();
     expect(errors).toEqual([]);
     expect(claude.titles.sort()).toEqual([
@@ -271,28 +288,23 @@ describe("news pipeline end to end", () => {
     // Không có giá → chờ. Giá ask xuống dưới TP → đóng TP theo ask.
     now = T0 + 10 * MIN;
     expect(await sr.watcher.tick()).toBe(0);
-    sr.books.onMessage(
-      JSON.stringify({ s: "SOL-USD", b: "96.4", a: "96.5", E: now, at: now }),
-      now,
-    );
+    book(sr, "SOL-USD", "96.4", "96.5", now);
     expect(await sr.watcher.tick()).toBe(1);
     const [closed] = await db.select().from(signalPaperTrades);
-    expect(closed).toMatchObject({
-      status: "closed",
-      exitReason: "take_profit",
-      exitPrice: "96.500000000000000000",
-    });
-    expect(Number(closed?.resultUsdc)).toBeGreaterThan(15);
+    // Giá nhảy qua TP: thoát đúng ở TP (thận trọng, như DEC-321).
+    expect(closed).toMatchObject({ status: "closed", exitReason: "take_profit" });
+    expect(closed?.exitPrice).toBe(closed?.tpPrice);
+    expect(Number(closed?.resultUsdc)).toBeGreaterThan(10);
+    // MFE lưu lúc đóng (giá giữa 96.45 so với giá vào 99.99, lệnh short), MAE = 0.
+    expect(Number(closed?.mfePct)).toBeCloseTo(3.5404, 3);
+    expect(Number(closed?.maePct)).toBe(0);
 
     // Bài mới cùng câu chuyện ở chu kỳ sau: chỉ thêm nguồn, không mở lại.
     items.push(item("a6", now - MIN, "Solana exploit follow-up", { author: "PANews" }));
     claude.titles.length = 0;
     const more = fakeClaude({ "Solana exploit follow-up": hack });
     const s2 = setup({ items: () => items, claude: more, now: () => now });
-    s2.sr.books.onMessage(
-      JSON.stringify({ s: "SOL-USD", b: "96.4", a: "96.5", E: now, at: now }),
-      now,
-    );
+    book(s2.sr, "SOL-USD", "96.4", "96.5", now);
     await s2.sr.runCycle();
     expect(await db.select().from(signalPaperTrades)).toHaveLength(1);
 
@@ -348,6 +360,21 @@ describe("news pipeline end to end", () => {
       "result",
     ]);
     expect(detail?.steps[2]?.checks.every((c) => c.ok)).toBe(true);
+    expect(detail?.steps[3]?.facts.map((f) => f.key)).toContain("movedBeforeEntry");
+    const result = detail?.steps[4]?.facts ?? [];
+    expect(result.map((f) => f.key)).toEqual([
+      "exit",
+      "priceMove",
+      "fees",
+      "best",
+      "worst",
+      "random",
+    ]);
+    expect(result.find((f) => f.key === "fees")?.usd).toMatch(/^\d/); // chi phí dương
+    expect(result.find((f) => f.key === "priceMove")?.pct).toBeGreaterThan(0);
+    expect(result.find((f) => f.key === "best")?.pct).toBeCloseTo(3.5404, 3);
+    // Random chưa tính (cửa sổ giữ chưa xong): null, không bao giờ 0.
+    expect(result.find((f) => f.key === "random")?.pct).toBeNull();
   });
 
   it("skips a market with a price but no book data instead of calling REST", async () => {
@@ -497,5 +524,216 @@ describe("backlog protection", () => {
       .from(signalEvents)
       .where(eq(signalEvents.stage, "understand"));
     expect(e?.reason).toBe("CLAUDE_BUDGET_REACHED");
+  });
+});
+
+describe("review PR #278 fixes", () => {
+  it("M1: an article SoSoValue indexes 15 min late is still classified in a normal cycle", async () => {
+    await saveNewsState(db, T0 - 2 * MIN, T0 - 5 * MIN);
+    const items = [item("l1", T0 - 15 * MIN, "late indexed")];
+    const claude = fakeClaude({});
+    const { sr } = setup({ items: () => items, claude, now: () => T0 });
+    await sr.runCycle();
+    expect(claude.titles).toEqual(["late indexed"]);
+  });
+
+  it("B1: without the SoDEX market list the cycle only collects, then normalizes next cycle", async () => {
+    let perps: typeof PERPS | null = null;
+    const items = [item("m1", T0 - 2 * MIN, "collect only")];
+    const claude = fakeClaude({});
+    const { sr } = setup({ items: () => items, claude, now: () => T0, perps: () => perps });
+    await sr.runCycle();
+    expect(claude.titles).toEqual([]);
+    const [a] = await db.select().from(signalArticles).where(eq(signalArticles.id, "m1"));
+    expect(a?.status).toBe("collected");
+    perps = PERPS;
+    await sr.runCycle();
+    expect(claude.titles).toEqual(["collect only"]);
+  });
+
+  it("M3: a transient drop does not lock the story; the next article on the same key can trade", async () => {
+    const items = [item("t1", T0 - 2 * MIN, "SOL hack first", { author: "Odaily" })];
+    const claude = fakeClaude({ "SOL hack first": hack, "SOL hack second": hack });
+    // Không có giá → NO_SODEX_PRICE (tạm thời).
+    const first = setup({ items: () => items, claude, now: () => T0 });
+    await first.sr.runCycle();
+    const [s1] = await db.select().from(signalStories);
+    expect(s1).toMatchObject({ outcome: "skipped", locked: false });
+    // Chu kỳ sau có giá: bài sau cùng key được thử lại và vào lệnh; nguồn của lần thử trước vẫn được tính.
+    const now = T0 + 5 * MIN;
+    items.push(item("t2", now - MIN, "SOL hack second", { author: "Bloomberg", category: 5 }));
+    const second = setup({ items: () => items, claude, now: () => now });
+    book(second.sr, "SOL-USD", "99.99", "100.01", now);
+    await second.sr.runCycle();
+    const [t] = await db.select().from(signalPaperTrades);
+    expect(t).toMatchObject({ articleId: "t2", levelAtEntry: "high" });
+    const entered = await db.select().from(signalStories).where(eq(signalStories.locked, true));
+    expect(entered).toHaveLength(1);
+    expect(entered[0]).toMatchObject({ outcome: "entered", tradeId: t?.id });
+  });
+
+  it("M3: a non-transient drop (promotional) locks the key; later articles merge and never trade", async () => {
+    const promo = { ...hack, promotional: true };
+    const items = [item("p1", T0 - 2 * MIN, "promo SOL hack", { author: "kol" })];
+    const claude = fakeClaude({ "promo SOL hack": promo, "real SOL hack": hack });
+    const s = setup({ items: () => items, claude, now: () => T0 });
+    book(s.sr, "SOL-USD", "99.99", "100.01", T0);
+    await s.sr.runCycle();
+    const [st] = await db.select().from(signalStories);
+    expect(st).toMatchObject({ outcome: "dropped", locked: true });
+    items.push(item("p2", T0 - MIN, "real SOL hack", { author: "Bloomberg", category: 5 }));
+    const now = T0 + MIN;
+    const s2 = setup({ items: () => items, claude, now: () => now });
+    book(s2.sr, "SOL-USD", "99.99", "100.01", now);
+    await s2.sr.runCycle();
+    expect(await db.select().from(signalPaperTrades)).toHaveLength(0);
+    const merges = await db
+      .select()
+      .from(signalEvents)
+      .where(eq(signalEvents.reason, "SAME_STORY"));
+    expect(merges.map((e) => e.articleId)).toEqual(["p2"]);
+  });
+
+  it("M4: the random baseline is stored once the hold window is over, and the summary reads it", async () => {
+    const items = [item("r1", T0 - 2 * MIN, "SOL hack random", { author: "Odaily" })];
+    const claude = fakeClaude({ "SOL hack random": hack });
+    let now = T0;
+    const s = setup({ items: () => items, claude, now: () => now });
+    book(s.sr, "SOL-USD", "99.99", "100.01", T0);
+    await s.sr.runCycle();
+    // Đóng ở hết giữ tối đa, rồi chu kỳ sau cửa sổ giữ: random được tính từ nến.
+    const end = T0 + 24 * HOUR;
+    now = end;
+    book(s.sr, "SOL-USD", "99.99", "100.01", now);
+    s.sr.watcher.invalidate();
+    expect(await s.sr.watcher.tick()).toBe(1);
+    const flat = [];
+    for (let m = 1; m < 24 * 60; m += 1)
+      flat.push({
+        market: "SOL-USD",
+        ts: new Date(T0 + m * MIN),
+        open: "100",
+        high: "100",
+        low: "100",
+        close: "100",
+        volume: "1",
+      });
+    await db.insert(candles1m).values(flat).onConflictDoNothing();
+    now = end + 5 * MIN;
+    const later = setup({ items: () => [], claude, now: () => now });
+    await later.sr.runCycle();
+    const [t] = await db.select().from(signalPaperTrades);
+    expect(t?.randomDoneAt).not.toBeNull();
+    expect(t?.randomLongShare).toBe("0.000000000000000000");
+    expect(t?.randomPct).not.toBeNull();
+    const summary = await loadSignalResearchSummary(db, new Date(now), {
+      sosoMonthlyLimit: 9500,
+      claudeDailyInputBudget: 2_000_000,
+    });
+    expect(summary.rows[0]?.randomPct).not.toBeNull();
+    expect(summary.rows[0]?.clusters).toBe(1);
+    expect(summary.directions.map((d) => d.side)).toEqual(["long", "short"]);
+    expect(summary.directions[1]).toMatchObject({ side: "short", closed: 1 });
+  });
+
+  it("monthly SoSoValue cap: no request, no crash, source shows Delayed", async () => {
+    await db.insert(signalResearchUsage).values({ day: "2026-11-01", sosoRequests: 9500 });
+    const claude = fakeClaude({});
+    const s = setup({ items: () => [item("q1", T0 - MIN, "x")], claude, now: () => T0 });
+    await s.sr.runCycle();
+    expect(s.soso.calls).toBe(0);
+    expect(s.errors).toEqual([]);
+    const summary = await loadSignalResearchSummary(db, new Date(T0), {
+      sosoMonthlyLimit: 9500,
+      claudeDailyInputBudget: 2_000_000,
+    });
+    expect(summary.sources.find((x) => x.key === "sosoNews")?.status).toBe("delayed");
+  });
+
+  it("the only network targets are SoSoValue and the Claude API (real clients, stubbed fetch)", async () => {
+    const urls: string[] = [];
+    const tool = {
+      id: "msg_1",
+      type: "message",
+      role: "assistant",
+      model: "claude-haiku-4-5",
+      content: [
+        {
+          type: "tool_use",
+          id: "tu_1",
+          name: "record_classification",
+          input: {
+            catalyst: "hack_exploit",
+            market: "SOL-USD",
+            relevance: "direct",
+            promotional: false,
+            event_date: "2026-11-18",
+          },
+        },
+      ],
+      stop_reason: "tool_use",
+      stop_sequence: null,
+      usage: {
+        input_tokens: 100,
+        output_tokens: 20,
+        cache_creation_input_tokens: 4200,
+        cache_read_input_tokens: 0,
+      },
+    };
+    const soso = {
+      code: 0,
+      message: "success",
+      data: {
+        list: [
+          {
+            id: "f1",
+            release_time: String(T0 - MIN),
+            title: "SOL protocol exploited",
+            content: "<p>exploit</p>",
+            author: "Odaily",
+            category: 1,
+            matched_currencies: [{ currency_id: "1", symbol: "SOL", name: "Solana" }],
+          },
+        ],
+      },
+    };
+    vi.stubGlobal("fetch", (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      urls.push(url);
+      const body = url.startsWith(SOSO_BASE_URL) ? soso : tool;
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    });
+    try {
+      const errors: unknown[] = [];
+      const sr = createSignalResearch({
+        db,
+        redis: { mget: (...keys: string[]) => Promise.resolve(keys.map(() => null)) },
+        log: logger(errors),
+        env: signalResearchEnvSchema.parse({
+          SIGNAL_RESEARCH_ENABLED: "true",
+          SOSO_API_KEY: "k",
+          DESK_AI_API_KEY: "c",
+        }),
+        perps: () => PERPS,
+        now: () => T0,
+      });
+      book(sr, "SOL-USD", "99.99", "100.01", T0);
+      await sr.runCycle();
+      await sr.watcher.tick();
+      expect(errors).toEqual([]);
+      expect(urls.length).toBeGreaterThanOrEqual(2);
+      for (const u of urls)
+        expect(u.startsWith(SOSO_BASE_URL) || u.startsWith("https://api.anthropic.com/")).toBe(
+          true,
+        );
+      expect(await db.select().from(signalPaperTrades)).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

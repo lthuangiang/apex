@@ -4,8 +4,17 @@ import { join } from "node:path";
 import { Decimal } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
-import { parseAnswer, weightedInput } from "../src/signal-research/classifier";
-import { disabledReason, signalResearchEnvSchema } from "../src/signal-research/index";
+import {
+  cacheSelfCheck,
+  emptyUsage,
+  parseAnswer,
+  weightedInput,
+} from "../src/signal-research/classifier";
+import {
+  disabledReason,
+  parseSignalEnv,
+  signalResearchEnvSchema,
+} from "../src/signal-research/index";
 import { collectFloor } from "../src/signal-research/pipeline";
 import { combineQuote, LiveBooks, medianTicks } from "../src/signal-research/prices";
 import { sosoClient } from "../src/signal-research/soso";
@@ -20,13 +29,15 @@ const cfg = {
   maxCatchUpMinutes: 30,
 };
 
-describe("collect floor (watermark)", () => {
+describe("collect floor (by our own collection time)", () => {
   const now = Date.parse("2026-11-18T12:00:00Z");
   it("first run starts 15 min back", () => {
     expect(collectFloor(null, now, cfg)).toBe(now - 15 * MIN);
   });
-  it("normal run: watermark minus a 10 min overlap", () => {
-    expect(collectFloor(now - 5 * MIN, now, cfg)).toBe(now - 15 * MIN);
+  it("normal run: an article SoSoValue indexes 15 min late is still inside the window", () => {
+    // Chu kỳ trước 5 phút trước: mốc dưới = now − 30 phút, nên bài đăng lúc now − 15 phút vẫn được xử lý.
+    expect(collectFloor(now - 5 * MIN, now, cfg)).toBe(now - 30 * MIN);
+    expect(now - 15 * MIN).toBeGreaterThan(collectFloor(now - 5 * MIN, now, cfg));
   });
   it("after downtime never catches up more than 30 min", () => {
     expect(collectFloor(now - 3 * 60 * MIN, now, cfg)).toBe(now - 30 * MIN);
@@ -95,13 +106,28 @@ describe("quotes from stored market data only", () => {
     expect(medianTicks([{ "1": 10, "2": 3 }, { "3": 5 }])).toEqual({ ticks: 1, samples: 18 });
     expect(medianTicks([])).toBeNull();
   });
-  it("live books ignore malformed messages", () => {
+  it("live books keep raw messages and parse only on read; malformed ones are ignored", () => {
     const b = new LiveBooks();
-    b.onMessage("not json", 1);
-    b.onMessage(JSON.stringify({ s: "BTC-USD", b: "1", a: "0.5", E: 1, at: 1 }), 1);
+    b.onMessage("md.btc-usd.book", "not json", 1);
     expect(b.get("BTC-USD")).toBeUndefined();
-    b.onMessage(JSON.stringify({ s: "BTC-USD", b: "1", a: "2", E: 1, at: 1 }), 5);
+    b.onMessage(
+      "md.btc-usd.book",
+      JSON.stringify({ s: "BTC-USD", b: "1", a: "0.5", E: 1, at: 1 }),
+      1,
+    );
+    expect(b.get("BTC-USD")).toBeUndefined();
+    b.onMessage(
+      "md.btc-usd.book",
+      JSON.stringify({ s: "BTC-USD", b: "1", a: "2", E: 1, at: 1 }),
+      5,
+    );
     expect(b.get("BTC-USD")?.at).toBe(5);
+    b.onMessage(
+      "md.1000pepe-usd.book",
+      JSON.stringify({ s: "1000PEPE-USD", b: "1", a: "2", E: 1, at: 1 }),
+      6,
+    );
+    expect(b.get("1000PEPE-USD")?.ask.toFixed()).toBe("2");
   });
 });
 
@@ -132,12 +158,38 @@ describe("classifier answer", () => {
       error: "invalid_answer",
     });
   });
-  it("budget counts cache reads at a tenth", () => {
-    expect(weightedInput({ input: 100, cacheWrite: 50, cacheRead: 1000 })).toBe(250);
+  it("budget is in input-equivalent units: cache write 2× (1 h TTL), cache read 0.1×, output 5×", () => {
+    expect(weightedInput({ input: 100, cacheWrite: 50, cacheRead: 1000, output: 20 })).toBe(
+      100 + 100 + 100 + 100,
+    );
+  });
+  it("cache self-check logs the first call of the day and warns when reads stay 0", () => {
+    const infos: object[] = [];
+    const warns: object[] = [];
+    const check = cacheSelfCheck({ info: (o) => infos.push(o), warn: (o) => warns.push(o) }, () =>
+      Date.parse("2026-11-18T10:00:00Z"),
+    );
+    const u = (cacheWrite: number, cacheRead: number) => ({
+      ...emptyUsage(),
+      calls: 1,
+      cacheWrite,
+      cacheRead,
+    });
+    check(u(4300, 0));
+    expect(infos).toEqual([{ cacheWrite: 4300, cacheRead: 0, cachedPrefixTokens: 4300 }]);
+    check(u(4300, 0));
+    expect(warns).toHaveLength(1);
+    check(u(0, 0));
+    expect(warns).toHaveLength(1);
+    const ok: object[] = [];
+    const good = cacheSelfCheck({ info: () => undefined, warn: (o) => ok.push(o) });
+    good(u(4300, 0));
+    good(u(0, 4300));
+    expect(ok).toEqual([]);
   });
 });
 
-describe("feature flag", () => {
+describe("feature flag and env", () => {
   it("is off by default and needs both keys", () => {
     expect(disabledReason(signalResearchEnvSchema.parse({}))).toMatch(/SIGNAL_RESEARCH_ENABLED/);
     expect(
@@ -157,6 +209,28 @@ describe("feature flag", () => {
         }),
       ),
     ).toBeNull();
+  });
+  it("accepts true / 1 for the flag", () => {
+    for (const v of ["true", "TRUE", "1"])
+      expect(parseSignalEnv({ SIGNAL_RESEARCH_ENABLED: v }).env?.SIGNAL_RESEARCH_ENABLED).toBe(
+        true,
+      );
+    for (const v of [undefined, "", "false", "0", "yes"])
+      expect(parseSignalEnv({ SIGNAL_RESEARCH_ENABLED: v }).env?.SIGNAL_RESEARCH_ENABLED).toBe(
+        false,
+      );
+  });
+  it("never throws: invalid SIGNAL_* values are ignored with a warning when the flag is off", () => {
+    const off = parseSignalEnv({
+      SIGNAL_SOSO_MAX_PAGES: "10",
+      SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE: "x",
+    });
+    expect(off.env?.SIGNAL_RESEARCH_ENABLED).toBe(false);
+    expect(off.env?.SIGNAL_SOSO_MAX_PAGES).toBe(2);
+    expect(off.warning).toMatch(/SIGNAL_SOSO_MAX_PAGES/);
+    const on = parseSignalEnv({ SIGNAL_RESEARCH_ENABLED: "1", SIGNAL_SOSO_MAX_PAGES: "10" });
+    expect(on.env).toBeNull();
+    expect(on.warning).toMatch(/SIGNAL_SOSO_MAX_PAGES/);
   });
 });
 
@@ -227,7 +301,13 @@ describe("no SoDEX write path", () => {
     ...filesUnder(join(root, "apps/api/src/modules/signal-research")),
   ];
   it("covers the whole lane", () => {
-    expect(files.length).toBeGreaterThanOrEqual(12);
+    expect(files.length).toBeGreaterThanOrEqual(13);
+  });
+  it("the dry-run CLI only reads the SoDEX market list (no write client, no other SoDEX call)", () => {
+    const src = readFileSync(join(root, "apps/scheduler/src/cli/signals-once.ts"), "utf8");
+    expect(src).not.toMatch(/HttpGateway|SignedWriteClient|signer|gateway/i);
+    const calls = [...src.matchAll(/rest\.(\w+)\(/g)].map((m) => m[1]);
+    expect(calls).toEqual(["getPerpsSymbols"]);
   });
   it.each(files)("%s imports nothing that can reach SoDEX", (file) => {
     const src = readFileSync(file, "utf8");

@@ -19,28 +19,37 @@ export interface BookTick {
   at: number;
 }
 
-/** Giá tốt nhất mới nhất mỗi market, nhận từ NATS `md.*.book`. */
-export class LiveBooks {
-  readonly #books = new Map<string, BookTick>();
+/** Khoá subject của marketdata (`md.<khoá>.book`), như `marketSubject` của apps/marketdata. */
+export const bookKeyOf = (market: string) => market.toLowerCase().replace(/[^a-z0-9-]/g, "-");
 
-  /** Tin NATS thô (JSON); sai schema thì bỏ. */
-  onMessage(raw: string, at: number): void {
-    let json: unknown;
-    try {
-      json = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    const p = mmBookMessageSchema.safeParse(json);
-    if (!p.success) return;
-    const bid = new Decimal(p.data.b);
-    const ask = new Decimal(p.data.a);
-    if (bid.lte(0) || ask.lt(bid)) return;
-    this.#books.set(p.data.s, { bid, ask, at });
+/**
+ * Giá tốt nhất mới nhất mỗi market, nhận từ NATS `md.*.book`. Chỉ giữ chuỗi thô theo subject; parse (zod + Decimal) khi
+ * `get()` — tức chỉ cho market đang cần giá, không cho mọi tin của mọi market.
+ */
+export class LiveBooks {
+  readonly #raw = new Map<string, { raw: string; at: number }>();
+
+  /** Tin NATS thô; subject dạng `md.<khoá>.book`. */
+  onMessage(subject: string, raw: string, at: number): void {
+    const key = subject.split(".")[1];
+    if (key !== undefined) this.#raw.set(key, { raw, at });
   }
 
   get(market: string): BookTick | undefined {
-    return this.#books.get(market);
+    const m = this.#raw.get(bookKeyOf(market));
+    if (m === undefined) return undefined;
+    let json: unknown;
+    try {
+      json = JSON.parse(m.raw);
+    } catch {
+      return undefined;
+    }
+    const p = mmBookMessageSchema.safeParse(json);
+    if (!p.success || p.data.s !== market) return undefined;
+    const bid = dec(p.data.b);
+    const ask = dec(p.data.a);
+    if (bid.lte(0) || ask.lt(bid)) return undefined;
+    return { bid, ask, at: m.at };
   }
 }
 

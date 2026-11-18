@@ -34,7 +34,7 @@ import { snapshotAndCheck } from "./risk";
 import {
   createSignalResearch,
   disabledReason,
-  signalResearchEnvSchema,
+  parseSignalEnv,
   type PerpsSymbolInfo,
 } from "./signal-research";
 import { runSnapshotRetention } from "./snapshot-retention";
@@ -65,7 +65,6 @@ const env = z
     /** NATS cho giá tốt nhất SoDEX (`md.*.book`) của Signal research; trống = chỉ dùng Redis / DB. */
     NATS_URL: z.string().default(""),
   })
-  .extend(signalResearchEnvSchema.shape)
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "scheduler" } });
 // SoDEX Debugger (DEC-309): ghi mọi lời gọi SoDEX (hàng đợi trong bộ nhớ, pool DB riêng, không chặn).
@@ -207,10 +206,12 @@ async function leaderboardTick() {
   }
 }
 
-/** Fit hệ số mô hình chi phí Market Making cho ngày hôm qua (DEC-228); tự bỏ qua nếu đã fit. */
-/** Danh sách perps đọc ở vòng 10 phút (mmModelTick); Signal research dùng lại, không gọi thêm REST. */
+/**
+ * Danh sách perps của SoDEX, dùng chung cho `mmModelTick` (vòng 10 phút) và Signal research. Đi qua cache TTL của cùng
+ * `rest` (`MARKET_INFO_TTL_MS`), nên lần đọc khi nhận lease và `mmModelTick` ngay sau đó là một lời gọi REST.
+ */
 let perpsCache: PerpsSymbolInfo[] | null = null;
-async function mmModelTick() {
+async function loadPerps() {
   const symbols = await wait(() => rest.getPerpsSymbols());
   perpsCache = symbols.map((m) => ({
     name: m.name,
@@ -218,6 +219,12 @@ async function mmModelTick() {
     tickSize: m.tickSize,
     takerFee: m.takerFee,
   }));
+  return symbols;
+}
+
+/** Fit hệ số mô hình chi phí Market Making cho ngày hôm qua (DEC-228); tự bỏ qua nếu đã fit. */
+async function mmModelTick() {
+  const symbols = await loadPerps();
   const ticks = new Map(symbols.map((m) => [m.name, m.tickSize] as const));
   const r = await fitMmModelDaily(db, ticks, Date.now());
   if (r.status !== "skipped") log.info(r, "mm cost model fitted");
@@ -259,13 +266,20 @@ async function snapshotRetentionTick() {
 
 // Signal research, lane tin tức (#271, DEC-TBD-news-paper-trading): paper trading của team, mặc định tắt. Không gửi gì tới
 // SoDEX; giá chỉ từ marketdata (Redis md:last, NATS md.*.book, mm_market_hourly).
-const signalOff = disabledReason(env);
+// Env của lane parse riêng: giá trị `SIGNAL_*` sai không bao giờ làm scheduler dừng.
+const signalEnv = parseSignalEnv(process.env);
+const signalOff =
+  signalEnv.env === null
+    ? `invalid env: ${signalEnv.warning ?? ""}`
+    : disabledReason(signalEnv.env);
+if (signalEnv.env !== null && signalEnv.warning !== null)
+  log.warn({ warning: signalEnv.warning }, "signal research env");
 const signals =
-  signalOff === null
-    ? createSignalResearch({ db, redis, log, env, perps: () => perpsCache })
+  signalOff === null && signalEnv.env !== null
+    ? createSignalResearch({ db, redis, log, env: signalEnv.env, perps: () => perpsCache })
     : null;
-if (signalOff === null) log.info("signal research enabled");
-else if (env.SIGNAL_RESEARCH_ENABLED)
+if (signals !== null) log.info("signal research enabled");
+else if (signalEnv.env === null || signalEnv.env.SIGNAL_RESEARCH_ENABLED)
   log.warn({ reason: signalOff }, "signal research not started");
 let nats: NatsConnection | null = null;
 if (signals !== null && env.NATS_URL !== "") {
@@ -273,7 +287,7 @@ if (signals !== null && env.NATS_URL !== "") {
     nats = await connect({ servers: env.NATS_URL });
     const sub = nats.subscribe("md.*.book");
     void (async () => {
-      for await (const m of sub) signals.books.onMessage(m.string(), Date.now());
+      for await (const m of sub) signals.books.onMessage(m.subject, m.string(), Date.now());
     })();
   } catch (error) {
     log.warn({ err: error }, "signal research: NATS unavailable, using Redis prices only");
@@ -298,7 +312,12 @@ async function tick() {
 const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
   onLead: () => {
     if (signals !== null) {
-      void signals.runCycle();
+      // Danh sách market trước chu kỳ đầu (một lời gọi, dùng chung cache với mmModelTick); lỗi thì chu kỳ chỉ Collect.
+      void loadPerps()
+        .catch((error: unknown) => {
+          log.warn({ err: error }, "signal research: SoDEX market list unavailable, collect only");
+        })
+        .then(() => signals.runCycle());
       signalTimer = setInterval(() => void signals.runCycle(), 5 * 60_000);
       watchTimer = setInterval(() => {
         void signals.watcher.tick().catch((error: unknown) => {

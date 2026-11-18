@@ -39,8 +39,15 @@ const QUERY_TIMEOUT_MS = 10_000;
 /** `tz` chỉ để web dùng chung key cache; API trả giờ UTC. */
 const tzQuery = z.object({ tz: z.string().max(64).optional() });
 
+/** Trần tổng thời gian của một request (giữa các câu; mỗi câu còn bị `statement_timeout`). */
+const DEADLINE_MS = 20_000;
+
 function tx<T>(deps: SignalResearchDeps, fn: Parameters<typeof readOnlyTx<T>>[2]): Promise<T> {
-  return readOnlyTx(deps.db, { statementTimeoutMs: deps.queryTimeoutMs ?? QUERY_TIMEOUT_MS }, fn);
+  return readOnlyTx(
+    deps.db,
+    { statementTimeoutMs: deps.queryTimeoutMs ?? QUERY_TIMEOUT_MS, deadlineMs: DEADLINE_MS },
+    fn,
+  );
 }
 
 export async function signalResearchSummary(
@@ -50,11 +57,16 @@ export async function signalResearchSummary(
 ): Promise<ResearchSummary> {
   await requireTeam(deps.db, userId, FORBIDDEN);
   parseOrThrow(tzQuery, query);
-  const out = await tx(deps, (q) =>
-    loadSignalResearchSummary(q, deps.now(), {
-      sosoMonthlyLimit: NEWS_LIMIT_DEFAULTS.sosoMonthlyLimit,
-      claudeDailyInputBudget: NEWS_LIMIT_DEFAULTS.claudeDailyInputBudget,
-    }),
+  const out = await tx(deps, (q, check) =>
+    loadSignalResearchSummary(
+      q,
+      deps.now(),
+      {
+        sosoMonthlyLimit: NEWS_LIMIT_DEFAULTS.sosoMonthlyLimit,
+        claudeDailyInputBudget: NEWS_LIMIT_DEFAULTS.claudeDailyInputBudget,
+      },
+      check,
+    ),
   );
   return researchSummarySchema.parse(out);
 }

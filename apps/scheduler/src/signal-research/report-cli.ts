@@ -13,20 +13,20 @@ import { signalResearchEnvSchema } from "./index";
 // `pnpm --filter @drift/scheduler signals:report [-- --json]`: báo cáo lane tin tức (#271), chỉ đọc (transaction READ
 // ONLY). Cùng dữ liệu với `GET /api/v1/admin/signal-research/summary`, cộng lý do nội bộ và baseline chi tiết.
 
-const env = z
-  .object({ DATABASE_URL: z.string().min(1) })
-  .extend(signalResearchEnvSchema.shape)
-  .parse(process.env);
+const { DATABASE_URL } = z.object({ DATABASE_URL: z.string().min(1) }).parse(process.env);
+const env = signalResearchEnvSchema.parse(
+  Object.fromEntries(Object.keys(signalResearchEnvSchema.shape).map((k) => [k, process.env[k]])),
+);
 const json = process.argv.includes("--json");
 
 type Diagnostics = Awaited<ReturnType<typeof loadSignalResearchDiagnostics>>;
-type Range = Diagnostics["baseline"]["newsReplay"];
+type Range = Diagnostics["baseline"]["newsResult"];
 
 const pct = (n: number | null) => (n === null ? "n/a" : `${String(n)}%`);
 const range = (x: Range) =>
   x === null
     ? "Not available"
-    : `${pct(x.meanPct)} (n=${String(x.n)}, likely ${pct(x.lowPct)}..${pct(x.highPct)})`;
+    : `${pct(x.meanPct)} (n=${String(x.n)}, ${String(x.clusters)} days, likely ${pct(x.lowPct)}..${pct(x.highPct)})`;
 
 function tradeLine(t: ResearchTrade): string {
   const res =
@@ -65,6 +65,7 @@ function print(s: ResearchSummary, d: Diagnostics, trades: ResearchTrade[]): voi
       `Outcomes: closed ${String(f.outcomes.closed)} (TP ${String(f.outcomes.tp)}, SL ${String(f.outcomes.sl)}, max hold ${String(f.outcomes.maxHold)}), open ${String(f.outcomes.open)}`,
     );
   }
+  out.push(`Backlog (stored raw, not classified; not a drop): ${String(d.backlog)}`);
   out.push("Steps (internal reason codes)");
   for (const x of d.steps)
     out.push(
@@ -78,14 +79,18 @@ function print(s: ResearchSummary, d: Diagnostics, trades: ResearchTrade[]): voi
     out.push(
       `${r.type} · ${r.label} · v${String(r.rulesVersion)}: closed ${String(r.closed)}, after fees ${pct(r.avgPct)}, random ${pct(r.randomPct)}, difference ${pct(r.diffPct)}, cost ${pct(s.costPct)}, ${r.status}, needs ${JSON.stringify(r.needs)}`,
     );
+  for (const x of s.directions)
+    out.push(
+      `  ${x.side.padEnd(6)} closed ${String(x.closed)} (${String(x.clusters)} days), after fees ${pct(x.avgPct)}, random ${pct(x.randomPct)}, diff ${pct(x.diffPct)}`,
+    );
   for (const l of s.levels)
     out.push(
       `  ${l.level.padEnd(6)} signals ${String(l.signals)}, trades ${String(l.trades)} (L ${String(l.long)} / S ${String(l.short)}), closed ${String(l.closed)}, after fees ${pct(l.avgPct)}, random ${pct(l.randomPct)}, diff ${pct(l.diffPct)}, ${l.status}`,
     );
   out.push(
-    `Random-entry baseline (candle replay; ${String(d.baseline.n)} trades, ${String(d.baseline.skipped)} without candles, long share ${String(d.baseline.longShare ?? "n/a")})`,
+    `Random-entry baseline (stored at close; ${String(d.baseline.n)} trades, ${String(d.baseline.pending)} pending, ${String(d.baseline.missingCandles)} without candles, latest long share ${String(d.baseline.latestLongShare ?? "n/a")})`,
   );
-  out.push(`  news replay  ${range(d.baseline.newsReplay)}`);
+  out.push(`  news result  ${range(d.baseline.newsResult)}`);
   out.push(`  random entry ${range(d.baseline.randomEntry)}`);
   out.push(`  difference   ${range(d.baseline.difference)}`);
   out.push(`Trades and skipped signals (latest ${String(trades.length)})`);
@@ -93,18 +98,23 @@ function print(s: ResearchSummary, d: Diagnostics, trades: ResearchTrade[]): voi
   console.log(out.join("\n"));
 }
 
-const { db, pool } = createDb(env.DATABASE_URL);
+const { db, pool } = createDb(DATABASE_URL);
 try {
   const now = new Date();
   const [summary, diagnostics, page] = await readOnlyTx(
     db,
-    { statementTimeoutMs: 30_000 },
-    async (tx) =>
+    { statementTimeoutMs: 30_000, deadlineMs: 120_000 },
+    async (tx, check) =>
       [
-        await loadSignalResearchSummary(tx, now, {
-          sosoMonthlyLimit: env.SIGNAL_SOSO_MONTHLY_LIMIT,
-          claudeDailyInputBudget: env.SIGNAL_CLAUDE_DAILY_INPUT_TOKENS,
-        }),
+        await loadSignalResearchSummary(
+          tx,
+          now,
+          {
+            sosoMonthlyLimit: env.SIGNAL_SOSO_MONTHLY_LIMIT,
+            claudeDailyInputBudget: env.SIGNAL_CLAUDE_DAILY_INPUT_TOKENS,
+          },
+          check,
+        ),
         await loadSignalResearchDiagnostics(tx, now),
         await loadSignalResearchTrades(tx, { limit: 50, show: "all" }, now),
       ] as const,

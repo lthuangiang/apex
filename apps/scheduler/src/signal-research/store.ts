@@ -15,13 +15,13 @@ import {
   type SignalSourceKey,
   type SignalStage,
 } from "@drift/shared";
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 
 import type { ClaudeUsage } from "./classifier";
 
 // Truy vấn DB của lane tin tức (#271). Chỉ đọc candles_1m / mm_market_hourly (marketdata ghi); ghi các bảng signal_*.
 
-type Exec = Pick<Db, "insert" | "select" | "selectDistinct" | "update" | "execute">;
+type Exec = Pick<Db, "insert" | "select" | "update" | "execute">;
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -227,11 +227,26 @@ export async function typicalMove(
   return v;
 }
 
-/** Market perps có nến trong 24 giờ qua (dự phòng khi chưa có danh sách market của SoDEX trong bộ nhớ). */
-export async function recentPerpsMarkets(db: Exec, now: number): Promise<string[]> {
+/**
+ * Nến 1 phút của MỘT market trong một khoảng (đi theo PK `(market, ts)`). Không bao giờ truy vấn `candles_1m` mà không có
+ * điều kiện market (review PR #278 B1).
+ */
+export async function candlesOf(
+  db: Exec,
+  market: string,
+  from: number,
+  until: number,
+): Promise<{ ts: number; high: string; low: string; close: string }[]> {
   const rows = await db
-    .selectDistinct({ market: candles1m.market })
+    .select({ ts: candles1m.ts, high: candles1m.high, low: candles1m.low, close: candles1m.close })
     .from(candles1m)
-    .where(gte(candles1m.ts, new Date(now - DAY_MS)));
-  return rows.map((r) => r.market).filter((m) => m.endsWith("-USD"));
+    .where(
+      and(
+        eq(candles1m.market, market),
+        gte(candles1m.ts, new Date(from)),
+        lt(candles1m.ts, new Date(until)),
+      ),
+    )
+    .orderBy(asc(candles1m.ts));
+  return rows.map((r) => ({ ts: r.ts.getTime(), high: r.high, low: r.low, close: r.close }));
 }

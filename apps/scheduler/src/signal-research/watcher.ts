@@ -3,6 +3,9 @@ import {
   closeResult,
   dec,
   exitCheck,
+  favourableMovePct,
+  midOf,
+  type Decimal,
   NEWS_RULES,
   SignalOutcome,
   SignalReason,
@@ -30,6 +33,7 @@ export interface WatcherDeps {
 
 const RELOAD_MS = 30_000;
 const HEALTH_MS = 60_000;
+const SAVE_MS = 60_000;
 
 const REASON: Record<PaperExitReason, SignalReason> = {
   take_profit: SignalReason.takeProfit,
@@ -43,6 +47,9 @@ export class PaperWatcher {
   #loadedAt = 0;
   #busy = false;
   #healthAt = 0;
+  /** MFE / MAE (%, theo chiều lệnh, giá giữa) của lệnh đang mở; ghi DB mỗi phút nếu đổi, và lúc đóng. */
+  readonly #excursion = new Map<string, { best: Decimal; worst: Decimal; dirty: boolean }>();
+  #savedAt = 0;
 
   constructor(deps: WatcherDeps) {
     this.#deps = deps;
@@ -72,9 +79,22 @@ export class PaperWatcher {
         .select()
         .from(signalPaperTrades)
         .where(
-          and(eq(signalPaperTrades.status, "open"), eq(signalPaperTrades.lane, NEWS_RULES.lane)),
+          and(
+            eq(signalPaperTrades.status, "open"),
+            eq(signalPaperTrades.lane, NEWS_RULES.lane),
+            eq(signalPaperTrades.label, "live"),
+          ),
         );
       this.#loadedAt = now;
+      const ids = new Set(this.#open.map((t) => t.id));
+      for (const id of this.#excursion.keys()) if (!ids.has(id)) this.#excursion.delete(id);
+      for (const t of this.#open)
+        if (!this.#excursion.has(t.id))
+          this.#excursion.set(t.id, {
+            best: dec(t.mfePct ?? "0"),
+            worst: dec(t.maePct ?? "0"),
+            dirty: false,
+          });
     }
     // Sức khoẻ giá SoDEX (mỗi phút, kể cả khi không có lệnh mở): thử một market quen.
     const probe = this.#open.length === 0 && now - this.#healthAt > HEALTH_MS ? ["BTC-USD"] : [];
@@ -88,6 +108,16 @@ export class PaperWatcher {
     let closed = 0;
     for (const t of [...this.#open]) {
       const q = quotes.get(t.market);
+      const ex = this.#excursion.get(t.id);
+      if (isQuote(q) && ex !== undefined) {
+        const m = favourableMovePct(
+          t.direction === "short" ? TradeDirection.short : TradeDirection.long,
+          dec(t.entryPrice),
+          midOf(q),
+        );
+        if (m.gt(ex.best)) Object.assign(ex, { best: m, dirty: true });
+        if (m.lt(ex.worst)) Object.assign(ex, { worst: m, dirty: true });
+      }
       const exit = exitCheck(
         {
           direction: t.direction === "short" ? TradeDirection.short : TradeDirection.long,
@@ -119,6 +149,9 @@ export class PaperWatcher {
             exitFee: r.exitFee.toFixed(18),
             resultUsdc: r.resultUsdc.toFixed(18),
             resultPct: r.resultPct.toFixed(18),
+            ...(ex === undefined
+              ? {}
+              : { mfePct: ex.best.toFixed(18), maePct: ex.worst.toFixed(18) }),
             updatedAt: new Date(now),
           })
           .where(and(eq(signalPaperTrades.id, t.id), eq(signalPaperTrades.status, "open")))
@@ -143,6 +176,7 @@ export class PaperWatcher {
         return true;
       });
       this.#open = this.#open.filter((x) => x.id !== t.id);
+      this.#excursion.delete(t.id);
       if (!done) continue;
       closed += 1;
       this.#deps.log.info(
@@ -153,6 +187,17 @@ export class PaperWatcher {
         },
         "signal research paper trade closed",
       );
+    }
+    if (now - this.#savedAt > SAVE_MS) {
+      this.#savedAt = now;
+      for (const [id, ex] of this.#excursion) {
+        if (!ex.dirty) continue;
+        ex.dirty = false;
+        await db
+          .update(signalPaperTrades)
+          .set({ mfePct: ex.best.toFixed(18), maePct: ex.worst.toFixed(18) })
+          .where(and(eq(signalPaperTrades.id, id), eq(signalPaperTrades.status, "open")));
+      }
     }
     return closed;
   }

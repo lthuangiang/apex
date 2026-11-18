@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "signals:report": "tsx src/signal-research/report-cli.ts",
-    "signals:once": "tsx src/signal-research/once-cli.ts"
+    "signals:once": "tsx src/cli/signals-once.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.8.0",

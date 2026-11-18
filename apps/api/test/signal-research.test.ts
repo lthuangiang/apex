@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  errorResponseSchema,
   meSchema,
   researchSummarySchema,
   researchTradeDetailSchema,
@@ -31,9 +32,9 @@ beforeAll(async () => {
      values ('art-1', 'Bloomberg', 'SEC delays SOL ETF', '2026-11-18T10:00:00Z', '2026-11-18T10:03:00Z', '[]', '[]', 'h', 'classified', 'news-v2')`,
   );
   await env.pool.query(
-    `insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry, later_level, rule_version)
+    `insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry, later_level, outcome, locked, rule_version)
      values ($1, 'SOL-USD|etf_delayed_or_rejected', 'SOL-USD', 'etf_delayed_or_rejected', 'short', 'art-1', '2026-11-18T10:03:00Z',
-             '[{"name":"Bloomberg","tier":"top","articleId":"art-1","at":"2026-11-18T10:00:00.000Z"}]', 'medium', 'medium', 'news-v2')`,
+             '[{"name":"Bloomberg","tier":"top","articleId":"art-1","at":"2026-11-18T10:00:00.000Z"}]', 'medium', 'medium', 'entered', true, 'news-v2')`,
     [storyId],
   );
   await env.pool.query(
@@ -61,6 +62,27 @@ describe("signal research (team only, read-only)", () => {
     }
   });
 
+  it("checks the role before validating the query (403, not 400)", async () => {
+    for (const r of [
+      `${base}/trades?limit=abc`,
+      `${base}/trades?cursor=not-a-cursor`,
+      `${base}/trades?show=nope`,
+      `${base}/summary?tz=${"x".repeat(100)}`,
+    ])
+      expect((await user.request("GET", r)).statusCode).toBe(403);
+  });
+
+  it("a bad or tampered cursor is a 400 VALIDATION_FAILED, never a 500 or page 1", async () => {
+    const tampered = Buffer.from(
+      JSON.stringify({ t: "2026-11-18T10:00:00.000Z", id: "x" }),
+    ).toString("base64url");
+    for (const c of ["not-a-cursor", tampered]) {
+      const r = await team.request("GET", `${base}/trades?cursor=${c}`);
+      expect(r.statusCode).toBe(400);
+      expect(errorResponseSchema.parse(r.json()).error.code).toBe("VALIDATION_FAILED");
+    }
+  });
+
   it("returns the summary, a cursor page and the trade detail", async () => {
     const s = await team.request("GET", `${base}/summary`);
     expect(s.statusCode).toBe(200);
@@ -74,8 +96,13 @@ describe("signal research (team only, read-only)", () => {
       closed: 1,
       avgPct: 1.9,
       status: "collecting",
+      clusters: 1,
       needs: { kind: "pooled", more: 99 },
     });
+    expect(summary.directions).toEqual([
+      expect.objectContaining({ side: "long", closed: 0, avgPct: null }),
+      expect.objectContaining({ side: "short", closed: 1, avgPct: 1.9, randomPct: null }),
+    ]);
     // Không có nến cho lệnh này → so với ngẫu nhiên không tính được: null (không bao giờ 0).
     expect(summary.rows[0]?.randomPct).toBeNull();
     expect(summary.levels.find((l) => l.level === "medium")).toMatchObject({ trades: 1, short: 1 });

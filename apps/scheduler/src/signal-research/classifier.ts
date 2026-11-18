@@ -43,7 +43,8 @@ export type ClassifyOutcome =
   | { ok: false; error: string; usage: ClaudeUsage };
 
 export interface NewsClassifier {
-  classify(input: ClassifyInput): Promise<ClassifyOutcome>;
+  /** `maxAttempts` (1 hoặc 2): số lần gọi API tối đa, kể cả thử lại (trần mỗi chu kỳ đếm lần gọi). */
+  classify(input: ClassifyInput, maxAttempts?: number): Promise<ClassifyOutcome>;
 }
 
 export const emptyUsage = (): ClaudeUsage => ({
@@ -64,9 +65,21 @@ export function addUsage(a: ClaudeUsage, b: ClaudeUsage): ClaudeUsage {
   };
 }
 
-/** Token đầu vào quy đổi cho ngân sách ngày: đọc từ cache tính 1/10 (đúng tỉ lệ giá). */
-export function weightedInput(u: Pick<ClaudeUsage, "input" | "cacheWrite" | "cacheRead">): number {
-  return u.input + u.cacheWrite + Math.ceil(u.cacheRead / 10);
+/**
+ * Đơn vị ngân sách ngày = token đầu vào quy đổi theo giá (`NEWS_CLASSIFIER.pricing`): đầu vào 1×, ghi cache TTL 1 giờ 2×,
+ * đọc cache 0.1×, đầu ra 5×. 2M đơn vị ≈ 2 USD với Haiku 4.5.
+ */
+export function weightedInput(
+  u: Pick<ClaudeUsage, "input" | "cacheWrite" | "cacheRead" | "output">,
+): number {
+  const p = NEWS_CLASSIFIER.pricing;
+  const out = Number(p.outputPerM) / Number(p.inputPerM);
+  return Math.ceil(
+    u.input +
+      u.cacheWrite * Number(p.cacheWriteMultiple) +
+      u.cacheRead * Number(p.cacheReadMultiple) +
+      u.output * out,
+  );
 }
 
 const answerSchema = z.object({
@@ -144,9 +157,84 @@ export function userMessage(input: ClassifyInput): string {
   ].join("\n");
 }
 
-export function anthropicClassifier(apiKey: string): NewsClassifier {
+export interface ClassifierLog {
+  info: (obj: object, msg: string) => void;
+  warn: (obj: object, msg: string) => void;
+}
+
+/** Phần cố định của request (tools + system có `cache_control`), dùng chung cho gọi thật và đếm token. */
+function prefixOf(universe: readonly string[]) {
+  return {
+    tools: [classifierTool(universe)],
+    system: [
+      {
+        type: "text" as const,
+        text: CLASSIFIER_SYSTEM,
+        cache_control: { type: "ephemeral" as const, ttl: NEWS_CLASSIFIER.cacheTtl },
+      },
+    ],
+  };
+}
+
+/**
+ * Đếm token của prefix được cache (tools + system) bằng `messages.countTokens` (miễn phí), với một tin nhắn user tối thiểu.
+ * Haiku 4.5 chỉ cache prefix ≥ 4 096 token.
+ */
+export async function countPrefixTokens(
+  apiKey: string,
+  universe: readonly string[],
+): Promise<{ prefixPlusMinimalUser: number }> {
+  const client = new Anthropic({ apiKey, timeout: TIMEOUT_MS, maxRetries: 1 });
+  const r = await client.messages.countTokens({
+    model: NEWS_CLASSIFIER.model,
+    ...prefixOf(universe),
+    tool_choice: { type: "tool", name: TOOL_NAME },
+    messages: [{ role: "user", content: "." }],
+  });
+  return { prefixPlusMinimalUser: r.input_tokens };
+}
+
+/**
+ * Tự kiểm prompt cache theo ngày UTC: lần gọi thành công đầu tiên mỗi ngày log `cacheWrite` / `cacheRead` và số token của
+ * prefix được cache; sau ≥ 2 lần gọi mà `cacheRead` vẫn 0 thì warn một lần (prefix dưới ngưỡng 4 096 token hoặc có thứ làm
+ * đổi prefix).
+ */
+export function cacheSelfCheck(log: ClassifierLog, now: () => number = Date.now) {
+  let day = "";
+  let calls = 0;
+  let read = 0;
+  let warned = false;
+  return (u: ClaudeUsage) => {
+    if (u.calls === 0) return;
+    const d = new Date(now()).toISOString().slice(0, 10);
+    if (d !== day) {
+      day = d;
+      calls = 0;
+      read = 0;
+      warned = false;
+    }
+    calls += u.calls;
+    read += u.cacheRead;
+    if (calls === u.calls)
+      log.info(
+        {
+          cacheWrite: u.cacheWrite,
+          cacheRead: u.cacheRead,
+          cachedPrefixTokens: u.cacheWrite + u.cacheRead,
+        },
+        "signal research claude cache check",
+      );
+    else if (calls >= 2 && read === 0 && !warned) {
+      warned = true;
+      log.warn({ calls }, "signal research claude prompt cache is not being read");
+    }
+  };
+}
+
+export function anthropicClassifier(apiKey: string, log?: ClassifierLog): NewsClassifier {
   // Thử lại do chính lớp này quyết định (một lần), không để SDK tự thử thêm.
   const client = new Anthropic({ apiKey, timeout: TIMEOUT_MS, maxRetries: 0 });
+  const check = log === undefined ? null : cacheSelfCheck(log);
 
   async function once(input: ClassifyInput): Promise<{
     usage: ClaudeUsage;
@@ -156,9 +244,8 @@ export function anthropicClassifier(apiKey: string): NewsClassifier {
       const r = await client.messages.create({
         model: NEWS_CLASSIFIER.model,
         max_tokens: NEWS_CLASSIFIER.maxTokens,
-        tools: [classifierTool(input.universe)],
+        ...prefixOf(input.universe),
         tool_choice: { type: "tool", name: TOOL_NAME },
-        system: [{ type: "text", text: CLASSIFIER_SYSTEM, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userMessage(input) }],
       });
       const usage: ClaudeUsage = {
@@ -168,25 +255,28 @@ export function anthropicClassifier(apiKey: string): NewsClassifier {
         cacheRead: r.usage.cache_read_input_tokens ?? 0,
         output: r.usage.output_tokens,
       };
+      check?.(usage);
       const block = r.content.find((b) => b.type === "tool_use");
       if (block === undefined)
         return { usage, result: { ok: false, error: `no_tool_use:${r.stop_reason ?? ""}` } };
       return { usage, result: parseAnswer(block.input, input.candidates) };
     } catch (e) {
-      // Chỉ tên lớp lỗi + HTTP status, không bao giờ message thô (có thể kèm header / request).
+      // Chỉ tên lớp lỗi + HTTP status, không bao giờ message thô (có thể kèm header / request). Lần gọi lỗi vẫn tính là
+      // một lần gọi API cho trần mỗi chu kỳ.
       const status = e instanceof Anthropic.APIError ? String(e.status ?? "") : "";
       const name = e instanceof Error ? e.name : "error";
       return {
-        usage: emptyUsage(),
+        usage: { ...emptyUsage(), calls: 1 },
         result: { ok: false, error: `api:${name}${status === "" ? "" : `:${status}`}` },
       };
     }
   }
 
   return {
-    async classify(input) {
+    async classify(input, maxAttempts = 2) {
       const first = await once(input);
       if (first.result.ok) return { ok: true, value: first.result.value, usage: first.usage };
+      if (maxAttempts < 2) return { ok: false, error: first.result.error, usage: first.usage };
       const second = await once(input);
       const usage = addUsage(first.usage, second.usage);
       if (second.result.ok) return { ok: true, value: second.result.value, usage };

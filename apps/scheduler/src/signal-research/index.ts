@@ -8,26 +8,32 @@ import { anthropicClassifier, type NewsClassifier } from "./classifier";
 import { runNewsCycle, type MarketInfo, type PipelineConfig } from "./pipeline";
 import { LiveBooks, QuoteSource } from "./prices";
 import { sosoClient, type SosoClient } from "./soso";
-import { recentPerpsMarkets, spreadHists } from "./store";
+import { spreadHists } from "./store";
 import { PaperWatcher } from "./watcher";
 
 // Lắp ráp lane tin tức của Signal research (#271) trong scheduler (leader). Không import gì của @drift/sodex: lane này
 // không có client SoDEX, signer hay gateway; giá chỉ đến từ dữ liệu marketdata đã lưu (Redis / NATS / DB).
 
-/** Env của lane tin tức (scheduler). Bật khi `SIGNAL_RESEARCH_ENABLED=true` và có đủ hai key. */
+const flag = z
+  .string()
+  .optional()
+  .transform((v) => ["true", "1"].includes((v ?? "").trim().toLowerCase()));
+
+/** Env của lane tin tức (scheduler). Bật khi `SIGNAL_RESEARCH_ENABLED` là `true` / `1` và có đủ hai key. */
 export const signalResearchEnvSchema = z.object({
-  SIGNAL_RESEARCH_ENABLED: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((v) => v === "true"),
+  SIGNAL_RESEARCH_ENABLED: flag,
   SOSO_API_KEY: z.string().default(""),
   DESK_AI_API_KEY: z.string().default(""),
-  /** Token đầu vào quy đổi mỗi ngày UTC (đọc cache tính 1/10); hết thì ngừng phân loại tới hôm sau. */
+  /**
+   * Ngân sách Claude mỗi ngày UTC, theo đơn vị token đầu vào quy đổi theo giá (`weightedInput`: đầu vào 1×, ghi cache TTL
+   * 1 giờ 2×, đọc cache 0.1×, đầu ra 5×). Hết thì ngừng phân loại tới hôm sau (`CLAUDE_BUDGET_REACHED`).
+   */
   SIGNAL_CLAUDE_DAILY_INPUT_TOKENS: z.coerce
     .number()
     .int()
     .positive()
     .default(NEWS_LIMIT_DEFAULTS.claudeDailyInputBudget),
+  /** Số lần gọi API Claude tối đa mỗi chu kỳ, kể cả thử lại. */
   SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE: z.coerce
     .number()
     .int()
@@ -57,6 +63,33 @@ export const signalResearchEnvSchema = z.object({
     .default(NEWS_RULES.maxCatchUpMinutes),
 });
 export type SignalResearchEnv = z.infer<typeof signalResearchEnvSchema>;
+
+const ENV_KEYS = Object.keys(signalResearchEnvSchema.shape);
+
+/**
+ * Parse env của lane RIÊNG (không gộp vào env chung của scheduler), để giá trị `SIGNAL_*` sai không bao giờ làm scheduler
+ * (risk, leaderboard, fee tier…) không khởi động được. Flag tắt mà giá trị khác sai → bỏ qua, dùng mặc định, kèm cảnh
+ * báo. Flag bật mà giá trị sai → lane không chạy (`env = null`) kèm lý do. Không bao giờ in giá trị.
+ */
+export function parseSignalEnv(raw: Readonly<Record<string, string | undefined>>): {
+  env: SignalResearchEnv | null;
+  warning: string | null;
+} {
+  const input = Object.fromEntries(ENV_KEYS.map((k) => [k, raw[k]]));
+  const p = signalResearchEnvSchema.safeParse(input);
+  if (p.success) return { env: p.data, warning: null };
+  const bad = [...new Set(p.error.issues.map((i) => String(i.path[0] ?? "?")))].join(", ");
+  const on = flag.parse(raw.SIGNAL_RESEARCH_ENABLED);
+  if (on) return { env: null, warning: `invalid ${bad}` };
+  return {
+    env: signalResearchEnvSchema.parse({
+      SIGNAL_RESEARCH_ENABLED: "false",
+      SOSO_API_KEY: raw.SOSO_API_KEY,
+      DESK_AI_API_KEY: raw.DESK_AI_API_KEY,
+    }),
+    warning: `ignored invalid ${bad} (signal research is off)`,
+  };
+}
 
 export function pipelineConfig(env: SignalResearchEnv): PipelineConfig {
   return {
@@ -96,7 +129,6 @@ export interface PerpsSymbolInfo {
 }
 
 const lastSchema = z.object({ price: z.string(), at: z.number() });
-const MARKETS_CACHE_MS = 10 * 60_000;
 
 /** Redis `md:last:<market>` (marketdata ghi mỗi ~2 s, hết hạn 60 s). */
 export async function readLastPrices(
@@ -124,7 +156,10 @@ export function createSignalResearch(input: {
   redis: RedisLike;
   log: Logger;
   env: SignalResearchEnv;
-  /** Danh sách perps SoDEX scheduler đã đọc cho việc khác (không gọi thêm REST); null = chưa có. */
+  /**
+   * Danh sách perps SoDEX (scheduler đọc một lần khi nhận lease, rồi dùng chung với `mmModelTick`); null = chưa có → chu kỳ
+   * chỉ Collect. Không bao giờ dò danh sách market bằng `candles_1m`.
+   */
   perps: () => readonly PerpsSymbolInfo[] | null;
   now?: () => number;
   soso?: SosoClient;
@@ -132,16 +167,12 @@ export function createSignalResearch(input: {
 }) {
   const now = input.now ?? Date.now;
   const books = new LiveBooks();
-  let fallback: { at: number; markets: string[] } | null = null;
-  const markets = async (): Promise<MarketInfo[]> => {
+  const markets = (): MarketInfo[] | null => {
     const perps = input.perps();
-    if (perps !== null && perps.length > 0)
-      return perps
-        .filter((p) => p.status === "TRADING")
-        .map((p) => ({ name: p.name, tickSize: p.tickSize, takerFee: p.takerFee ?? null }));
-    if (fallback === null || now() - fallback.at > MARKETS_CACHE_MS)
-      fallback = { at: now(), markets: await recentPerpsMarkets(input.db, now()) };
-    return fallback.markets.map((name) => ({ name, tickSize: null, takerFee: null }));
+    if (perps === null) return null;
+    return perps
+      .filter((p) => p.status === "TRADING")
+      .map((p) => ({ name: p.name, tickSize: p.tickSize, takerFee: p.takerFee ?? null }));
   };
   const tickSizes = () => new Map((input.perps() ?? []).map((p) => [p.name, p.tickSize] as const));
   const quotes = new QuoteSource({
@@ -153,7 +184,7 @@ export function createSignalResearch(input: {
   });
   const watcher = new PaperWatcher({ db: input.db, quotes, now, log: input.log });
   const soso = input.soso ?? sosoClient(input.env.SOSO_API_KEY);
-  const classifier = input.classifier ?? anthropicClassifier(input.env.DESK_AI_API_KEY);
+  const classifier = input.classifier ?? anthropicClassifier(input.env.DESK_AI_API_KEY, input.log);
   let cycleBusy = false;
 
   return {

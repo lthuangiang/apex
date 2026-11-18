@@ -1742,10 +1742,23 @@ export const signalStories = pgTable(
     levelAtEntry: text("level_at_entry").notNull(),
     /** Mức tính lại sau khi có thêm nguồn ("later level"). */
     laterLevel: text("later_level").notNull(),
+    /**
+     * Story khoá key 7 ngày chỉ khi đã mở lệnh (`entered`) hoặc bị loại vì lý do không tạm thời (`dropped`,
+     * `LOCKING_DROP_REASONS`). Bị bỏ vì lý do tạm thời (`skipped`: không có giá, nguồn trễ, Claude lỗi…) thì không khoá:
+     * bài sau cùng key được thử lại (DEC-TBD-news-paper-trading).
+     */
+    outcome: text("outcome").notNull(),
+    locked: boolean("locked").notNull(),
+    tradeId: uuid("trade_id"),
     ruleVersion: text("rule_version").notNull(),
     ...timestamps,
   },
-  (t) => [index("signal_stories_key_idx").on(t.storyKey, t.firstSeenAt)],
+  (t) => [
+    index("signal_stories_key_idx").on(t.storyKey, t.firstSeenAt),
+    index("signal_stories_locked_idx")
+      .on(t.storyKey, t.firstSeenAt)
+      .where(sql`${t.locked}`),
+  ],
 );
 
 /** Một dòng cho mỗi kết quả của một bước (qua / loại / gộp / mở / đóng), kèm mã lý do và version quy tắc. */
@@ -1797,6 +1810,16 @@ export const signalPaperTrades = pgTable(
     /** Biến động thuận / bất lợi lớn nhất lúc giữ (%, theo chiều lệnh); null khi chưa tính. */
     mfePct: money("mfe_pct"),
     maePct: money("mae_pct"),
+    /**
+     * Lệnh vào ngẫu nhiên cùng thời điểm / market / TP / SL / giữ, phát lại trên nến (%, sau cùng chi phí), tính MỘT lần khi
+     * cửa sổ giữ của cả hai chiều đã xong; `randomPct` = p × long + (1 − p) × short với `randomLongShare` = p (tỉ lệ Long
+     * của các lệnh đã đóng lúc tính). `randomDoneAt` có mà `randomPct` null = thiếu nến.
+     */
+    randomLongPct: money("random_long_pct"),
+    randomShortPct: money("random_short_pct"),
+    randomPct: money("random_pct"),
+    randomLongShare: money("random_long_share"),
+    randomDoneAt: tstz("random_done_at"),
     market: text("market").notNull(),
     token: text("token").notNull(),
     catalyst: text("catalyst").notNull(),
@@ -1841,6 +1864,9 @@ export const signalPaperTrades = pgTable(
       .where(sql`${t.status} = 'open' and ${t.label} = 'live'`),
     index("signal_paper_trades_opened_idx").on(t.openedAt),
     index("signal_paper_trades_story_idx").on(t.storyId),
+    index("signal_paper_trades_random_todo_idx")
+      .on(t.exitedAt)
+      .where(sql`${t.status} = 'closed' and ${t.randomDoneAt} is null`),
   ],
 );
 

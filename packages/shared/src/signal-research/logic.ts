@@ -299,8 +299,9 @@ export interface ExitDecision {
 }
 
 /**
- * Lệnh long đóng theo bid, short theo ask (như lệnh market). Chạm TP / SL thì đóng ở giá quan sát được (có thể vượt
- * qua mức đó); hết thời gian giữ thì đóng ở giá hiện tại. Không có giá → chờ (null), kể cả khi đã quá hạn giữ.
+ * Lệnh long đóng theo bid, short theo ask (như lệnh market). Chạm hoặc nhảy qua TP thì đóng đúng ở TP (thận trọng, như
+ * DEC-321); chạm SL thì đóng ở giá quan sát được (có thể tệ hơn SL); hết thời gian giữ thì đóng ở giá hiện tại. Không có
+ * giá → chờ (null), kể cả khi đã quá hạn giữ.
  */
 export function exitCheck(
   t: OpenTradeView,
@@ -311,7 +312,7 @@ export function exitCheck(
   const long = t.direction === TradeDirection.long;
   const px = long ? quote.bid : quote.ask;
   if (long ? px.gte(t.tpPrice) : px.lte(t.tpPrice))
-    return { reason: PaperExitReason.takeProfit, price: px };
+    return { reason: PaperExitReason.takeProfit, price: t.tpPrice };
   if (long ? px.lte(t.slPrice) : px.gte(t.slPrice))
     return { reason: PaperExitReason.stopLoss, price: px };
   if (now >= t.maxHoldUntil) return { reason: PaperExitReason.maxHold, price: px };
@@ -335,4 +336,17 @@ export function closeResult(input: {
   const exitFee = qty.mul(exit).mul(dec(input.feePct)).div(HUNDRED);
   const resultUsdc = gross.sub(dec(input.entryFee)).sub(exitFee);
   return { exitFee, resultUsdc, resultPct: resultUsdc.div(dec(input.sizeUsdc)).mul(HUNDRED) };
+}
+
+/**
+ * Biến động thuận lợi / bất lợi (%, theo chiều lệnh) của giá giữa so với giá vào: dương = có lợi. MFE = max, MAE = min
+ * (âm hoặc 0) qua các lần quan sát.
+ */
+export function favourableMovePct(
+  direction: TradeDirection,
+  entry: Decimal,
+  mid: Decimal,
+): Decimal {
+  const move = mid.sub(entry).div(entry).mul(HUNDRED);
+  return direction === TradeDirection.long ? move : move.neg();
 }

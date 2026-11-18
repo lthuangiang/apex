@@ -1,5 +1,5 @@
 {
-  "id": "a8d13c08-02af-479b-aeec-88b2a58b6f4e",
+  "id": "54d6249b-41e3-4ff8-93c7-4e87e93134e1",
   "prevId": "c9be797e-7df3-4108-a57e-2a6b2549a900",
   "version": "7",
   "dialect": "postgresql",
@@ -6975,6 +6975,36 @@
           "primaryKey": false,
           "notNull": false
         },
+        "random_long_pct": {
+          "name": "random_long_pct",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "random_short_pct": {
+          "name": "random_short_pct",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "random_pct": {
+          "name": "random_pct",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "random_long_share": {
+          "name": "random_long_share",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "random_done_at": {
+          "name": "random_done_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "market": {
           "name": "market",
           "type": "text",
@@ -7235,6 +7265,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "signal_paper_trades_random_todo_idx": {
+          "name": "signal_paper_trades_random_todo_idx",
+          "columns": [
+            {
+              "expression": "exited_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"signal_paper_trades\".\"status\" = 'closed' and \"signal_paper_trades\".\"random_done_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -7432,6 +7478,24 @@
           "primaryKey": false,
           "notNull": true
         },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "locked": {
+          "name": "locked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_id": {
+          "name": "trade_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "rule_version": {
           "name": "rule_version",
           "type": "text",
@@ -7471,6 +7535,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "signal_stories_locked_idx": {
+          "name": "signal_stories_locked_idx",
+          "columns": [
+            {
+              "expression": "story_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "first_seen_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"signal_stories\".\"locked\"",
           "concurrently": false,
           "method": "btree",
           "with": {}

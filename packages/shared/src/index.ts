@@ -44,3 +44,4 @@ export * from "./api/signal-research";
 export * from "./signal-research/rules";
 export * from "./signal-research/logic";
 export * from "./signal-research/report";
+export * from "./stats/day-bootstrap";

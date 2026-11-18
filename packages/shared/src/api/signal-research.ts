@@ -143,9 +143,23 @@ export const researchSummaryRowSchema = z.object({
   avgPct: z.number().nullable(),
   randomPct: z.number().nullable(),
   diffPct: z.number().nullable(),
+  /** Khoảng 95% của kết quả sau phí: block bootstrap theo ngày vào lệnh (UTC), như DEC-321; < 2 ngày → null. */
   range: z.object({ lo: z.number(), hi: z.number() }).nullable(),
+  /** Số cụm (ngày UTC có lệnh đóng) dùng cho khoảng tin cậy. */
+  clusters: int,
   status,
   needs: researchNeedsSchema,
+});
+
+/** Tách theo chiều (#269 v3.4 điểm 5): một tuần thị trường tăng không được trông như có edge. */
+export const researchDirectionRowSchema = z.object({
+  side,
+  closed: int,
+  avgPct: z.number().nullable(),
+  randomPct: z.number().nullable(),
+  diffPct: z.number().nullable(),
+  range: z.object({ lo: z.number(), hi: z.number() }).nullable(),
+  clusters: int,
 });
 
 export const researchRiskSchema = z.object({
@@ -166,6 +180,8 @@ export const researchSummarySchema = z.object({
   /** Chi phí khứ hồi một lệnh, % (taker + builder hai chiều + spread). */
   costPct: z.number().nullable(),
   rows: z.array(researchSummaryRowSchema),
+  /** Long / Short của lane News · live (kết quả sau phí, ngẫu nhiên, chênh lệch, khoảng 95%). */
+  directions: z.array(researchDirectionRowSchema),
   risk: researchRiskSchema.nullable(),
   assets: z.array(z.string()),
 });
@@ -264,7 +280,10 @@ export const RESEARCH_FACTS = [
   "sl",
   "maxHold",
   "exit",
+  /** Bước result: giá đã chạy từ lúc vào tới lúc ra theo chiều lệnh (`pct`) và kết quả tiền trước phí (`usd`). */
   "priceMove",
+  /** Bước trade: giá đã chạy từ giờ đăng tin tới lúc vào lệnh (`pct`, có dấu theo giá, không theo chiều lệnh). */
+  "movedBeforeEntry",
   "fees",
   "best",
   "worst",
@@ -281,7 +300,11 @@ export const RESEARCH_CHECKS = [
   "maxOpen",
 ] as const;
 
-/** Một ô "nhãn / giá trị" của một bước; chỉ các trường mà nhãn đó cần. */
+/**
+ * Một ô "nhãn / giá trị" của một bước; chỉ các trường mà nhãn đó cần. Quy ước: `fees.usd` là chi phí DƯƠNG (phí vào + ra);
+ * web tự hiện dấu trừ. `best` / `worst` (MFE / MAE, % theo chiều lệnh, `best` ≥ 0, `worst` ≤ 0) luôn có mặt ở bước result,
+ * `pct` null khi chưa đo được. `source.text` là tên nguồn; `eventDate.text` là YYYY-MM-DD hoặc null.
+ */
 export const researchFactSchema = z.object({
   key: z.enum(RESEARCH_FACTS),
   at: iso.nullish(),
@@ -346,6 +369,7 @@ export type ResearchPaperBot = z.infer<typeof researchPaperBotSchema>;
 export type ResearchFunnel = z.infer<typeof researchFunnelSchema>;
 export type ResearchLevelRow = z.infer<typeof researchLevelRowSchema>;
 export type ResearchSummaryRow = z.infer<typeof researchSummaryRowSchema>;
+export type ResearchDirectionRow = z.infer<typeof researchDirectionRowSchema>;
 export type ResearchNeeds = z.infer<typeof researchNeedsSchema>;
 export type ResearchRisk = z.infer<typeof researchRiskSchema>;
 export type ResearchSummary = z.infer<typeof researchSummarySchema>;

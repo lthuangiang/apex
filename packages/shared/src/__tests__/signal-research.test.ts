@@ -18,14 +18,9 @@ import {
   storyKey,
   typicalMovePct,
 } from "../signal-research/logic";
-import {
-  baselineOf,
-  gateStatus,
-  meanRange,
-  replayOnCandles,
-  tradesNeeded,
-} from "../signal-research/report";
+import { gateStatus, randomResult, replayOnCandles, tradesNeeded } from "../signal-research/report";
 import { catalystRule, NEWS_RULES, SignalReason, SIGNAL_CATALYSTS } from "../signal-research/rules";
+import { summarizeByDay, type DayObs } from "../stats/day-bootstrap";
 
 const d = (v: string) => new Decimal(v);
 const MARKETS = new Set(["BTC-USD", "SOL-USD", "1000PEPE-USD", "NVDA-USD", "MSTR-USD", "COIN-USD"]);
@@ -237,6 +232,15 @@ describe("watcher exits", () => {
 
   it("a short closes on the ask, a long on the bid", () => {
     expect(exitCheck(short, { bid: d("97.9"), ask: d("98.1") }, 0)).toBeNull();
+    // Giá nhảy qua TP: thoát đúng ở TP (thận trọng, như DEC-321); SL nhảy qua thì thoát ở giá quan sát.
+    expect(exitCheck(short, { bid: d("96.9"), ask: d("97") }, 0)).toEqual({
+      reason: "take_profit",
+      price: d("98"),
+    });
+    expect(exitCheck(short, { bid: d("101.9"), ask: d("102") }, 0)).toEqual({
+      reason: "stop_loss",
+      price: d("102"),
+    });
     expect(exitCheck(short, { bid: d("97.8"), ask: d("98") }, 0)).toEqual({
       reason: "take_profit",
       price: d("98"),
@@ -265,62 +269,66 @@ describe("report", () => {
         ...base,
         direction: "long",
         candles: [c(1, "101", "99.5", "100"), c(2, "102.5", "100", "102")],
-      })?.toFixed(),
-    ).toBe("2");
+      }),
+    ).toEqual({ pct: d("2"), hit: true });
     expect(
       replayOnCandles({
         ...base,
         direction: "long",
         candles: [c(1, "102.5", "98.5", "100")],
-      })?.toFixed(),
+      })?.pct.toFixed(),
     ).toBe("-1");
     expect(
       replayOnCandles({
         ...base,
         direction: "short",
         candles: [c(1, "100.5", "99.5", "99.5")],
-      })?.toFixed(),
-    ).toBe("0.5");
+      }),
+    ).toEqual({ pct: d("0.5"), hit: false });
     expect(replayOnCandles({ ...base, direction: "short", candles: [] })).toBeNull();
   });
 
-  it("random entry keeps the long / short mix; difference is news minus random", () => {
-    const b = baselineOf([
-      { direction: "long", longPct: d("2"), shortPct: d("-1") },
-      { direction: "short", longPct: d("-1"), shortPct: d("2") },
-      { direction: "long", longPct: null, shortPct: null },
-    ]);
-    expect(b.n).toBe(2);
-    expect(b.skipped).toBe(1);
-    expect(b.longShare?.toFixed()).toBe("0.5");
-    expect(b.news?.mean.toFixed()).toBe("2");
-    expect(b.random?.mean.toFixed()).toBe("0.5");
-    expect(b.difference?.mean.toFixed()).toBe("1.5");
+  it("random entry is the expected result at the long share used", () => {
+    expect(randomResult(d("2"), d("-1"), d("0.5")).toFixed()).toBe("0.5");
+    expect(randomResult(d("2"), d("-1"), d("1")).toFixed()).toBe("2");
   });
 
-  it("gate: collecting below 100, passing only when every condition holds", () => {
-    const few = Array.from({ length: 50 }, () => d("1"));
-    expect(gateStatus({ results: few, avgCostPct: d("0.1"), difference: meanRange(few) })).toBe(
-      "collecting",
-    );
-    const good = Array.from({ length: 120 }, (_, i) => d(i % 2 === 0 ? "1.2" : "0.8"));
-    expect(gateStatus({ results: good, avgCostPct: d("0.1"), difference: meanRange(good) })).toBe(
-      "passing",
-    );
-    expect(gateStatus({ results: good, avgCostPct: d("0.6"), difference: meanRange(good) })).toBe(
-      "failing",
-    );
-    const noEdge = Array.from({ length: 120 }, (_, i) => d(i % 2 === 0 ? "1" : "-1"));
-    expect(gateStatus({ results: good, avgCostPct: d("0.1"), difference: meanRange(noEdge) })).toBe(
-      "failing",
-    );
+  const DAY = 86_400_000;
+  /** n lệnh, `perDay` lệnh mỗi ngày UTC. */
+  const obs = (vals: (i: number) => string, n: number, perDay = 4): DayObs[] =>
+    Array.from({ length: n }, (_, i) => ({
+      v: d(vals(i)),
+      at: Math.floor(i / perDay) * DAY + i * 1000,
+    }));
+
+  it("gate uses the day-block bootstrap: collecting below 100, passing only when every condition holds", () => {
+    const few = obs(() => "1", 50);
+    expect(
+      gateStatus({ results: few, avgCostPct: d("0.1"), difference: summarizeByDay(few) }),
+    ).toBe("collecting");
+    const good = obs((i) => (i % 2 === 0 ? "1.2" : "0.8"), 120);
+    const g = summarizeByDay(good);
+    expect(g.clusters).toBe(30);
+    expect(g.ciLow?.gt(0)).toBe(true);
+    expect(gateStatus({ results: good, avgCostPct: d("0.1"), difference: g })).toBe("passing");
+    expect(gateStatus({ results: good, avgCostPct: d("0.6"), difference: g })).toBe("failing");
+    const noEdge = summarizeByDay(obs((i) => (i % 2 === 0 ? "1" : "-1"), 120));
+    expect(gateStatus({ results: good, avgCostPct: d("0.1"), difference: noEdge })).toBe("failing");
   });
 
-  it("trades needed = (1.96 × sd ÷ mean)², at least 100", () => {
-    const diff = Array.from({ length: 40 }, (_, i) => d(i % 2 === 0 ? "2.5" : "-2.1"));
-    const n = tradesNeeded(meanRange(diff));
-    expect(n).toBeGreaterThan(100);
-    expect(tradesNeeded(meanRange([d("1"), d("1.1")]))).toBe(100);
-    expect(tradesNeeded(meanRange([d("-1"), d("-1.1")]))).toBeNull();
+  it("clustered days give a wider range than independent trades (same values)", () => {
+    const vals = (i: number) => (Math.floor(i / 10) % 2 === 0 ? "1.5" : "-0.9");
+    const clustered = summarizeByDay(obs(vals, 100, 10));
+    const spread = summarizeByDay(obs(vals, 100, 1));
+    const width = (s: typeof clustered) => (s.ciHigh ?? d("0")).sub(s.ciLow ?? d("0"));
+    expect(width(clustered).gt(width(spread))).toBe(true);
+  });
+
+  it("trades needed uses the bootstrap spread, at least 100; null when it cannot be estimated", () => {
+    const diff = summarizeByDay(obs((i) => (i % 2 === 0 ? "2.5" : "-2.1"), 40, 1));
+    expect(tradesNeeded(diff)).toBeGreaterThan(100);
+    expect(tradesNeeded(summarizeByDay(obs((i) => (i % 2 === 0 ? "1" : "1.1"), 10, 1)))).toBe(100);
+    expect(tradesNeeded(summarizeByDay(obs(() => "-1", 10, 1)))).toBeNull();
+    expect(tradesNeeded(null)).toBeNull();
   });
 });

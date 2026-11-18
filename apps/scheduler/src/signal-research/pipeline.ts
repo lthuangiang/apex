@@ -9,6 +9,7 @@ import {
   eventTooOld,
   isUsMarketOpen,
   levelOf,
+  LOCKING_DROP_REASONS,
   movedPct,
   NEWS_RULES,
   normalizedText,
@@ -29,9 +30,10 @@ import {
   type SignalCatalyst,
   type SourceTier,
 } from "@drift/shared";
-import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray } from "drizzle-orm";
 import { z } from "zod";
 
+import { fillRandomBaselines } from "./baseline";
 import { addUsage, weightedInput, type NewsClassifier } from "./classifier";
 import { SOSO_PAGE_SIZE, type SosoClient, type SosoNewsItem } from "./soso";
 import {
@@ -50,10 +52,14 @@ import {
 
 // Một chu kỳ của lane tin tức (#271, flow #269 v3.4): Collect → Normalize → Understand → Filter → Decide. Chỉ ghi DB của
 // DeskLabs; lệnh là lệnh giấy (bảng signal_paper_trades), không có đường nào tới SoDEX.
+// Chưa có danh sách market SoDEX (vừa nhận lease, SoDEX lỗi) → chu kỳ chỉ Collect: bài nằm ở trạng thái `collected` và
+// được Normalize ở chu kỳ sau. Không bao giờ dò danh sách market bằng `candles_1m` (review PR #278 B1).
 
 const MIN_MS = 60_000;
 const HOUR_MS = 60 * MIN_MS;
 const CONTENT_MAX = 6000;
+/** Số lần gọi API tối đa cho một bài (lần đầu + thử lại một lần). */
+const ATTEMPTS = 2;
 
 export interface MarketInfo {
   name: string;
@@ -63,7 +69,9 @@ export interface MarketInfo {
 }
 
 export interface PipelineConfig {
+  /** Đơn vị ngân sách ngày (token đầu vào quy đổi theo giá, `weightedInput`). */
   claudeDailyInputBudget: number;
+  /** Số lần gọi API Claude tối đa mỗi chu kỳ, kể cả thử lại. */
   claudeMaxCallsPerCycle: number;
   sosoMaxPages: number;
   sosoMonthlyLimit: number;
@@ -81,7 +89,8 @@ export interface PipelineDeps {
   soso: SosoClient;
   classifier: NewsClassifier;
   quotes: { quotes: (markets: readonly string[]) => Promise<Map<string, Quote | SignalReason>> };
-  markets: () => Promise<MarketInfo[]>;
+  /** Danh sách perps SoDEX đang giao dịch; null = chưa biết (chỉ Collect). */
+  markets: () => MarketInfo[] | null;
   now: () => number;
   log: PipelineLog;
   config: PipelineConfig;
@@ -92,13 +101,17 @@ export interface PipelineDeps {
 export interface CycleReport {
   fetched: number;
   stored: number;
+  backlog: number;
   pages: number;
+  normalized: number;
   classified: number;
   claudeCalls: number;
   signals: number;
   opened: number;
+  baselines: number;
+  /** `MARKETS_UNKNOWN` khi chu kỳ chỉ Collect. */
+  collectOnly: string | null;
   skipped: Record<string, number>;
-  claudeTokensToday: number;
   watermarkAt: string | null;
   error?: string;
 }
@@ -106,6 +119,7 @@ export interface CycleReport {
 const candidateList = z.array(
   z.object({ symbol: z.string(), market: z.string(), kind: z.enum(["crypto", "stock"]) }),
 );
+const matchedList = z.array(z.object({ symbol: z.string(), name: z.string().nullable() }));
 
 interface Signal {
   articleId: string;
@@ -120,11 +134,17 @@ interface Signal {
 
 const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
 
-/** Mốc dưới của bài được xử lý: lần đầu now − lookback; sau đó watermark − 10 phút, không bao giờ cũ hơn now − 30 phút. */
-export function collectFloor(watermarkAt: number | null, now: number, cfg: PipelineConfig): number {
-  const capFloor = now - cfg.maxCatchUpMinutes * MIN_MS;
-  if (watermarkAt === null) return Math.max(now - cfg.startLookbackMinutes * MIN_MS, capFloor);
-  return Math.max(watermarkAt - NEWS_RULES.watermarkOverlapMinutes * MIN_MS, capFloor);
+/**
+ * Mốc dưới của Collect, theo giờ DeskLabs chạy chu kỳ (không theo giờ đăng, để bài SoSoValue đưa lên trễ vẫn được phân
+ * loại): lần đầu now − lookback (15 phút); sau đó `lastCycleAt − biên` (30 phút), không bao giờ cũ hơn now − maxCatchUp
+ * (30 phút) kể cả sau thời gian ngừng.
+ */
+export function collectFloor(lastCycleAt: number | null, now: number, cfg: PipelineConfig): number {
+  if (lastCycleAt === null) return now - cfg.startLookbackMinutes * MIN_MS;
+  return Math.max(
+    now - cfg.maxCatchUpMinutes * MIN_MS,
+    lastCycleAt - NEWS_RULES.collectMarginMinutes * MIN_MS,
+  );
 }
 
 export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
@@ -137,28 +157,27 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
   const report: CycleReport = {
     fetched: 0,
     stored: 0,
+    backlog: 0,
     pages: 0,
+    normalized: 0,
     classified: 0,
     claudeCalls: 0,
     signals: 0,
     opened: 0,
+    baselines: 0,
+    collectOnly: null,
     skipped,
-    claudeTokensToday: 0,
     watermarkAt: null,
   };
 
   // ── 1. Collect ────────────────────────────────────────────────────────────────────────────────────────────────
   const state = await newsState(db);
-  const floor = collectFloor(state.watermarkAt, now, cfg);
-  const markets = await deps.markets();
-  const universe = new Set(markets.map((m) => m.name));
-  const info = new Map(markets.map((m) => [m.name, m]));
-
+  const floor = collectFloor(state.lastCycleAt, now, cfg);
   const fetched: SosoNewsItem[] = [];
-  let sourceDown: string | null = null;
+  let sourceError: string | null = null;
   for (let page = 1; page <= cfg.sosoMaxPages; page += 1) {
     if ((await sosoRequestsThisMonth(db, now)) >= cfg.sosoMonthlyLimit) {
-      sourceDown = "monthly_quota";
+      sourceError = "monthly_quota";
       break;
     }
     await addSosoRequests(db, now, 1);
@@ -176,14 +195,15 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
         p.items.every((i) => i.release_time > floor && !known.has(i.id));
       if (!more) break;
     } catch (e) {
-      sourceDown = e instanceof Error ? e.message : "error";
+      sourceError = e instanceof Error ? e.message : "error";
       break;
     }
   }
-  if (sourceDown !== null && fetched.length === 0) {
-    await markSource(db, "sosovalue", now, sourceDown);
-    deps.log.warn({ error: sourceDown }, "signal research: sosovalue unavailable");
-    report.error = sourceDown;
+  const sourceOk = sourceError === null || fetched.length > 0;
+  if (!sourceOk) {
+    await markSource(db, "sosovalue", now, sourceError);
+    deps.log.warn({ error: sourceError }, "signal research: sosovalue unavailable");
+    report.error = sourceError ?? "error";
   } else await markSource(db, "sosovalue", now, null);
   report.fetched = fetched.length;
 
@@ -194,17 +214,12 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
   const fresh = [
     ...new Map(fetched.filter((i) => !known.has(i.id)).map((i) => [i.id, i])).values(),
   ].sort((a, b) => a.release_time - b.release_time);
-  const hashes = new Map(
-    fresh.map((i) => [i.id, hashOf(normalizedText(i.title ?? null, i.content ?? null))] as const),
-  );
-  const seenHash = await existingHashes(db, [...hashes.values()]);
   const events: EventInput[] = [];
   let watermark = state.watermarkAt ?? floor;
   const rows: (typeof signalArticles.$inferInsert)[] = [];
   for (const item of fresh) {
-    const hash = hashes.get(item.id) ?? "";
-    const candidates = candidatesOf(item.matched_currencies, universe);
-    const base = {
+    const backlog = item.release_time <= floor;
+    rows.push({
       id: item.id,
       source: (item.author ?? "").trim() || "unknown",
       url: item.original_link ?? item.source_link ?? null,
@@ -214,79 +229,77 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       publishedAt: new Date(item.release_time),
       collectedAt: new Date(now),
       matchedCurrencies: item.matched_currencies,
-      candidates,
-      contentHash: hash,
+      candidates: [],
+      contentHash: hashOf(normalizedText(item.title ?? null, item.content ?? null)),
+      status: backlog ? "backlog" : "collected",
       ruleVersion: NEWS_RULES.version,
-    };
-    const ev = (
-      stage: SignalStage,
-      outcome: SignalOutcome,
-      reason?: SignalReason,
-      detail?: Record<string, unknown>,
-    ) =>
+    });
+    if (backlog) {
+      // Lưu thô, không phân loại, không giao dịch: một nhóm đếm riêng, không phải "bị loại".
       events.push({
         articleId: item.id,
-        stage,
-        outcome,
-        reason: reason ?? null,
-        detail: detail ?? null,
+        stage: SignalStage.collect,
+        outcome: SignalOutcome.backlog,
+        reason: SignalReason.backlog,
         at: now,
       });
-    if (item.release_time <= floor) {
-      rows.push({ ...base, status: "backlog" });
-      ev(SignalStage.collect, SignalOutcome.drop, SignalReason.backlog);
-      skip(SignalReason.backlog);
+      report.backlog += 1;
       continue;
     }
     watermark = Math.max(watermark, item.release_time);
-    ev(SignalStage.collect, SignalOutcome.pass, undefined, {
-      delaySeconds: Math.round((now - item.release_time) / 1000),
-    });
-    // ── 2. Normalize ────────────────────────────────────────────────────────────────────────────────────────────
-    const dupOf = seenHash.get(hash);
-    let reason: SignalReason | null = null;
-    if (now - item.release_time > NEWS_RULES.maxArticleAgeHours * HOUR_MS)
-      reason = SignalReason.staleNews;
-    else if (dupOf !== undefined) reason = SignalReason.duplicate;
-    else if (candidates.length === 0) reason = SignalReason.noSodexMarket;
-    if (!seenHash.has(hash)) seenHash.set(hash, item.id);
-    if (reason !== null) {
-      rows.push({
-        ...base,
-        status: "dropped",
-        duplicateOf: reason === SignalReason.duplicate ? (dupOf ?? null) : null,
-      });
-      ev(SignalStage.normalize, SignalOutcome.drop, reason);
-      skip(reason);
-      continue;
-    }
-    rows.push({ ...base, status: "pending" });
-    ev(SignalStage.normalize, SignalOutcome.pass, undefined, {
-      candidates: candidates.map((c) => c.market),
+    events.push({
+      articleId: item.id,
+      stage: SignalStage.collect,
+      outcome: SignalOutcome.pass,
+      detail: { delaySeconds: Math.round((now - item.release_time) / 1000) },
+      at: now,
     });
   }
   await db.transaction(async (tx) => {
     if (rows.length > 0) await tx.insert(signalArticles).values(rows).onConflictDoNothing();
     await recordEvents(tx, events);
-    if (sourceDown === null || fetched.length > 0) await saveNewsState(tx, watermark, now);
+    if (sourceOk) await saveNewsState(tx, watermark, now);
   });
   report.stored = rows.length;
   report.watermarkAt = new Date(watermark).toISOString();
 
-  // ── 3. Understand (FIFO, tối đa N lần gọi / chu kỳ, trong ngân sách ngày) ─────────────────────────────────────
+  // Random baseline của lệnh đã đóng (không cần danh sách market).
+  report.baselines = await fillRandomBaselines(db, now);
+
+  const markets = deps.markets();
+  if (markets === null || markets.length === 0) {
+    report.collectOnly = SignalReason.marketsUnknown;
+    deps.log.warn(
+      { reason: SignalReason.marketsUnknown, stored: report.stored },
+      "signal research: SoDEX market list not known yet, collect only",
+    );
+    await logCycle(deps, report, now);
+    return report;
+  }
+  const universe = new Set(markets.map((m) => m.name));
+  const info = new Map(markets.map((m) => [m.name, m]));
+
+  // ── 2. Normalize (mọi bài `collected`, kể cả của chu kỳ chỉ Collect trước đó) ─────────────────────────────────
+  report.normalized = await normalizeCollected(db, universe, now, skip);
+
+  // ── 3. Understand (FIFO, tối đa N lần gọi API / chu kỳ kể cả thử lại, trong ngân sách ngày) ───────────────────
   const pending = await db
     .select()
     .from(signalArticles)
     .where(
       and(eq(signalArticles.status, "pending"), eq(signalArticles.ruleVersion, NEWS_RULES.version)),
     )
-    .orderBy(asc(signalArticles.publishedAt));
+    .orderBy(asc(signalArticles.publishedAt), asc(signalArticles.id));
   const signals: Signal[] = [];
   let used = await usageToday(db, now);
   let calls = 0;
   for (const a of pending) {
     const age = now - a.publishedAt.getTime();
-    const drop = async (reason: SignalReason, classification: Record<string, unknown> | null) => {
+    const drop = async (
+      reason: SignalReason,
+      classification: Record<string, unknown> | null,
+      storyId: string | null = null,
+    ) => {
       await db.transaction(async (tx) => {
         await tx
           .update(signalArticles)
@@ -299,6 +312,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
         await recordEvents(tx, [
           {
             articleId: a.id,
+            storyId,
             stage: SignalStage.understand,
             outcome: SignalOutcome.drop,
             reason,
@@ -317,7 +331,8 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       await drop(SignalReason.classifierLate, null);
       continue;
     }
-    if (calls >= cfg.claudeMaxCallsPerCycle) continue; // chờ chu kỳ sau (FIFO)
+    const left = cfg.claudeMaxCallsPerCycle - calls;
+    if (left <= 0) continue; // chờ chu kỳ sau (FIFO)
     if (weightedInput(used) >= cfg.claudeDailyInputBudget) {
       await drop(SignalReason.claudeBudget, null);
       await markSource(db, "claude", now, "daily_budget");
@@ -325,15 +340,18 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     }
     const parsed = candidateList.safeParse(a.candidates);
     const candidates: Candidate[] = parsed.success ? parsed.data : [];
-    calls += 1;
-    const out = await deps.classifier.classify({
-      title: a.title,
-      content: a.content ?? "",
-      source: a.source,
-      publishedAt: a.publishedAt.getTime(),
-      candidates,
-      universe: [...universe].sort(),
-    });
+    const out = await deps.classifier.classify(
+      {
+        title: a.title,
+        content: a.content ?? "",
+        source: a.source,
+        publishedAt: a.publishedAt.getTime(),
+        candidates,
+        universe: [...universe].sort(),
+      },
+      Math.min(ATTEMPTS, left),
+    );
+    calls += Math.max(1, out.usage.calls);
     await addClaudeUsage(db, now, out.usage);
     used = { ...used, ...addUsage(used, out.usage) };
     report.claudeCalls += out.usage.calls;
@@ -345,7 +363,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     await markSource(db, "claude", now, null);
     report.classified += 1;
     const c = out.value;
-    const classification = { ...c, model: "claude", ruleVersion: NEWS_RULES.version };
+    const classification = { ...c, ruleVersion: NEWS_RULES.version };
     const candidate = candidates.find((x) => x.market === c.market);
     let reason: SignalReason | null = null;
     if (c.catalyst === "none") reason = SignalReason.notSignalType;
@@ -355,11 +373,30 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     else if (!catalystRule(c.catalyst).kinds.includes(candidate.kind))
       reason = SignalReason.wrongAssetKind;
     else if (eventTooOld(c.eventDate, a.publishedAt.getTime())) reason = SignalReason.eventTooOld;
-    if (reason !== null || candidate === undefined || c.catalyst === "none") {
-      await drop(reason ?? SignalReason.notSignalType, classification);
+    const signal: Signal | null =
+      candidate === undefined || c.catalyst === "none"
+        ? null
+        : {
+            articleId: a.id,
+            source: a.source,
+            tier: sourceTierOf(a.source, a.category),
+            publishedAt: a.publishedAt.getTime(),
+            collectedAt: a.collectedAt.getTime(),
+            title: a.title,
+            candidate,
+            catalyst: c.catalyst,
+          };
+    if (reason !== null || signal === null) {
+      const r = reason ?? SignalReason.notSignalType;
+      // Lý do không tạm thời + đã có token và loại tin → khoá story key (M3).
+      const storyId =
+        signal !== null && LOCKING_DROP_REASONS.has(r)
+          ? await lockDroppedStory(db, signal, now)
+          : null;
+      await drop(r, classification, storyId);
       continue;
     }
-    const rule = catalystRule(c.catalyst);
+    const rule = catalystRule(signal.catalyst);
     await db.transaction(async (tx) => {
       await tx
         .update(signalArticles)
@@ -371,8 +408,8 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
           stage: SignalStage.understand,
           outcome: SignalOutcome.pass,
           detail: {
-            market: candidate.market,
-            catalyst: c.catalyst,
+            market: signal.candidate.market,
+            catalyst: signal.catalyst,
             direction: rule.direction,
             maxHoldHours: rule.maxHoldHours,
           },
@@ -380,16 +417,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
         },
       ]);
     });
-    signals.push({
-      articleId: a.id,
-      source: a.source,
-      tier: sourceTierOf(a.source, a.category),
-      publishedAt: a.publishedAt.getTime(),
-      collectedAt: a.collectedAt.getTime(),
-      title: a.title,
-      candidate,
-      catalyst: c.catalyst,
-    });
+    signals.push(signal);
   }
   report.signals = signals.length;
 
@@ -405,33 +433,99 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     report.opened += r.opened ? 1 : 0;
   }
   if (report.opened > 0) deps.onTradeOpened?.();
+  await logCycle(deps, report, now, used);
+  return report;
+}
 
-  const today = await usageToday(db, now);
-  report.claudeTokensToday = today.input + today.cacheWrite + today.cacheRead + today.output;
+/** Một dòng log mỗi chu kỳ: bài lấy về / lưu / backlog / phân loại / bỏ theo lý do, token Claude hôm nay. */
+async function logCycle(
+  deps: PipelineDeps,
+  report: CycleReport,
+  now: number,
+  used?: Awaited<ReturnType<typeof usageToday>>,
+): Promise<void> {
+  const { skipped, ...rest } = report;
+  const today = used ?? (await usageToday(deps.db, now));
   deps.log.info(
     {
-      fetched: report.fetched,
-      stored: report.stored,
-      pages: report.pages,
-      classified: report.classified,
-      claudeCalls: report.claudeCalls,
-      signals: report.signals,
-      opened: report.opened,
+      ...rest,
       skipped,
       claudeTokensToday: {
+        calls: today.calls,
         input: today.input,
         cacheWrite: today.cacheWrite,
         cacheRead: today.cacheRead,
         output: today.output,
-        weightedInput: weightedInput(today),
-        budget: cfg.claudeDailyInputBudget,
+        budgetUnits: weightedInput(today),
+        budget: deps.config.claudeDailyInputBudget,
       },
-      sosoRequestsToday: today.soso,
-      watermarkAt: report.watermarkAt,
     },
     "signal research news cycle",
   );
-  return report;
+}
+
+/** Normalize: token ứng viên trên SoDEX, bài trùng y hệt (theo hash, bài đến trước thắng), tin > 24 giờ. */
+async function normalizeCollected(
+  db: Db,
+  universe: ReadonlySet<string>,
+  now: number,
+  skip: (r: SignalReason) => void,
+): Promise<number> {
+  const rows = await db
+    .select()
+    .from(signalArticles)
+    .where(
+      and(
+        eq(signalArticles.status, "collected"),
+        eq(signalArticles.ruleVersion, NEWS_RULES.version),
+      ),
+    )
+    .orderBy(asc(signalArticles.publishedAt), asc(signalArticles.id));
+  if (rows.length === 0) return 0;
+  const firstByHash = await firstIdByHash(
+    db,
+    rows.map((r) => r.contentHash),
+  );
+  for (const a of rows) {
+    const m = matchedList.safeParse(a.matchedCurrencies);
+    const candidates = candidatesOf(m.success ? m.data : [], universe);
+    const dupOf = firstByHash.get(a.contentHash);
+    let reason: SignalReason | null = null;
+    if (now - a.publishedAt.getTime() > NEWS_RULES.maxArticleAgeHours * HOUR_MS)
+      reason = SignalReason.staleNews;
+    else if (dupOf !== undefined && dupOf !== a.id) reason = SignalReason.duplicate;
+    else if (candidates.length === 0) reason = SignalReason.noSodexMarket;
+    await db.transaction(async (tx) => {
+      await tx
+        .update(signalArticles)
+        .set({
+          candidates,
+          status: reason === null ? "pending" : "dropped",
+          duplicateOf: reason === SignalReason.duplicate ? (dupOf ?? null) : null,
+          updatedAt: new Date(now),
+        })
+        .where(eq(signalArticles.id, a.id));
+      await recordEvents(tx, [
+        reason === null
+          ? {
+              articleId: a.id,
+              stage: SignalStage.normalize,
+              outcome: SignalOutcome.pass,
+              detail: { candidates: candidates.map((c) => c.market) },
+              at: now,
+            }
+          : {
+              articleId: a.id,
+              stage: SignalStage.normalize,
+              outcome: SignalOutcome.drop,
+              reason,
+              at: now,
+            },
+      ]);
+    });
+    if (reason !== null) skip(reason);
+  }
+  return rows.length;
 }
 
 async function knownIds(db: Db, ids: readonly string[]): Promise<Set<string>> {
@@ -443,14 +537,15 @@ async function knownIds(db: Db, ids: readonly string[]): Promise<Set<string>> {
   return new Set(rows.map((r) => r.id));
 }
 
-async function existingHashes(db: Db, hashes: readonly string[]): Promise<Map<string, string>> {
+/** Bài đầu tiên (theo giờ đăng, rồi id) của mỗi hash, trong mọi bài đã lưu. */
+async function firstIdByHash(db: Db, hashes: readonly string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (hashes.length === 0) return out;
   const rows = await db
     .select({ id: signalArticles.id, hash: signalArticles.contentHash })
     .from(signalArticles)
     .where(inArray(signalArticles.contentHash, [...new Set(hashes)]))
-    .orderBy(asc(signalArticles.publishedAt));
+    .orderBy(asc(signalArticles.publishedAt), asc(signalArticles.id));
   for (const r of rows) if (!out.has(r.hash)) out.set(r.hash, r.id);
   return out;
 }
@@ -463,11 +558,131 @@ const storySources = z.array(
     at: z.string(),
   }),
 );
+type StorySourceRef = z.infer<typeof storySources>[number];
+
+const sourcesOf = (xs: readonly Signal[]): StorySourceRef[] =>
+  xs.map((s) => ({
+    name: s.source,
+    tier: s.tier,
+    articleId: s.articleId,
+    at: new Date(s.publishedAt).toISOString(),
+  }));
+
+const windowStart = (now: number) => new Date(now - NEWS_RULES.storyWindowDays * 24 * HOUR_MS);
+
+/** Story đang khoá key trong 7 ngày (đã vào lệnh, hoặc bị loại vì lý do không tạm thời). */
+async function lockedStory(db: Db, key: string, now: number) {
+  const [s] = await db
+    .select()
+    .from(signalStories)
+    .where(
+      and(
+        eq(signalStories.storyKey, key),
+        eq(signalStories.ruleVersion, NEWS_RULES.version),
+        eq(signalStories.locked, true),
+        gte(signalStories.firstSeenAt, windowStart(now)),
+      ),
+    )
+    .orderBy(asc(signalStories.firstSeenAt))
+    .limit(1);
+  return s;
+}
+
+/** Nguồn của các lần thử trước (không khoá) cùng key trong 7 ngày: vẫn là nguồn độc lập của cùng câu chuyện. */
+async function earlierAttemptSources(db: Db, key: string, now: number): Promise<StorySourceRef[]> {
+  const rows = await db
+    .select({ sources: signalStories.sources })
+    .from(signalStories)
+    .where(
+      and(
+        eq(signalStories.storyKey, key),
+        eq(signalStories.ruleVersion, NEWS_RULES.version),
+        eq(signalStories.locked, false),
+        gte(signalStories.firstSeenAt, windowStart(now)),
+      ),
+    )
+    .orderBy(asc(signalStories.firstSeenAt));
+  return rows.flatMap((r) => {
+    const p = storySources.safeParse(r.sources);
+    return p.success ? p.data : [];
+  });
+}
+
+/** Gộp bài vào story đang khoá: thêm nguồn, tính lại "later level", gắn later High cho lệnh của story. */
+async function mergeInto(
+  db: Db,
+  story: typeof signalStories.$inferSelect,
+  group: readonly Signal[],
+  now: number,
+): Promise<SignalLevel> {
+  const prev = storySources.safeParse(story.sources);
+  const sources = [...(prev.success ? prev.data : []), ...sourcesOf(group)];
+  const later = levelOf(sources);
+  await db.transaction(async (tx) => {
+    await tx
+      .update(signalStories)
+      .set({ sources, laterLevel: later, updatedAt: new Date(now) })
+      .where(eq(signalStories.id, story.id));
+    if (later === SignalLevel.high && story.levelAtEntry !== SignalLevel.high)
+      await tx
+        .update(signalPaperTrades)
+        .set({ laterHigh: true, updatedAt: new Date(now) })
+        .where(eq(signalPaperTrades.storyId, story.id));
+    await recordEvents(
+      tx,
+      group.map((s) => ({
+        articleId: s.articleId,
+        storyId: story.id,
+        stage: SignalStage.filter,
+        outcome: SignalOutcome.merge,
+        reason: SignalReason.sameStory,
+        detail: { laterLevel: later },
+        at: now,
+      })),
+    );
+  });
+  return later;
+}
+
+/** Bị loại ở Understand vì lý do không tạm thời: khoá key (story `dropped`), hoặc thêm nguồn vào story đang khoá. */
+async function lockDroppedStory(db: Db, s: Signal, now: number): Promise<string | null> {
+  const key = storyKey(s.candidate.market, s.catalyst);
+  const existing = await lockedStory(db, key, now);
+  if (existing !== undefined) {
+    const prev = storySources.safeParse(existing.sources);
+    const sources = [...(prev.success ? prev.data : []), ...sourcesOf([s])];
+    await db
+      .update(signalStories)
+      .set({ sources, laterLevel: levelOf(sources), updatedAt: new Date(now) })
+      .where(eq(signalStories.id, existing.id));
+    return existing.id;
+  }
+  const sources = [...(await earlierAttemptSources(db, key, now)), ...sourcesOf([s])];
+  const level = levelOf(sources);
+  const [row] = await db
+    .insert(signalStories)
+    .values({
+      storyKey: key,
+      market: s.candidate.market,
+      catalyst: s.catalyst,
+      direction: catalystRule(s.catalyst).direction,
+      firstArticleId: s.articleId,
+      firstSeenAt: new Date(now),
+      sources,
+      levelAtEntry: level,
+      laterLevel: level,
+      outcome: "dropped",
+      locked: true,
+      ruleVersion: NEWS_RULES.version,
+    })
+    .returning({ id: signalStories.id });
+  return row?.id ?? null;
+}
 
 /**
- * Một nhóm tín hiệu cùng story key trong chu kỳ này. Câu chuyện đã có trong 7 ngày → gộp (thêm nguồn, tính lại "later
- * level", gắn later High cho lệnh), không bao giờ mở lại. Câu chuyện mới → khoá mức ở lần quyết định này (mọi nguồn có tới
- * lúc này), rồi kiểm và mở lệnh cho bài đầu tiên.
+ * Một nhóm tín hiệu cùng story key trong chu kỳ này. Story đang khoá trong 7 ngày → gộp, không bao giờ mở lại. Không có →
+ * một lần thử mới: mức khoá ở lần quyết định này (nguồn của lần thử trước + nhóm này), kiểm Filter cho bài đầu tiên. Mở
+ * lệnh → story `entered`, khoá key. Bị bỏ ở Filter → story `skipped`, KHÔNG khoá (bài sau cùng key được thử lại).
  */
 async function decideStory(
   deps: PipelineDeps,
@@ -479,68 +694,21 @@ async function decideStory(
   const { db } = deps;
   const first = group[0];
   if (first === undefined) return { opened: false, skipped: [] };
-  const sourcesOf = (xs: readonly Signal[]) =>
-    xs.map((s) => ({
-      name: s.source,
-      tier: s.tier,
-      articleId: s.articleId,
-      at: new Date(s.publishedAt).toISOString(),
-    }));
   const ev = (
     s: Signal,
     stage: SignalStage,
     outcome: SignalOutcome,
     extra: Partial<EventInput> = {},
-  ): EventInput => ({
-    articleId: s.articleId,
-    stage,
-    outcome,
-    at: now,
-    ...extra,
-  });
+  ): EventInput => ({ articleId: s.articleId, stage, outcome, at: now, ...extra });
 
-  const [existing] = await db
-    .select()
-    .from(signalStories)
-    .where(
-      and(
-        eq(signalStories.storyKey, key),
-        eq(signalStories.ruleVersion, NEWS_RULES.version),
-        gte(signalStories.firstSeenAt, new Date(now - NEWS_RULES.storyWindowDays * 24 * HOUR_MS)),
-      ),
-    )
-    .orderBy(asc(signalStories.firstSeenAt))
-    .limit(1);
+  const existing = await lockedStory(db, key, now);
   if (existing !== undefined) {
-    const prev = storySources.safeParse(existing.sources);
-    const sources = [...(prev.success ? prev.data : []), ...sourcesOf(group)];
-    const later = levelOf(sources);
-    await db.transaction(async (tx) => {
-      await tx
-        .update(signalStories)
-        .set({ sources, laterLevel: later, updatedAt: new Date(now) })
-        .where(eq(signalStories.id, existing.id));
-      if (later === SignalLevel.high && existing.levelAtEntry !== SignalLevel.high)
-        await tx
-          .update(signalPaperTrades)
-          .set({ laterHigh: true, updatedAt: new Date(now) })
-          .where(eq(signalPaperTrades.storyId, existing.id));
-      await recordEvents(
-        tx,
-        group.map((s) =>
-          ev(s, SignalStage.filter, SignalOutcome.merge, {
-            storyId: existing.id,
-            reason: SignalReason.sameStory,
-            detail: { laterLevel: later },
-          }),
-        ),
-      );
-    });
+    await mergeInto(db, existing, group, now);
     return { opened: false, skipped: group.map(() => SignalReason.sameStory) };
   }
 
   const rule = catalystRule(first.catalyst);
-  const sources = sourcesOf(group);
+  const sources = [...(await earlierAttemptSources(db, key, now)), ...sourcesOf(group)];
   const levelAtEntry = levelOf(sources);
   const market = first.candidate.market;
   const [story] = await db
@@ -555,6 +723,8 @@ async function decideStory(
       sources,
       levelAtEntry,
       laterLevel: levelAtEntry,
+      outcome: "skipped",
+      locked: false,
       ruleVersion: NEWS_RULES.version,
     })
     .returning({ id: signalStories.id });
@@ -576,7 +746,7 @@ async function decideStory(
     return { opened: false, skipped: [reason, ...merged.map(() => SignalReason.sameStory)] };
   };
 
-  // Nguồn đúng giờ.
+  // Nguồn đúng giờ (thường đã bị chặn trước ở Collect / Understand; giữ làm lưới an toàn).
   const delayMin = (first.collectedAt - first.publishedAt) / MIN_MS;
   if (delayMin > NEWS_RULES.maxSourceDelayMinutes)
     return fail(SignalReason.sourceLate, { delayMinutes: Math.round(delayMin) });
@@ -590,6 +760,7 @@ async function decideStory(
     .where(
       and(
         eq(signalPaperTrades.lane, NEWS_RULES.lane),
+        eq(signalPaperTrades.label, "live"),
         eq(signalPaperTrades.market, market),
         eq(signalPaperTrades.status, "open"),
       ),
@@ -661,6 +832,16 @@ async function decideStory(
           ruleVersion: NEWS_RULES.version,
         })
         .returning({ id: signalPaperTrades.id });
+      if (storyId !== null)
+        await tx
+          .update(signalStories)
+          .set({
+            outcome: "entered",
+            locked: true,
+            tradeId: t?.id ?? null,
+            updatedAt: new Date(now),
+          })
+          .where(eq(signalStories.id, storyId));
       await recordEvents(tx, [
         ...merged,
         ev(first, SignalStage.filter, SignalOutcome.pass, {
@@ -704,13 +885,4 @@ function isUniqueViolation(e: unknown): boolean {
     x = (x as { cause?: unknown }).cause;
   }
   return false;
-}
-
-// Dùng trong test: số bài đang chờ Claude.
-export async function pendingCount(db: Db): Promise<number> {
-  const [r] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(signalArticles)
-    .where(eq(signalArticles.status, "pending"));
-  return r?.n ?? 0;
 }
