@@ -46,7 +46,8 @@ export const FARM_SIGNAL = {
   candleOnlyMin: 21,
 } as const;
 
-const WEIGHTS = {
+/** Trọng số các thành phần của điểm (export cho công cụ replay #235 dựng lại điểm từ snapshot). */
+export const FARM_WEIGHTS = {
   candleMomentum: 0.3,
   wickRejection: 0.25,
   volumeAcceleration: 0.2,
@@ -261,11 +262,11 @@ export function farmSignal(
   };
   const regime = detectRegime(toFiveMinute(candles));
   const score = clamp01(
-    components.candleMomentum * WEIGHTS.candleMomentum +
-      components.wickRejection * WEIGHTS.wickRejection +
-      components.volumeAcceleration * WEIGHTS.volumeAcceleration +
-      components.tradePressure * WEIGHTS.tradePressure +
-      components.orderbookImbalance * WEIGHTS.orderbookImbalance,
+    components.candleMomentum * FARM_WEIGHTS.candleMomentum +
+      components.wickRejection * FARM_WEIGHTS.wickRejection +
+      components.volumeAcceleration * FARM_WEIGHTS.volumeAcceleration +
+      components.tradePressure * FARM_WEIGHTS.tradePressure +
+      components.orderbookImbalance * FARM_WEIGHTS.orderbookImbalance,
   );
   const vals = Object.values(components);
   const sign = score >= 0.5 ? 1 : -1;
