@@ -2,8 +2,9 @@ import { createDb, DeadlineExceededError, readOnlyTx, runMigrations, type Db } f
 import { Decimal } from "@drift/shared";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { guardIdleKill, isIdleKill } from "../src/replay/abort";
 import { loadEntries } from "../src/replay/load";
 
 // Bộ nạp replay VB (#235): chỉ đọc (READ ONLY), ghép snapshot vào lượt đã đóng qua clOrdID của lệnh vào, bỏ lượt vào
@@ -152,19 +153,21 @@ describe("VB replay loader", () => {
   });
 });
 
+/** SQLSTATE của lỗi pg, kể cả khi drizzle bọc trong `cause`. */
+const code = (e: unknown): unknown =>
+  typeof e === "object" && e !== null
+    ? "code" in e
+      ? e.code
+      : "cause" in e
+        ? code(e.cause)
+        : undefined
+    : undefined;
+
 describe("readOnlyTx", () => {
   it("rejects writes inside the transaction (SQLSTATE 25006)", async () => {
     const err = await readOnlyTx(db, { statementTimeoutMs: 5_000 }, (q) =>
       q.execute(sql`insert into users (id, email) values (gen_random_uuid(), 'ro@x.test')`),
     ).catch((e: unknown) => e);
-    const code = (e: unknown): unknown =>
-      typeof e === "object" && e !== null
-        ? "code" in e
-          ? e.code
-          : "cause" in e
-            ? code(e.cause)
-            : undefined
-        : undefined;
     expect(code(err)).toBe("25006");
     const n = await pool.query("select count(*)::int as n from users where email = 'ro@x.test'");
     expect(n.rows[0]).toEqual({ n: 0 });
@@ -182,11 +185,52 @@ describe("readOnlyTx", () => {
       },
     );
     expect(limits).toEqual({ st: "1234ms", idle: "5678ms", ro: "on" });
+    // Idle timeout chỉ đặt khi truyền `idleTimeoutMs` (opt-in).
+    const idle = await readOnlyTx(db, { statementTimeoutMs: 1_000 }, async (q) => {
+      const r = await q.execute(
+        sql`select current_setting('idle_in_transaction_session_timeout') as idle`,
+      );
+      return (r as unknown as { rows: unknown[] }).rows[0];
+    });
+    expect(idle).toEqual({ idle: "0" });
     await expect(
       readOnlyTx(db, { statementTimeoutMs: 5_000, deadlineMs: 1 }, async (q, checkDeadline) => {
         await q.execute(sql`select pg_sleep(0.05)`);
         checkDeadline();
       }),
     ).rejects.toBeInstanceOf(DeadlineExceededError);
+  });
+
+  it("cancels a query that runs past the statement timeout (SQLSTATE 57014)", async () => {
+    const err = await readOnlyTx(db, { statementTimeoutMs: 100 }, (q) =>
+      q.execute(sql`select pg_sleep(2)`),
+    ).catch((e: unknown) => e);
+    expect(code(err)).toBe("57014");
+  });
+
+  it("reports an idle-in-transaction kill (FATAL 25P03) to the handler instead of crashing", async () => {
+    // Pool riêng, như CLI: handler gắn cho client mới của pool.
+    const own = createDb(container.getConnectionUri());
+    const onKill = vi.fn();
+    const onOther = vi.fn();
+    const remove = guardIdleKill(own.pool, onKill, onOther);
+    try {
+      const err = await readOnlyTx(
+        own.db,
+        { statementTimeoutMs: 5_000, idleTimeoutMs: 200 },
+        async (q) => {
+          // Ngồi im lâu hơn idle timeout: Postgres cắt phiên.
+          await new Promise((r) => setTimeout(r, 1_500));
+          return q.execute(sql`select 1`);
+        },
+      ).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(onKill).toHaveBeenCalled();
+      expect(onOther).not.toHaveBeenCalled();
+      expect(isIdleKill({ code: "25P03" })).toBe(true);
+    } finally {
+      remove();
+      await own.pool.end();
+    }
   });
 });

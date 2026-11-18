@@ -161,7 +161,12 @@ export async function loadEntries(
     return [{ botId: e.bot_id, market: e.market, at: new Date(e.at).getTime(), s: s.data }];
   });
   const byBot = new Map<string, typeof parsed>();
-  for (const p of parsed) byBot.set(p.botId, [...(byBot.get(p.botId) ?? []), p]);
+  // Thêm vào mảng sẵn có (không chép lại mảng mỗi lần: O(n), không O(n²)).
+  for (const p of parsed) {
+    const list = byBot.get(p.botId);
+    if (list === undefined) byBot.set(p.botId, [p]);
+    else list.push(p);
+  }
 
   const matched: { p: (typeof parsed)[number]; trade: Trade }[] = [];
   let unmatched = 0;
@@ -222,7 +227,11 @@ export async function loadEntries(
 
   // Giá 10 s: một câu cho mỗi lô mốc thời gian của từng market (không N+1).
   const byMarket = new Map<string, number[]>();
-  for (const m of matched) byMarket.set(m.p.market, [...(byMarket.get(m.p.market) ?? []), m.p.at]);
+  for (const m of matched) {
+    const ats = byMarket.get(m.p.market);
+    if (ats === undefined) byMarket.set(m.p.market, [m.p.at]);
+    else ats.push(m.p.at);
+  }
   const reachAt = new Map<string, ReplayEntry["reach"]>();
   for (const [market, ats] of byMarket) {
     const uniq = [...new Set(ats)];

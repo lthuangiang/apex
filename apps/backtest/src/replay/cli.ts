@@ -4,6 +4,7 @@ import { loadSodexConfig, RedisRateLimitStore, SodexRestClient } from "@drift/so
 import { Redis } from "ioredis";
 import { z } from "zod";
 
+import { guardIdleKill, IDLE_KILL_MESSAGE, isIdleKill } from "./abort";
 import { checkRange, loadEntries, MAX_RANGE_DAYS, ReplayLimitError } from "./load";
 import { DEFAULT_GRIDS, defaultRules, evaluate, NO_TICK, toMarkdown } from "./vb-replay";
 
@@ -15,6 +16,8 @@ import { DEFAULT_GRIDS, defaultRules, evaluate, NO_TICK, toMarkdown } from "./vb
 // Tuỳ chọn: --chase 2,3,5,8,12  --pullback 1,2,3  --momentum 0.5,0.25,0  (lưới của từng luật).
 
 const QUERY_TIMEOUT_MS = 30_000;
+/** Ngồi im giữa hai câu quá chừng này thì Postgres cắt phiên (giữ xmin / kết nối pgbouncer không quá lâu). */
+const IDLE_TIMEOUT_MS = 120_000;
 /** Trần thời gian tổng của transaction; quá trần + một câu thì process tự thoát (kết nối đóng, transaction huỷ). */
 const DEADLINE_MS = 10 * 60_000;
 
@@ -91,6 +94,16 @@ setTimeout(
 ).unref();
 
 const { db, pool } = createDb(env.DATABASE_URL);
+// Phiên bị cắt vì idle (FATAL 25P03): in thông báo rõ và thoát mã 2, không để node-pg làm sập process.
+guardIdleKill(
+  pool,
+  () => {
+    fail(IDLE_KILL_MESSAGE);
+  },
+  (e) => {
+    process.stderr.write(`replay: database client error (${String(e)})\n`);
+  },
+);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 try {
   const ticks = new Map<string, Decimal>();
@@ -112,11 +125,16 @@ try {
   }
   const loaded = await readOnlyTx(
     db,
-    { statementTimeoutMs: QUERY_TIMEOUT_MS, deadlineMs: DEADLINE_MS },
+    {
+      statementTimeoutMs: QUERY_TIMEOUT_MS,
+      idleTimeoutMs: IDLE_TIMEOUT_MS,
+      deadlineMs: DEADLINE_MS,
+    },
     (q, checkDeadline) => loadEntries(q, { from, to, ticks, checkDeadline }),
   ).catch((error: unknown) => {
     if (error instanceof ReplayLimitError || error instanceof DeadlineExceededError)
       fail(error.message);
+    if (isIdleKill(error)) fail(IDLE_KILL_MESSAGE);
     throw error;
   });
   const report = evaluate(loaded.entries, defaultRules(grids));

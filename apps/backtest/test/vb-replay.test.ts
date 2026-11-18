@@ -1,6 +1,9 @@
-import { Decimal } from "@drift/shared";
-import { describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
 
+import { Decimal } from "@drift/shared";
+import { describe, expect, it, vi } from "vitest";
+
+import { guardIdleKill, isIdleKill } from "../src/replay/abort";
 import { checkRange, groupTrades, MAX_RANGE_DAYS, ReplayLimitError } from "../src/replay/load";
 import {
   baseOf,
@@ -292,5 +295,30 @@ describe("groupTrades", () => {
     expect(t?.qty.toString()).toBe("1");
     expect(t?.fees.toString()).toBe("0.04");
     expect(t?.volume.toString()).toBe("200.3");
+  });
+});
+
+describe("guardIdleKill", () => {
+  it("routes a 25P03 client error to onKill and other client errors to onOther", () => {
+    const pool = new EventEmitter();
+    const client = new EventEmitter();
+    const onKill = vi.fn();
+    const onOther = vi.fn();
+    const remove = guardIdleKill(
+      pool as unknown as Parameters<typeof guardIdleKill>[0],
+      onKill,
+      onOther,
+    );
+    try {
+      pool.emit("connect", client);
+      client.emit("error", Object.assign(new Error("terminating connection"), { code: "25P03" }));
+      expect(onKill).toHaveBeenCalledTimes(1);
+      client.emit("error", new Error("socket closed"));
+      expect(onOther).toHaveBeenCalledTimes(1);
+      expect(isIdleKill(new Error("x"))).toBe(false);
+    } finally {
+      remove();
+    }
+    expect(pool.listenerCount("connect")).toBe(0);
   });
 });
