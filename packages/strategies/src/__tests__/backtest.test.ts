@@ -47,6 +47,19 @@ const onCi =
   (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.CI ===
   "true";
 
+/**
+ * Tải 1 phút và số CPU của máy (Node `os`, qua `process.getBuiltinModule` như `onCi`); null khi không đọc được.
+ * Chỉ dùng để biết một phép đo thời gian thật có đáng tin không (#225).
+ */
+const machineLoad = (): { load1: number; cpus: number } | null => {
+  const os = (
+    globalThis as { process?: { getBuiltinModule?: (id: string) => unknown } }
+  ).process?.getBuiltinModule?.("node:os") as
+    { loadavg: () => number[]; cpus: () => unknown[] } | undefined;
+  const load1 = os?.loadavg()[0];
+  return os === undefined || load1 === undefined ? null : { load1, cpus: os.cpus().length };
+};
+
 describe("backtest fill model", () => {
   it("fills the opening market order at the next candle open plus slippage, with taker fee and no builder fee on spot buys", () => {
     const r = backtest(
@@ -181,21 +194,40 @@ describe("backtest fill model", () => {
   });
 
   // Ngưỡng ROADMAP P9 "90 ngày p95 < 20 s"; runner GitHub 2 vCPU chạy test song song nên đo không đúng: kiểm ở máy dev (DEC-175).
+  // Đo thời gian thật chỉ có nghĩa khi máy rảnh (#225): cùng code mất ~9 s lúc rảnh nhưng 48 s khi máy dev chạy song song
+  // test của package khác / worktree khác (tải 1 phút ~60 trên 16 luồng), dù thời gian CPU của backtest không đổi so với
+  // lúc DEC-175. Nên test kiểm hai điều:
+  // (1) luôn kiểm: 90 ngày tốn không quá 20 lần một lần chạy 9 ngày đo ngay trước và ngay sau, cùng mức tải (tuyến tính là
+  //     10 lần; chi phí mỗi nến tăng theo lịch sử thì ≥ 50 lần), nên bắt được backtest chậm đi theo độ dài dữ liệu dù máy bận;
+  // (2) ngưỡng tuyệt đối 20 s chỉ kiểm khi máy không quá tải trong lúc đo (tải 1 phút ≤ số CPU, trước và sau).
   it.skipIf(onCi)(
     "runs 90 days of one-minute candles well under 20 s",
     () => {
-      const n = 90 * 24 * 60;
-      const candles = Array.from({ length: n }, (_, i) => {
-        const p = 100 + 9 * Math.sin(i / 700) + Math.sin(i / 13);
-        return candle(i, p, p + 0.3, p - 0.3, p + 0.05);
-      });
-      const started = Date.now();
-      const r = backtest("spot_grid", { ...grid, gridLevels: 20 }, data(candles));
-      const ms = Date.now() - started;
-      expect(r.candles).toBe(n);
-      expect(ms).toBeLessThan(20_000);
+      const days = (d: number) =>
+        Array.from({ length: d * 24 * 60 }, (_, i) => {
+          const p = 100 + 9 * Math.sin(i / 700) + Math.sin(i / 13);
+          return candle(i, p, p + 0.3, p - 0.3, p + 0.05);
+        });
+      const timed = (candles: Candle[]) => {
+        const started = Date.now();
+        const r = backtest("spot_grid", { ...grid, gridLevels: 20 }, data(candles));
+        expect(r.candles).toBe(candles.length);
+        return Date.now() - started;
+      };
+      const short = days(9);
+      const long = days(90);
+      const loadBefore = machineLoad();
+      const before = timed(short);
+      const ms = timed(long);
+      const after = timed(short);
+      const loadAfter = machineLoad();
+      // Lần 9 ngày đầu còn gồm thời gian JIT khởi động: chỉ làm phép so sánh dễ hơn, không gắt hơn.
+      expect(ms).toBeLessThan(20 * Math.max(1, (before + after) / 2));
+      const idle = [loadBefore, loadAfter].every((l) => l !== null && l.load1 <= l.cpus);
+      if (idle) expect(ms).toBeLessThan(20_000);
     },
-    60_000,
+    // Trần chống treo, không phải ngưỡng hiệu năng: 108 ngày nến khi máy bận có thể quá 60 s.
+    240_000,
   );
 });
 

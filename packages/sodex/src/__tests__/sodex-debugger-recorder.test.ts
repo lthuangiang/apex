@@ -151,6 +151,8 @@ function writer(recorderImpl?: SodexCallRecorder) {
 }
 
 describe("order path with the SoDEX Debugger", () => {
+  // Trần 30 s (#225): 2 000 write (1 000 có Debugger, 1 000 không) qua writer thật mất ~1 s khi máy rảnh nhưng vài giây
+  // tới hơn 10 s khi máy chạy song song test của nhiều package; test không đo thời gian nên trần chỉ chống treo.
   it("returns the same results, never waits on the writer, and stays bounded while the DB write hangs", async () => {
     let sinkCalls = 0;
     const hanging = recorder({
@@ -168,8 +170,9 @@ describe("order path with the SoDEX Debugger", () => {
     await vi.waitFor(() => {
       expect(sinkCalls).toBe(1);
     });
-    // Không đo thời gian (dễ nhiễu): kiểm hành vi. Mỗi write xong mà không phụ thuộc sink, kết quả giống hệt.
-    for (let i = 0; i < 2_000; i += 1) {
+    // Không đo thời gian (dễ nhiễu): kiểm hành vi. Mỗi write xong mà không phụ thuộc sink, kết quả giống hệt. 1 000 lần
+    // (gấp đôi sức chứa 500) đủ để hàng đợi phải bỏ bản ghi; trước đây 2 000 lần, quá 5 s khi máy bận (#225).
+    for (let i = 0; i < 1_000; i += 1) {
       expect(await recorded.write(REQUEST)).toEqual(await plain.write(REQUEST));
     }
     // record() đồng bộ: gọi trực tiếp không trả Promise và không gọi sink.
@@ -180,7 +183,7 @@ describe("order path with the SoDEX Debugger", () => {
     expect(hanging.dropped.ok).toBeGreaterThan(0);
     // Chỉ một lần ghi treo cùng lúc, không chồng.
     expect(sinkCalls).toBe(1);
-  });
+  }, 30_000);
 
   it("attaches the bot context and never puts the signature in the queue", async () => {
     const rows: SodexCallRow[] = [];
