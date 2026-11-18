@@ -14,6 +14,7 @@ import {
   RedisRateLimitStore,
   SodexRestClient,
 } from "@drift/sodex";
+import { connect, type NatsConnection } from "@nats-io/transport-node";
 import { count, eq } from "drizzle-orm";
 import { Redis } from "ioredis";
 import pino from "pino";
@@ -30,6 +31,12 @@ import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
 import { purgeMcp } from "./mcp-purge";
 import { fitMmModelDaily } from "./mm-model";
 import { snapshotAndCheck } from "./risk";
+import {
+  createSignalResearch,
+  disabledReason,
+  signalResearchEnvSchema,
+  type PerpsSymbolInfo,
+} from "./signal-research";
 import { runSnapshotRetention } from "./snapshot-retention";
 import { redisIncidentReadStore, teamIncidentRunner } from "./team-incidents";
 
@@ -55,7 +62,10 @@ const env = z
       .regex(/^0x[0-9a-fA-F]{40}$/)
       .optional()
       .or(z.literal("").transform(() => undefined)),
+    /** NATS cho giá tốt nhất SoDEX (`md.*.book`) của Signal research; trống = chỉ dùng Redis / DB. */
+    NATS_URL: z.string().default(""),
   })
+  .extend(signalResearchEnvSchema.shape)
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "scheduler" } });
 // SoDEX Debugger (DEC-309): ghi mọi lời gọi SoDEX (hàng đợi trong bộ nhớ, pool DB riêng, không chặn).
@@ -198,10 +208,17 @@ async function leaderboardTick() {
 }
 
 /** Fit hệ số mô hình chi phí Market Making cho ngày hôm qua (DEC-228); tự bỏ qua nếu đã fit. */
+/** Danh sách perps đọc ở vòng 10 phút (mmModelTick); Signal research dùng lại, không gọi thêm REST. */
+let perpsCache: PerpsSymbolInfo[] | null = null;
 async function mmModelTick() {
-  const ticks = new Map(
-    (await wait(() => rest.getPerpsSymbols())).map((m) => [m.name, m.tickSize] as const),
-  );
+  const symbols = await wait(() => rest.getPerpsSymbols());
+  perpsCache = symbols.map((m) => ({
+    name: m.name,
+    status: m.status,
+    tickSize: m.tickSize,
+    takerFee: m.takerFee,
+  }));
+  const ticks = new Map(symbols.map((m) => [m.name, m.tickSize] as const));
   const r = await fitMmModelDaily(db, ticks, Date.now());
   if (r.status !== "skipped") log.info(r, "mm cost model fitted");
 }
@@ -240,6 +257,31 @@ async function snapshotRetentionTick() {
   }
 }
 
+// Signal research, lane tin tức (#271, DEC-TBD-news-paper-trading): paper trading của team, mặc định tắt. Không gửi gì tới
+// SoDEX; giá chỉ từ marketdata (Redis md:last, NATS md.*.book, mm_market_hourly).
+const signalOff = disabledReason(env);
+const signals =
+  signalOff === null
+    ? createSignalResearch({ db, redis, log, env, perps: () => perpsCache })
+    : null;
+if (signalOff === null) log.info("signal research enabled");
+else if (env.SIGNAL_RESEARCH_ENABLED)
+  log.warn({ reason: signalOff }, "signal research not started");
+let nats: NatsConnection | null = null;
+if (signals !== null && env.NATS_URL !== "") {
+  try {
+    nats = await connect({ servers: env.NATS_URL });
+    const sub = nats.subscribe("md.*.book");
+    void (async () => {
+      for await (const m of sub) signals.books.onMessage(m.string(), Date.now());
+    })();
+  } catch (error) {
+    log.warn({ err: error }, "signal research: NATS unavailable, using Redis prices only");
+  }
+}
+let signalTimer: ReturnType<typeof setInterval> | null = null;
+let watchTimer: ReturnType<typeof setInterval> | null = null;
+
 let timer: ReturnType<typeof setInterval> | null = null;
 let riskTimer: ReturnType<typeof setInterval> | null = null;
 async function tick() {
@@ -255,6 +297,15 @@ async function tick() {
 
 const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
   onLead: () => {
+    if (signals !== null) {
+      void signals.runCycle();
+      signalTimer = setInterval(() => void signals.runCycle(), 5 * 60_000);
+      watchTimer = setInterval(() => {
+        void signals.watcher.tick().catch((error: unknown) => {
+          log.error({ err: error }, "signal research watcher failed");
+        });
+      }, 1_500);
+    }
     void tick().catch((error: unknown) => {
       log.error({ err: error }, "tick failed");
     });
@@ -336,6 +387,10 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
     }, 10 * 60_000);
   },
   onLose: () => {
+    if (signalTimer !== null) clearInterval(signalTimer);
+    if (watchTimer !== null) clearInterval(watchTimer);
+    signalTimer = null;
+    watchTimer = null;
     if (timer !== null) clearInterval(timer);
     if (riskTimer !== null) clearInterval(riskTimer);
     timer = null;
@@ -345,6 +400,7 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
 
 async function shutdown() {
   await stopLeader();
+  await nats?.drain().catch(() => undefined);
   await sodexCalls?.close();
   await pool.end();
   redis.disconnect();

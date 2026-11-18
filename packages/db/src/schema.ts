@@ -1682,3 +1682,193 @@ export const sodexCallsOk = sodexCallTable("sodex_calls_ok");
 export const sodexCallsProblem = sodexCallTable("sodex_calls_problem");
 /** View đọc chung (tạo bằng SQL trong migration 0041). */
 export const sodexCalls = pgView("sodex_calls", sodexCallColumns()).existing();
+
+// ── Signal research, lane tin tức (#271, DEC-TBD-news-paper-trading) ─────────────────────────────────────────────
+// Paper trading của team, không bao giờ chạm SoDEX. Quy tắc: `NEWS_RULES` (packages/shared/src/signal-research).
+
+/** Mọi bài SoSoValue đã thu (kể cả bài bị loại), kèm giờ đăng và giờ DeskLabs nhận. */
+export const signalArticles = pgTable(
+  "signal_articles",
+  {
+    /** Id bài của SoSoValue. */
+    id: text("id").primaryKey(),
+    source: text("source").notNull(),
+    url: text("url"),
+    title: text("title"),
+    /** Nội dung đã bỏ HTML, cắt tối đa 6 000 ký tự. */
+    content: text("content"),
+    category: integer("category"),
+    publishedAt: tstz("published_at").notNull(),
+    collectedAt: tstz("collected_at").notNull(),
+    /** `matched_currencies` của SoSoValue (symbol + name). */
+    matchedCurrencies: jsonb("matched_currencies").notNull(),
+    /** Token ứng viên có trên SoDEX: `[{ symbol, market, kind }]`. */
+    candidates: jsonb("candidates").notNull(),
+    contentHash: text("content_hash").notNull(),
+    /**
+     * `backlog` (lưu thô, cũ hơn watermark: không phân loại, không giao dịch), `dropped` (loại trước Claude),
+     * `pending` (chờ Claude, FIFO), `classified` (đã qua Claude, kể cả lỗi "Not understood").
+     */
+    status: text("status").notNull(),
+    /** Bài trùng nội dung y hệt với bài này (bài đến trước). */
+    duplicateOf: text("duplicate_of"),
+    /** Kết quả phân loại đã kiểm (catalyst, market, eventDate…) hoặc lỗi; null = chưa phân loại. */
+    classification: jsonb("classification"),
+    classifiedAt: tstz("classified_at"),
+    ruleVersion: text("rule_version").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    index("signal_articles_published_idx").on(t.publishedAt),
+    index("signal_articles_hash_idx").on(t.contentHash),
+    index("signal_articles_status_idx").on(t.status, t.publishedAt),
+  ],
+);
+
+/** Câu chuyện = token (market) + loại tin; bài sau trong 7 ngày chỉ thêm nguồn, không mở lệnh mới. */
+export const signalStories = pgTable(
+  "signal_stories",
+  {
+    id: id(),
+    storyKey: text("story_key").notNull(),
+    market: text("market").notNull(),
+    catalyst: text("catalyst").notNull(),
+    direction: text("direction").notNull(),
+    firstArticleId: text("first_article_id").notNull(),
+    firstSeenAt: tstz("first_seen_at").notNull(),
+    /** `[{ name, tier, articleId, at }]`, theo thứ tự tới. */
+    sources: jsonb("sources").notNull(),
+    /** Mức ở lần quyết định đầu tiên (khoá). */
+    levelAtEntry: text("level_at_entry").notNull(),
+    /** Mức tính lại sau khi có thêm nguồn ("later level"). */
+    laterLevel: text("later_level").notNull(),
+    ruleVersion: text("rule_version").notNull(),
+    ...timestamps,
+  },
+  (t) => [index("signal_stories_key_idx").on(t.storyKey, t.firstSeenAt)],
+);
+
+/** Một dòng cho mỗi kết quả của một bước (qua / loại / gộp / mở / đóng), kèm mã lý do và version quy tắc. */
+export const signalEvents = pgTable(
+  "signal_events",
+  {
+    id: id(),
+    articleId: text("article_id"),
+    storyId: uuid("story_id"),
+    tradeId: uuid("trade_id"),
+    stage: text("stage").notNull(),
+    outcome: text("outcome").notNull(),
+    reason: text("reason"),
+    detail: jsonb("detail"),
+    ruleVersion: text("rule_version").notNull(),
+    at: tstz("at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("signal_events_at_idx").on(t.at),
+    index("signal_events_article_idx").on(t.articleId),
+    index("signal_events_story_idx").on(t.storyId),
+    index("signal_events_trade_idx").on(t.tradeId),
+  ],
+);
+
+/** Lệnh paper của lane tin tức: 500 USDC, vào / ra theo bid-ask SoDEX do marketdata lưu, không gửi gì tới SoDEX. */
+export const signalPaperTrades = pgTable(
+  "signal_paper_trades",
+  {
+    id: id(),
+    /** Loại tín hiệu: `news` (live paper); về sau `whale` / `funding` / `price_structure` (replay #274). */
+    lane: text("lane").notNull(),
+    /** `live` (lệnh giấy chạy thật theo thời gian) hoặc `replay` (phát lại #274). */
+    label: text("label").notNull().default("live"),
+    /** Biến thể luật trong một loại (replay C: `range_breakout`, `squeeze_breakout`); null với news. */
+    variant: text("variant"),
+    /** Chỉ lane news. */
+    storyId: uuid("story_id"),
+    articleId: text("article_id"),
+    /** Lúc sự kiện xảy ra (news: giờ đăng; replay: fill cá voi / giờ funding / giờ đóng nến) và lúc DeskLabs thấy. */
+    eventAt: tstz("event_at").notNull(),
+    seenAt: tstz("seen_at").notNull(),
+    /** Điểm theo trọng số chốt trước (replay cá voi); null với news. */
+    score: numeric("score", { precision: 20, scale: 10 }),
+    /** Cờ chất lượng dữ liệu (`spread_default`, `tick_inferred`…). */
+    flags: jsonb("flags")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /** Biến động thuận / bất lợi lớn nhất lúc giữ (%, theo chiều lệnh); null khi chưa tính. */
+    mfePct: money("mfe_pct"),
+    maePct: money("mae_pct"),
+    market: text("market").notNull(),
+    token: text("token").notNull(),
+    catalyst: text("catalyst").notNull(),
+    direction: text("direction").notNull(),
+    sizeUsdc: money("size_usdc").notNull(),
+    qty: money("qty").notNull(),
+    entryPrice: money("entry_price").notNull(),
+    entryMid: money("entry_mid").notNull(),
+    spreadAtEntryPct: money("spread_at_entry_pct").notNull(),
+    /** Phí một chiều (%): taker SoDEX + builder fee. */
+    feePct: money("fee_pct").notNull(),
+    entryFee: money("entry_fee").notNull(),
+    typicalMovePct: money("typical_move_pct").notNull(),
+    tpPct: money("tp_pct").notNull(),
+    slPct: money("sl_pct").notNull(),
+    tpPrice: money("tp_price").notNull(),
+    slPrice: money("sl_price").notNull(),
+    maxHoldUntil: tstz("max_hold_until").notNull(),
+    openedAt: tstz("opened_at").notNull(),
+    /** Giá đã chạy (%) từ giờ đăng tới lúc vào (giá giữa); null khi không có giá lúc đăng. */
+    movedBeforeEntryPct: money("moved_before_entry_pct"),
+    levelAtEntry: text("level_at_entry").notNull(),
+    sourcesAtEntry: jsonb("sources_at_entry").notNull(),
+    outsideMarketHours: boolean("outside_market_hours").notNull(),
+    laterHigh: boolean("later_high").notNull().default(false),
+    /** `book` (giá tốt nhất SoDEX) hoặc `last_spread` (giá gần nhất ± nửa spread đo theo giờ). */
+    priceSource: text("price_source").notNull(),
+    status: text("status").notNull(),
+    exitPrice: money("exit_price"),
+    exitReason: text("exit_reason"),
+    exitedAt: tstz("exited_at"),
+    exitFee: money("exit_fee"),
+    resultUsdc: money("result_usdc"),
+    resultPct: money("result_pct"),
+    ruleVersion: text("rule_version").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    // Mỗi token chỉ một lệnh tin tức đang mở (kiểm cả ở DB, không chỉ ở code).
+    uniqueIndex("signal_paper_trades_open_uq")
+      .on(t.lane, t.market)
+      .where(sql`${t.status} = 'open' and ${t.label} = 'live'`),
+    index("signal_paper_trades_opened_idx").on(t.openedAt),
+    index("signal_paper_trades_story_idx").on(t.storyId),
+  ],
+);
+
+/** Hạn mức theo ngày (UTC): số request SoSoValue và token Claude của lane tin tức. */
+export const signalResearchUsage = pgTable("signal_research_usage", {
+  day: date("day").primaryKey(),
+  sosoRequests: integer("soso_requests").notNull().default(0),
+  claudeCalls: integer("claude_calls").notNull().default(0),
+  claudeInputTokens: bigint("claude_input_tokens", { mode: "number" }).notNull().default(0),
+  claudeCacheWriteTokens: bigint("claude_cache_write_tokens", { mode: "number" })
+    .notNull()
+    .default(0),
+  claudeCacheReadTokens: bigint("claude_cache_read_tokens", { mode: "number" })
+    .notNull()
+    .default(0),
+  claudeOutputTokens: bigint("claude_output_tokens", { mode: "number" }).notNull().default(0),
+  updatedAt: tstz("updated_at").notNull().defaultNow(),
+});
+
+/** Sức khoẻ nguồn của lane tin tức (SoSoValue, Claude, giá SoDEX): lần cuối thành công / lỗi. Không bao giờ chứa key. */
+export const signalSourceHealth = pgTable("signal_source_health", {
+  source: text("source").primaryKey(),
+  lastOkAt: tstz("last_ok_at"),
+  lastErrorAt: tstz("last_error_at"),
+  /** Mã lỗi ngắn (HTTP status, tên lỗi), không có nội dung request. */
+  lastError: text("last_error"),
+  /** Chỉ dòng `sosovalue`: giờ đăng của bài mới nhất đã cho qua Collect (watermark), và lần chạy chu kỳ gần nhất. */
+  watermarkAt: tstz("watermark_at"),
+  lastCycleAt: tstz("last_cycle_at"),
+  updatedAt: tstz("updated_at").notNull().defaultNow(),
+});

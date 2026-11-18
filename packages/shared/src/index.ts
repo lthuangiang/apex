@@ -40,3 +40,7 @@ export * from "./mm-model";
 export * from "./api/oauth";
 export * from "./api/mcp";
 export * from "./telegram";
+export * from "./api/signal-research";
+export * from "./signal-research/rules";
+export * from "./signal-research/logic";
+export * from "./signal-research/report";

@@ -28,6 +28,7 @@ import { registerProfileRoutes } from "./modules/profile/routes";
 import { registerPublicRoutes } from "./modules/public/routes";
 import { registerRecoRoutes } from "./modules/reco/routes";
 import { registerSignalAnalysisRoutes } from "./modules/signal-analysis/routes";
+import { registerSignalResearchRoutes } from "./modules/signal-research/routes";
 import { registerSodexRoutes } from "./modules/sodex/routes";
 import type { SodexDeps } from "./modules/sodex/service";
 import { registerSodexDebuggerRoutes } from "./modules/sodex-debugger/routes";
@@ -205,6 +206,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerSodexRoutes(app, { ...deps.sodex, db: deps.db, totpKey: deps.totpKey, now });
   registerSodexDebuggerRoutes(app, { db: deps.db, now, builderId: deps.sodex.builderId });
   registerSignalAnalysisRoutes(app, { db: deps.db, now });
+  registerSignalResearchRoutes(app, { db: deps.db, now });
   const oauth = deps.oauth ?? {
     issuer: "https://desklabs.xyz",
     mcpPublicUrl: "https://mcp.desklabs.xyz",
