@@ -1,10 +1,12 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { Decimal } from "@drift/shared";
-import { describe, expect, it } from "vitest";
+import { claudeCostUsd, Decimal, NEWS_CLASSIFIER } from "@drift/shared";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  anthropicClassifier,
+  articleUsageValues,
   cacheSelfCheck,
   emptyUsage,
   parseAnswer,
@@ -186,6 +188,128 @@ describe("classifier answer", () => {
     good(u(4300, 0));
     good(u(0, 4300));
     expect(ok).toEqual([]);
+  });
+});
+
+describe("per-article Claude usage (#290)", () => {
+  const input = {
+    title: "SOL protocol exploited",
+    content: "exploit",
+    source: "Odaily",
+    publishedAt: Date.parse("2026-11-18T12:00:00Z"),
+    candidates: [{ symbol: "SOL", market: "SOL-USD", kind: "crypto" as const }],
+    universe: ["SOL-USD"],
+  };
+  const reply = {
+    id: "msg_1",
+    type: "message",
+    role: "assistant",
+    model: "claude-haiku-4-5",
+    content: [
+      {
+        type: "tool_use",
+        id: "tu_1",
+        name: "record_classification",
+        input: {
+          catalyst: "hack_exploit",
+          market: "SOL-USD",
+          relevance: "direct",
+          promotional: false,
+          event_date: "2026-11-18",
+        },
+      },
+    ],
+    stop_reason: "tool_use",
+    stop_sequence: null,
+    usage: {
+      input_tokens: 512,
+      output_tokens: 118,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 4635,
+    },
+  };
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  /** fetch giả: mỗi lần gọi lấy một phản hồi trong danh sách; `"network"` = lỗi mạng (không có phản hồi HTTP). */
+  function stubFetch(steps: ("ok" | "429" | "network")[]) {
+    let i = 0;
+    vi.stubGlobal("fetch", () => {
+      const s = steps[i] ?? "ok";
+      i += 1;
+      if (s === "network") return Promise.reject(new TypeError("fetch failed"));
+      if (s === "429")
+        return Promise.resolve(
+          json({ type: "error", error: { type: "rate_limit_error", message: "x" } }, 429),
+        );
+      return Promise.resolve(json(reply));
+    });
+  }
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("one request per article: the article gets exactly that call's tokens, model and prompt version", async () => {
+    stubFetch(["ok"]);
+    const out = await anthropicClassifier("k").classify(input);
+    expect(out.ok).toBe(true);
+    expect(articleUsageValues(out)).toEqual({
+      claudeCalls: 1,
+      claudeInputTokens: 512,
+      claudeCacheWriteTokens: 0,
+      claudeCacheReadTokens: 4635,
+      claudeOutputTokens: 118,
+      claudeModel: NEWS_CLASSIFIER.model,
+      claudePromptVersion: NEWS_CLASSIFIER.promptVersion,
+    });
+  });
+
+  it("a retry after an HTTP error adds to the same article (an API error is not billed: 0 tokens is real)", async () => {
+    stubFetch(["429", "ok"]);
+    const out = await anthropicClassifier("k").classify(input);
+    expect(out).toMatchObject({ ok: true, usageKnown: true });
+    expect(articleUsageValues(out)).toMatchObject({
+      claudeCalls: 2,
+      claudeInputTokens: 512,
+      claudeCacheReadTokens: 4635,
+      claudeOutputTokens: 118,
+    });
+  });
+
+  it("a call with no HTTP response (network / timeout) makes every token column null, never a partial 0", async () => {
+    stubFetch(["network", "ok"]);
+    const out = await anthropicClassifier("k").classify(input);
+    expect(out).toMatchObject({ ok: true, usageKnown: false });
+    expect(articleUsageValues(out)).toMatchObject({
+      claudeCalls: 2,
+      claudeInputTokens: null,
+      claudeCacheWriteTokens: null,
+      claudeCacheReadTokens: null,
+      claudeOutputTokens: null,
+    });
+    stubFetch(["429", "429"]);
+    const failed = await anthropicClassifier("k").classify(input);
+    expect(failed).toMatchObject({ ok: false, usageKnown: true });
+    expect(articleUsageValues(failed)).toMatchObject({ claudeCalls: 2, claudeInputTokens: 0 });
+  });
+
+  it("the daily budget unit and the per-article $ use the same prices", () => {
+    for (const t of [
+      { input: 512, cacheWrite: 0, cacheRead: 4635, output: 118 },
+      { input: 100, cacheWrite: 4200, cacheRead: 0, output: 20 },
+      { input: 3, cacheWrite: 7, cacheRead: 11, output: 13 },
+    ])
+      expect(weightedInput(t)).toBe(
+        claudeCostUsd(t).mul(1_000_000).div(NEWS_CLASSIFIER.pricing.inputPerM).ceil().toNumber(),
+      );
+  });
+
+  it("a fake classifier without usageKnown counts as known", () => {
+    expect(
+      articleUsageValues({ usage: { ...emptyUsage(), calls: 1, input: 3 } }).claudeInputTokens,
+    ).toBe(3);
   });
 });
 
