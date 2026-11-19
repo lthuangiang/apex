@@ -46,11 +46,18 @@ beforeAll(async () => {
     `insert into signal_paper_trades (id, lane, story_id, article_id, market, token, catalyst, direction, size_usdc, qty, entry_price, entry_mid,
        spread_at_entry_pct, fee_pct, entry_fee, typical_move_pct, tp_pct, sl_pct, tp_price, sl_price, max_hold_until, event_at, seen_at, opened_at,
        moved_before_entry_pct, level_at_entry, sources_at_entry, outside_market_hours, price_source, status, exit_price, exit_reason, exited_at,
-       exit_fee, result_usdc, result_pct, rule_version)
+       exit_fee, result_usdc, result_pct, rule_version, classifier_version)
      values ($1, 'news', $2, 'art-1', 'SOL-USD', 'SOL', 'etf_delayed_or_rejected', 'short', 500, 3.5, 142.18, 142.2, 0.03, 0.05, 0.25, 1.33,
        2, 1, 139.34, 143.6, '2026-11-20T10:03:00Z', '2026-11-18T10:00:00Z', '2026-11-18T10:03:00Z', '2026-11-18T10:03:05Z', -0.6, 'medium',
-       '[{"name":"Bloomberg","tier":"top"}]', false, 'book', 'closed', 139.3, 'take_profit', '2026-11-19T09:12:00Z', 0.24, 9.5, 1.9, 'news-v3')`,
+       '[{"name":"Bloomberg","tier":"top"}]', false, 'book', 'closed', 139.3, 'take_profit', '2026-11-19T09:12:00Z', 0.24, 9.5, 1.9, 'news-v3',
+       'cls-passed')`,
     [tradeId, storyId],
+  );
+  // #304: lệnh chỉ tính cổng khi classifier của nó đã qua (≥ 50 nhãn, ≥ 80%): 50 nhãn Right cho classifier của lệnh này.
+  await env.pool.query(
+    `insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict)
+     select gen_random_uuid(), 'lbl-' || g, 'cls-passed', $1, 'right' from generate_series(1, 50) g`,
+    [me.id],
   );
 });
 

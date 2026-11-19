@@ -545,6 +545,12 @@ describe("limits and shadow trades", () => {
       market: "SOL-USD",
     });
     expect(await filterReasons(v.id)).toEqual(["drop:LIMIT_OPEN"]);
+    // #304: giới hạn của version đi cùng event để API hiện "Limit: 1 open".
+    const [drop] = await db
+      .select()
+      .from(signalEvents)
+      .where(and(eq(signalEvents.versionId, v.id), eq(signalEvents.stage, "filter")));
+    expect(drop?.detail).toMatchObject({ maxOpenTrades: 1, maxNewTradesPerDay: null });
     const [story] = await db.select().from(signalStories).where(eq(signalStories.versionId, v.id));
     expect(story).toMatchObject({ outcome: "shadow", locked: true, tradeId: shadow?.id });
     // Watcher theo dõi lệnh shadow như lệnh thật.
@@ -555,6 +561,26 @@ describe("limits and shadow trades", () => {
       .from(signalPaperTrades)
       .where(eq(signalPaperTrades.id, shadow?.id ?? ""));
     expect(closed).toMatchObject({ status: "closed", exitReason: "take_profit", label: "shadow" });
+  });
+
+  it("#304: a shadow already open on the asset still records the version's limit on the drop", async () => {
+    await pauseBaseline();
+    const v = await newVersion("One at a time", { maxOpenTrades: 1 });
+    await insertTrade({ versionId: v.id, market: "ETH-USD", token: "ETH" });
+    const sh = await insertTrade({
+      versionId: v.id,
+      label: "shadow",
+      shadowReason: "LIMIT_OPEN",
+      market: "SOL-USD",
+      token: "SOL",
+    });
+    await run();
+    const [drop] = await db
+      .select()
+      .from(signalEvents)
+      .where(and(eq(signalEvents.versionId, v.id), eq(signalEvents.stage, "filter")));
+    expect(drop).toMatchObject({ outcome: "drop", reason: "LIMIT_OPEN" });
+    expect(drop?.detail).toMatchObject({ openShadowTradeId: sh.id, maxOpenTrades: 1 });
   });
 
   it("Max new trades per day (UTC): shadow with LIMIT_DAY", async () => {
@@ -749,9 +775,12 @@ describe("migration 0047 on existing data", () => {
       const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
         entries: { tag: string }[];
       };
-      journal.entries = journal.entries.filter((e) => !e.tag.startsWith("0047"));
+      // Bỏ 0047 VÀ mọi migration sau nó: migrator chỉ chạy migration mới hơn migration cuối đã chạy, nên để lại 0048+ thì
+      // lần migrate thứ hai sẽ bỏ qua 0047.
+      const later = journal.entries.filter((e) => e.tag >= "0047");
+      journal.entries = journal.entries.filter((e) => e.tag < "0047");
       writeFileSync(journalPath, JSON.stringify(journal));
-      rmSync(join(dir, "0047_sr_bot_versions.sql"));
+      for (const e of later) rmSync(join(dir, `${e.tag}.sql`));
       const p = createDb(uri);
       const trade = (id: string, market: string, opened: string, rule: string) =>
         `('${id}', 'news', 'live', 'a-${rule}', '${opened}', '${opened}', '${market}', 'X', 'hack_exploit', 'short', 500, 5, 100, 100, 0.01, 0.05, 0.25, 2, 3, 1.5, 97, 101.5, now() + interval '1 day', '${opened}', 'low', '[]', false, 'book', 'open', '${rule}')`;

@@ -51,7 +51,28 @@ export const DROP: ReadonlyMap<string, ResearchDropReason> = new Map<string, Res
   ["TOO_THIN_TO_TRADE", "tooThin"],
   ["MOVE_TOO_SMALL_FOR_COST", "tpUnderCost"],
   ["NEWS_TRADE_ALREADY_OPEN", "alreadyOpen"],
+  // #303 (DEC-331): Filter riêng từng News bot version; giới hạn / số dư → lệnh shadow (#304 thêm lý do API).
+  ["NEWS_TYPE_OFF", "newsTypeOff"],
+  ["ASSET_NOT_IN_VERSION", "assetNotInVersion"],
+  ["LEVEL_TOO_LOW", "levelTooLow"],
+  ["LIMIT_OPEN", "limitOpen"],
+  ["LIMIT_DAY", "limitDay"],
+  ["NO_BALANCE", "noBalance"],
+  ["OPPOSITE_NEWS", "oppositeNews"],
 ]);
+
+/**
+ * #304: N của "Limit: N open" / "Limit: N per day" = giới hạn của version lưu trong detail của event Filter
+ * (`maxOpenTrades` cho `LIMIT_OPEN`, `maxNewTradesPerDay` cho `LIMIT_DAY`). Mã khác, dòng cũ không lưu, hoặc giá trị
+ * không phải số nguyên dương → null (web hiện câu không có số, không bao giờ 0).
+ */
+export function reasonLimitOf(code: string | null | undefined, detail: unknown): number | null {
+  const key =
+    code === "LIMIT_OPEN" ? "maxOpenTrades" : code === "LIMIT_DAY" ? "maxNewTradesPerDay" : null;
+  if (key === null || typeof detail !== "object" || detail === null) return null;
+  const v = (detail as Record<string, unknown>)[key];
+  return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null;
+}
 
 /** Mã lý do bị loại TRƯỚC khi gọi Claude ở bước Understand (bài không được gửi cho Claude). */
 export const PRE_CLAUDE_REASONS = [

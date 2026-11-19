@@ -1956,6 +1956,44 @@ export const signalClassifierVersions = pgTable("signal_classifier_versions", {
   createdAt: tstz("created_at").notNull().defaultNow(),
 });
 
+/**
+ * Nhãn phân loại (#304, DEC-328 mục 2): người trong team gắn Right / Wrong cho bài mà classifier gọi là tín hiệu
+ * (catalyst ≠ none và qua Score). Một nhãn mỗi người mỗi bài, sửa được (upsert); mỗi lần lưu ghi `audit_log`
+ * (`signal_research.label_saved`). `classifier_version` = `claude_prompt_version` của bài lúc gắn nhãn.
+ */
+export const signalClassificationLabels = pgTable(
+  "signal_classification_labels",
+  {
+    id: id(),
+    /** Id bài (`signal_articles.id`). Không có FK, như các bảng signal khác (truncate / dọn bài không bị chặn). */
+    articleId: text("article_id").notNull(),
+    classifierVersion: text("classifier_version").notNull(),
+    labeledBy: uuid("labeled_by")
+      .notNull()
+      .references(() => users.id),
+    /** `right` | `wrong`. */
+    verdict: text("verdict").notNull(),
+    /** Bắt buộc khi `wrong`, null khi `right` (`ClassificationWrongReason`). */
+    reason: text("reason"),
+    /** Tuỳ chọn, ≤ 500 ký tự. */
+    note: text("note"),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("signal_classification_labels_article_user_uq").on(t.articleId, t.labeledBy),
+    index("signal_classification_labels_classifier_idx").on(t.classifierVersion, t.articleId),
+    check("signal_classification_labels_verdict_ck", sql`${t.verdict} in ('right', 'wrong')`),
+    check(
+      "signal_classification_labels_reason_ck",
+      sql`(${t.verdict} = 'wrong' and ${t.reason} in ('person_not_company', 'wrong_type', 'wrong_asset', 'passing_mention', 'promotional', 'other')) or (${t.verdict} = 'right' and ${t.reason} is null)`,
+    ),
+    check(
+      "signal_classification_labels_note_ck",
+      sql`${t.note} is null or char_length(${t.note}) <= 500`,
+    ),
+  ],
+);
+
 /** Hạn mức theo ngày (UTC): số request SoSoValue và token Claude của lane tin tức. */
 export const signalResearchUsage = pgTable("signal_research_usage", {
   day: date("day").primaryKey(),

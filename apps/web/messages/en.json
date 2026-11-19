@@ -2796,7 +2796,37 @@
     "signalAnalysis.research.trades.result.opposite",
     "signalAnalysis.research.trades.resultShort.opposite",
     "signalAnalysis.research.detail.outcome.opposite",
-    "signalAnalysis.research.detail.outcome.oppositeNoHeld"
+    "signalAnalysis.research.detail.outcome.oppositeNoHeld",
+    "signalAnalysis.research.reasons.newsTypeOff",
+    "signalAnalysis.research.reasons.assetNotInVersion",
+    "signalAnalysis.research.reasons.levelTooLow",
+    "signalAnalysis.research.reasons.limitOpen",
+    "signalAnalysis.research.reasons.limitDay",
+    "signalAnalysis.research.reasons.noBalance",
+    "signalAnalysis.research.reasons.oppositeNews",
+    "signalAnalysis.research.trace.noteReasons.newsTypeOff",
+    "signalAnalysis.research.trace.noteReasons.assetNotInVersion",
+    "signalAnalysis.research.trace.noteReasons.levelTooLow",
+    "signalAnalysis.research.trace.noteReasons.limitOpen",
+    "signalAnalysis.research.trace.noteReasons.limitDay",
+    "signalAnalysis.research.trace.noteReasons.noBalance",
+    "signalAnalysis.research.trace.noteReasons.oppositeNews",
+    "signalAnalysis.research.trace.reasonLabels.newsTypeOff",
+    "signalAnalysis.research.trace.reasonLabels.assetNotInVersion",
+    "signalAnalysis.research.trace.reasonLabels.levelTooLow",
+    "signalAnalysis.research.trace.reasonLabels.limitOpen",
+    "signalAnalysis.research.trace.reasonLabels.limitDay",
+    "signalAnalysis.research.trace.reasonLabels.noBalance",
+    "signalAnalysis.research.trace.reasonLabels.oppositeNews",
+    "signalAnalysis.research.trace.why.newsTypeOff",
+    "signalAnalysis.research.trace.why.assetNotInVersion",
+    "signalAnalysis.research.trace.why.levelTooLow",
+    "signalAnalysis.research.trace.why.limitOpen",
+    "signalAnalysis.research.trace.why.limitDay",
+    "signalAnalysis.research.trace.why.noBalance",
+    "signalAnalysis.research.trace.why.oppositeNews",
+    "signalAnalysis.research.reasonsN",
+    "signalAnalysis.research.trace.reasonLabelsN"
   ],
   "beta": {
     "label": "Beta",
@@ -7901,7 +7931,14 @@
           "noTaggedCurrency": "no coin tagged",
           "duplicate": "duplicate",
           "assetNotInText": "asset not in article",
-          "treasuryMajorAsset": "treasury on BTC / ETH"
+          "treasuryMajorAsset": "treasury on BTC / ETH",
+          "newsTypeOff": "news type off",
+          "assetNotInVersion": "asset not in version",
+          "levelTooLow": "level too low",
+          "limitOpen": "open-trade limit",
+          "limitDay": "daily limit",
+          "noBalance": "no fake balance",
+          "oppositeNews": "opposite news"
         },
         "reasonLabels": {
           "notCatalyst": "Not a catalyst",
@@ -7918,7 +7955,18 @@
           "noTaggedCurrency": "No coin tagged",
           "duplicate": "Duplicate",
           "assetNotInText": "Asset not in the article",
-          "treasuryMajorAsset": "Treasury on BTC or ETH"
+          "treasuryMajorAsset": "Treasury on BTC or ETH",
+          "newsTypeOff": "News type off",
+          "assetNotInVersion": "Asset not in version",
+          "levelTooLow": "Level too low",
+          "limitOpen": "Limit: open trades",
+          "limitDay": "Limit: trades per day",
+          "noBalance": "Not enough fake balance",
+          "oppositeNews": "Opposite news"
+        },
+        "reasonLabelsN": {
+          "limitOpen": "Limit: {n} open",
+          "limitDay": "Limit: {n} per day"
         },
         "reasonChip": "{label} · {n}",
         "drops": "Why they dropped out",
@@ -7961,6 +8009,13 @@
           "duplicate": "same text as an article already stored",
           "assetNotInText": "the asset is not named in the title or text",
           "treasuryMajorAsset": "treasury news on BTC or ETH is not traded",
+          "newsTypeOff": "this news type is off in the version",
+          "assetNotInVersion": "the asset is not in the version",
+          "levelTooLow": "level below the version’s lowest level to trade",
+          "limitOpen": "max open trades reached; followed as a would-have trade",
+          "limitDay": "max new trades for the day reached; followed as a would-have trade",
+          "noBalance": "not enough fake balance; followed as a would-have trade",
+          "oppositeNews": "opposite news on a trade already open on that asset",
           "sameStory": "joined a story already open",
           "storyTooOld": "story too old to trade again",
           "traded": "{side} {market}, {size} USDC"
@@ -8100,7 +8155,18 @@
         "noTaggedCurrency": "No coin tagged",
         "duplicate": "Duplicate",
         "assetNotInText": "Asset not in the article",
-        "treasuryMajorAsset": "Treasury news on BTC or ETH"
+        "treasuryMajorAsset": "Treasury news on BTC or ETH",
+        "newsTypeOff": "News type off in this version",
+        "assetNotInVersion": "Asset not in this version",
+        "levelTooLow": "Level below this version’s lowest",
+        "limitOpen": "Limit: open trades",
+        "limitDay": "Limit: trades per day",
+        "noBalance": "Not enough fake balance",
+        "oppositeNews": "Opposite news on an open trade"
+      },
+      "reasonsN": {
+        "limitOpen": "Limit: {n} open",
+        "limitDay": "Limit: {n} per day"
       },
       "rules": {
         "title": "What counts as a news signal",

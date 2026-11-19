@@ -78,6 +78,19 @@ beforeEach(async () => {
   );
 });
 
+/**
+ * #304 (DEC-328 mục 2): lệnh chỉ tính vào số thống kê / cổng khi classifier tạo ra nó đã qua cổng precision. Cho
+ * classifier hiện tại qua (50 bài nhãn Right) ở các test đo số thống kê của lệnh.
+ */
+async function passCurrentClassifier() {
+  await pool.query(
+    `with u as (insert into users (id, email) values (gen_random_uuid(), 'lbl-' || gen_random_uuid() || '@example.test') returning id)
+     insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict)
+     select gen_random_uuid(), 'lbl-' || g, $1, u.id, 'right' from u, generate_series(1, 50) g`,
+    [NEWS_CLASSIFIER.promptVersion],
+  );
+}
+
 function item(
   id: string,
   at: number,
@@ -317,6 +330,7 @@ describe("news pipeline end to end", () => {
     await s2.sr.runCycle();
     expect(await db.select().from(signalPaperTrades)).toHaveLength(1);
 
+    await passCurrentClassifier();
     const summary = await loadSignalResearchSummary(db, new Date(now), {
       sosoMonthlyLimit: 9500,
       claudeDailyInputBudget: 2_000_000,
@@ -679,6 +693,7 @@ describe("review PR #278 fixes", () => {
     expect(t?.randomDoneAt).not.toBeNull();
     expect(t?.randomLongShare).toBe("0.000000000000000000");
     expect(t?.randomPct).not.toBeNull();
+    await passCurrentClassifier();
     const summary = await loadSignalResearchSummary(db, new Date(now), {
       sosoMonthlyLimit: 9500,
       claudeDailyInputBudget: 2_000_000,

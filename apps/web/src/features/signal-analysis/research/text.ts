@@ -1,4 +1,4 @@
-import type { ResearchTrade } from "@drift/shared";
+import type { ResearchDropReason, ResearchTrade } from "@drift/shared";
 import type { useTranslations } from "next-intl";
 
 import { pctSigned, usdCompact } from "./format";
@@ -53,5 +53,15 @@ export function skipText(x: ResearchTrade, t: Tr, short: boolean): string | null
         });
   if (s.reason === "alreadyOpen")
     return t("trades.skip.alreadyOpen", { type: t(`types.${x.type}`), asset: x.asset });
-  return t("trades.skip.other", { reason: t(`reasons.${s.reason}`) });
+  return t("trades.skip.other", { reason: reasonText(t, s.reason, s.limit) });
+}
+
+/**
+ * Câu lý do; `limitOpen` / `limitDay` có N thì "Limit: N open" / "Limit: N per day" (#304), dòng cũ không có N thì câu
+ * không có số (không bao giờ "0").
+ */
+export function reasonText(t: Tr, reason: ResearchDropReason, limit: number | null): string {
+  if ((reason === "limitOpen" || reason === "limitDay") && limit !== null)
+    return t(`reasonsN.${reason}`, { n: limit });
+  return t(`reasons.${reason}`);
 }

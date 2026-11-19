@@ -1,6 +1,7 @@
 import {
   AppError,
   claudeCostUsd,
+  classifierGate,
   dec,
   Decimal,
   ErrorCode,
@@ -15,6 +16,7 @@ import {
   tradesNeeded,
   type DayObs,
   type DaySummary,
+  type ClassifierGate,
   type ResearchFact,
   type ResearchLevelRow,
   type ResearchNeeds,
@@ -58,13 +60,16 @@ import {
   signalStories,
 } from "./schema";
 import { loadArticleStops, rangeSince } from "./signal-research-articles";
-import { DROP, newsTypeOf } from "./signal-research-keys";
+import { DROP, newsTypeOf, reasonLimitOf } from "./signal-research-keys";
+import { classifierStatusOf, loadClassifierGates } from "./signal-research-labels";
 
 // Báo cáo Signal research (#271; hợp đồng: packages/shared/src/api/signal-research.ts, UI #273), dùng chung cho CLI của
 // scheduler và endpoint team của api. Chỉ đọc; nơi gọi bọc trong transaction chỉ đọc. Chỉ tính version quy tắc hiện tại
 // (`NEWS_RULES.version`), như cổng của #263. Hiện chỉ lane News · live có dữ liệu. Thiếu số → null, không bao giờ 0.
 // Ngoại lệ (#298): danh sách lệnh và chi tiết một lệnh hiện cả lệnh của version cũ (lịch sử); tổng kết, chẩn đoán và
 // cổng chỉ đếm version hiện tại.
+// #304 (DEC-328 mục 2): số thống kê dùng cho cổng (dòng tổng kết, bảng mức, Long / Short) chỉ tính lệnh đã đóng có
+// classifier đã qua cổng precision (≥ 50 nhãn, ≥ 80%); số dư, lệnh mở, phễu và kết quả theo loại vẫn tính mọi lệnh.
 
 type Q = Db | DbTx;
 type TradeRow = typeof signalPaperTrades.$inferSelect;
@@ -358,6 +363,15 @@ export async function loadSignalResearchSummary(
     .where(liveNews())
     .orderBy(asc(signalPaperTrades.openedAt));
   const closed = all.filter((t) => t.status === "closed" && t.resultPct !== null);
+  check();
+  const gates = await loadClassifierGates(q);
+  const statusOf = (t: TradeRow) => classifierStatusOf(gates, t.classifierVersion);
+  const counted = closed.filter((t) => statusOf(t) === "passed");
+  const notCounted = new Map<string | null, TradeRow[]>();
+  for (const t of closed) {
+    if (statusOf(t) === "passed") continue;
+    notCounted.set(t.classifierVersion, [...(notCounted.get(t.classifierVersion) ?? []), t]);
+  }
   const openRows = all.filter((t) => t.status !== "closed");
   const open = openRows.length;
   // #297: số dư = 10 000 + kết quả đã chốt; lãi / lỗ chưa chốt chỉ khi có giá SoDEX của MỌI lệnh đang mở.
@@ -424,7 +438,7 @@ export async function loadSignalResearchSummary(
       status: gateStatus({ results, avgCostPct: avgCost, difference: diff.n === 0 ? null : diff }),
     };
   };
-  const overall = compare(closed);
+  const overall = compare(counted);
   const weeksRunning =
     enabledSince === null ? null : Math.max((nowMs - enabledSince.getTime()) / (7 * DAY_MS), 1 / 7);
 
@@ -432,7 +446,7 @@ export async function loadSignalResearchSummary(
   const funnelStoriesAt = (lv: string) => funnelStories.filter((s) => s.entry === lv).length;
   const levels: ResearchLevelRow[] = (["high", "medium", "low"] as const).map((lv) => {
     const trades = all.filter((t) => t.levelAtEntry === lv);
-    const done = closed.filter((t) => t.levelAtEntry === lv);
+    const done = counted.filter((t) => t.levelAtEntry === lv);
     const c = compare(done);
     const needed = tradesNeeded(c.diff);
     return {
@@ -570,18 +584,35 @@ export async function loadSignalResearchSummary(
             clusters: overall.clusters,
             status: overall.status,
             needs: needsOf({
-              closed: closed.length,
+              closed: counted.length,
               status: overall.status,
               after: overall.after,
               diff: overall.diff,
               weeksRunning,
             }),
+            classifiers: {
+              counted: counted.length,
+              notCounted: [...notCounted].map(([version, rows]) => {
+                const g =
+                  version === null
+                    ? null
+                    : (gates.get(version) ?? classifierGate({ labeled: 0, right: 0 }));
+                return {
+                  classifierVersion: version,
+                  closed: rows.length,
+                  status: g === null ? ("unknown" as const) : g.status,
+                  labeled: g?.labeled ?? 0,
+                  precisionPct: g?.precisionPct ?? null,
+                  labelsToGo: g?.labelsToGo ?? null,
+                };
+              }),
+            },
           },
         ]
       : [],
     directions: on
       ? (["long", "short"] as const).map((side) => {
-          const c = compare(closed.filter((t) => t.direction === side));
+          const c = compare(counted.filter((t) => t.direction === side));
           return {
             side,
             closed: c.after.n,
@@ -691,6 +722,8 @@ export async function loadSignalResearchDiagnostics(q: Q, now: Date) {
 interface Ctx {
   articles: Map<string, ArticleRow>;
   stories: Map<string, StoryRow>;
+  /** #304: cổng precision theo classifier. */
+  gates: ReadonlyMap<string, ClassifierGate>;
 }
 
 async function contextOf(
@@ -712,7 +745,11 @@ async function contextOf(
           .select()
           .from(signalStories)
           .where(inArray(signalStories.id, [...new Set(storyIds)]));
-  return { articles: new Map(a.map((x) => [x.id, x])), stories: new Map(s.map((x) => [x.id, x])) };
+  return {
+    articles: new Map(a.map((x) => [x.id, x])),
+    stories: new Map(s.map((x) => [x.id, x])),
+    gates: await loadClassifierGates(q),
+  };
 }
 
 function headlineOf(a: ArticleRow | undefined): string {
@@ -780,6 +817,10 @@ function tradeItem(
     sl: decOut(t.slPrice),
     slPct: numOf(t.slPct),
     maxHoldHours: Math.round((t.maxHoldUntil.getTime() - t.openedAt.getTime()) / 3_600_000),
+    classifier: {
+      version: t.classifierVersion,
+      status: classifierStatusOf(ctx.gates, t.classifierVersion),
+    },
     result: {
       pnl: done && t.resultUsdc !== null ? dec(t.resultUsdc).toDecimalPlaces(6).toFixed() : null,
       unrealized: openPnl(t, px)?.toDecimalPlaces(6).toFixed() ?? null,
@@ -812,6 +853,7 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
       reason,
       tpPct: tp,
       neededPct: cost === null ? null : num(cost.mul(NEWS_RULES.minTpCostMultiple)),
+      limit: reasonLimitOf(e.reason, e.detail),
     },
     retry: false,
     movedBeforePct: null,
@@ -821,6 +863,7 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
     sl: null,
     slPct: null,
     maxHoldHours: null,
+    classifier: null,
     result: null,
   };
 }
