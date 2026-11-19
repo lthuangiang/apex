@@ -166,6 +166,11 @@ vi.mock("@/lib/api", async (importOriginal) => {
         }
         return Promise.resolve(schema.parse(RESEARCH_TRADES));
       }
+      // News feed / trace (#292) có test riêng ở news-trace.test.tsx; ở đây feed rỗng.
+      if (p.endsWith("/signal-research/articles"))
+        return Promise.resolve(
+          schema.parse({ items: [], nextCursor: null, total: 0, totalInRange: 0 }),
+        );
       if (p.includes("/signal-research/trades/")) {
         if (p.endsWith("/sr-0004"))
           return Promise.resolve(schema.parse({ ...NEWS_DETAIL, trade: RESEARCH_TRADES.items[3] }));
@@ -278,33 +283,6 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(within(bots).getByText("01:00 · 23 trades")).toBeInTheDocument();
     expect(within(bots).getByText("9,623.4")).toBeInTheDocument();
     expect(within(bots).getByRole("link", { name: "Rules" })).toHaveAttribute("href", "#sr-rules");
-  });
-
-  it("funnel: an accessible image summarising the counts, plus the numbers and drop reasons as text", async () => {
-    wrap();
-    await screen.findByRole("region", { name: /How news becomes a paper trade · last 7 days/ });
-    const img = screen.getByRole("img", {
-      name: "Funnel: 1,240 articles collected, grouped into 380 stories, 96 scored as signals, 41 passed filters, 41 paper trades: 29 long and 12 short",
-    });
-    expect(img).toBeInTheDocument();
-    const f = region(/How news becomes a paper trade/);
-    expect(
-      within(f).getByText("860 articles merged into a story already seen, none dropped"),
-    ).toBeInTheDocument();
-    expect(within(f).getByText("level at entry: High 21 · Medium 38 · Low 37")).toBeInTheDocument();
-    expect(within(f).getByText("3 min 10 s")).toBeInTheDocument();
-    expect(within(f).getByText("$0.42 / day")).toBeInTheDocument();
-    expect(
-      within(f).getByText("1,240 articles read · SoSoValue 2,016 of 10,000 calls this month"),
-    ).toBeInTheDocument();
-    expect(within(f).getByText("Score · −284 stories")).toBeInTheDocument();
-    expect(
-      within(f).getByText(
-        "Take profit under 2× cost 27 · Trade already open on that asset 19 · Source late 9",
-      ),
-    ).toBeInTheDocument();
-    expect(within(f).getByText("12 take profit")).toBeInTheDocument();
-    expect(within(f).getByText("· 11 open")).toBeInTheDocument();
   });
 
   it("news signal rules and the per-level table say Not enough trades, never 0", async () => {
@@ -617,42 +595,10 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(intlErrors).toEqual([]);
   });
 
-  it("counts use singular and plural forms (1 story, 2 stories) and drop lines never read as a negative count", async () => {
-    // Số nhiều (fixture mặc định).
-    const a = wrap();
-    const f0 = await screen.findByRole("region", {
-      name: /How news becomes a paper trade · last 7 days/,
-    });
-    expect(within(f0).getByText(/· Collect\s+1,240 articles$/)).toBeInTheDocument();
-    expect(within(f0).getByText(/· Normalize\s+380 stories$/)).toBeInTheDocument();
-    expect(within(f0).getByText(/· Score\s+96 signals$/)).toBeInTheDocument();
-    expect(within(f0).getByText("Score · −284 stories")).toHaveAttribute("aria-hidden", "true");
-    expect(within(f0).getByText("Score: 284 stories dropped")).toBeInTheDocument();
-    expect(within(f0).getByText("Filter: 55 signals dropped")).toBeInTheDocument();
-    a.unmount();
-    // Số ít và 0.
+  it("counts use singular and plural forms (1 trade, 1 day)", async () => {
     state.mode = "one";
     wrap();
-    const f = await screen.findByRole("region", {
-      name: /How news becomes a paper trade · last 1 day$/,
-    });
-    expect(within(f).getByText(/· Collect\s+1 article$/)).toBeInTheDocument();
-    expect(within(f).getByText(/· Normalize\s+1 story$/)).toBeInTheDocument();
-    expect(within(f).getByText(/· Score\s+1 signal$/)).toBeInTheDocument();
-    expect(
-      within(f).getByText("1 article merged into a story already seen, none dropped"),
-    ).toBeInTheDocument();
-    expect(within(f).getByText(/^1 article read · SoSoValue/)).toBeInTheDocument();
-    expect(within(f).getByText("Score · −1 story")).toBeInTheDocument();
-    expect(within(f).getByText("Score: 1 story dropped")).toBeInTheDocument();
-    expect(within(f).getByText("Filter · none dropped")).toBeInTheDocument();
-    expect(within(f).queryByText(/−0/)).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("img", {
-        name: "Funnel: 1 article collected, grouped into 1 story, 1 scored as signals, 1 passed filters, 1 paper trade: 1 long and 0 short",
-      }),
-    ).toBeInTheDocument();
-    const tbl = screen.getByRole("table", { name: "Where each signal type stands" });
+    const tbl = await screen.findByRole("table", { name: "Where each signal type stands" });
     expect(within(tbl).getByText("1 more trade. SoDEX funding covers 1 day.")).toBeInTheDocument();
     expect(
       within(tbl).getByText("About 70 more closed (all news pooled) · first verdict in ~1 week"),

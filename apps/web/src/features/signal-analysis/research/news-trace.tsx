@@ -929,7 +929,7 @@ function TotalsPanel({
         ) : reasons.length === 0 ? (
           <span className="text-[13px] text-muted">{t("trace.dropsNone")}</span>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
+          <div role="group" aria-label={t("trace.drops")} className="flex flex-wrap gap-1.5">
             {reasons.map((r) => (
               <button
                 key={r.reason}
