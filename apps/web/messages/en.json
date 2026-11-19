@@ -2845,7 +2845,31 @@
     "signalAnalysis.research.trace.sub",
     "signalAnalysis.research.trace.subShort",
     "signalAnalysis.research.summary.title",
-    "signalAnalysis.research.trades.title"
+    "signalAnalysis.research.trades.title",
+    "signalAnalysis.research.context.notRecorded",
+    "signalAnalysis.research.context.missing",
+    "signalAnalysis.research.context.cardTag.backfilled",
+    "signalAnalysis.research.context.h1.tagYesNoUsd",
+    "signalAnalysis.research.context.h1.tagNoNa",
+    "signalAnalysis.research.context.h1.tagAgainst",
+    "signalAnalysis.research.context.h1.tagNaWallets",
+    "signalAnalysis.research.context.h1.noNa",
+    "signalAnalysis.research.context.h1.against",
+    "signalAnalysis.research.context.h1.naAsset",
+    "signalAnalysis.research.context.h1.naWallets",
+    "signalAnalysis.research.context.h2.tagNa",
+    "signalAnalysis.research.context.h2.payer.short",
+    "signalAnalysis.research.context.h2.payer.none",
+    "signalAnalysis.research.context.h2.rateNoH",
+    "signalAnalysis.research.context.h2.rateNa",
+    "signalAnalysis.research.context.h2.needShort",
+    "signalAnalysis.research.context.h2.na",
+    "signalAnalysis.research.context.h3.tagNa",
+    "signalAnalysis.research.context.h3.movedNa",
+    "signalAnalysis.research.context.breakouts.up",
+    "signalAnalysis.research.context.breakouts.down",
+    "signalAnalysis.research.trace.bandShort.checks",
+    "signalAnalysis.research.trace.bandShort.trade"
   ],
   "beta": {
     "label": "Beta",
@@ -7898,10 +7922,9 @@
           "normalize": "Normalize",
           "score": "Score",
           "filter": "Filter",
-          "decide": "Decide"
+          "decide": "Decide",
+          "context": "Context"
         },
-        "totalsHint": "Totals for {range}. Click a step to list its articles, or pick an article to watch it go through.",
-        "mobileHint": "Picking an article scrolls here and runs it.",
         "source": "SoSoValue · {source}",
         "sourceTier": "SoSoValue · {source} ({tier} tier)",
         "tiers": {
@@ -8161,7 +8184,11 @@
         "traceAria": "Trace: {title}",
         "unitNote": "Every step counts the same articles, collected in the {range}: in − out = next step.",
         "sub": "Every article, what happened to it, and why. Pick one to watch it go through.",
-        "subShort": "Every article, what happened to it, and why."
+        "subShort": "Every article, what happened to it, and why.",
+        "bandShort": {
+          "checks": "{passed} of {total} checks",
+          "trade": "{side} {size} USDC"
+        }
       },
       "reasons": {
         "notCatalyst": "Not a catalyst on the list",
@@ -8945,11 +8972,92 @@
           "size": "Each trade is <b>{size} USDC</b> of fake money.",
           "gate": "A signal type gets a page for users only after it passes the gate: <b>100 trades or more</b>, average result after fees at least <b>2× the cost of a trade</b>, a likely range that stays above 0, it <b>beats random entries at the same moments</b>, and the result has the <b>same sign in both halves</b>.",
           "classifierGate": "A trade counts only when the classifier that made it has <b>{min} labels</b> and is at least <b>{pct}% right</b>.",
-          "context1": "<b>Where the other signals go: step 4 · Context.</b> After Claude names the news type and the asset (Score), DeskLabs checks three things about that asset at that moment: did whales on the leaderboard just trade the same way, is funding against the crowd, has the price already run.",
+          "context1": "<b>Where the other signals go: step 4 · Context.</b> After Claude names the news type and the asset (Score), DeskLabs checks three things about that asset at that moment: did the whales DeskLabs tracks just trade the same way, is funding against the crowd, has the price already run.",
           "context2": "<b>Now: records only (dashed).</b> Every signal passes step 4; the answers are saved on the signal and the trade. \"Is it working? › Does context help?\" compares trades with and without each one.",
           "context3": "<b>Later: a version can use it.</b> If one check proves itself, a new version can turn it on, e.g. \"Require whales agree\". Then step 4 becomes solid for that version and signals that fail it drop here with that reason.",
           "versionNow": "<b>{name}:</b> {config}"
         }
+      },
+      "context": {
+        "recordsOnly": "records only",
+        "yesOf": "{n} of 3 yes",
+        "notRecorded": "Not recorded",
+        "waiting": "Waiting for the article to reach step 4…",
+        "never": "This article never reaches step 4, so no context is checked.",
+        "missing": "This article came before step 4, so no context was recorded.",
+        "mobileHint": "<b>Step 4 · Context</b> records whales, funding and early price run for each signal. It does not block anything yet.",
+        "cardTitle": "4 · Context at {time}",
+        "cardTag": {
+          "live": "Recorded · does not change the trade",
+          "backfilled": "Backfilled · does not change the trade"
+        },
+        "h": {
+          "h1": "H1 · Whales agree",
+          "h2": "H2 · Funding against the crowd",
+          "h3": "H3 · Price already moved"
+        },
+        "answer": {
+          "yes": "Yes",
+          "no": "No",
+          "against": "Disagree",
+          "na": "Not available",
+          "yesWarn": "Yes · warning"
+        },
+        "h1": {
+          "tagYes": "{n, plural, one {# whale} other {# whales}} · +{usd} {side}",
+          "tagYesNoUsd": "{n, plural, one {# whale} other {# whales}} · {side}",
+          "tagNo": "{n, plural, one {# wallet checked} other {# wallets checked}} · quiet",
+          "tagNoNa": "Wallets checked: Not available · quiet",
+          "tagAgainst": "{n, plural, one {# wallet} other {# wallets}} went {side} · opposite",
+          "tagNaAsset": "No whale data for {asset}",
+          "tagNaWallets": "No tracked wallet has data",
+          "tagNaAny": "No whale data for this asset",
+          "yes": "{n, plural, one {# tracked wallet} other {# tracked wallets}} added {side} {asset} in the {mins} min before",
+          "first": "first at {time}",
+          "no": "Checked {n, plural, one {# tracked wallet} other {# tracked wallets}}: none traded {asset} in the {mins} min before.",
+          "noNa": "No tracked wallet traded {asset} in the {mins} min before. Wallets checked: Not available.",
+          "against": "{n, plural, one {# tracked wallet} other {# tracked wallets}} added {opp} {asset} in the {mins} min before, the other way from this {side} signal.",
+          "naAsset": "This asset is not on Hyperliquid, so there is no whale data. The signal is left out of the H1 comparison.",
+          "naWallets": "No tracked wallet has data, so there is no whale data. The signal is left out of the H1 comparison.",
+          "naAny": "This asset is not on Hyperliquid, or no tracked wallet has data, so there is no whale data. The signal is left out of the H1 comparison.",
+          "naBackfilled": "Not available for backfilled signals: past wallet tracking can't be rebuilt."
+        },
+        "h2": {
+          "tagYes": "Funding p{p} · {payer}",
+          "tagNo": "Funding p{p} · no crowd",
+          "tagNa": "Funding: Not available",
+          "payer": {
+            "long": "longs pay",
+            "short": "shorts pay",
+            "none": "no one pays"
+          },
+          "rate": "Funding {rate} per {h} h",
+          "rateNoH": "Funding {rate}",
+          "rateNa": "Funding: Not available",
+          "pct": "{p, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} percentile of {days} days",
+          "needLong": "{side} needs ≤ {p, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}",
+          "needShort": "{side} needs ≥ {p, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}",
+          "na": "Not enough recent funding history to rank it, so the signal is left out of the H2 comparison."
+        },
+        "h3": {
+          "tagYes": "Ran {moved} before · late?",
+          "tagNo": "{moved} before · on time",
+          "tagNa": "Price run: Not available",
+          "moved": "{moved} before entry",
+          "movedNa": "Move before entry: Not available",
+          "typical": "typical 1 h move {pct}",
+          "threshold": "threshold {pct}"
+        },
+        "exploratory": "Exploratory values",
+        "volume": "Volume vs 24 h average",
+        "times": "{x}×",
+        "breakout": "Range breakout",
+        "breakouts": {
+          "up": "Up",
+          "down": "Down",
+          "none": "No"
+        },
+        "openInterest": "Open interest"
       }
     },
     "pricesMainnet": "Prices from mainnet"

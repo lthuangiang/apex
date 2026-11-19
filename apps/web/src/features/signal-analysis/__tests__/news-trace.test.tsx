@@ -12,7 +12,7 @@ import type { z } from "zod";
 
 import messages from "../../../../messages/en.json";
 import { SignalAnalysisPage } from "../components/signal-analysis-page";
-import { STEP_MS } from "../research/news-trace";
+import { CONTEXT_STEP_MS, STEP_MS } from "../research/news-trace";
 
 import { ARTICLES, PAGE_SIZE, SUMMARY_1D, SUMMARY_7D, TRACES } from "./news-trace-fixtures";
 import { RESEARCH_TRADES } from "./research-fixtures";
@@ -184,7 +184,8 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     // #297: 20 bài mỗi trang, feed cuộn trong khung cao cố định (không kéo dài trang).
     expect(lastPath("/articles?")).toContain("limit=20");
     const scroll = screen.getByTestId("sr-feed-scroll");
-    expect(scroll).toHaveClass("overflow-y-auto", "max-h-[420px]", "md:max-h-[470px]");
+    // #343: trên desktop feed cao bằng khối phễu (lưới 3 cột), cuộn trong khung; điện thoại tối đa 420 px.
+    expect(scroll).toHaveClass("overflow-y-auto", "max-h-[420px]", "md:max-h-none");
     expect(within(scroll).getAllByRole("listitem").length).toBeGreaterThan(0);
     const f = funnel();
     // #342: tên mới + phụ đề; khoảng thời gian chỉ ở nhóm nút 1 day / 7 days.
@@ -205,26 +206,55 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(within(f).getAllByText("3 signals").length).toBeGreaterThan(0);
     expect(within(f).getAllByText("1 left").length).toBeGreaterThan(0);
     expect(within(f).getAllByText("Long 1 · Short 0").length).toBeGreaterThan(0);
-    expect(within(f).getByText("every SoSoValue article")).toBeInTheDocument();
+    // #343: phễu sáng 6 tầng; ghi chú từng tầng nằm ở chú thích khi rê chuột (title), không cạnh tầng.
+    const band = (name: string) =>
+      within(f).getByRole("button", { name: `List articles that stopped at ${name}` });
+    expect(band("Collect")).toHaveAttribute("title", "every SoSoValue article");
     // "No coin tagged" bị Normalize loại (event NO_SODEX_MARKET): trừ ở Normalize.
-    expect(within(f).getByText("36 out · 31 not on SoDEX, 3 no coin tagged")).toBeInTheDocument();
-    expect(within(f).getByText("19 out · 15 not a catalyst, 4 promo")).toBeInTheDocument();
+    expect(band("Normalize")).toHaveAttribute(
+      "title",
+      "36 out · 31 not on SoDEX, 3 no coin tagged",
+    );
+    expect(band("Score")).toHaveAttribute("title", "19 out · 15 not a catalyst, 4 promo");
+    expect(band("Filter")).toHaveAttribute(
+      "title",
+      "2 out · 1 TP under cost, 1 merged into a story",
+    );
+    expect(band("Decide")).toHaveAttribute("title", "500 USDC each · TP / SL from volatility");
+    // Tầng 4 · Context: viền đứt, chỉ ghi nhận (không có số theo khoảng thời gian, không bấm được).
+    const ctxBand = within(f).getByTestId("sr-funnel-bands").querySelector("[data-band='context']");
+    expect(ctxBand).toHaveTextContent("4 · Context");
+    expect(ctxBand).toHaveTextContent("records only");
+    expect(ctxBand?.tagName).toBe("DIV");
+    expect(ctxBand).toHaveClass("border-dashed");
     expect(
-      within(f).getByText("2 out · 1 TP under cost, 1 merged into a story"),
+      within(f)
+        .getAllByText(/^[1-6] · /)
+        .map((x) => x.textContent),
+    ).toEqual([
+      "1 · Collect",
+      "2 · Normalize",
+      "3 · Score",
+      "4 · Context",
+      "5 · Filter",
+      "6 · Decide",
+    ]);
+    // Ba ô giải thích bước 4 dưới phễu; điện thoại có một dòng ngắn.
+    expect(
+      within(f).getByText(/Where the other signals go: step 4 · Context\./),
+    ).toBeInTheDocument();
+    expect(within(f).getByText(/Now: records only \(dashed\)\./)).toBeInTheDocument();
+    expect(within(f).getByText(/Later: a version can use it\./)).toBeInTheDocument();
+    expect(
+      within(f).getByText(/records whales, funding and early price run for each signal/),
     ).toBeInTheDocument();
     expect(
       within(f).getByText(
         "Every step counts the same articles, collected in the last 1 day: in − out = next step.",
       ),
     ).toBeInTheDocument();
-    expect(within(f).getByText("500 USDC each · TP / SL from volatility")).toBeInTheDocument();
     expect(within(f).getByText("4 min 20 s")).toBeInTheDocument();
     expect(within(f).getByText("$0.03 today")).toBeInTheDocument();
-    expect(
-      within(f).getByText(
-        "Totals for last 1 day. Click a step to list its articles, or pick an article to watch it go through.",
-      ),
-    ).toBeInTheDocument();
     expect(verdict()).toHaveTextContent(
       "Pick an article on the left, or click a step to list its articles.",
     );
@@ -268,8 +298,8 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(within(funnel()).getAllByText("41 left").length).toBeGreaterThan(0);
     expect(within(funnel()).getAllByText("Long 29 · Short 12").length).toBeGreaterThan(0);
     expect(
-      within(funnel()).getByText("900 out · 808 duplicate, 52 not on SoDEX"),
-    ).toBeInTheDocument();
+      within(funnel()).getByRole("button", { name: "List articles that stopped at Normalize" }),
+    ).toHaveAttribute("title", "900 out · 808 duplicate, 52 not on SoDEX");
     expect(intlErrors).toEqual([]);
   });
 
@@ -351,33 +381,92 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     );
     // Totals ẩn, tầng không bấm được khi đang trace.
     expect(within(f).queryByText("Why they dropped out")).not.toBeInTheDocument();
-    expect(within(f).getByRole("button", { name: "Collect" })).toBeDisabled();
+    expect(within(f).queryByRole("button", { name: /List articles that stopped at/ })).toBeNull();
     expect(within(f).queryByRole("list", { name: "Steps this article went through" })).toBeNull();
+    // Khung Context cạnh phễu chờ tới bước 4.
+    const panel = within(f).getByTestId("sr-ctx-panel");
+    expect(panel).toHaveAttribute("data-state", "waiting");
+    expect(panel).toHaveTextContent("Waiting for the article to reach step 4…");
+    expect(panel).toHaveTextContent("records only");
 
-    const names = ["Collect", "Normalize", "Score", "Filter", "Decide"];
+    const names = ["Collect", "Normalize", "Score", "Context", "Filter", "Decide"];
     for (const [i, n] of names.entries()) {
-      await tick();
+      // Bước 4 · Context giữ lâu hơn để hiệu ứng H1 / H2 / H3 chạy xong.
+      await tick(i === 4 ? CONTEXT_STEP_MS : STEP_MS);
       expect(verdict()).toHaveTextContent(`Step ${String(i + 1)} · ${n}…`);
       // Thẻ của bước đang chạy chưa hiện; các bước trước đã hiện.
       const list = within(f).queryByRole("list", { name: "Steps this article went through" });
       expect(list === null ? 0 : within(list).getAllByRole("listitem").length).toBe(i);
+      if (i === 3) {
+        // Chip tới bước 4: khung chạy hiệu ứng theo snapshot của bài này.
+        expect(panel).toHaveAttribute("data-state", "shown");
+        expect(within(panel).getByTestId("sr-ctx-h1")).toHaveAttribute("data-answer", "yes");
+        expect(within(panel).getByText("2 whales · +$1.4M Long")).toBeInTheDocument();
+        expect(within(panel).getByTestId("sr-ctx-h2")).toHaveAttribute("data-answer", "yes");
+        expect(within(panel).getByText("Funding p8 · shorts pay")).toBeInTheDocument();
+        expect(within(panel).getByTestId("sr-ctx-h3")).toHaveAttribute("data-answer", "no");
+        expect(within(panel).getByText("+0.2% before · on time")).toBeInTheDocument();
+      }
     }
     await tick();
     expect(verdict()).toHaveTextContent("Reached Decide: Long ETH-USD, 500 USDC · Claude $0.0021");
+    expect(
+      within(within(f).getByTestId("sr-funnel-bands")).getByText("2 of 3 yes"),
+    ).toBeInTheDocument();
     const list = within(f).getByRole("list", { name: "Steps this article went through" });
     expect(
       within(list)
         .getAllByRole("heading")
         .map((h) => h.textContent),
-    ).toEqual(names.map((n, i) => `${String(i + 1)}. ${n}`));
+    ).toEqual([
+      "1. Collect",
+      "2. Normalize",
+      "3. Score",
+      "4 · Context at 10:20:14",
+      "5. Filter",
+      "6. Decide",
+    ]);
     expect(within(list).getAllByText("Passed")).toHaveLength(5);
-    expect(within(f).getAllByText("Seen 4 min after release").length).toBeGreaterThan(0);
-    expect(within(f).getAllByText("ETH → ETH-USD · new story").length).toBeGreaterThan(0);
-    expect(within(f).getAllByText("ETF approved → Long · Medium · $0.0021").length).toBeGreaterThan(
-      0,
+    // Thẻ bước 4: giá trị lưu lúc quyết định; Yes màu xanh dương trung tính, không phải xanh lá.
+    expect(within(list).getByText("Recorded · does not change the trade")).toBeInTheDocument();
+    const h1 = within(list).getByTestId("sr-ctx-card-h1");
+    expect(h1).toHaveTextContent("H1 · Whales agree");
+    expect(within(h1).getByText("Yes")).toHaveClass("text-accent-ink");
+    expect(h1).toHaveTextContent(
+      "2 tracked wallets added Long ETH in the 60 min before · $1.4M · first at 09:41",
     );
-    expect(within(f).getAllByText("4 of 4 checks passed").length).toBeGreaterThan(0);
-    expect(within(f).getAllByText("Long ETH-USD · 500 USDC").length).toBeGreaterThan(0);
+    expect(within(list).getByTestId("sr-ctx-card-h2")).toHaveTextContent(
+      "Funding −0.010% per 8 h · 8th percentile of 30 days · Long needs ≤ 20th",
+    );
+    const h3 = within(list).getByTestId("sr-ctx-card-h3");
+    expect(within(h3).getByText("No")).toHaveClass("text-ink-2");
+    expect(h3).toHaveTextContent("+0.2% before entry · typical 1 h move 0.6% · threshold 0.6%");
+    // Exploratory values: <details> gập sẵn.
+    const details = within(list).getByText("Exploratory values").closest("details");
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute("open");
+    expect(within(list).getByText("1.8×")).toBeInTheDocument();
+    expect(within(list).getByText("Open interest").closest("div")).toHaveTextContent(
+      "Not available",
+    );
+    // #343: tầng phễu chỉ hiện kết quả gọn, không cắt "…" (xuống 2 dòng nếu cần).
+    const bandsBox = within(f).getByTestId("sr-funnel-bands");
+    const notes = [...bandsBox.querySelectorAll("[data-band]")].map(
+      (b) => b.lastElementChild?.textContent ?? "",
+    );
+    expect(notes).toEqual([
+      "Seen 4 min after release",
+      "ETH-USD · new story",
+      "ETF approved → Long",
+      "2 of 3 yes",
+      "4 of 4 checks",
+      "Long 500 USDC",
+    ]);
+    for (const el of bandsBox.querySelectorAll("[data-band] span"))
+      expect(el.getAttribute("class") ?? "").not.toMatch(/truncate|text-ellipsis|line-clamp/);
+    expect(bandsBox.querySelector("[data-band='normalize'] > span:last-child")).toHaveClass(
+      "whitespace-normal",
+    );
     expect(within(list).getByText("10:20:11 (4 min 9 s later)")).toBeInTheDocument();
     expect(within(list).getByText("ETHEREUM (ETH)")).toBeInTheDocument();
     expect(within(list).getByText("New · ETF approved · ETH-USD")).toBeInTheDocument();
@@ -398,6 +487,8 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     fireEvent.click(within(f).getByRole("button", { name: "Replay" }));
     expect(verdict()).toHaveTextContent("Article arriving…");
     expect(within(f).queryByRole("list", { name: "Steps this article went through" })).toBeNull();
+    // Replay: khung Context về chờ, hiệu ứng chạy lại khi chip tới bước 4.
+    expect(within(f).getByTestId("sr-ctx-panel")).toHaveAttribute("data-state", "waiting");
     await tick();
     expect(verdict()).toHaveTextContent("Step 1 · Collect…");
 
@@ -410,20 +501,39 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(intlErrors).toEqual([]);
   });
 
-  it("an article dropped at Filter stops there: red step, the internal code, no Decide card", async () => {
+  it("an article dropped at Filter stops there: grey step, the internal code, no Decide card; all-No context", async () => {
     await ready();
     vi.useFakeTimers();
     fireEvent.click(card("Solana Foundation"));
     await tick(0);
-    for (let i = 0; i < 5; i++) await tick();
+    for (let i = 0; i < 4; i++) await tick();
+    // Bước 4: "no signal" (cả ba No, mockup trace-no-signal): sonar + 2 cá voi lội nền, bập bênh cân bằng, "on time".
     const f = funnel();
+    const panel = within(f).getByTestId("sr-ctx-panel");
+    expect(panel).toHaveAttribute("data-state", "shown");
+    expect(within(panel).getByTestId("sr-ctx-h1")).toHaveAttribute("data-answer", "no");
+    expect(within(panel).getByText("12 wallets checked · quiet")).toBeInTheDocument();
+    expect(within(panel).getByText("Funding p48 · no crowd")).toBeInTheDocument();
+    expect(within(panel).getByText("−0.1% before · on time")).toBeInTheDocument();
+    const swim = panel.querySelectorAll(".sr-swim");
+    expect(swim).toHaveLength(2);
+    for (const w of swim) expect(w.getAttribute("class")).toContain("motion-reduce:hidden");
+    await tick(CONTEXT_STEP_MS);
+    await tick();
     expect(verdict()).toHaveTextContent(
       "Stopped at Filter: take profit under 2× cost · Claude $0.0022",
     );
     expect(within(f).getByText("Dropped · TP 0.15% < 2× cost")).toBeInTheDocument();
+    expect(
+      within(within(f).getByTestId("sr-funnel-bands")).getByText("0 of 3 yes"),
+    ).toBeInTheDocument();
     const list = within(f).getByRole("list", { name: "Steps this article went through" });
-    expect(within(list).getAllByRole("listitem")).toHaveLength(4);
-    expect(within(list).getByText("Dropped")).toBeInTheDocument();
+    expect(within(list).getAllByRole("listitem")).toHaveLength(5);
+    expect(within(list).getByText("Dropped")).toHaveClass("bg-bg");
+    expect(within(list).getByTestId("sr-ctx-card-h1")).toHaveTextContent(
+      "Checked 12 tracked wallets: none traded SOL in the 60 min before.",
+    );
+    expect(within(list).getByTestId("sr-ctx-card-h2")).toHaveTextContent("Short needs ≥ 80th");
     expect(
       within(list).getByText("The expected move is too small to beat the cost of a trade."),
     ).toBeInTheDocument();
@@ -454,6 +564,11 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
       ),
     ).toBeInTheDocument();
     expect(within(f).getByText("Dropped · KNTQ not on SoDEX")).toBeInTheDocument();
+    // Bài dừng trước bước 4: không kiểm ngữ cảnh.
+    expect(within(f).getByTestId("sr-ctx-panel")).toHaveAttribute("data-state", "notReached");
+    expect(
+      within(f).getByText("This article never reaches step 4, so no context is checked."),
+    ).toBeInTheDocument();
     // Không có lớp hiệu ứng nào chạy ngoài motion-safe.
     for (const el of f.querySelectorAll("[class*='animate-']"))
       expect(el.className).not.toMatch(/(^|\s)animate-/);
