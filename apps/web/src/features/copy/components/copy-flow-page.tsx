@@ -91,6 +91,7 @@ function useDebounced<T>(value: T, ms: number): T {
 
 export function CopyFlowPage({ leader }: { leader: string | null }) {
   const t = useTranslations("copy");
+  const tc = useTranslations("common.errors");
   const router = useRouter();
   const features = useFeatures();
   const me = useMe();
@@ -629,7 +630,11 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
                   onChange={setCode}
                 />
               ) : null}
-              {start.isError ? (
+              {start.checking ? (
+                <p role="status" className="m-0 text-sm text-ink-2">
+                  {tc("unconfirmed")}
+                </p>
+              ) : start.isError ? (
                 <p role="alert" className="m-0 text-sm text-neg">
                   {start.error instanceof ApiError && start.error.code === "STATE_CONFLICT"
                     ? t("review.full")

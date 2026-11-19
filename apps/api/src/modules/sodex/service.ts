@@ -1,4 +1,4 @@
-import type { Db } from "@drift/db";
+import type { Db, DbTx } from "@drift/db";
 import {
   apiKeys,
   bots,
@@ -57,6 +57,15 @@ import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
 
 /** Thời gian ví được phép ký một request; nonce phải còn trong cửa sổ của SoDEX. */
 export const SIGNATURE_REQUEST_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * Request `pending` còn ít nhất chừng này để ký thì được dùng lại thay vì tạo request mới (#318): hai lần bấm, hai tab
+ * hay bấm lại sau timeout với Idempotency-Key khác vẫn chỉ có một key ở signer và một request ký được.
+ */
+export const SIGNATURE_REQUEST_REUSE_MIN_MS = 2 * 60 * 1000;
+
+/** `sodex_error` của request `pending` bị thay bằng request mới vì sắp hết hạn (#318). */
+export const SIGNATURE_REQUEST_SUPERSEDED = "superseded";
 
 export interface SignerClient {
   createApiKey(input: { sodexAccountId: string; name: string; expiresAt: string }): Promise<{
@@ -220,23 +229,27 @@ export async function startConnect(
   }
 
   const account = await upsertAccount(deps.db, userId, user, primaryAccountID);
-  const nonce = await nextNonce(deps, account.id);
-  const expiresAt = nonce + DRIFT_API_KEY_TTL_MS;
-  // Signer tạo key mới (#316): lỗi từ đây không giải phóng Idempotency-Key.
-  markSideEffect();
-  const key = await deps.signer.createApiKey({
-    sodexAccountId: account.id,
-    name: DRIFT_API_KEY_NAME,
-    expiresAt: iso(new Date(Number(expiresAt))),
+  return withAccountLock(deps, account.id, async (tx) => {
+    const open = await reusePending(deps, tx, account.id, SignatureAction.addApiKey);
+    if (open !== null) return open;
+    const nonce = await nextNonce(deps, tx, account.id);
+    const expiresAt = nonce + DRIFT_API_KEY_TTL_MS;
+    // Signer tạo key mới (#316): lỗi từ đây không giải phóng Idempotency-Key.
+    markSideEffect();
+    const key = await deps.signer.createApiKey({
+      sodexAccountId: account.id,
+      name: DRIFT_API_KEY_NAME,
+      expiresAt: iso(new Date(Number(expiresAt))),
+    });
+    const request = addPermissionedApiKeyRequest({
+      user,
+      accountID: primaryAccountID,
+      publicKey: getAddress(key.publicKey),
+      nonce,
+      expiresAt,
+    });
+    return insertRequest(deps, tx, userId, account.id, SignatureAction.addApiKey, request, key.id);
   });
-  const request = addPermissionedApiKeyRequest({
-    user,
-    accountID: primaryAccountID,
-    publicKey: getAddress(key.publicKey),
-    nonce,
-    expiresAt,
-  });
-  return insertRequest(deps, userId, account.id, SignatureAction.addApiKey, request, key.id);
 }
 
 /**
@@ -249,34 +262,38 @@ export async function startRenew(deps: SodexDeps, userId: string): Promise<Signa
   if (account?.status !== "connected") {
     throw new AppError(ErrorCode.stateConflict, "No connected SoDEX account to renew.");
   }
-  const day = deps.now().toISOString().slice(0, 10).replace(/-/g, "");
-  const used = new Set(
-    (
-      await deps.db
-        .select({ name: apiKeys.name })
-        .from(apiKeys)
-        .where(eq(apiKeys.sodexAccountId, account.id))
-    ).map((k) => k.name),
-  );
-  let name = `${DRIFT_API_KEY_NAME}-${day}`;
-  for (let i = 2; used.has(name); i += 1) name = `${DRIFT_API_KEY_NAME}-${day}-${String(i)}`;
-  const nonce = await nextNonce(deps, account.id);
-  const expiresAt = nonce + DRIFT_API_KEY_TTL_MS;
-  markSideEffect();
-  const key = await deps.signer.createApiKey({
-    sodexAccountId: account.id,
-    name,
-    expiresAt: iso(new Date(Number(expiresAt))),
+  return withAccountLock(deps, account.id, async (tx) => {
+    const open = await reusePending(deps, tx, account.id, SignatureAction.addApiKey);
+    if (open !== null) return open;
+    const day = deps.now().toISOString().slice(0, 10).replace(/-/g, "");
+    const used = new Set(
+      (
+        await tx
+          .select({ name: apiKeys.name })
+          .from(apiKeys)
+          .where(eq(apiKeys.sodexAccountId, account.id))
+      ).map((k) => k.name),
+    );
+    let name = `${DRIFT_API_KEY_NAME}-${day}`;
+    for (let i = 2; used.has(name); i += 1) name = `${DRIFT_API_KEY_NAME}-${day}-${String(i)}`;
+    const nonce = await nextNonce(deps, tx, account.id);
+    const expiresAt = nonce + DRIFT_API_KEY_TTL_MS;
+    markSideEffect();
+    const key = await deps.signer.createApiKey({
+      sodexAccountId: account.id,
+      name,
+      expiresAt: iso(new Date(Number(expiresAt))),
+    });
+    const request = addPermissionedApiKeyRequest({
+      user: getAddress(account.address),
+      accountID: account.sodexAccountId,
+      publicKey: getAddress(key.publicKey),
+      nonce,
+      expiresAt,
+      name,
+    });
+    return insertRequest(deps, tx, userId, account.id, SignatureAction.addApiKey, request, key.id);
   });
-  const request = addPermissionedApiKeyRequest({
-    user: getAddress(account.address),
-    accountID: account.sodexAccountId,
-    publicKey: getAddress(key.publicKey),
-    nonce,
-    expiresAt,
-    name,
-  });
-  return insertRequest(deps, userId, account.id, SignatureAction.addApiKey, request, key.id);
 }
 
 /** Chữ ký 2 (approve 50) hoặc revoke (0). Revoke cần 2FA (SCREENS.md mục 8.5). */
@@ -298,16 +315,20 @@ export async function startBuilderFee(
       ip,
       sessionId === undefined ? {} : { sessionId },
     );
-  const request = approveBuilderFeeRequest({
-    user: getAddress(account.address),
-    accountID: account.sodexAccountId,
-    builderID: deps.builderId,
-    approve,
-    nonce: await nextNonce(deps, account.id),
-  });
   const action = approve ? SignatureAction.approveBuilderFee : SignatureAction.revokeBuilderFee;
-  markSideEffect();
-  return insertRequest(deps, userId, account.id, action, request, null);
+  return withAccountLock(deps, account.id, async (tx) => {
+    const open = await reusePending(deps, tx, account.id, action);
+    if (open !== null) return open;
+    const request = approveBuilderFeeRequest({
+      user: getAddress(account.address),
+      accountID: account.sodexAccountId,
+      builderID: deps.builderId,
+      approve,
+      nonce: await nextNonce(deps, tx, account.id),
+    });
+    markSideEffect();
+    return insertRequest(deps, tx, userId, account.id, action, request, null);
+  });
 }
 
 /**
@@ -342,23 +363,28 @@ export async function startDisconnect(
     .limit(1);
   if (key === undefined) throw new AppError(ErrorCode.notFound, "No DeskLabs key to revoke.");
 
-  const create = async (engine: RevokeEngine) => {
-    const request = revokeApiKeyRequest({
-      engine,
-      accountID: account.sodexAccountId,
-      name: key.name,
-      nonce: await nextNonce(deps, account.id),
-    });
+  // Mỗi engine: dùng lại request xoá key này còn chờ ký (#318), không có thì tạo mới.
+  const create = async (tx: DbTx, engine: RevokeEngine) => {
     const action =
       engine === RevokeEngine.spot
         ? SignatureAction.revokeApiKeySpot
         : SignatureAction.revokeApiKeyPerps;
-    return insertRequest(deps, userId, account.id, action, request, key.id);
+    const open = await reusePending(deps, tx, account.id, action, key.id);
+    if (open !== null) return open;
+    const request = revokeApiKeyRequest({
+      engine,
+      accountID: account.sodexAccountId,
+      name: key.name,
+      nonce: await nextNonce(deps, tx, account.id),
+    });
+    markSideEffect();
+    return insertRequest(deps, tx, userId, account.id, action, request, key.id);
   };
-  markSideEffect();
-  const spot = await create(RevokeEngine.spot);
-  const perps = await create(RevokeEngine.perps);
-  return { spot, perps };
+  return withAccountLock(deps, account.id, async (tx) => {
+    const spot = await create(tx, RevokeEngine.spot);
+    const perps = await create(tx, RevokeEngine.perps);
+    return { spot, perps };
+  });
 }
 
 export async function getSignatureRequest(
@@ -642,12 +668,90 @@ async function reconcileRevoke(
 }
 
 /**
+ * Tạo request ký của một account lần lượt (#318): khoá advisory theo account trong transaction, để hai request
+ * cùng lúc (hai Idempotency-Key khác nhau) không cùng thấy "chưa có request chờ" rồi cùng tạo. Không khoá dòng
+ * `sodex_accounts`: signer ghi `api_keys` (FK tới account) trong lúc transaction này còn mở.
+ */
+async function withAccountLock<T>(
+  deps: SodexDeps,
+  sodexAccountId: string,
+  fn: (tx: DbTx) => Promise<T>,
+): Promise<T> {
+  return deps.db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${`sodex_signature:${sodexAccountId}`}))`,
+    );
+    return fn(tx);
+  });
+}
+
+/**
+ * Request `pending` cùng account + action (xoá key: cùng key) còn đủ thời gian ký thì trả lại nó (#318). Request
+ * `pending` khác của action này (sắp hết hạn, hay xoá một key cũ) bị thay: chuyển `failed` (`superseded`) và xoá
+ * key `pending` của nó, để không bao giờ có hai request cùng loại ký được cùng lúc. Chỉ đổi dòng còn `pending`:
+ * request vừa được gửi SoDEX (đã sang `unknown`) không bị đụng tới.
+ */
+async function reusePending(
+  deps: SodexDeps,
+  tx: DbTx,
+  sodexAccountId: string,
+  action: SignatureAction,
+  apiKeyId?: string,
+): Promise<SignatureRequest | null> {
+  const now = deps.now();
+  const rows = await tx
+    .select()
+    .from(sodexSignatureRequests)
+    .where(
+      and(
+        eq(sodexSignatureRequests.sodexAccountId, sodexAccountId),
+        eq(sodexSignatureRequests.action, action),
+        eq(sodexSignatureRequests.status, SignatureRequestStatus.pending),
+      ),
+    )
+    .orderBy(desc(sodexSignatureRequests.expiresAt));
+  let reuse: Row | null = null;
+  for (const row of rows) {
+    const usable =
+      reuse === null &&
+      row.expiresAt.getTime() - now.getTime() >= SIGNATURE_REQUEST_REUSE_MIN_MS &&
+      (apiKeyId === undefined || row.apiKeyId === apiKeyId);
+    if (usable) {
+      reuse = row;
+      continue;
+    }
+    const addKey = row.action === SignatureAction.addApiKey;
+    const [gone] = await tx
+      .update(sodexSignatureRequests)
+      .set({
+        status: SignatureRequestStatus.failed,
+        sodexError: SIGNATURE_REQUEST_SUPERSEDED,
+        resolvedAt: now,
+        ...(addKey ? { apiKeyId: null } : {}),
+      })
+      .where(
+        and(
+          eq(sodexSignatureRequests.id, row.id),
+          eq(sodexSignatureRequests.status, SignatureRequestStatus.pending),
+        ),
+      )
+      .returning({ id: sodexSignatureRequests.id });
+    // Key do signer tạo cho request này chưa từng tới SoDEX: xoá như khi SoDEX từ chối.
+    if (gone !== undefined && addKey && row.apiKeyId !== null)
+      await tx
+        .delete(apiKeys)
+        .where(and(eq(apiKeys.id, row.apiKeyId), eq(apiKeys.status, "pending")));
+  }
+  return reuse === null ? null : toView(reuse);
+}
+
+/**
  * Nonce của master wallet: ms hiện tại, nhưng luôn lớn hơn nonce đã dùng cho account này, để hai
  * request ký liền nhau (cùng ms) không trùng nonce (SODEX.md mục 5.6).
  */
-async function nextNonce(deps: SodexDeps, sodexAccountId: string): Promise<bigint> {
+async function nextNonce(deps: SodexDeps, db: DbTx, sodexAccountId: string): Promise<bigint> {
   const now = BigInt(deps.now().getTime());
-  const [row] = await deps.db
+  const [row] = await db
     .select({
       max: sql<string | null>`max((${sodexSignatureRequests.message}->>'nonce')::numeric)::text`,
     })
@@ -719,13 +823,14 @@ async function upsertAccount(db: Db, userId: string, address: Address, accountId
 
 async function insertRequest(
   deps: SodexDeps,
+  db: DbTx,
   userId: string,
   sodexAccountId: string,
   action: SignatureAction,
   request: AnyRequest | RevokeKeyRequest,
   apiKeyId: string | null,
 ): Promise<SignatureRequest> {
-  const [row] = await deps.db
+  const [row] = await db
     .insert(sodexSignatureRequests)
     .values({
       userId,

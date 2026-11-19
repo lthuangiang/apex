@@ -1,6 +1,11 @@
 "use client";
 
-import { botSummarySchema, goLiveViewSchema, type GoLiveView } from "@drift/shared";
+import {
+  botDetailSchema,
+  botSummarySchema,
+  goLiveViewSchema,
+  type GoLiveView,
+} from "@drift/shared";
 import { Button, inputClassName, Skeleton } from "@drift/ui";
 import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
@@ -17,6 +22,7 @@ import {
 } from "@/features/bots/components/start-checks";
 import { fromConfig, isLaunched, type FIELDS } from "@/features/bots/fields";
 import { api, ApiError } from "@/lib/api";
+import { uncertainOutcome, useFinancialMutation } from "@/lib/financial-action";
 import { formatMoney } from "@/lib/format";
 import { useTwoFactorNeeded } from "@/lib/queries";
 
@@ -33,6 +39,7 @@ const LIVE_WARN_DAYS = 30;
 function Body({ view, paperId, day }: { view: GoLiveView; paperId: string; day: number }) {
   const t = useTranslations("desk.golive");
   const tc = useTranslations("createBot");
+  const te = useTranslations("common.errors");
   const router = useRouter();
   const errorText = useBotErrorText();
   const strategy = view.strategy as Strategy;
@@ -46,12 +53,17 @@ function Body({ view, paperId, day }: { view: GoLiveView; paperId: string; day: 
   const [code, setCode] = useState("");
   const twoFactorPrompt = useTwoFactorNeeded();
   const created = useRef<string | null>(null);
-  const keys = useRef({ create: crypto.randomUUID(), start: crypto.randomUUID() });
-  const start = useMutation({
-    mutationFn: async () => {
+  const createKey = useRef(crypto.randomUUID());
+  const startBody = () => ({
+    acknowledged: true,
+    ...(code.trim() === "" ? {} : { twoFactorCode: code.trim() }),
+  });
+  // Start không rõ kết quả: đọc lại bot trước khi cho bấm lại; gửi lại chỉ với cùng key (#318).
+  const start = useFinancialMutation({
+    mutationFn: async (_: null, idempotencyKey: string) => {
       if (created.current === null) {
         const bot = await api("POST", "/api/v1/bots", botSummarySchema, {
-          idempotencyKey: keys.current.create,
+          idempotencyKey: createKey.current,
           body: {
             strategy,
             name: view.name,
@@ -64,11 +76,8 @@ function Body({ view, paperId, day }: { view: GoLiveView; paperId: string; day: 
       }
       const id = created.current;
       await api("POST", `/api/v1/bots/${id}/actions/start`, botSummarySchema, {
-        idempotencyKey: keys.current.start,
-        body: {
-          acknowledged: true,
-          ...(code.trim() === "" ? {} : { twoFactorCode: code.trim() }),
-        },
+        idempotencyKey,
+        body: startBody(),
       });
       // Bài thử dừng sau khi bot thật đã được nhận; lỗi ở bước này không chặn bot thật.
       await api("POST", `/api/v1/bots/${paperId}/actions/stop`, botSummarySchema, {
@@ -77,11 +86,18 @@ function Body({ view, paperId, day }: { view: GoLiveView; paperId: string; day: 
       }).catch(() => null);
       return id;
     },
+    identity: () => startBody(),
+    refetch: [["bots"]],
     onSuccess: (id) => {
       router.push(`/agent/${id}`);
     },
-    onError: () => {
-      keys.current.start = crypto.randomUUID();
+    // Bot thật đã rời draft nghĩa là Start đã được nhận: mở trang bot thay vì cho bấm lại.
+    onError: async (e) => {
+      const id = created.current;
+      if (uncertainOutcome(e) === null || id === null) return;
+      const read = await api("GET", `/api/v1/bots/${id}`, botDetailSchema).catch(() => null);
+      if (read !== null && read.bot.state !== "draft" && read.bot.state !== "stopped")
+        router.push(`/agent/${id}`);
     },
   });
   // Ô mã 2FA chỉ hiện khi đã bật 2FA mà phiên chưa được tin trong 2 giờ qua (DEC-115).
@@ -198,7 +214,7 @@ function Body({ view, paperId, day }: { view: GoLiveView; paperId: string; day: 
         ) : null}
         {start.error === null ? null : (
           <p role="alert" className="m-0 text-sm text-neg-ink">
-            {t("failed", { reason: errorText(start.error) })}
+            {start.checking ? te("unconfirmed") : t("failed", { reason: errorText(start.error) })}
           </p>
         )}
         <div>
@@ -206,7 +222,7 @@ function Body({ view, paperId, day }: { view: GoLiveView; paperId: string; day: 
             pending={start.isPending}
             disabled={!ready}
             onClick={() => {
-              start.mutate();
+              start.mutate(null);
             }}
           >
             {start.isPending ? t("starting") : t("start")}
