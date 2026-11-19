@@ -1,9 +1,15 @@
 import {
+  researchArticlesPageSchema,
+  researchArticleTraceSchema,
   researchSummarySchema,
   researchTradeDetailSchema,
   researchTradesPageSchema,
+  type RESEARCH_ARTICLE_SHOWS,
+  type ResearchDropReason,
   type ResearchLabel,
+  type ResearchRange,
   type ResearchShow,
+  type ResearchStage,
   type ResearchType,
 } from "@drift/shared";
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
@@ -21,6 +27,8 @@ export const RESEARCH_PATHS = {
   summary: `${RESEARCH_BASE}/summary`,
   trades: `${RESEARCH_BASE}/trades`,
   trade: (id: string) => `${RESEARCH_BASE}/trades/${encodeURIComponent(id)}`,
+  articles: `${RESEARCH_BASE}/articles`,
+  trace: (id: string) => `${RESEARCH_BASE}/articles/${encodeURIComponent(id)}/trace`,
 } as const;
 
 export interface ResearchFilters {
@@ -39,19 +47,23 @@ export const RESEARCH_DEFAULT: ResearchFilters = {
 const retry = (count: number, e: unknown) =>
   !(e instanceof ApiError && e.status < 500) && count < 1;
 
-function query(f: Partial<ResearchFilters>, extra: Record<string, string> = {}) {
+/** Chỉ giữ giá trị chuỗi (null = không lọc). */
+function query(f: object, extra: Record<string, string> = {}) {
   const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(f)) if (typeof v === "string") p.set(k, v);
+  for (const [k, v] of Object.entries(f) as [string, unknown][])
+    if (typeof v === "string") p.set(k, v);
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   return p.toString();
 }
 
 const KEY = [...SIGNAL_KEY, "research"] as const;
 
-export function useResearchSummary() {
+/** Phễu tính theo khoảng `range` (#291): 1 ngày / 7 ngày, nút "1 day" / "7 days" của News feed (#292). */
+export function useResearchSummary(range: ResearchRange) {
   return useQuery({
-    queryKey: [...KEY, "summary"],
-    queryFn: () => api("GET", RESEARCH_PATHS.summary, researchSummarySchema),
+    queryKey: [...KEY, "summary", range],
+    queryFn: () =>
+      api("GET", `${RESEARCH_PATHS.summary}?${query({}, { range })}`, researchSummarySchema),
     placeholderData: keepPreviousData,
     retry,
   });
@@ -78,6 +90,40 @@ export function useResearchTrade(id: string | null) {
   return useQuery({
     queryKey: [...KEY, "trade", id],
     queryFn: () => api("GET", RESEARCH_PATHS.trade(id ?? ""), researchTradeDetailSchema),
+    enabled: id !== null,
+    retry,
+  });
+}
+
+// News feed và trace từng bài (#292, API #291; thiết kế docs/mockups/signal-research/news-trace.html).
+
+export interface ArticleFilters {
+  range: ResearchRange;
+  show: (typeof RESEARCH_ARTICLE_SHOWS)[number];
+  stage: ResearchStage | null;
+  reason: ResearchDropReason | null;
+}
+
+export function useResearchArticles(f: ArticleFilters) {
+  return useInfiniteQuery({
+    queryKey: [...KEY, "articles", f],
+    queryFn: ({ pageParam }) =>
+      api(
+        "GET",
+        `${RESEARCH_PATHS.articles}?${query(f, pageParam === null ? {} : { cursor: pageParam })}`,
+        researchArticlesPageSchema,
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
+    retry,
+  });
+}
+
+export function useResearchTrace(id: string | null) {
+  return useQuery({
+    queryKey: [...KEY, "trace", id],
+    queryFn: () => api("GET", RESEARCH_PATHS.trace(id ?? ""), researchArticleTraceSchema),
     enabled: id !== null,
     retry,
   });
