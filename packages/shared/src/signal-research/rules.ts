@@ -133,7 +133,8 @@ export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitRea
 /**
  * Quy tắc tin tức v3 (#269 Design v3.3 mục 1 + mục 7, v3.4; #298). Mọi con số là giả thuyết của nghiên cứu, không phải
  * tham số đã kiểm chứng. v3 so với v2: tài sản phải có trong tiêu đề / nội dung bài (`ASSET_NOT_IN_TEXT`), treasury không
- * giao dịch BTC / ETH (`TREASURY_MAJOR_ASSET`), prompt classifier `news-classifier-v2`. Lệnh của version cũ vẫn hiện ở
+ * giao dịch BTC / ETH (`TREASURY_MAJOR_ASSET`), prompt classifier `news-classifier-v2` (sau đó `news-classifier-v3` mà không tăng version này: đổi prompt chỉ tăng
+ * `NEWS_CLASSIFIER.promptVersion`, DEC-TBD-sr-classifier-v3). Lệnh của version cũ vẫn hiện ở
  * danh sách lệnh (lịch sử) nhưng không tính vào tổng kết và cổng. Danh sách tài sản (market cổ phiếu, alias) có version
  * riêng `NEWS_ASSET_MAP_VERSION` (#309): đổi danh sách không đổi version này và không reset cổng.
  */
@@ -409,7 +410,7 @@ export const NEWS_CLASSIFIER = {
   model: "claude-haiku-4-5",
   /** TTL của prompt cache: chu kỳ 5 phút đúng bằng TTL mặc định nên dùng 1 giờ (ghi 2×, đọc 0.1×). */
   cacheTtl: "1h",
-  promptVersion: "news-classifier-v2",
+  promptVersion: "news-classifier-v3",
   maxTokens: 400,
   /** Tối đa ngần này ký tự nội dung bài gửi cho Claude. */
   maxContentChars: 4000,

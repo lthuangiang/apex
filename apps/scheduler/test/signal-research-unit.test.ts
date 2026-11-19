@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { claudeCostUsd, Decimal, NEWS_CLASSIFIER } from "@drift/shared";
+import { claudeCostUsd, Decimal, NEWS_CLASSIFIER, NEWS_RULES } from "@drift/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -223,10 +223,51 @@ describe("classifier answer", () => {
   });
 });
 
-describe("classifier prompt news-classifier-v2 (#298)", () => {
-  it("has its own prompt version, separate from the rule version", () => {
-    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v2");
+describe("classifier prompt news-classifier-v3 (#320)", () => {
+  it("bumps only the classifier version, not the rule or asset map version", () => {
+    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v3");
+    expect(NEWS_RULES.version).toBe("news-v3");
   });
+  it("hack: the stolen asset (unit of the loss) is never the affected token", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "The affected token of a hack is never the asset that was stolen or used as the unit of the loss",
+    );
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "Never name ETH, BTC or a stablecoin merely because it was stolen",
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(/12,000 ETH \(≈ \$21\.6M\) stolen .*→ none, market NONE/);
+    expect(CLASSIFIER_SYSTEM).toMatch(/\$21M in BTC drained from exchange Y.*→ none, market NONE/);
+    expect(CLASSIFIER_SYSTEM).toMatch(/USDT from bridge W.*→ none, market NONE/);
+  });
+  it("hack: contrasting positive example names the hacked protocol's own token", () => {
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /Protocol Q drained of 12,000 ETH; Q token falls" — candidates Q-USD, ETH-USD → hack_exploit, Q-USD, direct/,
+    );
+  });
+  it("earnings: analyst / bank forecasts and price targets are none", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "only the company's own reported results or its own guidance count",
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /JPMorgan report: Nvidia's revenue is expected.*→ none, market NONE/,
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(/Morgan Stanley raises NVDA price target.*→ none/);
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /NVIDIA raises its own revenue guidance.*→ earnings_beat, NVDA-USD, direct/,
+    );
+  });
+  it("keeps the v2 examples and edge-case questions", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "For hack_exploit, ask: whose protocol or exchange was hacked?",
+    );
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "For earnings_beat and earnings_miss, ask: who is speaking?",
+    );
+    expect(CLASSIFIER_SYSTEM).toContain("For regulatory_action, ask: who is the target?");
+  });
+});
+
+describe("classifier prompt rules from news-classifier-v2 (#298)", () => {
   it("regulatory_action: only against the project / company itself, never an individual employee", () => {
     expect(CLASSIFIER_SYSTEM).toContain("The target of the action must be the project or company");
     expect(CLASSIFIER_SYSTEM).toContain("an individual who works or used to work at the company");
@@ -298,6 +339,14 @@ describe("classifier prompt news-classifier-v2 (#298)", () => {
     ]);
     expect(body.tools).toHaveLength(1);
     expect(JSON.stringify(body.messages)).not.toContain(CLASSIFIER_SYSTEM.slice(0, 40));
+    // v3 (#320): the cached system text carries the new examples, and the article records the new classifier version.
+    expect(JSON.stringify(body.system)).toContain(
+      "Protocol Q drained of 12,000 ETH; Q token falls",
+    );
+    expect(JSON.stringify(body.system)).toContain("Morgan Stanley raises NVDA price target");
+    expect(articleUsageValues({ usage: { ...emptyUsage(), calls: 1 } }).claudePromptVersion).toBe(
+      "news-classifier-v3",
+    );
   });
 });
 
