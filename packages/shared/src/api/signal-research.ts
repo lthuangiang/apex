@@ -8,6 +8,14 @@ import {
   ClassificationVerdict,
   LABEL_NOTE_MAX,
 } from "../signal-research/labels";
+import { SIGNAL_CATALYSTS, type SignalCatalyst } from "../signal-research/rules";
+import {
+  AssetMode,
+  botVersionConfigSchema,
+  OppositeNewsPolicy,
+  SIGNAL_BOT_VERSION_STATUSES,
+  VERSION_GATE_STATUSES,
+} from "../signal-research/versions";
 
 // Hợp đồng API của Signal research (#271; UI #273). Endpoint team (role team, chỉ đọc, transaction READ ONLY):
 //   GET /api/v1/admin/signal-research/summary?range=&tz=
@@ -18,6 +26,12 @@ import {
 //   GET /api/v1/admin/signal-research/labels/next                                              (#304)
 //   PUT /api/v1/admin/signal-research/articles/:id/label   (Idempotency-Key)                   (#304)
 //   GET /api/v1/admin/signal-research/classifiers                                              (#304)
+//   GET /api/v1/admin/signal-research/versions                                                 (#305)
+//   POST /api/v1/admin/signal-research/versions             (Idempotency-Key)                  (#305)
+//   POST /api/v1/admin/signal-research/versions/:id/status  (Idempotency-Key)                  (#305)
+//   GET /api/v1/admin/signal-research/markets                                                  (#305)
+// #305: summary / trades / articles / articles/:id/trace nhận `versionId` (News bot version; không có = Baseline, gồm cả
+// dòng trước khi có version). versionId không tồn tại → 404.
 // CLI `signals:report` của scheduler in cùng dữ liệu. Tên export giữ đúng như bản sao tạm của web (#273) để web chỉ đổi
 // import. Quy ước: phần trăm là số theo đơn vị % (0.21 = +0.21%); tiền / giá là chuỗi thập phân; thời điểm là ISO UTC.
 // Giá trị không biết là null (web hiện "Not available" / "Not enough trades", không bao giờ 0, quy tắc 1.8). API không
@@ -274,6 +288,10 @@ export const researchRiskSchema = z.object({
 
 export const researchSummarySchema = z.object({
   computedAt: iso,
+  /** #305: News bot version của tổng kết (mặc định Baseline); null khi không có version nào (dữ liệu trước version). */
+  version: z
+    .object({ id: z.uuid(), number: int, name: z.string(), isBaseline: z.boolean() })
+    .nullable(),
   sources: z.array(researchSourceSchema),
   bots: z.array(researchPaperBotSchema),
   funnel: researchFunnelSchema.nullable(),
@@ -326,10 +344,46 @@ export const researchSkipSchema = z.object({
   neededPct: z.number().nullable(),
   /** #304: N của "Limit: N open" / "Limit: N per day" (lý do `limitOpen` / `limitDay`); null với lý do khác hoặc dòng cũ không lưu. */
   limit: z.number().int().positive().nullable(),
+  /**
+   * #305: tín hiệu bị giới hạn / số dư chặn (`limitOpen` / `limitDay` / `noBalance`) vẫn được theo dõi giả định bằng
+   * một lệnh shadow (ngoài balance): id lệnh đó (mở `/trades/:id`) và kết quả giả định. null với lý do khác hoặc khi
+   * đã có lệnh shadow mở trên tài sản đó (chỉ ghi event).
+   */
+  shadow: z
+    .object({
+      tradeId: z.uuid(),
+      outcome: z.enum(["tp", "sl", "maxHold", "opposite", "open"]),
+      /** Kết quả sau phí khi đã đóng; null khi còn mở. */
+      pnl: dec.nullable(),
+    })
+    .nullable(),
+});
+
+/**
+ * #305: tin ngược chiều đầu tiên lúc lệnh đang mở (story mới cùng tài sản, chiều ngược, đạt level của version).
+ * `action` = `closed` khi version chọn Close at market và lệnh đã đóng vì tin đó, `kept` khi giữ lệnh. Kết quả là kết
+ * quả giả định nếu đóng ở giá thị trường lúc đó (sau phí), ghi cho mọi version để so Keep và Close.
+ */
+export const researchTradeOppositeSchema = z.object({
+  at: iso,
+  storyId: z.uuid().nullable(),
+  action: z.enum(["closed", "kept"]),
+  exitPrice: dec,
+  resultUsdc: dec,
+  resultPct: z.number(),
+});
+
+/** #305: lệnh shadow (bị giới hạn chặn, chỉ theo dõi giả định, ngoài balance, không bao giờ tính cổng). */
+export const researchTradeShadowSchema = z.object({
+  reason: z.enum(["limitOpen", "limitDay", "noBalance"]),
+  /** N của "Limit: N open" / "Limit: N per day" (từ config bất biến của version); null với `noBalance`. */
+  limit: z.number().int().positive().nullable(),
 });
 
 export const researchTradeSchema = z.object({
   id: z.string().min(1),
+  /** #305: News bot version của lệnh / tín hiệu; null = dòng trước khi có version (lịch sử news-v2) hoặc replay. */
+  versionId: z.uuid().nullable(),
   /**
    * #291: bài để mở trace (`/articles/:id/trace`): lệnh → bài đã mở lệnh (bài đầu của lần thử đó); tín hiệu bị bỏ → bài
    * bị bỏ ở Filter. null với replay / dòng thiếu bài.
@@ -373,6 +427,10 @@ export const researchTradeSchema = z.object({
       leftSecs: int.nullable(),
     })
     .nullable(),
+  /** #305: chỉ khi chính mục này là lệnh shadow (mở bằng `/trades/:id`); danh sách chỉ có lệnh thật. */
+  shadow: researchTradeShadowSchema.nullable(),
+  /** #305: tin ngược chiều trên lệnh này; null khi chưa có (hoặc với tín hiệu bị bỏ). */
+  opposite: researchTradeOppositeSchema.nullable(),
 });
 
 export const researchTradesPageSchema = z.object({
@@ -559,6 +617,14 @@ export const researchArticleSchema = z.object({
   claude: researchClaudeUsageSchema.nullable(),
   /** Lệnh giấy bài này đã mở. */
   tradeId: z.uuid().nullable(),
+  /** #305: version mà bước dừng / kết quả mô tả (bước Filter / Decide riêng từng version); null = dòng trước version. */
+  versionId: z.uuid().nullable(),
+  /** #305: lệnh shadow (theo dõi giả định) khi bài bị giới hạn chặn; null khi không có. */
+  shadowTradeId: z.uuid().nullable(),
+  /** #305: bài là tin ngược chiều trên lệnh đang mở của version: đóng lệnh đó (`closed`) hay giữ (`kept`). */
+  opposite: z
+    .object({ action: z.enum(["closed", "kept"]), tradeId: z.uuid().nullable() })
+    .nullable(),
 });
 
 export const researchArticlesPageSchema = z.object({
@@ -578,12 +644,22 @@ export const researchArticlesQuerySchema = z.object({
   cursor: z.string().max(400).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   tz: z.string().max(64).optional(),
+  /** #305: News bot version; không có = Baseline. */
+  versionId: z.uuid().optional(),
 });
 
 export const researchSummaryQuerySchema = z.object({
   /** Không có = như trước (#271): phễu tính mọi dữ liệu của version hiện tại. */
   range: z.enum(RESEARCH_RANGES).optional(),
   tz: z.string().max(64).optional(),
+  /** #305: News bot version; không có = Baseline. */
+  versionId: z.uuid().optional(),
+});
+
+/** #305: query của trace một bài. */
+export const researchTraceQuerySchema = z.object({
+  tz: z.string().max(64).optional(),
+  versionId: z.uuid().optional(),
 });
 
 const sourceRef = z.object({ name: z.string(), tier });
@@ -824,6 +900,12 @@ export const researchTraceStepSchema = z.discriminatedUnion("key", [
         laterLevel: level.nullable(),
         /** #304: N của "Limit: N open" / "Limit: N per day" (lý do `limitOpen` / `limitDay`); null với lý do khác hoặc dòng cũ không lưu. */
         reasonLimit: z.number().int().positive().nullable(),
+        /** #305: lệnh shadow khi bị giới hạn chặn. */
+        shadowTradeId: z.uuid().nullable(),
+        /** #305: bài là tin ngược chiều trên lệnh đang mở của version (đóng hay giữ lệnh đó). */
+        opposite: z
+          .object({ action: z.enum(["closed", "kept"]), tradeId: z.uuid().nullable() })
+          .nullable(),
         /** Gộp `storyTooOld`: giờ bài đầu tiên được tính của câu chuyện. */
         storyStartedAt: iso.nullable(),
       })
@@ -852,6 +934,8 @@ export const researchTraceStepSchema = z.discriminatedUnion("key", [
         status: z.enum(["open", "closed"]),
         /** Lệnh ngẫu nhiên cùng thời điểm / TP / SL / giữ; null tới khi tính xong (sau cửa sổ giữ). */
         random: z.object({ longPct: pct, shortPct: pct, pct, longShare: pct }).nullable(),
+        /** #305: tin ngược chiều trên lệnh này (timeline "Opposite news … kept / closed"). */
+        opposite: researchTradeOppositeSchema.nullable(),
       })
       .nullable(),
   }),
@@ -912,5 +996,195 @@ export const researchTradesQuerySchema = z.object({
   cursor: z.string().max(300).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   tz: z.string().max(64).optional(),
+  /** #305: News bot version; không có = Baseline (gồm lịch sử trước version, như #298). */
+  versionId: z.uuid().optional(),
 });
 export type ResearchTradesQuery = z.infer<typeof researchTradesQuerySchema>;
+
+// ── News bot versions (#305, DEC-328 / DEC-331; thiết kế docs/mockups/signal-research/bot-versions*.html) ──────────────
+
+const catalyst = z.enum(SIGNAL_CATALYSTS as [SignalCatalyst, ...SignalCatalyst[]]);
+const newsTypeCfg = z.object({ enabled: z.boolean(), maxHoldHours: int });
+const assetMode = z.enum([AssetMode.all, AssetMode.only, AssetMode.except]);
+const oppositePolicy = z.enum([OppositeNewsPolicy.keep, OppositeNewsPolicy.close]);
+const kinds = z.object({ crypto: z.boolean(), stocks: z.boolean() });
+
+/** Một điểm khác với version đã chép từ (`diffVersionConfig`); web dịch thành câu như "SL 0.75× → 1.0×". */
+export const researchVersionChangeSchema = z.discriminatedUnion("field", [
+  z.object({
+    field: z.literal("newsType"),
+    /** Khoá nội bộ như trong config (`etf_approved`…). */
+    catalyst,
+    from: newsTypeCfg.nullable(),
+    to: newsTypeCfg.nullable(),
+  }),
+  z.object({ field: z.literal("minLevel"), from: level, to: level }),
+  z.object({ field: z.literal("maxSourceDelayMinutes"), from: int, to: int }),
+  z.object({ field: z.literal("maxOpenTrades"), from: int, to: int }),
+  z.object({ field: z.literal("maxNewTradesPerDay"), from: int.nullable(), to: int.nullable() }),
+  z.object({ field: z.literal("sizeUsdc"), from: dec, to: dec }),
+  z.object({ field: z.literal("tpMultiple"), from: dec, to: dec }),
+  z.object({ field: z.literal("slMultiple"), from: dec, to: dec }),
+  z.object({ field: z.literal("minTpCostMultiple"), from: dec, to: dec }),
+  z.object({ field: z.literal("onOppositeNews"), from: oppositePolicy, to: oppositePolicy }),
+  z.object({ field: z.literal("assetMode"), from: assetMode, to: assetMode }),
+  z.object({ field: z.literal("assetKinds"), from: kinds, to: kinds }),
+  z.object({
+    field: z.literal("assets"),
+    added: z.array(z.string()),
+    removed: z.array(z.string()),
+  }),
+]);
+
+/** Lệnh đã đóng KHÔNG được tính cổng của version, gom theo classifier (như `researchGateClassifiersSchema`). */
+const versionNotCounted = z.object({
+  classifierVersion: z.string().nullable(),
+  closed: int,
+  /** Lệnh của đoạn đếm cũ (classifier khác classifier hiện tại hoặc mở trước mốc đoạn) luôn ở đây. */
+  status: researchClassifierStatusSchema,
+  labelsToGo: int.nullable(),
+});
+
+export const researchVersionSchema = z.object({
+  id: z.uuid(),
+  /** Số hiển thị ("v4"), tăng dần, không dùng lại. */
+  number: int,
+  name: z.string(),
+  status: z.enum(SIGNAL_BOT_VERSION_STATUSES),
+  isBaseline: z.boolean(),
+  createdAt: iso,
+  statusChangedAt: iso,
+  /** 4 ký tự cuối id người lưu ("··a91f"); null với Baseline (seed ở migration). */
+  createdBy: z
+    .string()
+    .regex(/^[0-9a-f]{4}$/)
+    .nullable(),
+  savedFrom: z.object({ id: z.uuid(), number: int }).nullable(),
+  /** Config bất biến; null khi dòng DB không parse được (không bao giờ đoán). */
+  config: botVersionConfigSchema.nullable(),
+  /** Khác với version đã chép từ; null khi không chép từ version nào (hoặc thiếu config để so). */
+  changedFromPrevious: z.array(researchVersionChangeSchema).nullable(),
+  classifier: z.object({
+    /** Classifier hiện tại (`NEWS_CLASSIFIER.promptVersion`); mọi version dùng chung. */
+    current: z.string(),
+    /** Mốc đầu đoạn đếm hiện tại = mốc sau của lúc lưu version và lúc classifier hiện tại bắt đầu. */
+    segmentStart: iso,
+    /** Classifier đã tạo ra lệnh thật của version (cũ trước), để hiện "v1 → v2". */
+    used: z.array(z.string()),
+  }),
+  /** 10 000 + Σ kết quả sau phí của lệnh thật đã đóng. */
+  balance: dec,
+  /** Số dư còn dùng được = balance − Σ size lệnh thật đang mở (giới hạn `NO_BALANCE`). */
+  available: dec,
+  openTrades: int,
+  maxOpenTrades: int.nullable(),
+  /** min(Max open trades, số mã) ở chế độ Only these ("Effectively N"); còn lại = Max open trades. */
+  effectiveMaxOpen: int.nullable(),
+  /** Lệnh thật mở trong ngày UTC hiện tại. */
+  todayTrades: int,
+  /** null = Off (không giới hạn) hoặc config hỏng. */
+  maxNewTradesPerDay: int.nullable(),
+  /** Số lệnh shadow (tín hiệu bị giới hạn / số dư chặn, theo dõi giả định). */
+  blockedByLimit: int,
+  /** Lệnh thật đã đóng (mọi classifier). */
+  closed: int,
+  /** Lệnh đã đóng tính cho cổng: đoạn đếm hiện tại, classifier hiện tại đã qua cổng nhãn. */
+  counted: int,
+  /** Kết quả sau phí trung bình (%) của lệnh `counted`; null khi chưa có. */
+  avgPct: z.number().nullable(),
+  gate: z.object({
+    status: z.enum(VERSION_GATE_STATUSES),
+    /** Lệnh đã đóng của đoạn đếm hiện tại (kể cả khi classifier chưa qua). */
+    segmentClosed: int,
+    /** Trạng thái cổng nhãn của classifier hiện tại. */
+    classifierStatus: researchClassifierStatusSchema,
+    labelsToGo: int,
+    notCounted: z.array(versionNotCounted),
+    /** Kiểm tra thêm (> 3 version đã thử): số lệnh lúc qua lần đầu và tiến độ lặp lại; null khi không áp dụng. */
+    firstPassAt: int.nullable(),
+    repeat: z.object({ closed: int, needed: int }).nullable(),
+  }),
+});
+
+export const researchVersionsSchema = z.object({
+  /** Mới nhất trước. */
+  items: z.array(researchVersionSchema),
+  running: int,
+  maxRunning: int,
+  /** Số version đã lưu (Baseline + version team tạo, mọi trạng thái); rules v1 / v2 không tính. */
+  versionsTried: int,
+  /** > 3 version đã thử: version qua cổng phải lặp lại trên 100 lệnh đóng tiếp theo. */
+  extraCheck: z.boolean(),
+  repeatTrades: int,
+  classifier: z.object({
+    current: z.string(),
+    startedAt: iso.nullable(),
+    labeled: int,
+    precisionPct: z.number().nullable(),
+    passes: z.boolean(),
+    status: researchClassifierStatusSchema.exclude(["unknown"]),
+    labelsToGo: int,
+  }),
+});
+
+/** Body của `POST /versions`. Config bất biến sau khi lưu (không có route sửa). */
+export const researchVersionCreateBodySchema = z.strictObject({
+  name: z.string().trim().min(1).max(60),
+  config: botVersionConfigSchema,
+  /** Version đã chép từ ("Edit as new version"); null / không có = tạo mới. */
+  savedFromVersionId: z.uuid().nullish(),
+  /** true = "Save and start"; false = lưu ở trạng thái paused. */
+  start: z.boolean(),
+});
+
+export const researchVersionStatusBodySchema = z.strictObject({
+  status: z.enum(SIGNAL_BOT_VERSION_STATUSES),
+});
+
+export const researchVersionParamsSchema = z.object({ id: z.uuid() });
+
+/**
+ * Market perps SoDEX đang listed cho picker. Đọc bản chụp Redis `sr:markets` do scheduler ghi (module Signal research của
+ * api không chạm SoDEX, DEC-322 / DEC-327).
+ */
+export const researchMarketSchema = z.object({
+  market: z.string(),
+  base: z.string(),
+  displayName: z.string().nullable(),
+  /** `stock` theo `STOCK_MARKET_SET` (danh sách viết tay, DEC-330); còn lại `crypto`. */
+  kind: z.enum(["crypto", "stock"]),
+  /** Trạng thái SoDEX (`TRADING`, `HALT`…). */
+  status: z.string(),
+});
+
+export const researchMarketsSchema = z.object({
+  /**
+   * Crypto trước rồi cổ phiếu, mỗi nhóm theo tên market. null = chưa có bản chụp (scheduler chưa ghi / không đọc được):
+   * không bao giờ trả danh sách rỗng như thể SoDEX không có market nào.
+   */
+  items: z.array(researchMarketSchema).nullable(),
+  /** Lúc scheduler ghi bản chụp; null khi chưa có. */
+  updatedAt: iso.nullable(),
+  /** Cũ hơn 15 phút hoặc chưa có: web ghi "Market list may be out of date". */
+  stale: z.boolean(),
+});
+
+/** Cảnh báo kèm khi lưu version thành công (không chặn lưu). */
+export const RESEARCH_VERSION_WARNINGS = ["market_list_stale"] as const;
+
+/** Kết quả `POST /versions`: version vừa lưu + cảnh báo (vd danh sách market đã cũ lúc kiểm tài sản). */
+export const researchVersionCreatedSchema = researchVersionSchema.extend({
+  warnings: z.array(z.enum(RESEARCH_VERSION_WARNINGS)),
+});
+
+export type ResearchVersionCreated = z.infer<typeof researchVersionCreatedSchema>;
+export type ResearchVersionChange = z.infer<typeof researchVersionChangeSchema>;
+export type ResearchVersion = z.infer<typeof researchVersionSchema>;
+export type ResearchVersions = z.infer<typeof researchVersionsSchema>;
+export type ResearchVersionCreateBody = z.infer<typeof researchVersionCreateBodySchema>;
+export type ResearchVersionStatusBody = z.infer<typeof researchVersionStatusBodySchema>;
+export type ResearchMarket = z.infer<typeof researchMarketSchema>;
+export type ResearchMarkets = z.infer<typeof researchMarketsSchema>;
+export type ResearchTradeOpposite = z.infer<typeof researchTradeOppositeSchema>;
+export type ResearchTradeShadow = z.infer<typeof researchTradeShadowSchema>;
+export type ResearchTraceQuery = z.infer<typeof researchTraceQuerySchema>;

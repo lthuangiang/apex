@@ -48,4 +48,5 @@ export * from "./signal-research/usage";
 export * from "./signal-research/display";
 export * from "./signal-research/versions";
 export * from "./signal-research/labels";
+export * from "./signal-research/markets";
 export * from "./stats/day-bootstrap";

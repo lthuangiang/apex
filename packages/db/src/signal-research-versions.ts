@@ -4,12 +4,21 @@ import {
   SignalBotVersionStatus,
   ErrorCode,
   MAX_RUNNING_VERSIONS,
+  segmentStart,
   type BotVersionConfig,
 } from "@drift/shared";
-import { and, asc, eq, max, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, max, ne, or, sql, type SQL } from "drizzle-orm";
 
 import type { Db } from "./client";
-import { auditLog, signalBotVersions, signalClassifierVersions } from "./schema";
+import type { DbTx } from "./read-only";
+import {
+  auditLog,
+  signalBotVersions,
+  signalClassifierVersions,
+  signalEvents,
+  signalPaperTrades,
+  signalStories,
+} from "./schema";
 
 // News bot versions (#303, DEC-328): đọc version đang chạy cho scheduler, và service lưu / đổi trạng thái cho API (#305).
 // Config bất biến: lưu = dòng mới. Tối đa 3 version `running`: khoá advisory trong transaction ở đây + trigger DB
@@ -237,6 +246,91 @@ export async function versionSegmentStart(
     .select({ at: signalClassifierVersions.startedAt })
     .from(signalClassifierVersions)
     .where(eq(signalClassifierVersions.promptVersion, input.promptVersion));
-  if (c === undefined || c.at <= input.versionCreatedAt) return input.versionCreatedAt;
-  return c.at;
+  return segmentStart(input.versionCreatedAt, c?.at ?? null);
+}
+
+// ── Lọc theo version cho tổng kết / feed / trace / danh sách lệnh (#305) ────────────────────────────────────────────
+
+/** Version được chọn của một request đọc (mặc định Baseline). */
+export interface SignalVersionScope {
+  id: string;
+  number: number;
+  name: string;
+  isBaseline: boolean;
+  /** null khi config trong DB không parse được (không bao giờ đoán). */
+  config: BotVersionConfig | null;
+  createdAt: Date;
+}
+
+/**
+ * `versionId` của query → version; không có → Baseline. Id không tồn tại → 404. Không có Baseline (DB chưa migrate 0047)
+ * → null: nơi gọi giữ cách lọc cũ (không theo version).
+ */
+export async function resolveSignalVersion(
+  q: Db | DbTx,
+  versionId: string | undefined,
+): Promise<SignalVersionScope | null> {
+  const [row] = await q
+    .select()
+    .from(signalBotVersions)
+    .where(
+      versionId === undefined
+        ? eq(signalBotVersions.isBaseline, true)
+        : eq(signalBotVersions.id, versionId),
+    );
+  if (row === undefined) {
+    if (versionId === undefined) return null;
+    throw new AppError(ErrorCode.notFound, "Version not found.");
+  }
+  const p = botVersionConfigSchema.safeParse(row.config);
+  return {
+    id: row.id,
+    number: row.number,
+    name: row.name,
+    isBaseline: row.isBaseline,
+    config: p.success ? p.data : null,
+    createdAt: row.createdAt,
+  };
+}
+
+/**
+ * Lệnh / story của version. Baseline gồm cả dòng `version_id` null (trước migration 0047: lịch sử news-v2, và dòng ghi
+ * trước khi có version); tổng kết vẫn lọc `rule_version` riêng nên news-v2 không trộn vào số của Baseline (DEC-331).
+ */
+export function versionTradeWhere(v: SignalVersionScope | null): SQL | undefined {
+  if (v === null) return undefined;
+  return v.isBaseline
+    ? or(eq(signalPaperTrades.versionId, v.id), isNull(signalPaperTrades.versionId))
+    : eq(signalPaperTrades.versionId, v.id);
+}
+
+export function versionStoryWhere(v: SignalVersionScope | null): SQL | undefined {
+  if (v === null) return undefined;
+  return v.isBaseline
+    ? or(eq(signalStories.versionId, v.id), isNull(signalStories.versionId))
+    : eq(signalStories.versionId, v.id);
+}
+
+/** Bước dùng chung cho mọi version (classifier): event không có `version_id`. */
+export const SHARED_STAGES = ["collect", "normalize", "understand"] as const;
+
+/** Event của version: bước dùng chung + Filter / Decide / Watch của chính version đó. */
+export function versionEventWhere(v: SignalVersionScope | null): SQL | undefined {
+  if (v === null) return undefined;
+  return v.isBaseline
+    ? or(eq(signalEvents.versionId, v.id), isNull(signalEvents.versionId))
+    : or(
+        eq(signalEvents.versionId, v.id),
+        and(isNull(signalEvents.versionId), inArray(signalEvents.stage, [...SHARED_STAGES])),
+      );
+}
+
+/** Như `versionEventWhere` cho SQL thô với alias bảng event (`e`). */
+export function versionEventSql(v: SignalVersionScope | null, alias: string): SQL {
+  if (v === null) return sql`true`;
+  const col = sql.raw(`${alias}.version_id`);
+  const stage = sql.raw(`${alias}.stage`);
+  return v.isBaseline
+    ? sql`(${col} = ${v.id} or ${col} is null)`
+    : sql`(${col} = ${v.id} or (${col} is null and ${stage} in ('collect', 'normalize', 'understand')))`;
 }

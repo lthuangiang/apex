@@ -23,7 +23,7 @@ describe("limit reasons", () => {
       skipText(
         {
           ...SKIPPED_TRADE,
-          skipped: { reason: "limitOpen", tpPct: null, neededPct: null, limit: 20 },
+          skipped: { reason: "limitOpen", tpPct: null, neededPct: null, limit: 20, shadow: null },
         },
         t,
         false,
@@ -37,7 +37,7 @@ describe("limit reasons", () => {
     const s = skipText(
       {
         ...SKIPPED_TRADE,
-        skipped: { reason: "limitDay", tpPct: null, neededPct: null, limit: null },
+        skipped: { reason: "limitDay", tpPct: null, neededPct: null, limit: null, shadow: null },
       },
       t,
       false,

@@ -7,7 +7,7 @@ import {
 } from "@drift/db";
 import { HyperliquidClient } from "@drift/hyperliquid";
 import { Lease, runAsLeader } from "@drift/runtime";
-import { AppError, ErrorCode } from "@drift/shared";
+import { AppError, ErrorCode, SR_MARKETS_KEY, srMarketsSnapshot } from "@drift/shared";
 import {
   createSodexCallRecorder,
   loadSodexConfig,
@@ -209,6 +209,8 @@ async function leaderboardTick() {
 /**
  * Danh sách perps của SoDEX, dùng chung cho `mmModelTick` (vòng 10 phút) và Signal research. Đi qua cache TTL của cùng
  * `rest` (`MARKET_INFO_TTL_MS`), nên lần đọc khi nhận lease và `mmModelTick` ngay sau đó là một lời gọi REST.
+ * #305: mỗi lần đọc được thì ghi bản chụp vào Redis `sr:markets` cho picker / kiểm tài sản của API Signal research (API
+ * không chạm SoDEX, DEC-322 / DEC-327). Ghi lỗi chỉ log: API thấy bản chụp cũ (`stale`) hoặc thiếu.
  */
 let perpsCache: PerpsSymbolInfo[] | null = null;
 async function loadPerps() {
@@ -219,6 +221,11 @@ async function loadPerps() {
     tickSize: m.tickSize,
     takerFee: m.takerFee,
   }));
+  try {
+    await redis.set(SR_MARKETS_KEY, JSON.stringify(srMarketsSnapshot(symbols, new Date())));
+  } catch (error: unknown) {
+    log.warn({ err: error }, "signal research: could not write the SoDEX market list to Redis");
+  }
   return symbols;
 }
 

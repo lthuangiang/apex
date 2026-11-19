@@ -780,10 +780,16 @@ describe("opposite news on an open trade", () => {
     const detail = await loadSignalResearchTrade(db, ct.id, new Date(T0));
     expect(detail?.trade.result?.outcome).toBe("opposite");
     expect(detail?.steps.at(-1)?.facts.find((f) => f.key === "exit")?.outcome).toBe("opposite");
-    const summary = await loadSignalResearchSummary(db, new Date(T0), {
-      sosoMonthlyLimit: 9500,
-      claudeDailyInputBudget: 2_000_000,
-    });
+    // #305: tổng kết theo version (mặc định Baseline); version "close" mới có lệnh đóng vì tin ngược chiều.
+    const summary = await loadSignalResearchSummary(
+      db,
+      new Date(T0),
+      { sosoMonthlyLimit: 9500, claudeDailyInputBudget: 2_000_000 },
+      undefined,
+      undefined,
+      undefined,
+      close.id,
+    );
     expect(summary.funnel?.outcomes).toMatchObject({ opposite: 1 });
     // Keep: tín hiệu bị bỏ vì lệnh đang mở, có cờ oppositeNews; vẫn chỉ một lệnh.
     const [keepDrop] = await db
