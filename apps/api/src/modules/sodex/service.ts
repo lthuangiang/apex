@@ -45,6 +45,7 @@ import { getAddress, isAddressEqual, type Address, type Hex } from "viem";
 import { z } from "zod";
 
 import { AuditAction, audit } from "../../lib/audit";
+import { markSideEffect } from "../../lib/idempotency";
 import { iso } from "../security/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
 
@@ -221,6 +222,8 @@ export async function startConnect(
   const account = await upsertAccount(deps.db, userId, user, primaryAccountID);
   const nonce = await nextNonce(deps, account.id);
   const expiresAt = nonce + DRIFT_API_KEY_TTL_MS;
+  // Signer tạo key mới (#316): lỗi từ đây không giải phóng Idempotency-Key.
+  markSideEffect();
   const key = await deps.signer.createApiKey({
     sodexAccountId: account.id,
     name: DRIFT_API_KEY_NAME,
@@ -259,6 +262,7 @@ export async function startRenew(deps: SodexDeps, userId: string): Promise<Signa
   for (let i = 2; used.has(name); i += 1) name = `${DRIFT_API_KEY_NAME}-${day}-${String(i)}`;
   const nonce = await nextNonce(deps, account.id);
   const expiresAt = nonce + DRIFT_API_KEY_TTL_MS;
+  markSideEffect();
   const key = await deps.signer.createApiKey({
     sodexAccountId: account.id,
     name,
@@ -302,6 +306,7 @@ export async function startBuilderFee(
     nonce: await nextNonce(deps, account.id),
   });
   const action = approve ? SignatureAction.approveBuilderFee : SignatureAction.revokeBuilderFee;
+  markSideEffect();
   return insertRequest(deps, userId, account.id, action, request, null);
 }
 
@@ -350,6 +355,7 @@ export async function startDisconnect(
         : SignatureAction.revokeApiKeyPerps;
     return insertRequest(deps, userId, account.id, action, request, key.id);
   };
+  markSideEffect();
   const spot = await create(RevokeEngine.spot);
   const perps = await create(RevokeEngine.perps);
   return { spot, perps };
@@ -401,6 +407,9 @@ export async function submitSignature(
     );
   }
 
+  // Từ đây request có thể đã gửi tới SoDEX: lỗi (timeout, mạng) là kết quả không rõ, đối soát bằng
+  // `reconciliation`, không giải phóng Idempotency-Key (#316).
+  markSideEffect();
   // Chặn gửi hai lần: chỉ một request chuyển được khỏi `pending`.
   const claimed = await deps.db
     .update(sodexSignatureRequests)
