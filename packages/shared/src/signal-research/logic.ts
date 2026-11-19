@@ -47,7 +47,7 @@ function isStockName(name: string | null): boolean {
  * Token ứng viên của một bài: các currency SoSoValue gắn với bài, chỉ giữ market có trên SoDEX (`markets`: perps đang
  * giao dịch). Coin → `<SYM>-USD` hoặc `1000<SYM>-USD`, không bao giờ trùng một market cổ phiếu (coin "COIN" không phải
  * Coinbase). Tag công ty (tên JSON) hoặc xStock (mã có thêm "X") → `STOCK_SYMBOL_ALIASES` nếu có (GOOG, SPACEX), không thì
- * `<SYMBOL>-USD`; chỉ nhận khi market có trên SoDEX **và** nằm trong `STOCK_MARKET_SET` (news-v4, #309), để tag công ty
+ * `<SYMBOL>-USD`; chỉ nhận khi market có trên SoDEX **và** nằm trong `STOCK_MARKET_SET` (#309), để tag công ty
  * không bao giờ rơi vào market coin trùng mã.
  */
 export function candidatesOf(

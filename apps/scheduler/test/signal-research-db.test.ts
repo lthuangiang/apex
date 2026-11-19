@@ -12,7 +12,12 @@ import {
   signalStories,
   type Db,
 } from "@drift/db";
-import { articleClaudeUsage, NEWS_CLASSIFIER, NEWS_RULES } from "@drift/shared";
+import {
+  articleClaudeUsage,
+  NEWS_ASSET_MAP_VERSION,
+  NEWS_CLASSIFIER,
+  NEWS_RULES,
+} from "@drift/shared";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -261,6 +266,7 @@ describe("news pipeline end to end", () => {
       status: "open",
       priceSource: "book",
       ruleVersion: NEWS_RULES.version,
+      assetMapVersion: NEWS_ASSET_MAP_VERSION,
       outsideMarketHours: false,
     });
     expect(t?.entryPrice).toBe("99.990000000000000000");
@@ -950,8 +956,8 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
          '[{"name":"Bloomberg","tier":"top"}]', false, 'book', 'closed', 139.3, 'take_profit', '2026-11-18T09:12:00Z', 0.24, 9.5, 1.9, 'news-v2')`,
       [tradeId, storyId],
     );
-    expect(NEWS_RULES.version).toBe("news-v4");
-    // Một chu kỳ v4 (bài không phải tín hiệu) để lane có dữ liệu của version hiện tại.
+    expect(NEWS_RULES.version).toBe("news-v3");
+    // Một chu kỳ v3 (bài không phải tín hiệu) để lane có dữ liệu của version hiện tại.
     const { sr } = setup({
       items: () => [item("now-1", T0 - MIN, "SOL market recap")],
       claude: fakeClaude({}),
@@ -964,7 +970,7 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
       claudeDailyInputBudget: 2_000_000,
     });
     expect(summary.rows[0]).toMatchObject({
-      rulesVersion: NEWS_RULES.versionNumber,
+      rulesVersion: 3,
       closed: 0,
       opened: 0,
     });
@@ -978,7 +984,7 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
   });
 });
 
-describe("news-v4 (#309): company tags use the SoDEX market list", () => {
+describe("#309: company tags use the SoDEX market list, asset map version", () => {
   it("keeps a SpaceX tag as SPCX-USD (stock) and still drops Anthropic and a coin on COIN-USD", async () => {
     const perps = () => [
       ...PERPS,
@@ -1013,15 +1019,24 @@ describe("news-v4 (#309): company tags use the SoDEX market list", () => {
     expect(by.get("ant")).toMatchObject({ status: "dropped", candidates: [] });
     expect(by.get("coin")).toMatchObject({ status: "dropped", candidates: [] });
     const drops = await db
-      .select({ articleId: signalEvents.articleId, reason: signalEvents.reason })
+      .select({
+        articleId: signalEvents.articleId,
+        reason: signalEvents.reason,
+        detail: signalEvents.detail,
+      })
       .from(signalEvents)
       .where(eq(signalEvents.stage, "normalize"));
+    const assets = { assetMapVersion: NEWS_ASSET_MAP_VERSION };
     expect(drops).toEqual(
       expect.arrayContaining([
-        { articleId: "ant", reason: "NO_SODEX_MARKET" },
-        { articleId: "coin", reason: "NO_SODEX_MARKET" },
+        { articleId: "ant", reason: "NO_SODEX_MARKET", detail: assets },
+        { articleId: "coin", reason: "NO_SODEX_MARKET", detail: assets },
+        { articleId: "spx", reason: null, detail: { candidates: ["SPCX-USD"], ...assets } },
       ]),
     );
+    // Đổi danh sách tài sản không đổi version quy tắc (không reset cổng).
+    expect(NEWS_RULES.version).toBe("news-v3");
+    expect(NEWS_ASSET_MAP_VERSION).toMatch(/^assets-\d{4}-\d{2}-\d{2}[a-z]$/);
     expect(drops.some((d) => d.articleId === "spx" && d.reason !== null)).toBe(false);
   });
 });

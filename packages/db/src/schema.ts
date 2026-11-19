@@ -1870,6 +1870,8 @@ export const signalPaperTrades = pgTable(
     resultUsdc: money("result_usdc"),
     resultPct: money("result_pct"),
     ruleVersion: text("rule_version").notNull(),
+    /** Version danh sách tài sản lúc mở lệnh (`NEWS_ASSET_MAP_VERSION`, #309); lệnh trước #309 là null. */
+    assetMapVersion: text("asset_map_version"),
     ...timestamps,
   },
   (t) => [

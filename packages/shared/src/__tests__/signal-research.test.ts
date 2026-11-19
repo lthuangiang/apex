@@ -30,7 +30,7 @@ const d = (v: string) => new Decimal(v);
 const MARKETS = new Set(["BTC-USD", "SOL-USD", "1000PEPE-USD", "NVDA-USD", "MSTR-USD", "COIN-USD"]);
 const H = 3_600_000;
 
-describe("rules v4", () => {
+describe("rules v3", () => {
   it("maps every catalyst to the direction and max hold of #269 v3.3", () => {
     expect(catalystRule("hack_exploit")).toMatchObject({ direction: "short", maxHoldHours: 24 });
     expect(catalystRule("listing")).toMatchObject({ direction: "long", maxHoldHours: 24 });
@@ -59,8 +59,8 @@ describe("rules v4", () => {
     });
     expect(catalystRule("token_unlock")).toMatchObject({ direction: "short", maxHoldHours: 48 });
     expect(SIGNAL_CATALYSTS).toHaveLength(12);
-    expect(NEWS_RULES.version).toBe("news-v4");
-    expect(NEWS_RULES.versionNumber).toBe(4);
+    expect(NEWS_RULES.version).toBe("news-v3");
+    expect(NEWS_RULES.versionNumber).toBe(3);
     expect(SignalReason.assetNotInText).toBe("ASSET_NOT_IN_TEXT");
     expect(SignalReason.treasuryMajorAsset).toBe("TREASURY_MAJOR_ASSET");
   });
@@ -160,7 +160,7 @@ describe("asset must be written in the article (news-v3, #298)", () => {
     expect(assetInText("Alphabet results", null, stock("GOOGL"), g)).toBe(true);
     expect(assetInText("Googleplex tour", null, stock("GOOGL"), g)).toBe(false);
     expect(assetInText("google it", null, stock("GOOGL"), g)).toBe(false);
-    // news-v4 (#309): market mới có tên thương hiệu tường minh; market chưa có tên chỉ khớp mã.
+    // #309: market mới có tên thương hiệu tường minh; market chưa có tên chỉ khớp mã.
     const sx = [{ symbol: "SPACEX", name: '{"EN":"SPACEX"}' }];
     expect(assetInText("SpaceX files for an IPO", null, stock("SPACEX", "SPCX-USD"), sx)).toBe(
       true,
@@ -231,7 +231,7 @@ describe("candidatesOf", () => {
     expect(candidatesOf([{ symbol: "COIN", name: "Some Coin" }], MARKETS)).toEqual([]);
   });
 
-  describe("company tags use the live SoDEX list (news-v4, #309)", () => {
+  describe("company tags use the live SoDEX list (#309)", () => {
     const LIVE = new Set([
       ...MARKETS,
       "SPCX-USD",

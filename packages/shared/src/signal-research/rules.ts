@@ -116,16 +116,16 @@ export const PaperExitReason = {
 export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitReason];
 
 /**
- * Quy tắc tin tức v4 (#269 Design v3.3 mục 1 + mục 7, v3.4; #298; #309). Mọi con số là giả thuyết của nghiên cứu, không phải
+ * Quy tắc tin tức v3 (#269 Design v3.3 mục 1 + mục 7, v3.4; #298). Mọi con số là giả thuyết của nghiên cứu, không phải
  * tham số đã kiểm chứng. v3 so với v2: tài sản phải có trong tiêu đề / nội dung bài (`ASSET_NOT_IN_TEXT`), treasury không
- * giao dịch BTC / ETH (`TREASURY_MAJOR_ASSET`), prompt classifier `news-classifier-v2`. v4 so với v3 (#309): tag công
- * ty map thẳng `<SYMBOL>-USD` khi market đó có trên SoDEX và là market cổ phiếu (`STOCK_MARKET_SET`, thêm SPCX, SAMSUNG,
- * SKHY…). Lệnh của version cũ vẫn hiện ở danh sách lệnh (lịch sử) nhưng không tính vào tổng kết và cổng.
+ * giao dịch BTC / ETH (`TREASURY_MAJOR_ASSET`), prompt classifier `news-classifier-v2`. Lệnh của version cũ vẫn hiện ở
+ * danh sách lệnh (lịch sử) nhưng không tính vào tổng kết và cổng. Danh sách tài sản (market cổ phiếu, alias) có version
+ * riêng `NEWS_ASSET_MAP_VERSION` (#309): đổi danh sách không đổi version này và không reset cổng.
  */
 export const NEWS_RULES = {
-  version: "news-v4",
+  version: "news-v3",
   /** Số version (API hiện dạng số). */
-  versionNumber: 4,
+  versionNumber: 3,
   lane: "news",
   /** Bảng loại tin → chiều + giữ tối đa. Chiều do loại tin quyết định, Claude chỉ gọi tên loại tin và tài sản. */
   catalysts: {
@@ -276,10 +276,18 @@ export const SOURCE_TIERS: Readonly<Record<string, SourceTier>> = {
 export const SOSO_OFFICIAL_CATEGORY = 7;
 
 /**
+ * Version của danh sách tài sản lane tin tức (#309): `STOCK_MARKET_SET`, `STOCK_SYMBOL_ALIASES`, `STOCK_BRAND_ALIASES`.
+ * Đổi một trong ba bảng = đổi chuỗi này (dạng `assets-<ngày><chữ>`), **không** đổi `NEWS_RULES.version`: danh sách tài
+ * sản chỉ mở rộng phạm vi, không đổi cách giao dịch một tín hiệu, nên không reset cổng. Ghi vào detail của event
+ * normalize / understand và cột `asset_map_version` của lệnh giấy để truy được.
+ */
+export const NEWS_ASSET_MAP_VERSION = "assets-2026-11-19a";
+
+/**
  * Market cổ phiếu trên SoDEX (cổ phiếu niêm yết, ETF cổ phiếu, cổ phiếu pre-IPO): kind `stock`, nhãn "outside market
  * hours", và tag công ty của SoSoValue chỉ map vào market trong danh sách này (#309). SoDEX `/perps/markets/symbols`
  * không có trường loại tài sản (kiểm 2026-11-19: chỉ có `name`, `baseCoin`, phí, bậc margin, funding…), nên danh sách
- * viết tay và phải bổ sung khi SoDEX mở market cổ phiếu mới (thêm mã = tăng version quy tắc). Coin không bao giờ map vào
+ * viết tay và phải bổ sung khi SoDEX mở market cổ phiếu mới (thêm mã = tăng `NEWS_ASSET_MAP_VERSION`). Coin không bao giờ map vào
  * market ở đây (coin "COIN" không phải Coinbase). Market chỉ số / hàng hoá (US500, USTECH100, XAUT, CL, SILVER…)
  * không nằm ở đây. DRAM-USD chưa rõ loại nên chưa thêm.
  */
@@ -336,7 +344,7 @@ export const STOCK_SYMBOL_ALIASES: Readonly<Record<string, string>> = {
 
 /**
  * Tên thương hiệu của cổ phiếu khác tên SoSoValue / mã SoDEX (#298): dùng cho kiểm "tài sản có trong bài" của news-v3.
- * Danh sách nhỏ, tường minh; thêm tên = tăng version quy tắc. news-v4 (#309) thêm tên của vài market mới (SpaceX,
+ * Danh sách nhỏ, tường minh; thêm tên = tăng `NEWS_ASSET_MAP_VERSION` (#309, sửa DEC-329). #309 thêm tên của vài market mới (SpaceX,
  * Samsung, Lumentum, Kioxia, MiniMax, Unitree, Zhipu). Market cổ phiếu không có ở đây (SKHX, SKHY, CXMT, EWY, KORU,
  * PONS) chỉ khớp bằng mã ("CXMT") và tên SoSoValue ≥ 2 từ (DEC-329).
  */
