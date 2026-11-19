@@ -369,3 +369,36 @@ describe("live and backfilled stay apart (#344)", () => {
     });
   });
 });
+
+describe("funnel step 4 counts in totals mode (#358, refs #343)", () => {
+  async function articleAt(id: string, minAgo: number) {
+    await env.pool.query(
+      `insert into signal_articles (id, source, title, content, published_at, collected_at, matched_currencies, candidates, content_hash,
+         status, classification, claude_prompt_version, rule_version)
+       values ($1, 'Reuters', $2, 'Body', $3, $3, '[]', '[]', $4, 'classified', null, $5, 'news-v3')`,
+      [id, `Title ${id}`, ago(minAgo), `hash-${id}`, CLS],
+    );
+  }
+  async function funnel(range: "1d" | "7d") {
+    const r = await team.request("GET", `${base}/summary?range=${range}`);
+    expect(r.statusCode).toBe(200);
+    const f = researchSummarySchema.parse(r.json()).funnel;
+    if (f === null) throw new Error("no funnel");
+    return f.context;
+  }
+
+  it("counts live snapshots with H1 / H2 / H3 = yes for articles collected in the range; backfilled never counts", async () => {
+    await articleAt("fc-live", 120);
+    await snapshot("fc-live", ago(119), { h1: "yes", h2: "yes", h3: "yes" });
+    // Backfilled của cùng khoảng: không bao giờ vào số của phễu.
+    await articleAt("fc-bf", 120);
+    await snapshot("fc-bf", ago(119), { h1: "yes", h2: "yes", h3: "yes", source: "backfilled" });
+    // Thu 3 ngày trước: chỉ có trong 7 ngày.
+    await articleAt("fc-old", 3 * 24 * 60);
+    await snapshot("fc-old", ago(3 * 24 * 60 - 1), { h1: "yes", h2: "no", h3: "no" });
+
+    // 1 ngày: ctx-a1 (yes / no / na, test đầu) + fc-live.
+    expect(await funnel("1d")).toEqual({ reached: 2, h1Yes: 2, h2Yes: 1, h3Yes: 1 });
+    expect(await funnel("7d")).toEqual({ reached: 3, h1Yes: 3, h2Yes: 1, h3Yes: 1 });
+  });
+});

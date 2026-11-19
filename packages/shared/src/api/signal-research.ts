@@ -203,6 +203,12 @@ export const researchFunnelSchema = z.object({
     opposite: int,
     open: int,
   }),
+  /**
+   * #358: tầng 4 · Context ở chế độ tổng: số bài (cùng cửa sổ với `articleStops`: bài THU trong khoảng) có snapshot `live`
+   * tới bước 4, và số có H1 / H2 / H3 = `yes` ("Whales agree N · Funding vs crowd N · Ran early N"). Không trộn
+   * `backfilled`. null khi trong khoảng không có snapshot live nào (web giữ "records only").
+   */
+  context: z.object({ reached: int, h1Yes: int, h2Yes: int, h3Yes: int }).nullable(),
 });
 
 export const researchLevelRowSchema = z.object({
