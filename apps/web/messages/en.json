@@ -7796,21 +7796,21 @@
         "pauseReplays": "Pause replays"
       },
       "funnel": {
-        "title": "How news becomes a paper trade · last {days} days",
+        "title": "How news becomes a paper trade · last {days, plural, one {# day} other {# days}}",
         "delay": "Delay, news out → collected",
         "delaySub": "median · SoSoValue checked every {every}",
         "cost": "Claude cost",
         "costValue": "${usd} / day",
-        "costSub": "{articles} articles read · SoSoValue {used} of {limit} calls this month",
-        "costSubNoSoso": "{articles} articles read",
+        "costSub": "{articles, plural, one {# article} other {# articles}} read · SoSoValue {used} of {limit} calls this month",
+        "costSubNoSoso": "{articles, plural, one {# article} other {# articles}} read",
         "collect": "1 · Collect",
-        "collectN": "{n} articles",
+        "collectN": "{n, plural, one {# article} other {# articles}}",
         "collectSub": "every SoSoValue article, nothing skipped",
         "normalize": "2 · Normalize",
-        "normalizeN": "{n} stories",
-        "normalizeSub": "{merged} articles merged into a story already seen, none dropped",
+        "normalizeN": "{n, plural, one {# story} other {# stories}}",
+        "normalizeSub": "{merged, plural, one {# article} other {# articles}} merged into a story already seen, none dropped",
         "score": "3 · Score",
-        "scoreN": "{n} signals",
+        "scoreN": "{n, plural, one {# signal} other {# signals}}",
         "scoreSub": "level at entry: High {high} · Medium {medium} · Low {low}",
         "filter": "4 · Filter",
         "filterN": "{n} left",
@@ -7818,19 +7818,21 @@
         "decide": "5 · Decide",
         "decideN": "Long {long} · Short {short}",
         "decideSub": "{size} USDC each · TP / SL from the asset’s volatility",
-        "aria": "Funnel: {collected} articles collected, grouped into {stories} stories, {signals} scored as signals, {passed} passed filters, {trades} paper trades: {long} long and {short} short",
+        "aria": "Funnel: {collected, plural, one {# article} other {# articles}} collected, grouped into {stories, plural, one {# story} other {# stories}}, {signals} scored as signals, {passed} passed filters, {trades, plural, one {# paper trade} other {# paper trades}}: {long} long and {short} short",
         "closed": "{n} closed",
         "tp": "{n} take profit",
         "sl": "{n} stop loss",
         "maxHold": "{n} max hold",
         "open": "· {n} open",
         "drops": "Why they dropped out",
-        "dropScore": "Score · −{n} stories",
-        "dropFilter": "Filter · −{n} signals",
+        "dropScore": "{n, plural, =0 {Score · none dropped} one {Score · −# story} other {Score · −# stories}}",
+        "dropFilter": "{n, plural, =0 {Filter · none dropped} one {Filter · −# signal} other {Filter · −# signals}}",
         "dropNone": "None",
         "reason": "{label} {n}",
         "mergeNote": "Merging articles into stories is not a drop: they raise a story’s source count.",
-        "none": "No news has been collected in this window."
+        "none": "No news has been collected in this window.",
+        "dropScoreSr": "{n, plural, =0 {Score: no stories dropped} one {Score: # story dropped} other {Score: # stories dropped}}",
+        "dropFilterSr": "{n, plural, =0 {Filter: no signals dropped} one {Filter: # signal dropped} other {Filter: # signals dropped}}"
       },
       "reasons": {
         "notCatalyst": "Not a catalyst on the list",
@@ -7908,11 +7910,11 @@
         "randomDiff": "{random} · <b>{diff}</b>",
         "range": "{lo} to {hi}",
         "needs": {
-          "pooled": "About {more} more closed (all news pooled) · first verdict in ~{weeks} weeks",
+          "pooled": "About {more} more closed (all news pooled) · first verdict in ~{weeks, plural, one {# week} other {# weeks}}",
           "pooledNoWeeks": "About {more} more closed (all news pooled)",
-          "rangeBelowZero": "Range dips below 0. At this difference vs random it needs about {needed} trades, not 100.",
-          "moreTrades": "{more} more trades.",
-          "moreTradesFunding": "{more} more trades. SoDEX funding covers {days} days.",
+          "rangeBelowZero": "Range dips below 0. At this difference vs random it needs about {needed, plural, one {# trade} other {# trades}}, not 100.",
+          "moreTrades": "{more, plural, one {# more trade} other {# more trades}}.",
+          "moreTradesFunding": "{more, plural, one {# more trade} other {# more trades}}. SoDEX funding covers {days, plural, one {# day} other {# days}}.",
           "losesAfterFees": "Loses after fees. Not worth more work in this form.",
           "passed": "Passed the gate."
         },
@@ -7930,7 +7932,7 @@
       },
       "risk": {
         "title": "Risk filter · pause new entries around big news",
-        "body": "Tested on real bot trades: if Volume Builder and Market Making bots had paused new entries in the {windows} big-news windows of the last {days} days, the cost per $1M would have been {cost}% {costDir, select, lower {lower} other {higher}} and volume {volume}% {volumeDir, select, lower {lower} other {higher}}.",
+        "body": "Tested on real bot trades: if Volume Builder and Market Making bots had paused new entries in the {windows, plural, one {# big-news window} other {# big-news windows}} of the last {days, plural, one {day} other {# days}}, the cost per $1M would have been {cost}% {costDir, select, lower {lower} other {higher}} and volume {volume}% {volumeDir, select, lower {lower} other {higher}}.",
         "next": "Next pause window",
         "nextValue": "{event} · {day}, {from}–{to}",
         "short": "<b>Risk filter:</b> pausing bots in big-news windows would have {dir, select, lower {cut} other {raised}} cost per $1M by {cost}%. Next: {event} {day}, {time}.",
@@ -7981,7 +7983,7 @@
         "entryAfterFill": "price {d} after the fill",
         "what": {
           "whales": "Wallet ··{tail} opened {side, select, long {long} other {short}}, {size}",
-          "funding": "Funding {rate} per {hours} h, highest {top}% of {days} days",
+          "funding": "Funding {rate} per {hours} h, highest {top}% of {days, plural, one {# day} other {# days}}",
           "price": "Broke {mins}-min range {dir, select, up {up} other {down}}, volume {x}× usual"
         },
         "newsTypes": {
@@ -8001,7 +8003,7 @@
         "newsLine": "{type} → {side}",
         "enteredAt": "entered at <b>{level}</b> ({sources})",
         "sourcesTop": "{n, plural, one {# top-tier source} other {# top-tier sources}}",
-        "sourcesMix": "{n} sources, {top} top-tier",
+        "sourcesMix": "{n, plural, one {# source} other {# sources}}, {top} top-tier",
         "sourcesN": "{n, plural, one {# source} other {# sources}}",
         "later": "later {level} ({sources})",
         "stillOpen": "still open",
@@ -8093,8 +8095,8 @@
             "fail": "Risk filter: inside a big-news window"
           },
           "maxOpen": {
-            "ok": "With a limit of {n} open trades this would have been allowed",
-            "fail": "With a limit of {n} open trades this would have been blocked"
+            "ok": "With a limit of {n, plural, one {# open trade} other {# open trades}} this would have been allowed",
+            "fail": "With a limit of {n, plural, one {# open trade} other {# open trades}} this would have been blocked"
           }
         },
         "checkOk": "Passed",
