@@ -21,7 +21,7 @@ import {
   shortWallet,
   type EventData,
 } from "@/lib/connect-events";
-import { sendWithSameKey, uncertainOutcome } from "@/lib/financial-action";
+import { builderFeeConflict, sendWithSameKey, uncertainOutcome } from "@/lib/financial-action";
 import { feeLabels, formatDate, shortAddress } from "@/lib/format";
 import { useMe } from "@/lib/queries";
 import { useSodexSignature } from "@/lib/use-sodex-signature";
@@ -110,6 +110,9 @@ export function ConnectSodex() {
     };
     if (e.code === "FORBIDDEN" && e.details.reason === "connect_disabled")
       return t("errors.disabled");
+    const conflict = builderFeeConflict(e);
+    if (conflict !== null)
+      return t(conflict === "superseded" ? "errors.feeSuperseded" : "errors.feeInFlight");
     return messages[e.code] ?? tc("generic");
   };
 
@@ -229,9 +232,12 @@ export function ConnectSodex() {
         onUnknown: () => {
           setPhase({ kind: "creating", which, unknown: true });
         },
-      }).catch((e: unknown) => {
+      }).catch(async (e: unknown) => {
         if (!(e instanceof ApiError)) track("sign_rejected", { which, ...errorInfo(e) });
         setPhase({ kind: "review", request, which, rejected: false });
+        // Request phí này đã bị request mới hơn thay (#327): mở request còn hiệu lực, không để người dùng ký lại cái cũ.
+        if (which === "fee" && builderFeeConflict(e) === "superseded")
+          await openFeeRequest().catch(() => undefined);
         throw e;
       });
       if (outcome.kind === "rejected") {
@@ -245,6 +251,11 @@ export function ConnectSodex() {
           reason: (outcome.request.sodexError ?? "unknown").slice(0, 300),
         });
         setPhase({ kind: "review", request: outcome.request, which, rejected: false });
+        if (which === "fee" && outcome.request.sodexError === "superseded") {
+          await openFeeRequest().catch(() => undefined);
+          setError(t("errors.feeSuperseded"));
+          return;
+        }
         setError(t("errors.rejectedBySodex", { reason: outcome.request.sodexError ?? "" }));
         return;
       }

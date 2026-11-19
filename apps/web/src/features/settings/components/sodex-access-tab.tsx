@@ -18,7 +18,12 @@ import { useRef, useState } from "react";
 
 import { LowestPill, MmFeeLadder, MmFeeStatus, mmFeeView } from "@/components/mm-fee-tiers";
 import { api, ApiError } from "@/lib/api";
-import { readBackState, sendWithSameKey, uncertainOutcome } from "@/lib/financial-action";
+import {
+  builderFeeConflict,
+  readBackState,
+  sendWithSameKey,
+  uncertainOutcome,
+} from "@/lib/financial-action";
 import { feeLabels, formatDate, formatDateTime, shortAddress } from "@/lib/format";
 import { useFeatures, useSodexConnection, useTwoFactorNeeded } from "@/lib/queries";
 import { useSodexSignature } from "@/lib/use-sodex-signature";
@@ -463,6 +468,7 @@ function FeeCard({ connection }: { connection: Connected }) {
   const tc = useTranslations("common.errors");
   const tDialog = useTranslations("common.dialog");
   const ts = useTranslations("settings.security");
+  const tConnect = useTranslations("onboarding.connect");
   const queryClient = useQueryClient();
   const signAndSubmit = useSodexSignature();
   const wallet = useMasterWallet(connection.address);
@@ -504,9 +510,16 @@ function FeeCard({ connection }: { connection: Connected }) {
       const outcome = await signAndSubmit(request);
       if (outcome.kind === "failed") {
         const reason = outcome.request.sodexError ?? "";
-        setError(/builder approvals/i.test(reason) ? t("removeOtherBuilder") : reason);
+        setError(
+          reason === "superseded"
+            ? tConnect("errors.feeSuperseded")
+            : /builder approvals/i.test(reason)
+              ? t("removeOtherBuilder")
+              : reason,
+        );
       }
     } catch (e) {
+      const conflict = builderFeeConflict(e);
       if (
         e instanceof ApiError &&
         (e.code === "TWO_FACTOR_INVALID" || e.code === "TWO_FACTOR_REQUIRED")
@@ -521,6 +534,13 @@ function FeeCard({ connection }: { connection: Connected }) {
         setError(tc("unconfirmed"));
         await readBackState(queryClient, [CONNECTION_KEY]);
         setError(tc("generic"));
+      } else if (conflict !== null) {
+        // Một approve / revoke khác đã thay request này, hoặc thay đổi trước còn chờ SoDEX (#327): trạng thái thật
+        // được đọc lại ở `finally`, bấm lại thì tạo request còn hiệu lực.
+        setDialogOpen(false);
+        setError(
+          tConnect(conflict === "superseded" ? "errors.feeSuperseded" : "errors.feeInFlight"),
+        );
       } else {
         setDialogOpen(false);
         setError(tc("generic"));

@@ -1904,7 +1904,9 @@
         "signatureInvalid": "That signature isn’t from the wallet you connected.",
         "rejectedBySodex": "SoDEX rejected the request: {reason}",
         "disabled": "Connecting SoDEX isn’t available yet.",
-        "walletDeclined": "The wallet request was closed or declined. Try again and approve the connection in your wallet."
+        "walletDeclined": "The wallet request was closed or declined. Try again and approve the connection in your wallet.",
+        "feeSuperseded": "A newer builder fee request replaced this one, so it wasn’t sent to SoDEX.",
+        "feeInFlight": "Your last builder fee change is still being confirmed with SoDEX. Try again once it’s confirmed."
       },
       "wallets": {
         "title": "Choose your wallet",
@@ -2829,6 +2831,8 @@
     "signalAnalysis.research.reasonsN",
     "signalAnalysis.research.trace.reasonLabelsN",
     "common.errors.unconfirmed",
+    "onboarding.connect.errors.feeSuperseded",
+    "onboarding.connect.errors.feeInFlight",
     "signalAnalysis.research.versions"
   ],
   "beta": {

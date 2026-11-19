@@ -72,12 +72,16 @@ export async function startTestEnv(
   const mails: Mail[] = [];
   const logs: string[] = [];
   const clock = { now: new Date("2026-10-27T08:00:00Z") };
+  const clockStart = clock.now.getTime();
   const unusableKeys = new Set<string>();
   const totpKey = randomBytes(32);
   const sodex = buildSodexMock({ builderIds: [Number(TEST_BUILDER_ID)] });
   const sodexOptions = {
     config: { restUrl: "https://mainnet-gw.sodex.dev" },
-    rateLimit: new MemoryRateLimitStore(),
+    // Bucket SoDEX (1200 weight/phút, lời gọi 20) chạy theo đồng hồ thật CỘNG phần đồng hồ test đã tiến: test tiến
+    // `clock` giữa các test thì bucket đầy lại như ngoài đời, không để cả file test (nhiều account trong < 1 phút
+    // thật) dùng chung một phút và gặp RATE_LIMITED tuỳ máy nhanh hay chậm (#327).
+    rateLimit: new MemoryRateLimitStore(() => Date.now() + (clock.now.getTime() - clockStart)),
     egressKey: "test",
     fetch: sodex.fetch,
   };
