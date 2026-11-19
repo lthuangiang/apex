@@ -10,7 +10,7 @@ import type {
 
 import { clock, count } from "../format";
 
-import { delay, delayLong, hold, pctPlain, pctSigned, priceText } from "./format";
+import { delay, delayLong, hold, pctPlain, pctSigned, priceText, tickPrice } from "./format";
 import type { Tr } from "./text";
 
 // Câu chữ của News feed và trace một bài (#292, thiết kế docs/mockups/signal-research/news-trace.html). Hàm thuần: chỉ
@@ -189,8 +189,29 @@ function checkRow(c: ResearchTraceCheck, asset: string, t: Tr): Row {
   }
 }
 
-/** Dựng toàn bộ phần trace (tầng, thẻ bước, câu kết luận) từ `/articles/:id/trace`. */
-export function traceView(tr: ResearchArticleTrace, tz: string, t: Tr): TraceView {
+type TraceStory = Extract<ResearchTraceStep, { key: "normalize" }>["detail"] extends infer D
+  ? D extends { story: infer S }
+    ? S
+    : never
+  : never;
+
+interface StepCtx {
+  market: string;
+  story: TraceStory;
+  /** Tick size của market (danh sách market SoDEX); null khi chưa biết. */
+  tickOf: (market: string) => string | null;
+}
+
+/**
+ * Dựng toàn bộ phần trace (tầng, thẻ bước, câu kết luận) từ `/articles/:id/trace`. `tickOf` (tuỳ chọn): tick size của
+ * market để hiện TP / SL đúng tick (#297).
+ */
+export function traceView(
+  tr: ResearchArticleTrace,
+  tz: string,
+  t: Tr,
+  tickOf: (market: string) => string | null = () => null,
+): TraceView {
   const a = tr.article;
   const assets = assetsText(a, t);
   const na = t("na");
@@ -201,7 +222,9 @@ export function traceView(tr: ResearchArticleTrace, tz: string, t: Tr): TraceVie
     a.asset ??
     (normalize?.key === "normalize" ? normalize.detail?.candidates[0]?.market : undefined) ??
     assets;
-  const steps: StepView[] = tr.steps.map((s) => stepView(s, a, market, tz, t));
+  const steps: StepView[] = tr.steps.map((s) =>
+    stepView(s, a, { market, story: story ?? null, tickOf }, tz, t),
+  );
   let last = 0;
   tr.steps.forEach((s, i) => {
     if (s.status !== "notReached") last = i;
@@ -264,10 +287,11 @@ export function traceView(tr: ResearchArticleTrace, tz: string, t: Tr): TraceVie
 function stepView(
   s: ResearchTraceStep,
   a: ResearchArticle,
-  market: string,
+  ctx: StepCtx,
   tz: string,
   t: Tr,
 ): StepView {
+  const { market } = ctx;
   const sep = t("trades.sep");
   const base = { key: s.key, status: s.status };
   const drop = s.status === "drop";
@@ -450,23 +474,32 @@ function stepView(
             label: t("trace.rows.promotional"),
             value: d.promotional ? t("trace.values.yes") : t("trace.values.no"),
           });
+        // #297: mức khoá lúc vào lệnh; câu chuyện có thêm nguồn sau đó → "Low at entry · now 2 sources" để khỏi tưởng
+        // mâu thuẫn với "Sources in story".
+        const entrySources =
+          d.levelSources === null
+            ? null
+            : new Set(d.levelSources.map((x) => x.name.toLowerCase())).size;
+        const now = ctx.story?.sources ?? null;
         if (d.level !== null)
           rows.push({
             label: t("trace.rows.level"),
             value:
-              d.levelSources === null || d.levelSources.length === 0
-                ? t(`levels.${d.level}`)
-                : t("trace.values.level", {
-                    level: t(`levels.${d.level}`),
-                    sources: d.levelSources
-                      .map((x) =>
-                        t("trace.values.levelSource", {
-                          name: x.name,
-                          tier: t(`trace.tiers.${x.tier}`),
-                        }),
-                      )
-                      .join(", "),
-                  }),
+              now !== null && entrySources !== null && now > entrySources
+                ? t("trace.values.levelNow", { level: t(`levels.${d.level}`), n: now })
+                : d.levelSources === null || d.levelSources.length === 0
+                  ? t(`levels.${d.level}`)
+                  : t("trace.values.level", {
+                      level: t(`levels.${d.level}`),
+                      sources: d.levelSources
+                        .map((x) =>
+                          t("trace.values.levelSource", {
+                            name: x.name,
+                            tier: t(`trace.tiers.${x.tier}`),
+                          }),
+                        )
+                        .join(", "),
+                    }),
           });
         if (d.error !== null) rows.push({ label: t("trace.rows.claudeError"), value: d.error });
       }
@@ -552,9 +585,9 @@ function stepView(
           {
             label: t("trace.rows.tpSl"),
             value: t("trace.values.tpSl", {
-              tp: priceText(d.tp),
+              tp: tickPrice(d.tp, ctx.tickOf(market), d.entry),
               tpPct: PCT_NA(d.tpPct, (v) => pctSigned(v, 1)) ?? t("na"),
-              sl: priceText(d.sl),
+              sl: tickPrice(d.sl, ctx.tickOf(market), d.entry),
               slPct: PCT_NA(d.slPct, (v) => pctSigned(v, 1)) ?? t("na"),
             }),
           },

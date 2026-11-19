@@ -20,7 +20,7 @@ import type { PageCtx } from "../components/signal-analysis-page";
 import { clock, count, monthDay } from "../format";
 
 import { useResearchSummary } from "./api";
-import { balance, delay, pctPlain, pctSigned, tone } from "./format";
+import { balance, delay, pctPlain, pctSigned, tone, usdSigned } from "./format";
 import { NewsTrace, type TraceRequest } from "./news-trace";
 import type { Tr } from "./text";
 import { ResearchTrades } from "./trades";
@@ -152,19 +152,20 @@ function Sources({ items, now, tz }: { items: ResearchSource[]; now: string; tz:
   return (
     <section
       aria-labelledby="sr-src"
-      className="flex flex-wrap items-center gap-x-[22px] gap-y-2.5 rounded-card bg-surface px-5 py-[18px] max-md:hidden"
+      // #297: hiện cả trên điện thoại (gọn hơn), cùng chấm trạng thái.
+      className="flex flex-wrap items-center gap-x-[22px] gap-y-2 rounded-card bg-surface px-4 py-3.5 md:gap-y-2.5 md:px-5 md:py-[18px]"
     >
-      <h2 id="sr-src" className="m-0 text-[15px] font-extrabold">
+      <h2 id="sr-src" className="m-0 text-sm font-extrabold md:text-[15px]">
         {t("title")}
       </h2>
       {items.length === 0 ? (
         <Na />
       ) : (
-        <ul className="m-0 flex list-none flex-wrap items-center gap-x-[22px] gap-y-2.5 p-0">
+        <ul className="m-0 flex list-none flex-wrap items-center gap-x-4 gap-y-1.5 p-0 md:gap-x-[22px] md:gap-y-2.5">
           {items.map((s) => {
             const l = line(s);
             return (
-              <li key={s.key} className="inline-flex items-center gap-1.5 text-sm">
+              <li key={s.key} className="inline-flex items-center gap-1.5 text-[13px] md:text-sm">
                 <span aria-hidden="true" className={`size-2 rounded-full ${DOT[s.status]}`} />
                 {l.text}
                 {l.statusShown ? null : (
@@ -268,7 +269,26 @@ function PaperBots({ bots, tz }: { bots: ResearchPaperBot[]; tz: string }) {
               }
             >
               <div className="grid grid-cols-3 gap-2">
-                <Stat label={t("balance")} value={bal(news)} />
+                <Stat
+                  label={t("balance")}
+                  value={
+                    news.balance === null ? (
+                      <Na />
+                    ) : (
+                      <>
+                        {balance(news.balance)}
+                        {/* #297: 10,000 + kết quả đã chốt; lãi / lỗ chưa chốt chỉ khi có giá SoDEX của mọi lệnh mở. */}
+                        {news.unrealized === null ? null : (
+                          <span
+                            className={`block text-xs font-bold ${tone(Number(news.unrealized))}`}
+                          >
+                            {t("unrealized", { pnl: usdSigned(news.unrealized) })}
+                          </span>
+                        )}
+                      </>
+                    )
+                  }
+                />
                 <Stat
                   label={t("open")}
                   value={news.openTrades === null ? <Na /> : t("openN", { n: news.openTrades })}

@@ -5,13 +5,15 @@ import { RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, type ReactNode } from "react";
 
+import { useMarketNames } from "@/lib/markets";
+
 import { FilterSelect, ScrollTable, Seg } from "../components/bits";
 import type { PageCtx } from "../components/signal-analysis-page";
 import { clock, monthDay } from "../format";
 
 import { RESEARCH_DEFAULT, useResearchTrades, type ResearchFilters } from "./api";
 import { ResearchTradeDetail } from "./detail";
-import { delay, hold, pctSigned, priceText, tone, usdSigned } from "./format";
+import { delay, hold, pctSigned, priceText, tickPrice, tone, usdSigned } from "./format";
 import { skipText, sourcesText, tradeTitle, type Tr } from "./text";
 import { Block, Dash, Na, Pill, RetryTag, SIDE_TONE, Sub, tdR, tdW, thR, thW } from "./ui";
 
@@ -94,14 +96,35 @@ function resultSub(x: ResearchTrade, t: Tr): string | null {
   return t(`trades.result.${r.outcome}`);
 }
 
-function PriceCell({ v, pct }: { v: string | null; pct: number | null }) {
+function PriceCell({
+  v,
+  pct,
+  tick,
+  entry,
+}: {
+  v: string | null;
+  pct: number | null;
+  tick: string | null;
+  entry: string | null;
+}) {
   if (v === null) return <Na />;
   return (
     <>
-      {priceText(v)}
+      {tickPrice(v, tick, entry)}
       {pct === null ? null : <Sub>{pctSigned(pct, 1)}</Sub>}
     </>
   );
+}
+
+/**
+ * Kết quả hiện ở cột Result / thẻ (#297): lệnh đã đóng → kết quả sau phí; lệnh đang mở → lãi / lỗ chưa chốt theo giá
+ * SoDEX nếu API có, không thì null (bảng: "Not available"; thẻ: "Open").
+ */
+function shownPnl(x: ResearchTrade): { v: string; open: boolean } | null {
+  const r = x.result;
+  if (r === null) return null;
+  if (r.outcome === "open") return r.unrealized === null ? null : { v: r.unrealized, open: true };
+  return r.pnl === null ? null : { v: r.pnl, open: false };
 }
 
 function TypeLabel({ x }: { x: ResearchTrade }) {
@@ -280,6 +303,20 @@ export function ResearchTrades({
   );
 }
 
+/** Độ rộng cột của bảng từ 1280 px (#297): Signal, Seen, What, Moved, Entry, TP, SL, Max hold, Result, Trace. */
+const COL_WIDTHS = [
+  "xl:w-[12%]",
+  "xl:w-[10%]",
+  "xl:w-[22%]",
+  "xl:w-[7%]",
+  "xl:w-[8%]",
+  "xl:w-[9%]",
+  "xl:w-[9%]",
+  "xl:w-[6%]",
+  "xl:w-[9%]",
+  "xl:w-[8%]",
+] as const;
+
 const traceBtn =
   "min-h-10 cursor-pointer whitespace-nowrap rounded-control border border-border-input bg-surface px-3 text-[13px] font-extrabold text-accent-ink";
 
@@ -322,6 +359,8 @@ function TradesTable({
   onTrace: (articleId: string) => void;
 }) {
   const t = useTranslations("signalAnalysis.research");
+  const names = useMarketNames();
+  const tickOf = (m: string) => names.info(m)?.tickSize ?? null;
   const cols = [
     "colSignal",
     "colSeen",
@@ -334,13 +373,19 @@ function TradesTable({
     "colResult",
   ] as const;
   return (
+    // #297: từ 1280 px bảng vừa khung (table-fixed, độ rộng cột theo %), không cuộn ngang; dưới 1280 px mới cuộn.
     <ScrollTable label={t("trades.table")}>
-      <table className="w-full border-collapse">
+      <table className="w-full min-w-[1100px] border-collapse xl:min-w-0 xl:table-fixed">
         <caption className="sr-only">{t("trades.table")}</caption>
+        <colgroup>
+          {COL_WIDTHS.map((w, i) => (
+            <col key={i} className={w} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
             {cols.map((k) => (
-              <th key={k} scope="col" className={k === "colMoved" ? `${thW} min-w-24` : thR}>
+              <th key={k} scope="col" className={thW}>
                 {t(`trades.${k}`)}
               </th>
             ))}
@@ -353,11 +398,12 @@ function TradesTable({
           {items.map((x) => {
             const skipped = x.skipped !== null;
             const title = tradeTitle(x, t);
-            const pnl = x.result?.pnl ?? null;
+            const pnl = shownPnl(x);
+            const tick = tickOf(x.asset);
             return (
               <tr key={x.id}>
-                <td className={tdR}>
-                  <span className="flex items-center gap-1.5">
+                <td className={tdW}>
+                  <span className="flex flex-wrap items-center gap-1.5">
                     <span className="font-bold">{x.asset}</span>
                     <Pill tone={SIDE_TONE[x.side]}>{t(`sides.${x.side}`)}</Pill>
                   </span>
@@ -365,11 +411,11 @@ function TradesTable({
                     <TypeLabel x={x} />
                   </Sub>
                 </td>
-                <td className={tdR}>
+                <td className={tdW}>
                   {clock(x.seenAt, tz)}
                   <Sub>{seenSub(x, t, false)}</Sub>
                 </td>
-                <td className={`${tdW} min-w-[180px]`}>
+                <td className={tdW}>
                   {/* Cả tín hiệu bị bỏ qua cũng mở được (#278: id là id sự kiện; các bước dừng ở kiểm tra không qua). */}
                   <button
                     type="button"
@@ -377,7 +423,8 @@ function TradesTable({
                     onClick={() => {
                       onOpen(x.id);
                     }}
-                    className={`${linkBtn} min-h-6`}
+                    title={title}
+                    className={`${linkBtn} line-clamp-2 min-h-6 [overflow-wrap:anywhere]`}
                   >
                     {title}
                   </button>
@@ -406,21 +453,37 @@ function TradesTable({
                     </>
                   )}
                 </td>
-                <td className={tdR}>{skipped ? <Dash /> : <PriceCell v={x.tp} pct={x.tpPct} />}</td>
-                <td className={tdR}>{skipped ? <Dash /> : <PriceCell v={x.sl} pct={x.slPct} />}</td>
+                <td className={tdR}>
+                  {skipped ? (
+                    <Dash />
+                  ) : (
+                    <PriceCell v={x.tp} pct={x.tpPct} tick={tick} entry={x.entry} />
+                  )}
+                </td>
+                <td className={tdR}>
+                  {skipped ? (
+                    <Dash />
+                  ) : (
+                    <PriceCell v={x.sl} pct={x.slPct} tick={tick} entry={x.entry} />
+                  )}
+                </td>
                 <td className={tdR}>
                   {skipped ? <Dash /> : x.maxHoldHours === null ? <Na /> : hold(x.maxHoldHours)}
                 </td>
-                <td className={tdR}>
+                <td className={tdW}>
                   {skipped ? (
                     <span className="text-muted">{t("trades.notTraded")}</span>
                   ) : (
                     <>
                       {pnl === null ? (
-                        <Na />
+                        x.result?.outcome === "open" ? null : (
+                          <Na />
+                        )
                       ) : (
-                        <span className={`font-extrabold ${tone(Number(pnl))}`}>
-                          {usdSigned(pnl)}
+                        <span className={`font-extrabold ${tone(Number(pnl.v))}`}>
+                          {pnl.open
+                            ? t("trades.unrealized", { pnl: usdSigned(pnl.v) })
+                            : usdSigned(pnl.v)}
                         </span>
                       )}
                       <Sub>{resultSub(x, t)}</Sub>
@@ -449,13 +512,16 @@ function TradeCards({
   onTrace: (articleId: string) => void;
 }) {
   const t = useTranslations("signalAnalysis.research");
+  const names = useMarketNames();
   const na = t("na");
   const p = (v: string | null) => (v === null ? na : priceText(v));
+  const tp = (v: string | null, x: ResearchTrade) =>
+    v === null ? na : tickPrice(v, names.info(x.asset)?.tickSize ?? null, x.entry);
   return (
     <ul className="m-0 flex list-none flex-col gap-2.5 p-0 md:hidden">
       {items.map((x) => {
         const skip = skipText(x, t, true);
-        const pnl = x.result?.pnl ?? null;
+        const pnl = shownPnl(x);
         const out = x.result === null ? null : t(`trades.resultShort.${x.result.outcome}`);
         const body = (
           <>
@@ -466,10 +532,15 @@ function TradeCards({
               </span>
               {skip !== null ? (
                 <span className="text-xs text-muted">{t("trades.notTraded")}</span>
-              ) : pnl === null ? (
-                <Na />
+              ) : pnl !== null ? (
+                <b className={tone(Number(pnl.v))}>
+                  {pnl.open ? t("trades.unrealized", { pnl: usdSigned(pnl.v) }) : usdSigned(pnl.v)}
+                </b>
+              ) : x.result?.outcome === "open" ? (
+                // Lệnh đang mở chưa có giá SoDEX: ghi "Open", không bao giờ 0 (#297).
+                <b>{t("trades.openCard")}</b>
               ) : (
-                <b className={tone(Number(pnl))}>{usdSigned(pnl)}</b>
+                <Na />
               )}
             </span>
             <span className="text-sm">{tradeTitle(x, t)}</span>
@@ -492,8 +563,8 @@ function TradeCards({
                 <span className="text-xs text-muted">
                   {t("trades.cardLevels", {
                     entry: p(x.entry),
-                    tp: p(x.tp),
-                    sl: p(x.sl),
+                    tp: tp(x.tp, x),
+                    sl: tp(x.sl, x),
                     hold: x.maxHoldHours === null ? na : hold(x.maxHoldHours),
                   })}
                 </span>

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   claudeCostUsd,
   errorResponseSchema,
+  funnelSteps,
   meSchema,
   NEWS_CLASSIFIER,
   researchArticlesPageSchema,
@@ -112,6 +113,14 @@ describe("signal research (team only, read-only)", () => {
     expect(summary.levels.find((l) => l.level === "medium")).toMatchObject({ trades: 1, short: 1 });
     expect(summary.sources).toEqual([]);
     expect(summary.assets).toEqual(["SOL-USD"]);
+    // #297: số dư = 10 000 + kết quả đã chốt (9.5); không có lệnh mở → không có lãi / lỗ chưa chốt.
+    expect(summary.bots[0]).toMatchObject({
+      type: "news",
+      balance: "10009.5",
+      realized: "9.5",
+      unrealized: null,
+      openTrades: 0,
+    });
 
     const p = await team.request("GET", `${base}/trades?limit=1&show=all&tz=Asia%2FHo_Chi_Minh`);
     const page = researchTradesPageSchema.parse(p.json());
@@ -831,6 +840,101 @@ describe("signal research articles feed and trace (#291)", () => {
     expect(day.funnel?.drops.score.reasons.map((r) => r.reason)).not.toContain("duplicate");
     // Bảng mức / cổng không đổi theo khoảng.
     expect(day.rows).toEqual(all.rows);
+  });
+
+  it("#297: every funnel count is the same unit (articles collected in range): in − out = next", async () => {
+    const r = await team.request("GET", `${base}/summary?range=1d`);
+    const f = researchSummarySchema.parse(r.json()).funnel;
+    if (f === null) throw new Error("funnel");
+    const steps = funnelSteps(f.articleStops);
+    for (const [i, st] of steps.entries()) {
+      expect(st.in - st.dropped - st.merged - st.waiting).toBe(st.passed);
+      if (i > 0) expect(st.in).toBe(steps[i - 1]?.passed);
+    }
+    // Trường cũ của phễu giờ cùng đơn vị với articleStops.
+    expect(f.collected).toBe(steps[0]?.in);
+    expect(f.signals).toBe(steps[2]?.passed);
+    expect(f.passed).toBe(steps[3]?.passed);
+    expect(f.merged).toBe(1);
+    // Trong ngày: a-gold, a-kntq, a-dup bị Normalize loại; a-orig chờ Claude; a-late, a-old, a-promo bị Score loại;
+    // a-filter bị Filter loại, a-merged gộp; a-trade mở lệnh (Long).
+    expect(steps.map((x) => [x.in, x.passed])).toEqual([
+      [steps[0]?.in, steps[0]?.in],
+      [steps[0]?.in, (steps[0]?.in ?? 0) - 3 - (steps[1]?.waiting ?? 0)],
+      [steps[1]?.passed, 3],
+      [3, 1],
+      [1, 1],
+    ]);
+    expect(f.long).toBe(1);
+  });
+
+  it("#297: open trades are marked at the SoDEX last price; no price → null, never 0", async () => {
+    env.prices.set("ETH-USD", { price: "3500", at: env.clock.now.getTime() });
+    try {
+      const s = researchSummarySchema.parse(
+        (await team.request("GET", `${base}/summary?range=1d`)).json(),
+      );
+      // 0.1465 × (3500 − 3412.5) − 0.25 − 0.1465 × 3500 × 0.05% = 12.312375
+      expect(s.bots[0]).toMatchObject({
+        balance: "10009.5",
+        realized: "9.5",
+        unrealized: "12.312375",
+        openTrades: 1,
+      });
+      const p = researchTradesPageSchema.parse(
+        (await team.request("GET", `${base}/trades?limit=100`)).json(),
+      );
+      expect(p.items.find((x) => x.id === trade2)?.result).toMatchObject({
+        pnl: null,
+        unrealized: "12.312375",
+        outcome: "open",
+      });
+      // Lệnh đã đóng không có lãi / lỗ chưa chốt.
+      expect(p.items.find((x) => x.id === tradeId)?.result?.unrealized).toBeNull();
+    } finally {
+      env.prices.delete("ETH-USD");
+    }
+    const s = researchSummarySchema.parse(
+      (await team.request("GET", `${base}/summary?range=1d`)).json(),
+    );
+    expect(s.bots[0]).toMatchObject({ balance: "10009.5", unrealized: null });
+    const p = researchTradesPageSchema.parse(
+      (await team.request("GET", `${base}/trades?limit=100`)).json(),
+    );
+    expect(p.items.find((x) => x.id === trade2)?.result?.unrealized).toBeNull();
+  });
+
+  it("#297: SoSoValue stock tag names read EN, never raw JSON; Claude shows in Sources", async () => {
+    await article({
+      id: "a-stock",
+      published: 30,
+      collected: 25,
+      matched:
+        '[{"symbol":"BTC","name":"BITCOIN"},{"symbol":"GPUS","name":"{\\"EN\\": \\"HYPERSCALE DATA INC\\"}"},{"symbol":"NVDA","name":{"EN":"NVIDIA CORPORATION"}}]',
+      status: "collected",
+    });
+    await env.pool.query(
+      `insert into signal_source_health (source, last_ok_at, last_cycle_at) values ('claude', $1, $1)
+       on conflict (source) do update set last_ok_at = excluded.last_ok_at`,
+      [env.clock.now.toISOString()],
+    );
+    try {
+      const tr = await trace("a-stock");
+      const collect = tr.steps[0];
+      expect(collect?.key === "collect" ? collect.detail.tagged : null).toEqual([
+        { symbol: "BTC", name: "BITCOIN" },
+        { symbol: "GPUS", name: "HYPERSCALE DATA INC" },
+        { symbol: "NVDA", name: "NVIDIA CORPORATION" },
+      ]);
+      const s = researchSummarySchema.parse((await team.request("GET", `${base}/summary`)).json());
+      expect(s.sources.find((x) => x.key === "claude")).toMatchObject({
+        mode: "live",
+        status: "live",
+      });
+    } finally {
+      await env.pool.query("delete from signal_articles where id = 'a-stock'");
+      await env.pool.query("delete from signal_source_health where source = 'claude'");
+    }
   });
 
   it("trades carry the article id for the Trace button", async () => {

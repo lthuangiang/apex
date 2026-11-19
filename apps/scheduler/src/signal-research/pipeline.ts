@@ -15,6 +15,7 @@ import {
   normalizedText,
   oneWayFeePct,
   planTrade,
+  roundToTick,
   roundTripCost,
   SignalLevel,
   SignalOutcome,
@@ -804,6 +805,10 @@ async function decideStory(
     typicalMovePct: typical,
     oneWayFeePct: fee,
   });
+  // #297: TP / SL lưu theo tick của market (giá đặt được trên SoDEX); tick không biết thì giữ nguyên.
+  const tick = info.get(market)?.tickSize ?? null;
+  const tpPrice = roundToTick(plan.tpPrice, tick);
+  const slPrice = roundToTick(plan.slPrice, tick);
   const costFail = costCheck(plan.tpPct, cost);
   const costDetail = {
     tpPct: plan.tpPct.toFixed(4),
@@ -845,8 +850,8 @@ async function decideStory(
           typicalMovePct: typical.toFixed(18),
           tpPct: plan.tpPct.toFixed(18),
           slPct: plan.slPct.toFixed(18),
-          tpPrice: plan.tpPrice.toFixed(18),
-          slPrice: plan.slPrice.toFixed(18),
+          tpPrice: tpPrice.toFixed(),
+          slPrice: slPrice.toFixed(),
           maxHoldUntil: new Date(now + rule.maxHoldHours * HOUR_MS),
           openedAt: new Date(now),
           movedBeforeEntryPct: moved === null ? null : moved.toFixed(18),
@@ -880,8 +885,8 @@ async function decideStory(
           detail: {
             direction: rule.direction,
             entryPrice: plan.entryPrice.toFixed(),
-            tpPrice: plan.tpPrice.toFixed(),
-            slPrice: plan.slPrice.toFixed(),
+            tpPrice: tpPrice.toFixed(),
+            slPrice: slPrice.toFixed(),
             priceSource: quote.source,
             retry,
           },

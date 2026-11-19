@@ -104,13 +104,19 @@ export interface ArticleFilters {
   reason: ResearchDropReason | null;
 }
 
+/** Số bài mỗi trang của News feed (#297): feed cuộn trong khung cố định, "Load more" theo cursor. */
+export const FEED_PAGE = 20;
+
 export function useResearchArticles(f: ArticleFilters) {
   return useInfiniteQuery({
     queryKey: [...KEY, "articles", f],
     queryFn: ({ pageParam }) =>
       api(
         "GET",
-        `${RESEARCH_PATHS.articles}?${query(f, pageParam === null ? {} : { cursor: pageParam })}`,
+        `${RESEARCH_PATHS.articles}?${query(f, {
+          limit: String(FEED_PAGE),
+          ...(pageParam === null ? {} : { cursor: pageParam }),
+        })}`,
         researchArticlesPageSchema,
       ),
     initialPageParam: null as string | null,

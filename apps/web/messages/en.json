@@ -2787,6 +2787,10 @@
   "_pendingReview": [
     "signalAnalysis.filters.botKeys",
     "signalAnalysis.research.trace",
+    "signalAnalysis.research.sources.names.claude",
+    "signalAnalysis.research.bots.unrealized",
+    "signalAnalysis.research.trades.unrealized",
+    "signalAnalysis.research.trades.openCard",
     "signalAnalysis.research.reasons.assetNotInText",
     "signalAnalysis.research.reasons.treasuryMajorAsset"
   ],
@@ -7756,7 +7760,8 @@
           "sodexPrices": "SoDEX prices",
           "whaleEvents": "Whale events",
           "fundingRates": "Funding rates",
-          "candles": "Candles"
+          "candles": "Candles",
+          "claude": "Claude"
         },
         "status": {
           "live": "Live",
@@ -7798,7 +7803,8 @@
         "fundingBalance": "Funding balance",
         "priceBalance": "Price patterns balance",
         "pause": "Pause",
-        "pauseReplays": "Pause replays"
+        "pauseReplays": "Pause replays",
+        "unrealized": "{pnl} unrealized"
       },
       "trace": {
         "title": "How news becomes a paper trade · {range}",
@@ -7862,7 +7868,7 @@
         "bandAria": "List articles that stopped at {name}",
         "counts": {
           "collect": "{n, plural, one {# article} other {# articles}}",
-          "normalize": "{n, plural, one {# story} other {# stories}}",
+          "normalize": "{n, plural, one {# article on SoDEX} other {# articles on SoDEX}}",
           "score": "{n, plural, one {# signal} other {# signals}}",
           "filter": "{n} left",
           "decide": "Long {long} · Short {short}"
@@ -7872,7 +7878,9 @@
           "out": "{n} out · {reasons}",
           "outNone": "none out",
           "reasonN": "{n} {label}",
-          "decide": "{size} USDC each · TP / SL from volatility"
+          "decide": "{size} USDC each · TP / SL from volatility",
+          "merged": "{n} merged into a story",
+          "waiting": "{text} · {n} waiting"
         },
         "noteReasons": {
           "notCatalyst": "not a catalyst",
@@ -7929,7 +7937,8 @@
           "waiting": "Still in the funnel at {stage}",
           "claude": "Claude {cost}",
           "claudeNa": "Claude cost not available",
-          "error": "Couldn’t load this article’s trace."
+          "error": "Couldn’t load this article’s trace.",
+          "idleMobile": "Pick an article above, or tap a step to list its articles."
         },
         "why": {
           "notCatalyst": "not a signal type",
@@ -8064,11 +8073,13 @@
           "sideMarket": "{side} {market}",
           "size": "{size} USDC (fake money)",
           "entry": "{price} at {time}",
-          "tpSl": "{tp} ({tpPct}) / {sl} ({slPct})"
+          "tpSl": "{tp} ({tpPct}) / {sl} ({slPct})",
+          "levelNow": "{level} at entry · now {n, plural, one {# source} other {# sources}}"
         },
         "traceCol": "Trace",
         "traceBtn": "Trace",
-        "traceAria": "Trace: {title}"
+        "traceAria": "Trace: {title}",
+        "unitNote": "Every step counts the same articles, collected in the {range}: in − out = next step."
       },
       "reasons": {
         "notCatalyst": "Not a catalyst on the list",
@@ -8274,7 +8285,9 @@
         "open": "Open the steps of {what}",
         "loadMore": "Load more",
         "retry": "Retry",
-        "retryTip": "Opened on a later article of the same story, within 2 hours of the first one."
+        "retryTip": "Opened on a later article of the same story, within 2 hours of the first one.",
+        "unrealized": "{pnl} unrealized",
+        "openCard": "Open"
       },
       "detail": {
         "close": "Close",

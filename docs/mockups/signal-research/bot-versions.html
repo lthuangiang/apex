@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>News bot versions</title>
+
+</head>
+<body>
+
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+</style>
+
+<div style="box-sizing: border-box; width: 100%; max-width: 1440px; margin: 0 auto; padding: 32px 24px 48px; font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; display: flex; flex-direction: column; gap: 18px">
+  <div style="display: flex; flex-direction: column; gap: 4px">
+    <h1 style="margin: 0; font-size: 28px; font-weight: 800">Signal Analysis</h1>
+    <p style="margin: 0; font-size: 14px; color: #5f6684">Signal research tab · the Paper bots section, now with News bot versions. Team only.</p>
+  </div>
+
+  <section aria-labelledby="pb" style="background: #fff; border: 1px solid #e3e7f5; border-radius: 18px; padding: 24px; display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h2 id="pb" style="margin: 0; font-size: 20px; font-weight: 800">Paper bots</h2>
+        <p style="margin: 0; font-size: 13px; color: #5f6684">Only the current classifier runs (one Claude read per article), and every running version trades on it. Each version has its own 10,000 USDC of fake money and its own gate. Trades count toward a gate only while the classifier that made them has passed its labels.</p>
+      </div>
+      <a href="bot-versions-editor.html" style="min-height: 44px; padding: 0 16px; display: inline-flex; align-items: center; border-radius: 10px; background: #2e62e8; color: #fff; font-size: 14px; font-weight: 800; text-decoration: none">New version</a>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 10px 24px; padding: 12px 16px; border-radius: 12px; background: #f5f7fd; font-size: 13px; color: #3b4262">
+      <span><strong style="color: #141a33">Running 2 of 3</strong> · at most 3 versions run at once</span>
+      <span><strong style="color: #141a33">Versions tried: 4</strong></span>
+      <span>Classifier <strong style="color: #141a33">news-classifier-v2</strong> · precision 84% on 37 labels · <a href="bot-versions-labels.html">Label more</a></span>
+    </div>
+    <div style="padding: 12px 16px; border-radius: 12px; background: #fdebd3; color: #7a3e00; font-size: 13px; line-height: 1.5">
+      <strong>Extra check is on.</strong> More than 3 versions have been tried, so one can pass the gate by luck. A version that passes must repeat the result on its next 100 closed trades before it counts.
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px">
+      <article style="border: 1px solid #e3e7f5; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; justify-content: space-between; gap: 8px; align-items: flex-start">
+          <div><h3 style="margin: 0; font-size: 16px; font-weight: 800">News bot v2 · Baseline</h3><span style="font-size: 12px; color: #5f6684">Saved Nov 18, 09:12 · locked, the reference for later versions</span></div>
+          <span style="padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; background: #ddf4e7; color: #0f7a43">Running</span>
+        </div>
+        <p style="margin: 0; font-size: 13px; color: #3b4262">All 12 news types · level Low and up · 500 USDC · TP 1.5× · SL 0.75× · now on classifier v2</p>
+        <dl style="margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; font-size: 12px">
+          <div><dt style="color: #5f6684">Balance</dt><dd style="margin: 0; font-size: 15px; font-weight: 800">10,024.6</dd></div>
+          <div><dt style="color: #5f6684">Closed trades</dt><dd style="margin: 0; font-size: 15px; font-weight: 800">31</dd></div>
+          <div><dt style="color: #5f6684">Count for the gate</dt><dd style="margin: 0; font-size: 15px; font-weight: 800">0</dd></div>
+        </dl>
+        <p style="margin: 0; font-size: 13px; color: #3b4262"><strong>Open 7 / 20</strong> · today 3 / no limit · blocked by limit 0</p>
+        <p style="margin: 0; font-size: 12px; color: #7a3e00">31 trades not counted · classifier v1 under 80%. Classifier v2 started a new count on Nov 19, 13:00; it waits for labels (13 to go).</p>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <button type="button" style="min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 13px; font-weight: 700">Pause</button>
+          <button type="button" style="min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 13px; font-weight: 700">Copy to new version</button>
+          <button type="button" style="min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 13px; font-weight: 700">Rules</button>
+        </div>
+      </article>
+
+      <article style="border: 2px solid #2e62e8; border-radius: 14px; padding: 15px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; justify-content: space-between; gap: 8px; align-items: flex-start">
+          <div><h3 style="margin: 0; font-size: 16px; font-weight: 800">News bot v4 · Strict subject</h3><span style="font-size: 12px; color: #5f6684">Saved Nov 19, 13:05 by ··a91f · counts trades opened after that</span></div>
+          <span style="padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; background: #ddf4e7; color: #0f7a43">Running</span>
+        </div>
+        <p style="margin: 0; font-size: 13px; color: #3b4262">11 news types (no treasury on BTC / ETH) · level Medium and up · 500 USDC · TP 1.5× · SL 0.75× · classifier v2</p>
+        <dl style="margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; font-size: 12px">
+          <div><dt style="color: #5f6684">Balance</dt><dd style="margin: 0; font-size: 15px; font-weight: 800">10,000.0</dd></div>
+          <div><dt style="color: #5f6684">Closed trades</dt><dd style="margin: 0; font-size: 15px; font-weight: 800">0</dd></div>
+          <div><dt style="color: #5f6684">Count for the gate</dt><dd style="margin: 0; font-size: 15px; font-weight: 800">Waits for labels</dd></div>
+        </dl>
+        <p style="margin: 0; font-size: 13px; color: #3b4262"><strong>Open 0 / 20</strong> · today 0 / 5 · blocked by limit 0</p>
+        <p style="margin: 0; font-size: 12px; color: #7a3e00">Trades count once classifier v2 has 50 labels at 80% or better (13 to go).</p>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <button type="button" style="min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 13px; font-weight: 700">Pause</button>
+          <a href="bot-versions-editor.html" style="min-height: 40px; padding: 0 12px; display: inline-flex; align-items: center; border-radius: 10px; border: 1px solid #d5dcf2; background: #fff; font-size: 13px; font-weight: 700; color: #141a33; text-decoration: none">Edit as new version</a>
+          <button type="button" style="min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 13px; font-weight: 700">Rules</button>
+        </div>
+      </article>
+
+      <article style="border: 1px dashed #d5dcf2; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; justify-content: center; align-items: flex-start; background: #f5f7fd">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 800">One more slot</h3>
+        <p style="margin: 0; font-size: 13px; color: #3b4262">Start a version from scratch or copy a running one and change a few rules.</p>
+        <a href="bot-versions-editor.html" style="min-height: 44px; padding: 0 14px; display: inline-flex; align-items: center; border-radius: 10px; border: 1px solid #2e62e8; color: #1d47b8; font-size: 13px; font-weight: 800; text-decoration: none">New version</a>
+      </article>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <h3 style="margin: 0; font-size: 15px; font-weight: 800">All versions</h3>
+      <div style="overflow-x: auto; border: 1px solid #e3e7f5; border-radius: 12px">
+        <table style="width: 100%; min-width: 860px; border-collapse: collapse; font-size: 13px">
+          <thead>
+            <tr style="background: #f5f7fd; color: #3b4262; text-align: left">
+              <th scope="col" style="padding: 10px 12px">Version</th>
+              <th scope="col" style="padding: 10px 12px">State</th>
+              <th scope="col" style="padding: 10px 12px">Saved</th>
+              <th scope="col" style="padding: 10px 12px">Changed from the one before</th>
+              <th scope="col" style="padding: 10px 12px">Classifier</th>
+              <th scope="col" style="padding: 10px 12px">Closed</th>
+              <th scope="col" style="padding: 10px 12px">Blocked by limit</th>
+              <th scope="col" style="padding: 10px 12px">Average after fees</th>
+              <th scope="col" style="padding: 10px 12px">Gate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-top: 1px solid #e3e7f5"><td style="padding: 12px; font-weight: 800">v4 · Strict subject</td><td style="padding: 12px">Running</td><td style="padding: 12px">Nov 19, 13:05</td><td style="padding: 12px">Level Medium and up · treasury off for BTC / ETH</td><td style="padding: 12px">v2</td><td style="padding: 12px">0</td><td style="padding: 12px">0</td><td style="padding: 12px">Not enough trades</td><td style="padding: 12px">Waits for labels</td></tr>
+            <tr style="border-top: 1px solid #e3e7f5"><td style="padding: 12px; font-weight: 800">v3 · Wider stops</td><td style="padding: 12px">Stopped</td><td style="padding: 12px">Nov 18, 22:40</td><td style="padding: 12px">SL 0.75× → 1.0×</td><td style="padding: 12px">v1</td><td style="padding: 12px">6</td><td style="padding: 12px">2</td><td style="padding: 12px">Not enough trades</td><td style="padding: 12px">Stopped early</td></tr>
+            <tr style="border-top: 1px solid #e3e7f5"><td style="padding: 12px; font-weight: 800">v2 · Baseline</td><td style="padding: 12px">Running</td><td style="padding: 12px">Nov 18, 09:12</td><td style="padding: 12px">Story lock after a trade, 2 h retry</td><td style="padding: 12px">v1 → v2</td><td style="padding: 12px">31 · 0 counted</td><td style="padding: 12px">0</td><td style="padding: 12px">Not enough trades</td><td style="padding: 12px">Not counted · classifier v1 under 80%</td></tr>
+            <tr style="border-top: 1px solid #e3e7f5"><td style="padding: 12px; font-weight: 800">v1</td><td style="padding: 12px">Retired</td><td style="padding: 12px">Nov 18, 02:30</td><td style="padding: 12px">First rules</td><td style="padding: 12px">v1</td><td style="padding: 12px">4</td><td style="padding: 12px">Not tracked</td><td style="padding: 12px">Not enough trades</td><td style="padding: 12px">Not counted</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin: 0; font-size: 12px; color: #5f6684">Saved versions never change. A new classifier starts a new count for every running version. Every save, pause and stop is in the audit log with who did it.</p>
+    </div>
+  </section>
+</div>
+
+
+</body>
+</html>

@@ -4,9 +4,12 @@ import {
   dec,
   Decimal,
   ErrorCode,
+  funnelSteps,
   GATE_MIN_CLOSED,
   gateStatus,
   NEWS_RULES,
+  paperBalance,
+  RESEARCH_BOT_START_USDC,
   SOURCE_HEALTH,
   summarizeByDay,
   tradesNeeded,
@@ -25,6 +28,7 @@ import {
   type ResearchTradesQuery,
   type SignalSourceKey,
   type TradeDirection,
+  unrealizedUsdc,
 } from "@drift/shared";
 import {
   and,
@@ -77,6 +81,40 @@ const num = (d: Decimal | null | undefined): number | null =>
   d == null ? null : d.toDecimalPlaces(4).toNumber();
 const numOf = (s: string | null): number | null => (s === null ? null : num(dec(s)));
 const decOut = (s: string | null): string | null => (s === null ? null : dec(s).toFixed());
+/**
+ * Giá SoDEX gần nhất theo market (Redis `md:last:*` của marketdata, do api truyền vào). Không truyền / thiếu market →
+ * không tính lãi / lỗ chưa chốt (null), không bao giờ 0.
+ */
+export type LastPrices = (markets: readonly string[]) => Promise<Record<string, string>>;
+
+/** Lãi / lỗ chưa chốt của một lệnh đang mở theo giá trong `px`; null khi đã đóng hoặc thiếu giá. */
+function openPnl(t: TradeRow, px: Readonly<Record<string, string>>): Decimal | null {
+  if (t.status === "closed") return null;
+  const last = px[t.market];
+  return unrealizedUsdc(
+    {
+      direction: t.direction === "short" ? "short" : "long",
+      entryPrice: t.entryPrice,
+      qty: t.qty,
+      sizeUsdc: t.sizeUsdc,
+      entryFee: t.entryFee,
+      feePct: t.feePct,
+    },
+    last ?? null,
+  );
+}
+
+async function pricesOf(prices: LastPrices | undefined, rows: readonly TradeRow[]) {
+  const markets = [...new Set(rows.filter((t) => t.status !== "closed").map((t) => t.market))];
+  if (prices === undefined || markets.length === 0) return {};
+  try {
+    return await prices(markets);
+  } catch {
+    // Redis lỗi: không có giá thì không có lãi / lỗ chưa chốt (hiện "Open"), tổng kết vẫn trả về.
+    return {};
+  }
+}
+
 const costOf = (t: TradeRow) => dec(t.feePct).mul(2).add(dec(t.spreadAtEntryPct));
 const liveNews = () =>
   and(
@@ -232,6 +270,7 @@ export async function loadSignalResearchSummary(
   limits: SummaryLimits,
   check: () => void = () => undefined,
   range?: ResearchRange,
+  prices?: LastPrices,
 ): Promise<ResearchSummary> {
   const v = NEWS_RULES.version;
   const nowMs = now.getTime();
@@ -319,13 +358,24 @@ export async function loadSignalResearchSummary(
     .where(liveNews())
     .orderBy(asc(signalPaperTrades.openedAt));
   const closed = all.filter((t) => t.status === "closed" && t.resultPct !== null);
-  const open = all.filter((t) => t.status !== "closed").length;
-  // Phễu theo khoảng: lệnh MỞ trong khoảng (cùng nhóm với bài / event của khoảng).
-  const inRange = since === null ? all : all.filter((t) => t.openedAt >= since);
+  const openRows = all.filter((t) => t.status !== "closed");
+  const open = openRows.length;
+  // #297: số dư = 10 000 + kết quả đã chốt; lãi / lỗ chưa chốt chỉ khi có giá SoDEX của MỌI lệnh đang mở.
+  const px = await pricesOf(prices, openRows);
+  const realized = paperBalance(
+    all.flatMap((t) => (t.status === "closed" && t.resultUsdc !== null ? [t.resultUsdc] : [])),
+  );
+  const openPnls = openRows.map((t) => openPnl(t, px));
+  const unrealized =
+    open === 0 || openPnls.some((x) => x === null)
+      ? null
+      : openPnls.reduce<Decimal>((acc, x) => acc.add(x ?? 0), new Decimal(0));
+  // Phễu theo khoảng (#297): cùng đơn vị với `articleStops` (bài THU trong khoảng). Lệnh tính theo bài đã mở nó
+  // (`seen_at` = giờ thu bài đó), không theo giờ mở lệnh, để Long + Short khớp số bài tới Decide.
+  const inRange = since === null ? all : all.filter((t) => t.seenAt >= since);
+  const steps = funnelSteps(articleStops);
   const closedInRange = inRange.filter((t) => t.status === "closed" && t.resultPct !== null);
 
-  const events = (stage: string, outcome: string) =>
-    grouped.filter((g) => g.stage === stage && g.outcome === outcome).reduce((s, g) => s + g.n, 0);
   const drops = (stages: readonly string[]) => {
     const by = new Map<ResearchDropReason, number>();
     for (const g of grouped) {
@@ -410,6 +460,7 @@ export async function loadSignalResearchSummary(
   const sources: ResearchSummary["sources"] = [];
   for (const [key, api] of [
     ["sosovalue", "sosoNews"],
+    ["claude", "claude"],
     ["sodex_prices", "sodexPrices"],
   ] as const) {
     const h = health.get(key);
@@ -446,7 +497,9 @@ export async function loadSignalResearchSummary(
               nowMs - soso.lastCycleAt.getTime() <= SOURCE_HEALTH.sosovalue.delayedMs
                 ? "running"
                 : "paused",
-            balance: null,
+            balance: realized.toDecimalPlaces(6).toFixed(),
+            realized: realized.sub(dec(RESEARCH_BOT_START_USDC)).toDecimalPlaces(6).toFixed(),
+            unrealized: unrealized === null ? null : unrealized.toDecimalPlaces(6).toFixed(),
             openTrades: open,
             rulesVersion: NEWS_RULES.versionNumber,
             lastRun: null,
@@ -473,16 +526,17 @@ export async function loadSignalResearchSummary(
                   .toFixed(),
           articlesRead: articlesInRange?.n ?? null,
           soso: { used: Number(month?.n ?? 0), limit: limits.sosoMonthlyLimit },
-          collected: events("collect", "pass"),
+          collected: steps[0]?.in ?? 0,
           stories: funnelStories.length,
-          merged: events("filter", "merge"),
-          signals: events("understand", "pass"),
+          // #297: số bài (cùng đơn vị, cùng khoảng với `articleStops`), không phải số event.
+          merged: steps[3]?.merged ?? 0,
+          signals: steps[2]?.passed ?? 0,
           levels: {
             high: funnelStoriesAt("high"),
             medium: funnelStoriesAt("medium"),
             low: funnelStoriesAt("low"),
           },
-          passed: events("filter", "pass"),
+          passed: steps[3]?.passed ?? 0,
           long: inRange.filter((t) => t.direction === "long").length,
           short: inRange.filter((t) => t.direction === "short").length,
           sizeUsdc: NEWS_RULES.sizeUsdc,
@@ -694,7 +748,12 @@ function outcomeOf(r: string | null): "tp" | "sl" | "maxHold" | "open" {
   return "open";
 }
 
-function tradeItem(t: TradeRow, ctx: Ctx, now: number): ResearchTrade {
+function tradeItem(
+  t: TradeRow,
+  ctx: Ctx,
+  now: number,
+  px: Readonly<Record<string, string>> = {},
+): ResearchTrade {
   const a = t.articleId === null ? undefined : ctx.articles.get(t.articleId);
   const story = t.storyId === null ? undefined : ctx.stories.get(t.storyId);
   const done = t.status === "closed";
@@ -720,6 +779,7 @@ function tradeItem(t: TradeRow, ctx: Ctx, now: number): ResearchTrade {
     maxHoldHours: Math.round((t.maxHoldUntil.getTime() - t.openedAt.getTime()) / 3_600_000),
     result: {
       pnl: done && t.resultUsdc !== null ? dec(t.resultUsdc).toDecimalPlaces(6).toFixed() : null,
+      unrealized: openPnl(t, px)?.toDecimalPlaces(6).toFixed() ?? null,
       outcome: outcomeOf(t.exitReason),
       leftSecs: done ? null : Math.max(0, Math.round((t.maxHoldUntil.getTime() - now) / 1000)),
     },
@@ -791,6 +851,7 @@ export async function loadSignalResearchTrades(
   q: Q,
   query: ResearchTradesQuery,
   now: Date,
+  prices?: LastPrices,
 ): Promise<ResearchTradesPage> {
   if ((query.type !== undefined && query.type !== "news") || query.label === "replay")
     return { items: [], nextCursor: null };
@@ -855,8 +916,12 @@ export async function loadSignalResearchTrades(
     ids((r) => r.trade?.storyId ?? r.event?.storyId),
   );
   const nowMs = now.getTime();
+  const px = await pricesOf(
+    prices,
+    page.flatMap((r) => (r.trade === undefined ? [] : [r.trade])),
+  );
   const items = page.flatMap((r) => {
-    if (r.trade !== undefined) return [tradeItem(r.trade, ctx, nowMs)];
+    if (r.trade !== undefined) return [tradeItem(r.trade, ctx, nowMs, px)];
     const s = r.event === undefined ? null : skippedItem(r.event, ctx);
     return s === null ? [] : [s];
   });
@@ -1017,6 +1082,7 @@ export async function loadSignalResearchTrade(
   q: Q,
   id: string,
   now: Date,
+  prices?: LastPrices,
 ): Promise<ResearchTradeDetail | null> {
   if (!z.uuid().safeParse(id).success) return null;
   const [trade] = await q
@@ -1048,7 +1114,7 @@ export async function loadSignalResearchTrade(
 
   const item =
     trade !== undefined
-      ? tradeItem(trade, ctx, now.getTime())
+      ? tradeItem(trade, ctx, now.getTime(), await pricesOf(prices, [trade]))
       : skip === null
         ? null
         : skippedItem(skip, ctx);

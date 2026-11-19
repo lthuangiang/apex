@@ -155,6 +155,16 @@
     transform: none;
   }
 }
+/* Dòng kết quả cạnh tầng phễu (#297): chỉ trượt, không đổi opacity, để chữ luôn đủ tương phản 4.5:1 kể cả khi hiệu ứng bị
+   dừng giữa chừng (tab nền, chụp màn hình). */
+@keyframes sr-slide {
+  from {
+    transform: translateX(-8px);
+  }
+  to {
+    transform: none;
+  }
+}
 @keyframes sr-spark {
   from {
     background-position: 0 0;

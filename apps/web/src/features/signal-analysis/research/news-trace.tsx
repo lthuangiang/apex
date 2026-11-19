@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  funnelSteps,
   RESEARCH_ARTICLE_SHOWS,
   RESEARCH_DROP_REASONS,
   RESEARCH_RANGES,
@@ -15,6 +16,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { ApiError } from "@/lib/api";
+import { useMarketNames } from "@/lib/markets";
 
 import type { PageCtx } from "../components/signal-analysis-page";
 import { clock, count } from "../format";
@@ -79,7 +81,8 @@ function scrollToId(id: string, onlyBelowMd: boolean) {
 const ROW = 76;
 const TOP = 4;
 const WIDTHS = [54, 47, 40, 33, 26] as const;
-const MOBILE_WIDTHS = [100, 90, 80, 70, 60] as const;
+// #297: tầng cuối đủ rộng cho "5 · Decide" và "Long 0 · Short 2" trên cùng một dòng.
+const MOBILE_WIDTHS = [100, 94, 88, 82, 76] as const;
 // Màu tầng: chỉ token (accent-ink → accent → pos-dot).
 const BLUES = [
   "bg-accent-ink",
@@ -140,38 +143,38 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
         RESEARCH_DROP_REASONS.indexOf(a[0]) - RESEARCH_DROP_REASONS.indexOf(b[0]),
     )
     .map(([reason, v]) => ({ reason, n: v.n }));
-  const outAt = (stage: ResearchStage): string => {
-    const rows = new Map<ResearchDropReason, number>();
-    let n = 0;
-    for (const s of dropped)
-      if (s.stage === stage && s.reason !== null) {
-        n += s.n;
-        rows.set(s.reason, (rows.get(s.reason) ?? 0) + s.n);
-      }
-    if (n === 0) return t("trace.notes.outNone");
-    const top = [...rows.entries()]
-      .filter(([, v]) => v > 0)
-      .sort((a, b) => b[1] - a[1])
+  // #297: mọi tầng đếm cùng một đơn vị (bài thu trong khoảng) từ `articleStops`: vào − ra − chờ = tầng sau.
+  const steps = funnelSteps(f.articleStops);
+  const noteAt = (i: number): string => {
+    const st = steps[i];
+    if (st === undefined) return t("trace.notes.outNone");
+    const out = st.dropped + st.merged;
+    const parts = st.reasons
       .slice(0, 2)
-      .map(([r, v]) =>
-        t("trace.notes.reasonN", { n: count(v), label: t(`trace.noteReasons.${r}`) }),
-      )
-      .join(", ");
-    return t("trace.notes.out", { n: count(n), reasons: top });
+      .map((r) =>
+        t("trace.notes.reasonN", { n: count(r.n), label: t(`trace.noteReasons.${r.reason}`) }),
+      );
+    if (st.merged > 0) parts.push(t("trace.notes.merged", { n: count(st.merged) }));
+    const head =
+      out === 0
+        ? t("trace.notes.outNone")
+        : t("trace.notes.out", { n: count(out), reasons: parts.join(", ") });
+    return st.waiting === 0 ? head : t("trace.notes.waiting", { text: head, n: count(st.waiting) });
   };
+  const passed = (i: number) => steps[i]?.passed ?? 0;
   return {
     counts: [
-      t("trace.counts.collect", { n: f.collected }),
-      t("trace.counts.normalize", { n: f.stories }),
-      t("trace.counts.score", { n: f.signals }),
-      t("trace.counts.filter", { n: count(f.passed) }),
+      t("trace.counts.collect", { n: steps[0]?.in ?? 0 }),
+      t("trace.counts.normalize", { n: passed(1) }),
+      t("trace.counts.score", { n: passed(2) }),
+      t("trace.counts.filter", { n: count(passed(3)) }),
       t("trace.counts.decide", { long: count(f.long), short: count(f.short) }),
     ],
     notes: [
       t("trace.notes.collect"),
-      outAt("normalize"),
-      outAt("score"),
-      outAt("filter"),
+      noteAt(1),
+      noteAt(2),
+      noteAt(3),
       t("trace.notes.decide", { size: count(Number(f.sizeUsdc)) }),
     ],
     reasons,
@@ -203,8 +206,10 @@ export function NewsTrace({
   const [step, setStep] = useState(DONE);
 
   const trace = useResearchTrace(sel);
+  const names = useMarketNames();
   const data = (trace.data?.article.id === sel ? trace.data : undefined) ?? null;
-  const view: TraceView | null = data === null ? null : traceView(data, ctx.tz, t);
+  const view: TraceView | null =
+    data === null ? null : traceView(data, ctx.tz, t, (m) => names.info(m)?.tickSize ?? null);
   const stop = view?.stop ?? STAGES.length;
 
   // Mỗi bước một timeout; dừng khi tới kết luận. Chưa có dữ liệu trace thì đứng ở "Article arriving…".
@@ -259,8 +264,11 @@ export function NewsTrace({
   const rangeLabel = t(`trace.range.${range}`);
   let verdict: string;
   let verdictTone = "text-on-ink-accent";
-  if (!tracing) verdict = t("trace.verdict.idle");
-  else if (view === null)
+  let verdictMobile: string | null = null;
+  if (!tracing) {
+    verdict = t("trace.verdict.idle");
+    verdictMobile = t("trace.verdict.idleMobile");
+  } else if (view === null)
     verdict = trace.isError ? t("trace.verdict.error") : t("trace.verdict.arriving");
   else if (!finished)
     verdict =
@@ -402,8 +410,20 @@ export function NewsTrace({
               role="status"
               className={`m-0 mt-2 text-center text-[13px] font-extrabold md:text-sm ${verdictTone}`}
             >
-              {verdict}
+              {verdictMobile === null ? (
+                verdict
+              ) : (
+                <>
+                  <span className="md:hidden">{verdictMobile}</span>
+                  <span className="max-md:hidden">{verdict}</span>
+                </>
+              )}
             </p>
+            {tracing ? null : (
+              <p className="m-0 mt-1 text-center text-xs text-on-ink-2">
+                {t("trace.unitNote", { range: rangeLabel })}
+              </p>
+            )}
             {tracing &&
             trace.isError &&
             view === null &&
@@ -542,34 +562,40 @@ function Feed({
       ) : items.length === 0 ? (
         <p className="m-0 py-2 text-sm text-muted">{t("trace.feedEmpty")}</p>
       ) : (
-        <ul
-          aria-busy={q.isPlaceholderData}
-          className={`m-0 flex list-none flex-col gap-2 p-0 ${q.isPlaceholderData ? "opacity-50" : ""}`}
+        // #297: chiều cao cố định (≈ khối phễu), cuộn trong khung; "Load more" ở cuối khung, 20 bài mỗi trang.
+        <div
+          data-testid="sr-feed-scroll"
+          className="-mx-1 flex max-h-[420px] flex-col gap-2 overflow-y-auto overscroll-contain px-1 py-0.5 md:max-h-[470px]"
         >
-          {items.map((a) => (
-            <li key={a.id}>
-              <ArticleCard
-                a={a}
-                tz={ctx.tz}
-                selected={a.id === sel}
-                onPick={() => {
-                  onPick(a.id);
-                }}
-              />
-            </li>
-          ))}
-        </ul>
+          <ul
+            aria-busy={q.isPlaceholderData}
+            className={`m-0 flex list-none flex-col gap-2 p-0 ${q.isPlaceholderData ? "opacity-50" : ""}`}
+          >
+            {items.map((a) => (
+              <li key={a.id}>
+                <ArticleCard
+                  a={a}
+                  tz={ctx.tz}
+                  selected={a.id === sel}
+                  onPick={() => {
+                    onPick(a.id);
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+          {q.hasNextPage ? (
+            <button
+              type="button"
+              disabled={q.isFetchingNextPage}
+              onClick={() => void q.fetchNextPage()}
+              className={`${linkBtn} flex-none`}
+            >
+              {t("trace.loadMore")}
+            </button>
+          ) : null}
+        </div>
       )}
-      {q.hasNextPage ? (
-        <button
-          type="button"
-          disabled={q.isFetchingNextPage}
-          onClick={() => void q.fetchNextPage()}
-          className={linkBtn}
-        >
-          {t("trace.loadMore")}
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -734,7 +760,7 @@ function Band({
         {t("trace.band", { n: i + 1, name })}
       </span>
       <span
-        className={`pointer-events-none absolute right-[22px] top-1/2 max-w-[55%] -translate-y-1/2 truncate text-right text-[13px] font-semibold md:hidden ${
+        className={`pointer-events-none absolute right-[22px] top-1/2 max-w-[52%] -translate-y-1/2 truncate text-right text-[13px] font-semibold md:hidden ${
           state === "total" ? "text-on-ink-pos" : noteTone
         }`}
       >
@@ -742,7 +768,7 @@ function Band({
       </span>
       {showNote ? (
         <span
-          className={`pointer-events-none absolute right-0 top-3 left-[var(--side)] text-[13px] leading-[1.35] font-bold max-md:hidden motion-safe:animate-[sr-fade_.4s_ease-out_both] ${noteTone}`}
+          className={`pointer-events-none absolute right-0 top-3 left-[var(--side)] text-[13px] leading-[1.35] font-bold max-md:hidden motion-safe:animate-[sr-slide_.4s_ease-out] ${noteTone}`}
         >
           {noteText ?? t("na")}
         </span>

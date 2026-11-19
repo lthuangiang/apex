@@ -206,7 +206,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerSodexRoutes(app, { ...deps.sodex, db: deps.db, totpKey: deps.totpKey, now });
   registerSodexDebuggerRoutes(app, { db: deps.db, now, builderId: deps.sodex.builderId });
   registerSignalAnalysisRoutes(app, { db: deps.db, now });
-  registerSignalResearchRoutes(app, { db: deps.db, now });
+  registerSignalResearchRoutes(app, { db: deps.db, now, prices: deps.prices });
   const oauth = deps.oauth ?? {
     issuer: "https://desklabs.xyz",
     mcpPublicUrl: "https://mcp.desklabs.xyz",

@@ -267,6 +267,9 @@ describe("news pipeline end to end", () => {
     expect(Number(t?.movedBeforeEntryPct)).toBeCloseTo(-0.990099, 4);
     expect(t?.maxHoldUntil.getTime()).toBe(T0 + 24 * HOUR);
     expect(Number(t?.tpPct)).toBeGreaterThan(2.5);
+    // #297: TP / SL lưu theo tick 0.01 của SOL-USD, không phải 18 chữ số thập phân.
+    expect(t?.tpPrice).toMatch(/^\d+\.\d{2}0*$/);
+    expect(t?.slPrice).toMatch(/^\d+\.\d{2}0*$/);
 
     const reasons = await db
       .select({

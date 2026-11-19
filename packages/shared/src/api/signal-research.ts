@@ -27,6 +27,8 @@ export const RESEARCH_SOURCES = [
   "whaleEvents",
   "fundingRates",
   "candles",
+  /** #297: Claude (bước Score), từ `signal_source_health` `claude`. */
+  "claude",
 ] as const;
 export const RESEARCH_DROP_REASONS = [
   "notCatalyst",
@@ -88,7 +90,17 @@ export const researchPaperBotSchema = z.object({
   type,
   mode: label,
   state: z.enum(["running", "paused"]),
+  /**
+   * #297: số dư = 10 000 USDC (`RESEARCH_BOT_START_USDC`) + `realized` (tổng `result_usdc` của lệnh ĐÃ ĐÓNG, sau phí).
+   * null khi bot chưa có dữ liệu (lane replay).
+   */
   balance: dec.nullable(),
+  realized: dec.nullable(),
+  /**
+   * Lãi / lỗ chưa chốt của mọi lệnh đang mở, theo giá SoDEX gần nhất (`unrealizedUsdc`). null khi không có lệnh mở hoặc
+   * thiếu giá của ít nhất một lệnh (không cộng một phần).
+   */
+  unrealized: dec.nullable(),
   openTrades: int.nullable(),
   rulesVersion: int.nullable(),
   lastRun: z.object({ at: iso, trades: int }).nullable(),
@@ -281,6 +293,8 @@ export const researchTradeSchema = z.object({
   result: z
     .object({
       pnl: dec.nullable(),
+      /** #297: lệnh đang mở: lãi / lỗ nếu đóng ngay ở giá SoDEX gần nhất (sau phí); null khi đã đóng hoặc chưa có giá. */
+      unrealized: dec.nullable(),
       outcome: z.enum(["tp", "sl", "maxHold", "open"]),
       leftSecs: int.nullable(),
     })

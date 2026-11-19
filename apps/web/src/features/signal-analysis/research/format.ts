@@ -1,3 +1,5 @@
+import { roundToTick } from "@drift/shared";
+
 // Định dạng của tab Signal research. Hàm thuần, chỉ hiển thị số API đã tính.
 
 const MINUS = "−";
@@ -44,6 +46,29 @@ export function priceText(v: string): string {
   const [i = "0", f] = (neg ? v.slice(1) : v).split(".");
   const grouped = Number(i).toLocaleString("en-US");
   return `${neg ? MINUS : ""}${grouped}${f === undefined ? "" : `.${f}`}`;
+}
+
+/**
+ * Giá TP / SL làm tròn theo tick của market (#297): bản ghi cũ lưu tới 18 chữ số thập phân. `tick` không biết (danh
+ * sách market chưa tải) → dùng số chữ số thập phân của giá vào (giá sổ lệnh SoDEX, đã theo tick).
+ */
+export function tickPrice(v: string, tick: string | null, entry: string | null): string {
+  const step = tick ?? (entry === null ? null : stepOf(entry));
+  // Không biết tick lẫn giá vào: như API gửi. Có tick: giữ đủ chữ số của tick ("143.60" với tick 0.01).
+  if (step === null) return priceText(v);
+  return priceText(roundToTick(v, step).toFixed(stepDigits(step)));
+}
+
+/** Số chữ số thập phân của tick: "0.01" → 2, "0.5" → 1, "1" → 0. */
+function stepDigits(step: string): number {
+  const frac = (step.split(".")[1] ?? "").replace(/0+$/, "");
+  return frac.length;
+}
+
+/** "63566.5" → "0.1"; "285" → "1". */
+function stepOf(v: string): string {
+  const frac = v.split(".")[1] ?? "";
+  return frac.length === 0 ? "1" : `0.${"0".repeat(frac.length - 1)}1`;
 }
 
 /** "10,024.6" (1 chữ số). */
