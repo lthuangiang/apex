@@ -14,6 +14,7 @@ import {
   volumeVs24h,
   type ContextFundingPoint,
 } from "../signal-research/context";
+import { storyStartOf, storyTooOld } from "../signal-research/logic";
 import { TradeDirection } from "../signal-research/rules";
 import type { DayObs } from "../stats/day-bootstrap";
 
@@ -34,8 +35,8 @@ describe("H1 whales agree", () => {
   it("is yes with one agreeing wallet, counting distinct wallets and summing notional", () => {
     const r = h1Of({
       direction: long,
-      walletsChecked: 214,
-      assetHasWhaleData: true,
+      walletsChecked: 12,
+      assetOnHyperliquid: true,
       moves: [
         move("0xA", "2", "900000", T - 39 * MIN),
         move("0xa", "3", "500000", T - 20 * MIN),
@@ -43,7 +44,7 @@ describe("H1 whales agree", () => {
       ],
     });
     expect(r.status).toBe("yes");
-    expect(r.walletsChecked).toBe(214);
+    expect(r.walletsChecked).toBe(12);
     expect(r.agreeingWallets).toBe(1);
     expect(r.opposingWallets).toBe(1);
     expect(r.agreeingUsdc?.toFixed()).toBe("1400000");
@@ -55,31 +56,61 @@ describe("H1 whales agree", () => {
       h1Of({
         direction: TradeDirection.short,
         walletsChecked: 5,
-        assetHasWhaleData: true,
+        assetOnHyperliquid: true,
         moves: [move("0xA", "2")],
       }).status,
     ).toBe("against");
     const quiet = h1Of({
       direction: long,
-      walletsChecked: 214,
-      assetHasWhaleData: true,
+      walletsChecked: 12,
+      assetOnHyperliquid: true,
       moves: [],
     });
-    expect(quiet).toMatchObject({ status: "no", walletsChecked: 214, agreeingWallets: 0 });
+    expect(quiet).toMatchObject({ status: "no", walletsChecked: 12, agreeingWallets: 0 });
     expect(quiet.agreeingUsdc).toBeNull();
   });
 
-  it("is na (never no) when the asset has no whale data or no wallet was on the leaderboard before", () => {
-    expect(
-      h1Of({ direction: long, walletsChecked: 214, assetHasWhaleData: false, moves: [] }).status,
-    ).toBe("na");
+  it("is na (never no) when the asset is not on Hyperliquid, keeping N and the reason", () => {
+    const off = h1Of({
+      direction: long,
+      walletsChecked: 12,
+      assetOnHyperliquid: false,
+      moves: [move("0xA", "2")],
+    });
+    expect(off).toMatchObject({
+      status: "na",
+      walletsChecked: 12,
+      assetOnHyperliquid: false,
+      agreeingWallets: 0,
+      agreeingUsdc: null,
+    });
+  });
+
+  it("is na (never no) when no tracked wallet has data (N = 0)", () => {
     const none = h1Of({
       direction: long,
       walletsChecked: 0,
-      assetHasWhaleData: true,
+      assetOnHyperliquid: true,
       moves: [move("0xA", "2")],
     });
-    expect(none).toMatchObject({ status: "na", agreeingWallets: 0, agreeingUsdc: null });
+    expect(none).toMatchObject({
+      status: "na",
+      walletsChecked: 0,
+      assetOnHyperliquid: true,
+      agreeingWallets: 0,
+      agreeingUsdc: null,
+    });
+  });
+
+  it("keeps against apart from no: opposing wallets are counted, and the main comparison puts it in without", () => {
+    const r = h1Of({
+      direction: long,
+      walletsChecked: 12,
+      assetOnHyperliquid: true,
+      moves: [move("0xA", "-2"), move("0xB", "-1")],
+    });
+    expect(r).toMatchObject({ status: "against", agreeingWallets: 0, opposingWallets: 2 });
+    expect(contextGroupOf(r.status)).toBe("without");
   });
 
   it("ignores a move that ends flat", () => {
@@ -87,7 +118,7 @@ describe("H1 whales agree", () => {
       h1Of({
         direction: long,
         walletsChecked: 3,
-        assetHasWhaleData: true,
+        assetOnHyperliquid: true,
         moves: [move("0xA", "0")],
       }).status,
     ).toBe("no");
@@ -268,5 +299,20 @@ describe("with / without comparison", () => {
     expect(contextGroupOf("no")).toBe("without");
     expect(contextGroupOf("against")).toBe("without");
     expect(contextGroupOf("na")).toBeNull();
+  });
+});
+
+describe("story start shared by moved_before_entry and H3", () => {
+  it("is the earliest source of the earlier attempts, else the first article of the group", () => {
+    expect(storyStartOf([], T)).toEqual({ start: T, retry: false });
+    expect(storyStartOf([T - 30 * MIN, T - 50 * MIN, T - 10 * MIN], T)).toEqual({
+      start: T - 50 * MIN,
+      retry: true,
+    });
+  });
+
+  it("is too old for a retry after 2 hours", () => {
+    expect(storyTooOld(T - 120 * MIN, T)).toBe(false);
+    expect(storyTooOld(T - 121 * MIN, T)).toBe(true);
   });
 });

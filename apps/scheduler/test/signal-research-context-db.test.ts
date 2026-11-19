@@ -4,13 +4,16 @@ import {
   fundingRates,
   leaderboardRuns,
   leaderEvents,
+  leaderFollows,
   leaderStatsDaily,
+  leaderWallets,
   runMigrations,
   signalBotVersions,
   signalContexts,
   signalEvents,
   signalPaperTrades,
   signalStories,
+  users,
   type Db,
 } from "@drift/db";
 import { dec, SIGNAL_CONTEXT_VERSION, TradeDirection, type Quote } from "@drift/shared";
@@ -89,7 +92,8 @@ async function seedCandles() {
   await db.insert(candles1m).values(rows);
 }
 
-const stats = { winRate: "0.6", medianEntryNotional: "1000" };
+/** `markets` = market SoDEX ví đã giao dịch trên Hyperliquid (dấu hiệu tài sản có trên Hyperliquid). */
+const stats = { winRate: "0.6", medianEntryNotional: "1000", markets: ["BTC-USD", "SOL-USD"] };
 
 /** Một lần xếp hạng `ok` xong lúc `finishedAt` với các ví. */
 async function leaderboardRun(date: string, finishedAt: number, wallets: string[]) {
@@ -115,6 +119,24 @@ async function leaderboardRun(date: string, finishedAt: number, wallets: string[
         computedAt: new Date(finishedAt),
       })),
     );
+}
+
+let userId = "";
+
+/**
+ * Ví DeskLabs theo dõi: được follow (lúc `followedAt`) và marketdata đã đọc fill (`fill_cursor`), trừ khi `polled = false`.
+ */
+async function track(address: string, followedAt = T0 - 3 * DAY, polled = true) {
+  await db.insert(leaderFollows).values({
+    userId,
+    source: "hyperliquid",
+    address,
+    createdAt: new Date(followedAt),
+  });
+  await db
+    .insert(leaderWallets)
+    .values({ source: "hyperliquid", address, fillCursor: polled ? followedAt : null })
+    .onConflictDoNothing();
 }
 
 let tid = 0;
@@ -156,15 +178,21 @@ async function seedFunding(market: string, last: string) {
   await db.insert(fundingRates).values(rows);
 }
 
-/** Thị trường BTC chuẩn: 2 ví trong leaderboard trước T0 (A, B), ví C chỉ vào leaderboard SAU T0. */
+/**
+ * Thị trường BTC chuẩn: 2 ví theo dõi trong leaderboard trước T0 (A, B); ví C được follow nhưng chỉ vào leaderboard SAU T0;
+ * ví E có trong leaderboard nhưng không ai follow (không có sự kiện live, không tính vào N).
+ */
 async function seedWhales() {
-  await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xaaa", "0xbbb"]);
-  await leaderboardRun("2026-11-18", T0 + HOUR, ["0xaaa", "0xbbb", "0xccc"]);
+  await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xaaa", "0xbbb", "0xeee"]);
+  await leaderboardRun("2026-11-18", T0 + HOUR, ["0xaaa", "0xbbb", "0xccc", "0xeee"]);
+  for (const a of ["0xaaa", "0xbbb", "0xccc"]) await track(a);
   await whale("0xAAA", "BTC-USD", "2", T0 - 30 * MIN, T0 - 29 * MIN, "open", "900000");
   await whale("0xaaa", "BTC-USD", "3", T0 - 20 * MIN, T0 - 19 * MIN, "add", "500000");
   await whale("0xbbb", "BTC-USD", "-1", T0 - 10 * MIN, T0 - 9 * MIN);
   // Ví C cùng chiều, thấy trước T0, nhưng chỉ vào leaderboard sau T0: không tính (chống survivorship #263).
   await whale("0xccc", "BTC-USD", "5", T0 - 15 * MIN, T0 - 14 * MIN);
+  // Ví E cùng chiều nhưng không được theo dõi: không tính.
+  await whale("0xeee", "BTC-USD", "5", T0 - 12 * MIN, T0 - 11 * MIN);
   // Ngoài cửa sổ 60 phút, và giảm vị thế: không tính.
   await whale("0xbbb", "BTC-USD", "4", T0 - 61 * MIN, T0 - 60 * MIN);
   await whale("0xbbb", "BTC-USD", "1", T0 - 5 * MIN, T0 - 4 * MIN, "reduce");
@@ -207,13 +235,18 @@ const btcLong = (articleId: string) => ({
   articleId,
   market: "BTC-USD",
   direction: TradeDirection.long,
-  publishedAt: T0 - 5 * MIN,
+  storyStartAt: T0 - 5 * MIN,
 });
 
 beforeAll(async () => {
   container = await new PostgreSqlContainer("timescale/timescaledb:2.16.1-pg16").start();
   await runMigrations(container.getConnectionUri());
   ({ db, pool } = createDb(container.getConnectionUri()));
+  const [u] = await db
+    .insert(users)
+    .values({ email: "context@test.local" })
+    .returning({ id: users.id });
+  userId = u?.id ?? "";
 });
 afterAll(async () => {
   await pool.end();
@@ -221,7 +254,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await db.execute(
-    sql`truncate candles_1m, funding_rates, leader_events, leader_stats_daily, leaderboard_runs, signal_contexts,
+    sql`truncate candles_1m, funding_rates, leader_events, leader_follows, leader_wallets, leader_stats_daily, leaderboard_runs, signal_contexts,
         signal_articles, signal_events, signal_stories, signal_paper_trades, signal_research_usage, signal_source_health`,
   );
   await seedCandles();
@@ -240,6 +273,7 @@ describe("context capture values", () => {
       contextVersion: SIGNAL_CONTEXT_VERSION,
       h1Status: "yes",
       h1WalletsChecked: 2,
+      h1AssetOnHyperliquid: true,
       h1AgreeingWallets: 1,
       h1OpposingWallets: 1,
       h2Status: "yes",
@@ -262,22 +296,85 @@ describe("context capture values", () => {
     expect(r.volumeVs24h).not.toBeNull();
   });
 
-  it("H1: against with only opposite wallets, no with quiet wallets, na without whale data for the asset", async () => {
+  it("H1: against is stored apart from no; no with quiet tracked wallets", async () => {
     await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xaaa", "0xbbb"]);
+    await track("0xaaa");
+    await track("0xbbb");
     await whale("0xbbb", "BTC-USD", "-1", T0 - 10 * MIN, T0 - 9 * MIN);
     await whale("0xaaa", "SOL-USD", "1", T0 - 3 * DAY, T0 - 3 * DAY);
     await captureSignalContext(db, btcLong("against"), T0, quote("100"));
     await captureSignalContext(db, { ...btcLong("quiet"), market: "SOL-USD" }, T0, quote("100"));
-    await captureSignalContext(db, { ...btcLong("meta"), market: "META-USD" }, T0, null);
-    expect(h1(await snapshot("against"))).toMatchObject({ s: "against", a: 0, o: 1 });
+    expect(h1(await snapshot("against"))).toMatchObject({ s: "against", w: 2, a: 0, o: 1 });
+    expect((await snapshot("against")).h1AgreeingUsdc).toBeNull();
     expect(h1(await snapshot("quiet"))).toMatchObject({ s: "no", w: 2, a: 0, o: 0 });
+  });
+
+  it("H1: na when the asset is not on Hyperliquid, even with tracked wallets", async () => {
+    await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xaaa", "0xbbb"]);
+    await track("0xaaa");
+    await track("0xbbb");
+    await captureSignalContext(db, { ...btcLong("meta"), market: "META-USD" }, T0, null);
     expect(await snapshot("meta")).toMatchObject({
       h1Status: "na",
+      h1WalletsChecked: 2,
+      h1AssetOnHyperliquid: false,
+      h1AgreeingWallets: 0,
       h2Status: "na",
       h3Status: "na",
       h3MovedPct: null,
       volumeVs24h: null,
       rangeBreakout: null,
+    });
+  });
+
+  it("H1: na when no tracked wallet has data, even if leaderboard wallets traded the asset", async () => {
+    // Leaderboard có 3 ví, BTC có trên Hyperliquid, có ví cùng chiều; nhưng không ví nào vừa được follow vừa đã được đọc fill.
+    await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xaaa", "0xbbb", "0xeee"]);
+    await track("0xaaa", T0 - 3 * DAY, false);
+    await track("0xbbb", T0 + MIN);
+    await whale("0xeee", "BTC-USD", "5", T0 - 12 * MIN, T0 - 11 * MIN);
+    await captureSignalContext(db, btcLong("none"), T0, quote("100"));
+    expect(await snapshot("none")).toMatchObject({
+      h1Status: "na",
+      h1WalletsChecked: 0,
+      h1AssetOnHyperliquid: true,
+      h1AgreeingWallets: 0,
+      h1AgreeingUsdc: null,
+    });
+  });
+
+  it("H1: stores N = the tracked wallets with data actually checked", async () => {
+    await leaderboardRun("2026-11-16", T0 - 2 * DAY, [
+      "0xa1",
+      "0xa2",
+      "0xa3",
+      "0xa4",
+      "0xa5",
+      "0xa6",
+    ]);
+    await leaderboardRun("2026-11-18", T0 + HOUR, ["0xa7"]);
+    await track("0xa1");
+    await track("0xA2");
+    await track("0xa3");
+    await track("0xa4", T0 - DAY, false); // follow nhưng chưa đọc fill: không có dữ liệu
+    await track("0xa5", T0 + MIN); // follow sau quyết định
+    await track("0xa7"); // chỉ vào leaderboard sau quyết định
+    // 0xa6: trong leaderboard, không ai follow. Hai người cùng follow một ví vẫn là một ví.
+    const [u2] = await db
+      .insert(users)
+      .values({ email: "n-wallets@test.local" })
+      .returning({ id: users.id });
+    await db.insert(leaderFollows).values({
+      userId: u2?.id ?? "",
+      source: "hyperliquid",
+      address: "0xa1",
+      createdAt: new Date(T0 - DAY),
+    });
+    await captureSignalContext(db, btcLong("n"), T0, quote("100"));
+    expect(await snapshot("n")).toMatchObject({
+      h1Status: "no",
+      h1WalletsChecked: 3,
+      h1AssetOnHyperliquid: true,
     });
   });
 });
@@ -294,7 +391,12 @@ describe("no lookahead: data stamped at or after the decision never changes the 
     // lần xếp hạng xong sau; một lần xếp hạng xong đúng lúc quyết định (không tính, phải < quyết định).
     await whale("0xbbb", "BTC-USD", "7", T0 - 2 * MIN, T0 + 30_000, "flip");
     await leaderboardRun("2026-11-17", T0, ["0xddd"]);
+    await track("0xddd");
     await whale("0xddd", "BTC-USD", "9", T0 - 8 * MIN, T0 - 7 * MIN);
+    // Ví F trong leaderboard trước, cùng chiều, nhưng được follow SAU quyết định.
+    await leaderboardRun("2026-11-15", T0 - 3 * DAY, ["0xfff"]);
+    await track("0xfff", T0 + MIN);
+    await whale("0xfff", "BTC-USD", "9", T0 - 8 * MIN, T0 - 7 * MIN);
     await whale("0xaaa", "BTC-USD", "9", T0 + MIN, T0 + 2 * MIN, "add");
     await captureSignalContext(db, btcLong("after"), T0, quote("102"));
     expect(h1(await snapshot("after"))).toEqual(h1(await snapshot("before")));

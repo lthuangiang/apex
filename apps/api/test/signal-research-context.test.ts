@@ -33,11 +33,11 @@ interface Ctx {
 async function snapshot(articleId: string, decidedAt: string, c: Ctx) {
   await env.pool.query(
     `insert into signal_contexts (id, article_id, market, direction, decided_at, source, context_version, rule_version,
-       h1_status, h1_wallets_checked, h1_agreeing_wallets, h1_opposing_wallets, h1_agreeing_usdc, h1_first_at,
+       h1_status, h1_wallets_checked, h1_asset_on_hyperliquid, h1_agreeing_wallets, h1_opposing_wallets, h1_agreeing_usdc, h1_first_at,
        h2_status, h2_funding_rate, h2_funding_time, h2_percentile, h2_samples, h2_payer, h2_interval_hours,
        h3_status, h3_moved_pct, h3_typical_move_pct, volume_vs_24h, range_breakout)
      values (gen_random_uuid(), $1, 'ETH-USD', 'long', $2, $3, 'context-v1', 'news-v3',
-       $4, 214, 2, 0, 1400000, $2::timestamptz - interval '39 minutes',
+       $4, 12, true, 2, 0, 1400000, $2::timestamptz - interval '39 minutes',
        $5, 0.0001, $2::timestamptz - interval '2 hours', 56, 90, 'long', 8,
        $6, 0.2, 0.6, 1.8, 'none')`,
     [articleId, decidedAt, c.source ?? "live", c.h1, c.h2, c.h3],
@@ -165,7 +165,8 @@ describe("trace step 4 and feed flags (#329)", () => {
       side: "long",
       h1: {
         status: "yes",
-        walletsChecked: 214,
+        walletsChecked: 12,
+        assetOnHyperliquid: true,
         agreeingWallets: 2,
         opposingWallets: 0,
         agreeingUsdc: "1400000",

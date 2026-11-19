@@ -254,6 +254,23 @@ export function storyKey(market: string, catalyst: SignalCatalyst): string {
 }
 
 /**
+ * Giờ bắt đầu của story (#312): giờ đăng sớm nhất trong các nguồn của những lần thử trước (chưa vào lệnh); không có lần thử
+ * trước → giờ đăng của bài đầu nhóm (`retry = false`). `eventAt` và `moved_before_entry` của lệnh đo từ mốc này, và H3 của
+ * ngữ cảnh (#329) dùng cùng mốc (review PR #349).
+ */
+export function storyStartOf(
+  earlierSourcesAt: readonly number[],
+  firstPublishedAt: number,
+): { start: number; retry: boolean } {
+  if (earlierSourcesAt.length === 0) return { start: firstPublishedAt, retry: false };
+  return { start: Math.min(...earlierSourcesAt), retry: true };
+}
+
+/** Lần thử lại chỉ được khi bài đầu tiên của story còn trong `retryWindowMinutes`; quá thì `STORY_TOO_OLD`. */
+export const storyTooOld = (start: number, now: number): boolean =>
+  now - start > NEWS_RULES.retryWindowMinutes * 60_000;
+
+/**
  * Sự kiện cũ hơn `maxEventAgeHours` so với giờ đăng. Claude chỉ cho ngày (UTC), nên tính theo cuối ngày đó: chỉ bỏ khi
  * cả ngày sự kiện đã qua hơn 24 giờ trước giờ đăng. Không có ngày → không bỏ.
  */

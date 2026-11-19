@@ -1,5 +1,5 @@
 {
-  "id": "cd373614-b75f-4d57-b5f0-3d0943758b82",
+  "id": "227a1581-bacb-41bb-8e60-3e9d66c2434c",
   "prevId": "85a8bf63-6cbe-44c6-9765-9be804def72f",
   "version": "7",
   "dialect": "postgresql",
@@ -7225,6 +7225,12 @@
         "h1_wallets_checked": {
           "name": "h1_wallets_checked",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h1_asset_on_hyperliquid": {
+          "name": "h1_asset_on_hyperliquid",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": false
         },

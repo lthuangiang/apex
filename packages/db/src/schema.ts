@@ -2053,9 +2053,15 @@ export const signalContexts = pgTable(
     /** `SIGNAL_CONTEXT_VERSION` (ngưỡng / định nghĩa lúc chụp). */
     contextVersion: text("context_version").notNull(),
     ruleVersion: text("rule_version").notNull(),
-    /** H1 cá voi cùng chiều: `yes` | `no` | `against` | `na`. */
+    /**
+     * H1 cá voi cùng chiều (ví DeskLabs đang theo dõi: được follow, đã có trong leaderboard trước đó): `yes` | `no` |
+     * `against` (chỉ ví ngược chiều, lưu riêng cho phân tích khám phá) | `na` (không có trên Hyperliquid, hoặc N = 0).
+     */
     h1Status: text("h1_status").notNull(),
+    /** N = số ví theo dõi có dữ liệu thật sự được kiểm lúc quyết định ("N wallets checked"). */
     h1WalletsChecked: integer("h1_wallets_checked"),
+    /** Tài sản có trên Hyperliquid theo dữ liệu đã lưu trước quyết định; null với dòng không ghi giá trị này. */
+    h1AssetOnHyperliquid: boolean("h1_asset_on_hyperliquid"),
     h1AgreeingWallets: integer("h1_agreeing_wallets"),
     h1OpposingWallets: integer("h1_opposing_wallets"),
     h1AgreeingUsdc: money("h1_agreeing_usdc"),

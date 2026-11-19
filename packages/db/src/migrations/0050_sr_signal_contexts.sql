@@ -12,6 +12,7 @@ CREATE TABLE "signal_contexts" (
 	"rule_version" text NOT NULL,
 	"h1_status" text NOT NULL,
 	"h1_wallets_checked" integer,
+	"h1_asset_on_hyperliquid" boolean,
 	"h1_agreeing_wallets" integer,
 	"h1_opposing_wallets" integer,
 	"h1_agreeing_usdc" numeric(38, 18),

@@ -4,18 +4,22 @@ import {
   signalEvents,
   signalResearchUsage,
   signalSourceHealth,
+  signalStories,
   type Db,
 } from "@drift/db";
 import {
+  movedPct,
   NEWS_RULES,
   typicalMovePct,
   type Decimal,
+  type DecimalInput,
   type SignalOutcome,
   type SignalReason,
   type SignalSourceKey,
   type SignalStage,
 } from "@drift/shared";
 import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { z } from "zod";
 
 import type { ClaudeUsage } from "./classifier";
 
@@ -203,6 +207,63 @@ export async function priceBefore(db: Exec, market: string, at: number): Promise
     .orderBy(desc(candles1m.ts))
     .limit(1);
   return r?.close ?? null;
+}
+
+/**
+ * `moved_before_entry` (#312): giá đã chạy (%) từ nến đóng trước giờ bắt đầu story tới giá giữa lúc vào. Decide (giá trị lưu
+ * trên lệnh) và H3 của bước 4 · Context gọi cùng hàm này với cùng mốc, nên là MỘT con số (review PR #349).
+ */
+export async function movedBeforeEntry(
+  db: Exec,
+  market: string,
+  storyStart: number,
+  entryMid: DecimalInput,
+): Promise<Decimal | null> {
+  const before = await priceBefore(db, market, storyStart);
+  return before === null ? null : movedPct(before, entryMid);
+}
+
+export const storySources = z.array(
+  z.object({
+    name: z.string(),
+    tier: z.enum(["top", "mid", "low"]),
+    articleId: z.string(),
+    at: z.string(),
+  }),
+);
+export type StorySourceRef = z.infer<typeof storySources>[number];
+
+/** Mốc dưới của cửa sổ story 7 ngày (theo `first_seen_at`). */
+export const storyWindowStart = (now: number) =>
+  new Date(now - NEWS_RULES.storyWindowDays * DAY_MS);
+
+/**
+ * Các lần thử trước (không khoá, chưa vào lệnh) cùng key trong 7 ngày, cũ nhất trước. `versionId` = của một version (Decide);
+ * null = của mọi version (bước 4 · Context, chạy trước Filter và không theo version).
+ */
+export async function earlierAttempts(
+  db: Exec,
+  versionId: string | null,
+  key: string,
+  now: number,
+) {
+  const rows = await db
+    .select({ id: signalStories.id, sources: signalStories.sources })
+    .from(signalStories)
+    .where(
+      and(
+        versionId === null ? undefined : eq(signalStories.versionId, versionId),
+        eq(signalStories.storyKey, key),
+        eq(signalStories.ruleVersion, NEWS_RULES.version),
+        eq(signalStories.locked, false),
+        gte(signalStories.firstSeenAt, storyWindowStart(now)),
+      ),
+    )
+    .orderBy(asc(signalStories.firstSeenAt));
+  return rows.map((r) => {
+    const p = storySources.safeParse(r.sources);
+    return { id: r.id, sources: p.success ? p.data : [] };
+  });
 }
 
 const moveCache = new Map<string, { at: number; v: Decimal | null }>();

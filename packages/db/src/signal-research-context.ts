@@ -72,6 +72,7 @@ export function signalContextOf(r: ContextRow): ResearchSignalContext {
     h1: {
       status: h1Of(r.h1Status),
       walletsChecked: r.h1WalletsChecked,
+      assetOnHyperliquid: r.h1AssetOnHyperliquid,
       agreeingWallets: r.h1AgreeingWallets,
       opposingWallets: r.h1OpposingWallets,
       agreeingUsdc: decOut(r.h1AgreeingUsdc),

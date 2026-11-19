@@ -328,11 +328,19 @@ export const researchSignalContextSchema = z.object({
   contextVersion: z.string().min(1),
   market: z.string(),
   side,
-  /** H1 · Whales agree: ví đã có trong leaderboard TRƯỚC quyết định mở / tăng vị thế cùng chiều trong `windowMinutes`. */
+  /**
+   * H1 · Whales agree: ít nhất 1 ví DeskLabs đang theo dõi (được follow, và đã có trong leaderboard trước thời điểm đó) mở /
+   * tăng vị thế cùng chiều trong `windowMinutes` trước quyết định. `na`: tài sản không có trên Hyperliquid, hoặc N = 0.
+   */
   h1: z.object({
     status: h1Status,
-    /** Số ví leaderboard được xét ("214 wallets checked"); null với dòng không lưu. */
+    /**
+     * N = số ví theo dõi có dữ liệu thật sự được kiểm lúc quyết định ("N wallets checked"; không phải số ví của cả
+     * leaderboard); null với dòng không lưu.
+     */
     walletsChecked: int.nullable(),
+    /** Tài sản có trên Hyperliquid (false → "Not available" vì không có trên Hyperliquid); null với dòng không lưu. */
+    assetOnHyperliquid: z.boolean().nullable(),
     agreeingWallets: int.nullable(),
     opposingWallets: int.nullable(),
     /** Tổng notional (USD) của ví cùng chiều; null khi không có ví cùng chiều. */
@@ -361,7 +369,10 @@ export const researchSignalContextSchema = z.object({
   /** H3 · Price already moved: giá đã chạy theo chiều tín hiệu ≥ 1 × biến động 1 giờ thường gặp. */
   h3: z.object({
     status: h3Status,
-    /** Giá đã chạy từ giờ đăng tới lúc quyết định (%, có dấu: dương = tăng); null khi thiếu giá. */
+    /**
+     * Giá đã chạy từ giờ đăng của bài ĐẦU TIÊN của story tới lúc quyết định (%, có dấu: dương = tăng); cùng con số với
+     * `movedBeforeEntryPct` của lệnh mở từ tín hiệu này (#312). null khi thiếu giá.
+     */
     movedPct: z.number().nullable(),
     typicalMovePct: z.number().nullable(),
     /** Ngưỡng (%) = bội số × biến động thường gặp. */

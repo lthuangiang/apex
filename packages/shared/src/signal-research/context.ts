@@ -7,6 +7,9 @@ import { TradeDirection } from "./rules";
 // funding SoDEX và giá đã chạy là NGỮ CẢNH, chụp đúng lúc quyết định (bước 4, sau Score, trước Filter), lưu một lần, không
 // tính lại. Ba giả thuyết đăng ký trước, ngưỡng cố định (không đổi sau khi xem kết quả):
 //   H1 cá voi cùng chiều, H2 funding ngược đám đông, H3 giá đã chạy.
+// Review PR #349 (trước khi có lệnh nào được tính, nên sửa định nghĩa là hợp lệ): H1 chỉ xét ví DeskLabs ĐANG THEO DÕI
+// (được follow, và đã có trong leaderboard trước thời điểm đó), vì sự kiện live chỉ có cho các ví này (DEC-321), không phải
+// toàn leaderboard; H3 đo từ giờ đăng của bài ĐẦU TIÊN của story, cùng con số với `moved_before_entry` (#312).
 // Mọi hàm ở đây thuần, không I/O; nơi gọi chỉ đưa vào dữ liệu có timestamp < thời điểm quyết định (không nhìn trước).
 
 /** Version của cách tính ngữ cảnh; đổi ngưỡng / định nghĩa = version mới, snapshot cũ giữ nguyên. */
@@ -39,7 +42,10 @@ export const ContextSource = { live: "live", backfilled: "backfilled" } as const
 export type ContextSource = (typeof ContextSource)[keyof typeof ContextSource];
 export const CONTEXT_SOURCES = Object.values(ContextSource) as [ContextSource, ...ContextSource[]];
 
-/** H1: `against` = chỉ có ví ngược chiều; `na` = không có dữ liệu cá voi cho tài sản này (không bao giờ trộn với `no`). */
+/**
+ * H1: `against` = chỉ có ví ngược chiều (lưu riêng để phân tích khám phá; trong so sánh chính tính vào nhóm "without");
+ * `na` = tài sản không có trên Hyperliquid hoặc không có ví theo dõi nào có dữ liệu (không bao giờ trộn với `no`).
+ */
 export const H1_STATUSES = ["yes", "no", "against", "na"] as const;
 export type H1Status = (typeof H1_STATUSES)[number];
 export const H2_STATUSES = ["yes", "no", "na"] as const;
@@ -58,7 +64,10 @@ const HOUR_MS = 3_600_000;
 
 // ── H1 cá voi cùng chiều ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** Một lần mở / tăng vị thế của ví đã có trong leaderboard trước quyết định (nơi gọi đã lọc ví, loại, cửa sổ, seen_at). */
+/**
+ * Một lần mở / tăng vị thế của một ví đang theo dõi (được follow, đã có trong leaderboard trước quyết định); nơi gọi đã lọc
+ * ví, loại, cửa sổ, seen_at.
+ */
 export interface WhaleMove {
   address: string;
   /** Vị thế có dấu SAU sự kiện: > 0 long, < 0 short. */
@@ -71,8 +80,13 @@ export interface WhaleMove {
 
 export interface H1Result {
   status: H1Status;
-  /** Số ví leaderboard được xét (đã có trong một lần xếp hạng xong trước quyết định). */
+  /**
+   * N = số ví thật sự được kiểm: ví DeskLabs đang theo dõi (được follow trước quyết định, đã có trong một lần xếp hạng xong
+   * trước quyết định) mà marketdata đã đọc fill ("N wallets checked"; không bao giờ là số ví của cả leaderboard).
+   */
   walletsChecked: number;
+  /** Tài sản có trên Hyperliquid (theo dữ liệu đã lưu trước quyết định). */
+  assetOnHyperliquid: boolean;
   agreeingWallets: number;
   opposingWallets: number;
   /** Tổng notional (USD) của các sự kiện cùng chiều; null khi không có. */
@@ -82,13 +96,14 @@ export interface H1Result {
 }
 
 /**
- * H1: ≥ 1 ví đồng thuận → `yes`; chỉ ví ngược chiều → `against`; không có dữ liệu cá voi cho tài sản (Hyperliquid không có
- * mã này trong dữ liệu đã lưu) hoặc chưa có ví nào trong leaderboard trước quyết định → `na`; còn lại → `no`.
+ * H1: ít nhất 1 ví DeskLabs đang theo dõi (được follow, và đã có trong leaderboard trước thời điểm đó) mở / tăng vị thế cùng
+ * chiều trong 60 phút trước quyết định → `yes`; chỉ ví ngược chiều → `against`; tài sản không có trên Hyperliquid, hoặc số ví
+ * theo dõi có dữ liệu = 0 → `na`; còn lại → `no` (N ví đã kiểm đều im lặng).
  */
 export function h1Of(input: {
   direction: TradeDirection;
   walletsChecked: number;
-  assetHasWhaleData: boolean;
+  assetOnHyperliquid: boolean;
   moves: readonly WhaleMove[];
 }): H1Result {
   const agree = new Set<string>();
@@ -108,12 +123,13 @@ export function h1Of(input: {
   }
   const base = {
     walletsChecked: input.walletsChecked,
+    assetOnHyperliquid: input.assetOnHyperliquid,
     agreeingWallets: agree.size,
     opposingWallets: oppose.size,
     agreeingUsdc: agree.size === 0 ? null : usdc,
     firstAt,
   };
-  if (!input.assetHasWhaleData || input.walletsChecked === 0)
+  if (!input.assetOnHyperliquid || input.walletsChecked === 0)
     return {
       ...base,
       status: "na",
@@ -241,7 +257,10 @@ export const h2ThresholdOf = (direction: TradeDirection): number =>
 
 export interface H3Result {
   status: H3Status;
-  /** Giá đã chạy (%, có dấu như `movedPct`: dương = tăng) từ giờ đăng tới lúc quyết định; null khi thiếu giá. */
+  /**
+   * Giá đã chạy (%, có dấu như `movedPct`: dương = tăng) từ giờ đăng của bài ĐẦU TIÊN của story tới giá giữa lúc quyết định;
+   * cùng con số với `moved_before_entry` của lệnh (#312). null khi thiếu giá.
+   */
   movedPct: Decimal | null;
   typicalMovePct: Decimal | null;
   /** Ngưỡng = bội số × biến động 1 giờ thường gặp; null khi không có. */

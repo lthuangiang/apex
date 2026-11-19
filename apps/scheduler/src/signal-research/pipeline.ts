@@ -24,7 +24,6 @@ import {
   levelAtLeast,
   levelOf,
   limitBlock,
-  movedPct,
   NEWS_CLASSIFIER,
   NEWS_RULES,
   normalizedText,
@@ -44,6 +43,8 @@ import {
   NEWS_ASSET_MAP_VERSION,
   STOCK_MARKET_SET,
   storyKey,
+  storyStartOf,
+  storyTooOld,
   stripHtml,
   TradeDirection,
   treasuryOnMajorAsset,
@@ -70,15 +71,19 @@ import { SOSO_PAGE_SIZE, type SosoClient, type SosoNewsItem } from "./soso";
 import {
   addClaudeUsage,
   addSosoRequests,
+  earlierAttempts,
   markSource,
+  movedBeforeEntry,
   newsState,
-  priceBefore,
   recordEvents,
   saveNewsState,
   sosoRequestsThisMonth,
+  storySources,
+  storyWindowStart,
   typicalMove,
   usageToday,
   type EventInput,
+  type StorySourceRef,
 } from "./store";
 
 // Một chu kỳ của lane tin tức (#271, flow #269 v3.4): Collect → Normalize → Understand → Context (#329, chỉ ghi) → Filter →
@@ -494,15 +499,15 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     });
 
   const ctx = cycleContext(deps, info, now);
-  // ── 4. Context (#329): ngữ cảnh lúc quyết định của mọi tín hiệu (kể cả tín hiệu sẽ bị loại / shadow), trước Filter.
-  report.contexts = await captureContexts(deps, ctx, signals);
-
-  // ── 5–6. Filter + Decide, riêng cho từng News bot version đang chạy (#303, DEC-328), theo story key ─────────────
   const groups = new Map<string, Signal[]>();
   for (const s of signals) {
     const k = storyKey(s.candidate.market, s.catalyst);
     groups.set(k, [...(groups.get(k) ?? []), s]);
   }
+  // ── 4. Context (#329): ngữ cảnh lúc quyết định của mọi tín hiệu (kể cả tín hiệu sẽ bị loại / shadow), trước Filter.
+  report.contexts = await captureContexts(deps, ctx, groups);
+
+  // ── 5–6. Filter + Decide, riêng cho từng News bot version đang chạy (#303, DEC-328), theo story key ─────────────
   if (groups.size > 0) {
     const { versions, invalid } = await runningSignalBotVersions(db);
     if (invalid.length > 0)
@@ -525,37 +530,71 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
 }
 
 /**
+ * Mốc bắt đầu story cho H3 của bước 4 (review PR #349): cùng hàm `storyStartOf` với Decide, trên các lần thử trước của MỌI
+ * version (bước 4 chạy trước Filter, không theo version). Lần thử trước đã quá cửa sổ thử lại thì version có lần thử đó gộp
+ * `STORY_TOO_OLD` (không có lệnh), còn version chưa từng thử sẽ vào lệnh với mốc = bài đầu nhóm: dùng mốc đó. Nhờ vậy H3
+ * bằng `moved_before_entry` của mọi lệnh mở từ nhóm này, trừ version được lưu khi story đang dở (chưa thấy bài đầu).
+ */
+async function contextStoryStart(
+  db: Db,
+  key: string,
+  group: readonly Signal[],
+  now: number,
+): Promise<number | null> {
+  const first = group[0];
+  if (first === undefined) return null;
+  const earlier = await earlierAttempts(db, null, key, now);
+  const s = storyStartOf(
+    earlier.flatMap((e) => e.sources.map((x) => Date.parse(x.at))),
+    first.publishedAt,
+  );
+  return s.retry && storyTooOld(s.start, now) ? first.publishedAt : s.start;
+}
+
+/**
  * Bước 4 · Context: chụp ngữ cảnh từng tín hiệu tại `now` (giờ quyết định của chu kỳ). Báo giá lấy qua bộ nhớ đệm của chu kỳ
  * (cùng báo giá Decide dùng, nên không đổi giá vào lệnh). Lỗi ở đây chỉ ghi log: không bao giờ chặn Filter / Decide.
  */
 async function captureContexts(
   deps: PipelineDeps,
   ctx: CycleContext,
-  signals: readonly Signal[],
+  groups: ReadonlyMap<string, readonly Signal[]>,
 ): Promise<number> {
   const capture = deps.captureContext === undefined ? captureSignalContext : deps.captureContext;
   if (capture === null) return 0;
   let n = 0;
-  for (const s of signals) {
+  for (const [key, group] of groups) {
+    let storyStartAt: number | null = null;
     try {
-      const q = await ctx.quote(s.candidate.market);
-      await capture(
-        deps.db,
-        {
-          articleId: s.articleId,
-          market: s.candidate.market,
-          direction: catalystRule(s.catalyst).direction,
-          publishedAt: s.publishedAt,
-        },
-        ctx.now,
-        typeof q === "string" ? null : q,
-      );
-      n += 1;
+      storyStartAt = await contextStoryStart(deps.db, key, group, ctx.now);
     } catch (e) {
       deps.log.warn(
-        { articleId: s.articleId, error: e instanceof Error ? e.message : "error" },
+        { storyKey: key, error: e instanceof Error ? e.message : "error" },
         "signal research: context capture failed",
       );
+      continue;
+    }
+    for (const s of group) {
+      try {
+        const q = await ctx.quote(s.candidate.market);
+        await capture(
+          deps.db,
+          {
+            articleId: s.articleId,
+            market: s.candidate.market,
+            direction: catalystRule(s.catalyst).direction,
+            storyStartAt: storyStartAt ?? s.publishedAt,
+          },
+          ctx.now,
+          typeof q === "string" ? null : q,
+        );
+        n += 1;
+      } catch (e) {
+        deps.log.warn(
+          { articleId: s.articleId, error: e instanceof Error ? e.message : "error" },
+          "signal research: context capture failed",
+        );
+      }
     }
   }
   return n;
@@ -678,16 +717,6 @@ async function firstIdByHash(db: Db, hashes: readonly string[]): Promise<Map<str
   return out;
 }
 
-const storySources = z.array(
-  z.object({
-    name: z.string(),
-    tier: z.enum(["top", "mid", "low"]),
-    articleId: z.string(),
-    at: z.string(),
-  }),
-);
-type StorySourceRef = z.infer<typeof storySources>[number];
-
 const sourcesOf = (xs: readonly Signal[]): StorySourceRef[] =>
   xs.map((s) => ({
     name: s.source,
@@ -695,8 +724,6 @@ const sourcesOf = (xs: readonly Signal[]): StorySourceRef[] =>
     articleId: s.articleId,
     at: new Date(s.publishedAt).toISOString(),
   }));
-
-const windowStart = (now: number) => new Date(now - NEWS_RULES.storyWindowDays * 24 * HOUR_MS);
 
 /** Story đang khoá key trong 7 ngày của version này (đã vào lệnh thật hoặc lệnh shadow). */
 async function lockedStory(db: Db, versionId: string, key: string, now: number) {
@@ -709,33 +736,12 @@ async function lockedStory(db: Db, versionId: string, key: string, now: number) 
         eq(signalStories.storyKey, key),
         eq(signalStories.ruleVersion, NEWS_RULES.version),
         eq(signalStories.locked, true),
-        gte(signalStories.firstSeenAt, windowStart(now)),
+        gte(signalStories.firstSeenAt, storyWindowStart(now)),
       ),
     )
     .orderBy(asc(signalStories.firstSeenAt))
     .limit(1);
   return s;
-}
-
-/** Các lần thử trước (không khoá, chưa vào lệnh) cùng key của version này trong 7 ngày, cũ nhất trước. */
-async function earlierAttempts(db: Db, versionId: string, key: string, now: number) {
-  const rows = await db
-    .select({ id: signalStories.id, sources: signalStories.sources })
-    .from(signalStories)
-    .where(
-      and(
-        eq(signalStories.versionId, versionId),
-        eq(signalStories.storyKey, key),
-        eq(signalStories.ruleVersion, NEWS_RULES.version),
-        eq(signalStories.locked, false),
-        gte(signalStories.firstSeenAt, windowStart(now)),
-      ),
-    )
-    .orderBy(asc(signalStories.firstSeenAt));
-  return rows.map((r) => {
-    const p = storySources.safeParse(r.sources);
-    return { id: r.id, sources: p.success ? p.data : [] };
-  });
 }
 
 /** Gộp bài vào story đang khoá: thêm nguồn, tính lại "later level", gắn later High cho lệnh của story. */
@@ -1001,17 +1007,13 @@ async function decideStory(
   }
 
   const earlier = await earlierAttempts(db, v.id, key, now);
-  const firstSource = earlier
-    .flatMap((e) => e.sources)
-    .reduce<StorySourceRef | null>((m, x) => (m === null || x.at < m.at ? x : m), null);
-  const retry = firstSource !== null;
-  const storyStart = firstSource === null ? first.publishedAt : Date.parse(firstSource.at);
+  // #312: mốc bắt đầu story; H3 của bước 4 dùng cùng hàm (`storyStartOf`) nên cùng con số với `moved_before_entry`.
+  const { start: storyStart, retry } = storyStartOf(
+    earlier.flatMap((e) => e.sources.map((x) => Date.parse(x.at))),
+    first.publishedAt,
+  );
   const lastAttempt = earlier.at(-1);
-  if (
-    retry &&
-    lastAttempt !== undefined &&
-    now - storyStart > NEWS_RULES.retryWindowMinutes * MIN_MS
-  ) {
+  if (retry && lastAttempt !== undefined && storyTooOld(storyStart, now)) {
     const sources = [...lastAttempt.sources, ...sourcesOf(group)];
     await db.transaction(async (tx) => {
       await tx
@@ -1184,8 +1186,7 @@ async function decideStory(
     });
 
   // ── Decide: mở lệnh giấy (thật hoặc shadow) ──────────────────────────────────────────────────────────────────
-  const before = await priceBefore(db, market, storyStart);
-  const moved = before === null ? null : movedPct(before, plan.entryMid);
+  const moved = await movedBeforeEntry(db, market, storyStart, plan.entryMid);
   const outside =
     STOCK_MARKET_SET.has(market) &&
     first.candidate.kind === AssetKind.stock &&
