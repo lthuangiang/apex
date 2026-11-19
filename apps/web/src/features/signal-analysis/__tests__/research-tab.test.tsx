@@ -825,6 +825,11 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
     expect(within(d2).getByText(/the asset’s typical move/)).toHaveTextContent(
       "TP = 1.5 × and SL = 0.75 × the asset’s typical move over the max hold (from its last 30 days). If TP is under 2× the cost of a trade, the signal is skipped.",
     );
+    await userEvent.click(within(d2).getByRole("tab", { name: "The gate" }));
+    // Cổng nêu đủ điều kiện đã chốt, gồm so với vào lệnh ngẫu nhiên và cùng dấu ở hai nửa.
+    expect(within(d2).getByText(/passes the gate/)).toHaveTextContent(
+      "A signal type gets a page for users only after it passes the gate: 100 trades or more, average result after fees at least 2× the cost of a trade, a likely range that stays above 0, it beats random entries at the same moments, and the result has the same sign in both halves.",
+    );
     await userEvent.click(within(d2).getByRole("tab", { name: "Context questions" }));
     expect(within(d2).getByText(/Where the other signals go/)).toBeInTheDocument();
     await userEvent.click(within(d2).getByRole("button", { name: "Close" }));

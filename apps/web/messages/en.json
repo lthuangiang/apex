@@ -8940,7 +8940,7 @@
           "minLevel": "This version trades level <b>{level}</b> and up.",
           "tpsl": "TP = <b>{tp} ×</b> and SL = <b>{sl} ×</b> the asset’s typical move over the max hold (from its last 30 days). If TP is under <b>{min}×</b> the cost of a trade, the signal is skipped.",
           "size": "Each trade is <b>{size} USDC</b> of fake money.",
-          "gate": "A signal type gets a page for users only after it passes the gate: <b>100 trades or more</b>, average result after fees at least <b>2× the cost of a trade</b>, and a likely range that stays above 0.",
+          "gate": "A signal type gets a page for users only after it passes the gate: <b>100 trades or more</b>, average result after fees at least <b>2× the cost of a trade</b>, a likely range that stays above 0, it <b>beats random entries at the same moments</b>, and the result has the <b>same sign in both halves</b>.",
           "classifierGate": "A trade counts only when the classifier that made it has <b>{min} labels</b> and is at least <b>{pct}% right</b>.",
           "context1": "<b>Where the other signals go: step 4 · Context.</b> After Claude names the news type and the asset (Score), DeskLabs checks three things about that asset at that moment: did whales on the leaderboard just trade the same way, is funding against the crowd, has the price already run.",
           "context2": "<b>Now: records only (dashed).</b> Every signal passes step 4; the answers are saved on the signal and the trade. \"Is it working? › Does context help?\" compares trades with and without each one.",
