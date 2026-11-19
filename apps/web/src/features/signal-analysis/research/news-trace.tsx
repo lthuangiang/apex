@@ -14,7 +14,7 @@ import {
 } from "@drift/shared";
 import { RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api";
 import { useMarketNames } from "@/lib/markets";
@@ -23,11 +23,25 @@ import type { PageCtx } from "../components/signal-analysis-page";
 import { clock, count, monthDay } from "../format";
 
 import { useResearchArticles, useResearchTrace, type ArticleFilters } from "./api";
-import { ContextCard, ContextIcons, ContextPanel, type ContextPanelState } from "./context-panel";
+import {
+  ACCENT_SOFT,
+  ContextCard,
+  ContextIcons,
+  ContextPanel,
+  type ContextPanelState,
+} from "./context-panel";
 import { contextYesCount } from "./context-text";
 import { delay, delayLong } from "./format";
 import { DOT, FunnelBands, type BandState, type FunnelBandView, type FunnelToken } from "./funnel";
 import { LabelForm } from "./labels";
+import {
+  LIVE_HOLD_MS,
+  liveDuration,
+  useDocumentVisible,
+  useInView,
+  useLiveArticles,
+  useLiveSwitch,
+} from "./live-drop";
 import type { Tr } from "./text";
 import {
   BAND_COUNT,
@@ -176,6 +190,7 @@ function totalBands(
   t: Tr,
   stage: string | null,
   onBand: (i: number) => void,
+  bump = false,
 ): FunnelBandView[] {
   return BANDS.map((key, n) => {
     const label = t("trace.band", { n: n + 1, name: t(`trace.stages.${key}`) });
@@ -194,6 +209,7 @@ function totalBands(
       },
       pressed: stage === key,
       ariaLabel: t("trace.bandAria", { name }),
+      bump,
     };
   });
 }
@@ -257,6 +273,38 @@ function traceBandViews(bands: TraceBand[], model: TraceModel | null, t: Tr): Fu
   });
 }
 
+/** Chip chạy trong phễu (trace và bài mới live). */
+function tokenOf(view: TraceView, step: number, stop: number, t: Tr): FunnelToken {
+  const end = step > stop ? view.end : null;
+  return {
+    pos: Math.min(step, stop),
+    visible: step > 0,
+    tone:
+      end === "drop"
+        ? "dropped"
+        : end === "traded"
+          ? "traded"
+          : end === "merge"
+            ? "merged"
+            : "moving",
+    text:
+      end === "drop"
+        ? t("trace.token.out", { assets: view.assets })
+        : end === "traded"
+          ? t("trace.token.traded", { assets: view.assets })
+          : end === "merge"
+            ? t("trace.token.merged", { assets: view.assets })
+            : view.assets,
+  };
+}
+
+/** Khung 4 · Context theo vị trí chip. */
+function panelStateOf(model: TraceModel | null, pos: number): ContextPanelState {
+  if (model === null) return "waiting";
+  if (model.reach !== "recorded") return model.reach;
+  return pos >= CONTEXT_BAND ? "shown" : "waiting";
+}
+
 /* ---------------------------------------------------------------- Component */
 
 export function NewsTrace({
@@ -301,6 +349,58 @@ export function NewsTrace({
   const player = useStepPlayer({ ready: sel !== null && view !== null, stop, duration });
   const { step, run } = player;
 
+  // #345: bài mới live. Chỉ hỏi khi Live bật, tab hiển thị và không trace; phễu ngoài màn hình thì chỉ cập nhật số.
+  const { on: live, known: liveKnown, set: setLive } = useLiveSwitch();
+  const visible = useDocumentVisible();
+  const funnelRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(funnelRef);
+  const feed = useLiveArticles({
+    live: live && liveKnown,
+    tracing: sel !== null,
+    visible,
+    inView,
+    versionId,
+  });
+  const liveId = sel === null ? (feed.current?.id ?? null) : null;
+  const liveTrace = useResearchTrace(liveId, versionId);
+  const liveData = (liveTrace.data?.article.id === liveId ? liveTrace.data : undefined) ?? null;
+  const liveView: TraceView | null =
+    liveData === null
+      ? null
+      : traceView(liveData, ctx.tz, t, (m) => names.info(m)?.tickSize ?? null);
+  const liveModel =
+    liveView === null || liveData === null ? null : traceModel(liveView, liveData.context);
+  const liveRecorded = liveModel?.reach === "recorded";
+  const liveDur = useMemo(() => liveDuration(liveRecorded), [liveRecorded]);
+  const livePlayer = useStepPlayer({
+    ready: liveView !== null,
+    stop: liveModel?.stop ?? BAND_COUNT,
+    duration: liveDur,
+  });
+  const [playedId, setPlayedId] = useState<string | null>(null);
+  const { play: livePlay } = livePlayer;
+  useEffect(() => {
+    if (liveId === null) return;
+    setPlayedId(liveId);
+    livePlay();
+  }, [liveId, livePlay]);
+  const liveOn = liveId !== null && playedId === liveId && liveModel !== null && liveView !== null;
+  const liveDone = liveOn && livePlayer.step > liveModel.stop;
+  const { finish } = feed;
+  useEffect(() => {
+    if (!liveDone) return;
+    // Reduced motion: khung cuối hiện ngay, giữ đủ nhịp một bài (~2.5 s) rồi sang bài sau.
+    const id = setTimeout(finish, prefersReducedMotion() ? 2500 : LIVE_HOLD_MS);
+    return () => {
+      clearTimeout(id);
+    };
+  }, [liveDone, finish]);
+  // Không tải được trace của bài mới: bỏ qua bài đó (số đếm vẫn làm mới).
+  const liveError = liveId !== null && liveTrace.isError;
+  useEffect(() => {
+    if (liveError) finish();
+  }, [liveError, finish]);
+
   const start = (id: string, scroll: "funnel" | "trace") => {
     setSel(id);
     player.play();
@@ -328,7 +428,8 @@ export function NewsTrace({
 
   let verdict: string;
   let verdictTone = "text-ink-2";
-  if (!tracing) verdict = t("trace.verdict.idle");
+  if (!tracing && liveOn) verdict = liveVerdict(liveView, liveModel, livePlayer.step, feed, t);
+  else if (!tracing) verdict = t("trace.verdict.idle");
   else if (view === null)
     verdict = trace.isError ? t("trace.verdict.error") : t("trace.verdict.arriving");
   else if (!finished)
@@ -354,40 +455,19 @@ export function NewsTrace({
     setStage(null);
   };
 
-  const bands = tracing ? traceBandViews(tb, model, t) : totalBands(tot, t, stage, onBand);
+  const bump = feed.fresh.size > 0;
+  const bands = tracing
+    ? traceBandViews(tb, model, t)
+    : liveOn
+      ? // #345: bài mới live rơi xuống: tầng như trace (khung Context cạnh phễu làm phễu hẹp lại, số đếm dài không vừa);
+        // số đếm của chế độ tổng làm mới từ API khi bài rơi xong.
+        traceBandViews(traceBands(liveView, liveModel, livePlayer.step), liveModel, t)
+      : totalBands(tot, t, stage, onBand, bump);
   let token: FunnelToken | null = null;
-  if (tracing && view !== null) {
-    const end = finished ? view.end : null;
-    token = {
-      pos,
-      visible: step > 0,
-      tone:
-        end === "drop"
-          ? "dropped"
-          : end === "traded"
-            ? "traded"
-            : end === "merge"
-              ? "merged"
-              : "moving",
-      text:
-        end === "drop"
-          ? t("trace.token.out", { assets: view.assets })
-          : end === "traded"
-            ? t("trace.token.traded", { assets: view.assets })
-            : end === "merge"
-              ? t("trace.token.merged", { assets: view.assets })
-              : view.assets,
-    };
-  }
+  if (tracing && view !== null) token = tokenOf(view, step, stop, t);
+  else if (liveOn) token = { ...tokenOf(liveView, livePlayer.step, liveModel.stop, t), fast: true };
 
-  const panelState: ContextPanelState =
-    model === null
-      ? "waiting"
-      : model.reach === "recorded"
-        ? pos >= CONTEXT_BAND
-          ? "shown"
-          : "waiting"
-        : model.reach;
+  const panelState = panelStateOf(model, pos);
   const asset = data?.article.asset ?? data?.context?.market ?? view?.assets ?? "";
 
   return (
@@ -441,29 +521,32 @@ export function NewsTrace({
             </button>
           </div>
         ) : (
-          <div
-            role="group"
-            aria-label={t("trace.period")}
-            className="flex gap-1 rounded-control border border-border bg-surface-2 p-1"
-          >
-            {RESEARCH_RANGES.map((r) => {
-              const on = r === range;
-              return (
-                <button
-                  key={r}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => {
-                    onRange(r);
-                  }}
-                  className={`min-h-9 cursor-pointer rounded-lg border-0 px-3.5 text-[13px] font-extrabold ${
-                    on ? "bg-surface text-ink shadow-card" : "bg-transparent text-muted"
-                  }`}
-                >
-                  {t(`trace.periods.${r}`)}
-                </button>
-              );
-            })}
+          <div className="flex flex-wrap items-center gap-3">
+            <LiveSwitch on={live} onChange={setLive} />
+            <div
+              role="group"
+              aria-label={t("trace.period")}
+              className="flex gap-1 rounded-control border border-border bg-surface-2 p-1"
+            >
+              {RESEARCH_RANGES.map((r) => {
+                const on = r === range;
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => {
+                      onRange(r);
+                    }}
+                    className={`min-h-9 cursor-pointer rounded-lg border-0 px-3.5 text-[13px] font-extrabold ${
+                      on ? "bg-surface text-ink shadow-card" : "bg-transparent text-muted"
+                    }`}
+                  >
+                    {t(`trace.periods.${r}`)}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -480,6 +563,9 @@ export function NewsTrace({
               filters={{ range, show, stage, reason }}
               versionId={versionId}
               sel={sel}
+              fresh={feed.fresh}
+              pending={tracing ? feed.queue.length : 0}
+              onPlayPending={back}
               onShow={setShow}
               onClear={() => {
                 setStage(null);
@@ -494,11 +580,12 @@ export function NewsTrace({
 
         <div
           id="sr-trace"
+          ref={funnelRef}
           className="flex min-w-0 scroll-mt-4 flex-col gap-3 max-md:order-1 md:col-span-2 xl:flex-row xl:items-stretch"
         >
           <div className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-[14px] border border-border bg-surface-2 px-3 py-3.5 md:px-4">
             <div className="flex flex-1 flex-col justify-center">
-              <FunnelBands bands={bands} tracing={tracing} token={token} />
+              <FunnelBands bands={bands} tracing={tracing || liveOn} token={token} />
             </div>
             <p
               role="status"
@@ -536,6 +623,15 @@ export function NewsTrace({
               playKey={`${sel}:${String(run)}`}
               className="xl:w-[300px] xl:flex-none"
             />
+          ) : liveOn ? (
+            <ContextPanel
+              state={panelStateOf(liveModel, Math.min(livePlayer.step, liveModel.stop))}
+              context={liveData?.context ?? null}
+              asset={liveData?.article.asset ?? liveData?.context?.market ?? liveView.assets}
+              tz={ctx.tz}
+              playKey={`live:${liveId}:${String(livePlayer.run)}`}
+              className="xl:w-[300px] xl:flex-none"
+            />
           ) : (
             <p className="m-0 text-xs leading-normal text-ink-2 md:hidden">
               {t.rich("context.mobileHint", { b: (c) => <strong>{c}</strong> })}
@@ -569,6 +665,58 @@ export function NewsTrace({
   );
 }
 
+/** #345: công tắc "Live" (nhớ theo người xem). Tắt: không hỏi bài mới, không có hiệu ứng rơi. */
+function LiveSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  const t = useTranslations("signalAnalysis.research.live");
+  return (
+    <span className="flex min-h-11 items-center gap-2 text-[13px] font-extrabold">
+      <span
+        aria-hidden="true"
+        className={`size-2 rounded-full ${on ? "bg-pos motion-safe:animate-[sr-glow_1.6s_ease-in-out_infinite]" : "bg-muted"}`}
+      />
+      <span aria-hidden="true">{t("label")}</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={t("switchAria")}
+        onClick={() => {
+          onChange(!on);
+        }}
+        className={`flex h-[26px] w-11 cursor-pointer rounded-full border-0 p-[3px] ${
+          on ? "justify-end bg-accent" : `justify-start ${ACCENT_SOFT}`
+        }`}
+      >
+        <span className="block size-5 rounded-full bg-surface" />
+      </button>
+    </span>
+  );
+}
+
+/** Dòng trạng thái khi bài mới live đang rơi (mockup): bước đang ở, rồi bước dừng / Decide, cộng số bài chờ. */
+function liveVerdict(
+  view: TraceView,
+  model: TraceModel,
+  step: number,
+  q: { queue: readonly unknown[]; extra: number; current: ResearchArticle | null },
+  t: Tr,
+): string {
+  const pos = Math.max(Math.min(step, model.stop), 1);
+  const name = (n: number) => t(`trace.stages.${BANDS[n - 1] ?? "collect"}`);
+  let head: string;
+  if (step <= model.stop) head = t("live.step", { n: pos, name: name(pos) });
+  else if (view.end === "traded") {
+    const side = q.current?.side ?? null;
+    head = t("live.reached", {
+      side: side === null ? t("na") : t(`sides.${side}`),
+      asset: view.assets,
+    });
+  } else head = t("live.stopped", { name: name(model.stop) });
+  return `${head}${q.queue.length > 0 ? t("live.waiting", { n: q.queue.length }) : ""}${
+    q.extra > 0 ? t("live.more", { n: q.extra }) : ""
+  }`;
+}
+
 /** Ba ô giải thích bước 4 dưới phễu (chế độ tổng, từ 768 px; điện thoại có một dòng ngắn dưới phễu). */
 function Explainers() {
   const t = useTranslations("signalAnalysis.research.page.drawer");
@@ -593,6 +741,9 @@ function Feed({
   ctx,
   filters,
   sel,
+  fresh,
+  pending,
+  onPlayPending,
   onShow,
   onClear,
   onPick,
@@ -602,6 +753,11 @@ function Feed({
   filters: ArticleFilters;
   versionId: string | null;
   sel: string | null;
+  /** #345: bài tới live trong phiên (badge "NEW"). */
+  fresh: ReadonlySet<string>;
+  /** #345: số bài mới chờ trong lúc xem trace (chip "N new articles · play"; 0 = ẩn). */
+  pending: number;
+  onPlayPending: () => void;
   onShow: (s: Show) => void;
   onClear: () => void;
   onPick: (id: string) => void;
@@ -653,6 +809,15 @@ function Feed({
           </button>
         ))}
       </div>
+      {pending === 0 ? null : (
+        <button
+          type="button"
+          onClick={onPlayPending}
+          className="min-h-10 flex-none cursor-pointer rounded-full border border-accent bg-accent-tint px-3 text-[13px] font-extrabold text-accent-ink"
+        >
+          {t("live.pending", { n: pending })}
+        </button>
+      )}
       {filterLabel === null ? null : (
         <div className="flex items-center justify-between gap-2 rounded-control bg-accent-tint px-3 py-2 text-[13px] font-bold text-accent-ink">
           <span>{filterLabel}</span>
@@ -703,6 +868,7 @@ function Feed({
                 <ArticleCard
                   a={a}
                   tz={ctx.tz}
+                  fresh={fresh.has(a.id)}
                   selected={a.id === sel}
                   onPick={() => {
                     onPick(a.id);
@@ -730,11 +896,14 @@ function Feed({
 function ArticleCard({
   a,
   tz,
+  fresh = false,
   selected,
   onPick,
 }: {
   a: ResearchArticle;
   tz: string;
+  /** #345: bài tới live: badge "NEW", trượt vào một lần. */
+  fresh?: boolean;
   selected: boolean;
   onPick: () => void;
 }) {
@@ -749,11 +918,14 @@ function ArticleCard({
       onClick={onPick}
       className={`block w-full cursor-pointer rounded-tile border p-3 text-left transition-[background-color,border-color,transform] duration-200 hover:border-accent md:px-3.5 motion-safe:md:hover:translate-x-[3px] ${
         selected ? "border-accent bg-accent-tint" : "border-border bg-surface"
-      }`}
+      } ${fresh ? "motion-safe:animate-[sr-newrow_.6s_cubic-bezier(.2,.8,.2,1)_both]" : ""}`}
     >
       <span className="flex justify-between gap-2 text-xs text-muted">
         <span>
           {t("trace.seen", { time: clock(a.publishedAt, tz, false), d: delay(a.delaySecs) })}
+          {fresh ? (
+            <span className="ml-2 font-extrabold text-accent-ink">{t("live.new")}</span>
+          ) : null}
         </span>
         <span>{cost ?? t("na")}</span>
       </span>

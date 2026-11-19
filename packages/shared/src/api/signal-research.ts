@@ -823,6 +823,28 @@ export const researchArticlesQuerySchema = z.object({
   versionId: z.uuid().optional(),
 });
 
+/**
+ * #345: bài mới cho hiệu ứng "bài rơi xuống phễu" (web hỏi mỗi 15 s). `since` là con trỏ mờ của lần trước; không có =
+ * lần đầu: API trả `items` rỗng và con trỏ ở bài mới nhất hiện có (bài đã có trước khi mở trang không rơi).
+ */
+export const researchNewArticlesQuerySchema = z.object({
+  since: z.string().max(400).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  /** News bot version; không có = Baseline. */
+  versionId: z.uuid().optional(),
+});
+
+/**
+ * Bài thu sau con trỏ, cũ trước mới (theo giờ DeskLabs thu bài), CHỈ bài đã xong phễu (`outcome` khác `waiting`), để bài
+ * rơi xuống đúng bước nó dừng thật. Bài còn chờ (thu trong 15 phút gần nhất) giữ con trỏ lại tới khi xong, nên một bài có
+ * thể trả lại ở lần sau: web bỏ bài đã thấy theo `id`.
+ */
+export const researchNewArticlesSchema = z.object({
+  items: z.array(researchArticleSchema),
+  /** Con trỏ gửi lại ở lần hỏi sau. */
+  since: z.string().min(1),
+});
+
 export const researchSummaryQuerySchema = z.object({
   /** Không có = như trước (#271): phễu tính mọi dữ liệu của version hiện tại. */
   range: z.enum(RESEARCH_RANGES).optional(),
@@ -1158,6 +1180,8 @@ export type ResearchClaudeUsage = z.infer<typeof researchClaudeUsageSchema>;
 export type ResearchArticle = z.infer<typeof researchArticleSchema>;
 export type ResearchArticlesPage = z.infer<typeof researchArticlesPageSchema>;
 export type ResearchArticlesQuery = z.infer<typeof researchArticlesQuerySchema>;
+export type ResearchNewArticlesQuery = z.infer<typeof researchNewArticlesQuerySchema>;
+export type ResearchNewArticles = z.infer<typeof researchNewArticlesSchema>;
 export type ResearchSummaryQuery = z.infer<typeof researchSummaryQuerySchema>;
 export type ResearchTraceStory = z.infer<typeof researchTraceStorySchema>;
 export type ResearchTraceCheck = z.infer<typeof researchTraceCheckSchema>;

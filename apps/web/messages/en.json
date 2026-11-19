@@ -9181,7 +9181,18 @@
         "exploratoryBody": "Whale size in USDC, number of agreeing wallets, funding value, volume vs 24 h average, range breakout, volatility squeeze. Looking at many measures will always find one that looks good by luck, so these stay here for ideas only.",
         "moreBoth": "{with} more with · {without} more without"
       },
-      "rulesShort": "v{v}"
+      "rulesShort": "v{v}",
+      "live": {
+        "label": "Live",
+        "switchAria": "Animate new articles",
+        "step": "New article · step {n} · {name}…",
+        "stopped": "New article stopped at {name}",
+        "reached": "New article reached Decide: {side} {asset}",
+        "waiting": " · {n} waiting",
+        "more": " · +{n} more counted",
+        "pending": "{n, plural, one {# new article} other {# new articles}} · play",
+        "new": "NEW"
+      }
     },
     "pricesMainnet": "Prices from mainnet"
   }

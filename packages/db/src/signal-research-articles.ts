@@ -10,6 +10,8 @@ import {
   type ResearchArticlesPage,
   type ResearchArticlesQuery,
   type ResearchArticleTrace,
+  type ResearchNewArticles,
+  type ResearchNewArticlesQuery,
   type ResearchClaudeUsage,
   type ResearchDropReason,
   type ResearchMyLabel,
@@ -168,6 +170,7 @@ function stateCte(
 interface StateRow extends Record<string, unknown> {
   id: string;
   published_at: Date | string;
+  collected_at: Date | string;
   stage: ResearchStage;
   outcome: ResearchArticle["outcome"];
   reason: ResearchDropReason | null;
@@ -400,6 +403,93 @@ export async function loadSignalResearchArticles(
     total: Number(c?.total ?? 0),
     totalInRange: Number(c?.n_all ?? 0),
   };
+}
+
+// ── Bài mới (#345) ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Bài còn chờ (chưa xong phễu) thu trong khoảng này giữ con trỏ lại; cũ hơn thì coi như kẹt, con trỏ đi qua. */
+export const NEW_ARTICLES_PIN_MS = 15 * 60_000;
+
+// Con trỏ của bài mới: (giờ thu, id) của bài cuối đã đi qua. `id` rỗng khi chưa có bài nào (lần đầu, bảng trống).
+const sinceSchema = z.object({ t: z.iso.datetime(), id: z.string().max(200) });
+
+function decodeSince(c: string): { t: Date; id: string } {
+  let raw: unknown = null;
+  try {
+    raw = JSON.parse(Buffer.from(c, "base64url").toString("utf8"));
+  } catch {
+    raw = null;
+  }
+  const p = sinceSchema.safeParse(raw);
+  if (!p.success)
+    throw new AppError(ErrorCode.validationFailed, "Invalid input.", {
+      fieldErrors: { since: ["invalid"] },
+    });
+  return { t: new Date(p.data.t), id: p.data.id };
+}
+
+/**
+ * Bài mới cho hiệu ứng bài rơi xuống phễu (#345). Lần đầu (không có `since`): không trả bài, con trỏ ở bài mới nhất của
+ * version quy tắc hiện tại. Sau đó: bài thu sau con trỏ, cũ trước mới, chỉ bài đã xong phễu theo `versionId`. Con trỏ đi
+ * tới bài cuối liền mạch đã xong; bài còn chờ thu trong `NEW_ARTICLES_PIN_MS` giữ con trỏ lại (bài sau nó vẫn được trả,
+ * web bỏ bài trùng theo id). So sánh giờ ở mức mili giây (con trỏ là ISO).
+ */
+export async function loadSignalResearchNewArticles(
+  q: Q,
+  query: ResearchNewArticlesQuery,
+  now: Date,
+  check: () => void = () => undefined,
+): Promise<ResearchNewArticles> {
+  const scope = await resolveSignalVersion(q, query.versionId);
+  check();
+  if (query.since === undefined) {
+    const last = await q
+      .select({ t: signalArticles.collectedAt, id: signalArticles.id })
+      .from(signalArticles)
+      .where(
+        and(
+          eq(signalArticles.ruleVersion, NEWS_RULES.version),
+          sql`${signalArticles.status} <> 'backlog'`,
+        ),
+      )
+      .orderBy(sql`${signalArticles.collectedAt} desc, ${signalArticles.id} desc`)
+      .limit(1);
+    const row = last[0];
+    return { items: [], since: encodeCursor(row?.t ?? now, row?.id ?? "") };
+  }
+  const cur = decodeSince(query.since);
+  const page = await q.execute<StateRow>(sql`${stateCte(cur.t, null, scope)}
+    select * from st
+    where (date_trunc('milliseconds', collected_at), id) > (${cur.t}::timestamptz, ${cur.id}::text)
+    order by collected_at asc, id asc
+    limit ${query.limit}`);
+  check();
+  let since = cur;
+  let pinned = false;
+  const settled: StateRow[] = [];
+  for (const r of page.rows) {
+    const t = toDate(r.collected_at);
+    if (r.outcome === "waiting") {
+      if (now.getTime() - t.getTime() < NEW_ARTICLES_PIN_MS) pinned = true;
+    } else settled.push(r);
+    if (!pinned) since = { t, id: r.id };
+  }
+  const ids = settled.map((r) => r.id);
+  const articles =
+    ids.length === 0
+      ? new Map<string, ArticleRow>()
+      : new Map(
+          (await q.select().from(signalArticles).where(inArray(signalArticles.id, ids))).map(
+            (a) => [a.id, a],
+          ),
+        );
+  const contexts = await loadSignalContexts(q, ids);
+  check();
+  const items = settled.flatMap((r) => {
+    const a = articles.get(r.id);
+    return a === undefined ? [] : [articleItem(a, r, scope, contexts.get(r.id))];
+  });
+  return { items, since: encodeCursor(since.t, since.id) };
 }
 
 // ── Trace ────────────────────────────────────────────────────────────────────────────────────────────────────────────
