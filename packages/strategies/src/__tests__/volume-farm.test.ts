@@ -11,6 +11,7 @@ import type {
   StrategyEvent,
 } from "../core/types";
 import {
+  clampExposure,
   FARM_LIVE_BOOK,
   FARM_TIMING,
   farmRandom,
@@ -647,8 +648,8 @@ describe("volume farm — balancing reduces netExposure, Reverse only flips the 
   });
 
   /** Chạy `n` lượt đầy đủ (vào → khớp → chốt lời → khớp lệnh thoát) với cỡ lệnh ngẫu nhiên của bot. */
-  function cycles(c: VolumeFarmConfig, n: number) {
-    let s = volumeFarm.initialState(c);
+  function cycles(c: VolumeFarmConfig, n: number, start?: VolumeFarmState) {
+    let s = start ?? volumeFarm.initialState(c);
     let at = T0;
     const entries: { side: "buy" | "sell"; balanced: boolean; exposureBefore: number }[] = [];
     const exposures: number[] = [];
@@ -706,8 +707,38 @@ describe("volume farm — balancing reduces netExposure, Reverse only flips the 
       expect(s.phase).toBe("idle");
       exposures.push(Number(s.netExposure));
     }
-    return { entries, exposures };
+    return { entries, exposures, state: s };
   }
+
+  it("caps a huge stored exposure from the old bug, balances a few entries, then follows the signal", () => {
+    // Bot tiền thật tích lệch theo lỗi cũ (mô phỏng BTC bật Reverse: −714 717 USDC), max 500.
+    const c = cfg({
+      orderSizeMinUsd: "200",
+      orderSizeMaxUsd: "500",
+      maxLoss: "100000",
+      cooldownSecs: 0,
+    });
+    const start: VolumeFarmState = {
+      ...volumeFarm.initialState(c),
+      netExposure: "-714717",
+      lastSide: "short",
+    };
+    const { entries, exposures, state } = cycles(c, 20, start);
+    expect(state.netExposure).not.toBe("-714717");
+    expect(entries[0]).toMatchObject({ side: "buy", balanced: true });
+    const firstSignal = entries.findIndex((e) => !e.balanced);
+    expect(firstSignal).toBeGreaterThan(0);
+    expect(firstSignal).toBeLessThanOrEqual(3);
+    for (const x of exposures) expect(Math.abs(x)).toBeLessThanOrEqual(1000);
+  });
+
+  it("leaves exposure within the cap untouched", () => {
+    const c = cfg();
+    const s: VolumeFarmState = { ...volumeFarm.initialState(c), netExposure: "-400" };
+    expect(clampExposure(c, s)).toBe(s);
+    expect(clampExposure(c, { ...s, netExposure: "-714717" }).netExposure).toBe("-400");
+    expect(clampExposure(c, { ...s, netExposure: "9000" }).netExposure).toBe("400");
+  });
 
   it.each([false, true])(
     "keeps exposure bounded and balancing short-lived over many random-size cycles (Reverse %s)",

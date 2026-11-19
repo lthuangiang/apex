@@ -1353,12 +1353,29 @@ export function applyVolumeFarmVersion(
   };
 }
 
+/**
+ * Trần của `netExposure` (#285): ± 2 × `orderSizeMaxUsd`. Với cân đúng hướng, lệch không bao giờ vượt mức này (lượt
+ * không cân chỉ xảy ra khi |lệch| ≤ một lệnh lớn nhất và cộng thêm tối đa một lệnh), nên trần không đổi gì với bot
+ * bình thường. Bot đã tích lệch rất lớn theo lỗi cũ (mô phỏng BTC bật Reverse: −714 717 USDC) thì chỉ cân vài lượt
+ * rồi quay lại theo tín hiệu, thay vì đi một phía hàng nghìn lượt. Trần đúng bằng một lệnh lớn nhất thì không bao giờ
+ * cân nữa (điều kiện cân là lớn hơn hẳn), nên dùng gấp đôi.
+ */
+export function clampExposure(c: VolumeFarmConfig, s: VolumeFarmState): VolumeFarmState {
+  const cap = dec(c.orderSizeMaxUsd).mul(2);
+  const x = dec(s.netExposure);
+  if (x.abs().lte(cap)) return s;
+  return { ...s, netExposure: (x.gt(0) ? cap : cap.neg()).toString() };
+}
+
 export function stepVolumeFarm(
   c: VolumeFarmConfig,
-  s: VolumeFarmState,
+  state: VolumeFarmState,
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<VolumeFarmState> {
+  // State nạp từ `bot_runtime` có thể mang lệch tích theo lỗi cũ (#285): chặn ở mỗi bước, hàm thuần, không đổi gì khi
+  // lệch đã trong trần.
+  let s = clampExposure(c, state);
   if (s.phase === "halted" && e.type !== "fill") return none(s);
   switch (e.type) {
     case "tick": {
