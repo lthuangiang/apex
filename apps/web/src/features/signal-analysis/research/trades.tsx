@@ -86,6 +86,46 @@ function seenSub(x: ResearchTrade, t: Tr, short: boolean): ReactNode {
   return t(`${k}.${kind}`, { d: delay(x.delaySecs) });
 }
 
+/**
+ * #306: tín hiệu bị giới hạn / số dư chặn vẫn được theo dõi giả định (shadow, ngoài balance): "Would have: hit take
+ * profit · +$4.20". Lý do ("Limit: 20 open") đã ở cột What happened.
+ */
+function ShadowSub({ x }: { x: ResearchTrade }) {
+  const t = useTranslations("signalAnalysis.research");
+  const s = x.skipped?.shadow ?? null;
+  if (s === null) return null;
+  const outcome = t(`trades.resultShort.${s.outcome}`);
+  return (
+    <Sub>
+      {s.pnl === null
+        ? t("trades.shadow", { outcome })
+        : t("trades.shadowPnl", { outcome, pnl: usdSigned(s.pnl) })}
+    </Sub>
+  );
+}
+
+/** #306: nhãn "opposite news" khi có tin ngược chiều lúc lệnh đang mở (giữ hay đóng, kết quả giả định nếu đóng lúc đó). */
+function OppositeTag({ x, tz }: { x: ResearchTrade; tz: string }) {
+  const t = useTranslations("signalAnalysis.research");
+  const o = x.opposite;
+  if (o === null) return null;
+  const tip = t("trades.oppositeTip", {
+    time: clock(o.at, tz, false),
+    action: o.action,
+    usd: usdSigned(o.resultUsdc),
+    pct: pctSigned(o.resultPct),
+  });
+  return (
+    <span
+      title={tip}
+      className="mt-1 inline-block whitespace-nowrap rounded-full bg-warn-bg px-2 py-0.5 text-xs font-bold text-warn"
+    >
+      {t("trades.opposite")}
+      <span className="sr-only">: {tip}</span>
+    </span>
+  );
+}
+
 function resultSub(x: ResearchTrade, t: Tr): string | null {
   const r = x.result;
   if (r === null) return null;
@@ -145,9 +185,12 @@ export function ResearchTrades({
   ctx,
   assets,
   onTrace,
+  versionId = null,
 }: {
   ctx: PageCtx;
   assets: readonly string[];
+  /** #306: News bot version của danh sách; null = Baseline. */
+  versionId?: string | null;
   /** Nút Trace (#292): mở phễu ở trên trên bài của dòng này. */
   onTrace: (articleId: string) => void;
 }) {
@@ -156,7 +199,7 @@ export function ResearchTrades({
   const [f, setF] = useState<ResearchFilters>(RESEARCH_DEFAULT);
   const [open, setOpen] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const q = useResearchTrades(f, true);
+  const q = useResearchTrades(f, true, versionId);
   const items = q.data?.pages.flatMap((p) => p.items) ?? [];
   const set = (p: Partial<ResearchFilters>) => {
     setF((x) => ({ ...x, ...p }));
@@ -279,7 +322,7 @@ export function ResearchTrades({
           <div className="max-md:hidden">
             <TradesTable items={items} tz={ctx.tz} onOpen={setOpen} onTrace={onTrace} />
           </div>
-          <TradeCards items={items} onOpen={setOpen} onTrace={onTrace} />
+          <TradeCards items={items} tz={ctx.tz} onOpen={setOpen} onTrace={onTrace} />
         </div>
       )}
       {q.hasNextPage ? (
@@ -472,7 +515,10 @@ function TradesTable({
                 </td>
                 <td className={tdW}>
                   {skipped ? (
-                    <span className="text-muted">{t("trades.notTraded")}</span>
+                    <>
+                      <span className="text-muted">{t("trades.notTraded")}</span>
+                      <ShadowSub x={x} />
+                    </>
                   ) : (
                     <>
                       {pnl === null ? (
@@ -487,6 +533,7 @@ function TradesTable({
                         </span>
                       )}
                       <Sub>{resultSub(x, t)}</Sub>
+                      <OppositeTag x={x} tz={tz} />
                     </>
                   )}
                 </td>
@@ -504,10 +551,12 @@ function TradesTable({
 
 function TradeCards({
   items,
+  tz,
   onOpen,
   onTrace,
 }: {
   items: ResearchTrade[];
+  tz: string;
   onOpen: (id: string) => void;
   onTrace: (articleId: string) => void;
 }) {
@@ -545,7 +594,10 @@ function TradeCards({
             </span>
             <span className="text-sm">{tradeTitle(x, t)}</span>
             {skip !== null ? (
-              <span className="text-xs font-bold text-warn">{skip}</span>
+              <>
+                <span className="text-xs font-bold text-warn">{skip}</span>
+                <ShadowSub x={x} />
+              </>
             ) : (
               <>
                 <span className="text-xs text-muted">
@@ -568,6 +620,7 @@ function TradeCards({
                     hold: x.maxHoldHours === null ? na : hold(x.maxHoldHours),
                   })}
                 </span>
+                <OppositeTag x={x} tz={tz} />
               </>
             )}
           </>

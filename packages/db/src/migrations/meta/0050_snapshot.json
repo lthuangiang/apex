@@ -1,5 +1,5 @@
 {
-  "id": "dd68cc46-7483-4eab-b832-f8b7d27959fb",
+  "id": "a63d220c-bf34-4940-afc1-d54ab215a0fa",
   "prevId": "85a8bf63-6cbe-44c6-9765-9be804def72f",
   "version": "7",
   "dialect": "postgresql",
@@ -4076,33 +4076,6 @@
           "method": "btree",
           "with": {}
         },
-        "leader_events_market_at_idx": {
-          "name": "leader_events_market_at_idx",
-          "columns": [
-            {
-              "expression": "source",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "market",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "leader_events_dedupe": {
           "name": "leader_events_dedupe",
           "columns": [
@@ -4442,12 +4415,6 @@
         "fill_cursor": {
           "name": "fill_cursor",
           "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_polled_at": {
-          "name": "last_polled_at",
-          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -7039,6 +7006,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'trace'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -7117,6 +7091,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "signal_classification_labels_source_ck": {
+          "name": "signal_classification_labels_source_ck",
+          "value": "\"signal_classification_labels\".\"source\" in ('random', 'trace')"
+        },
         "signal_classification_labels_verdict_ck": {
           "name": "signal_classification_labels_verdict_ck",
           "value": "\"signal_classification_labels\".\"verdict\" in ('right', 'wrong')"
@@ -7168,248 +7146,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.signal_contexts": {
-      "name": "signal_contexts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "article_id": {
-          "name": "article_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "market": {
-          "name": "market",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "direction": {
-          "name": "direction",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "decided_at": {
-          "name": "decided_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "context_version": {
-          "name": "context_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rule_version": {
-          "name": "rule_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "h1_status": {
-          "name": "h1_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "h1_wallets_checked": {
-          "name": "h1_wallets_checked",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h1_asset_on_hyperliquid": {
-          "name": "h1_asset_on_hyperliquid",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h1_agreeing_wallets": {
-          "name": "h1_agreeing_wallets",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h1_opposing_wallets": {
-          "name": "h1_opposing_wallets",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h1_agreeing_usdc": {
-          "name": "h1_agreeing_usdc",
-          "type": "numeric(38, 18)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h1_first_at": {
-          "name": "h1_first_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h2_status": {
-          "name": "h2_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "h2_funding_rate": {
-          "name": "h2_funding_rate",
-          "type": "numeric(38, 18)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h2_funding_time": {
-          "name": "h2_funding_time",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h2_percentile": {
-          "name": "h2_percentile",
-          "type": "numeric(10, 4)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h2_samples": {
-          "name": "h2_samples",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h2_payer": {
-          "name": "h2_payer",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h2_interval_hours": {
-          "name": "h2_interval_hours",
-          "type": "numeric(10, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h3_status": {
-          "name": "h3_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "h3_moved_pct": {
-          "name": "h3_moved_pct",
-          "type": "numeric(38, 18)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "h3_typical_move_pct": {
-          "name": "h3_typical_move_pct",
-          "type": "numeric(38, 18)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "volume_vs_24h": {
-          "name": "volume_vs_24h",
-          "type": "numeric(38, 18)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "range_breakout": {
-          "name": "range_breakout",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "signal_contexts_article_uq": {
-          "name": "signal_contexts_article_uq",
-          "columns": [
-            {
-              "expression": "article_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "signal_contexts_decided_idx": {
-          "name": "signal_contexts_decided_idx",
-          "columns": [
-            {
-              "expression": "decided_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "signal_contexts_source_ck": {
-          "name": "signal_contexts_source_ck",
-          "value": "\"signal_contexts\".\"source\" in ('live', 'backfilled')"
-        },
-        "signal_contexts_direction_ck": {
-          "name": "signal_contexts_direction_ck",
-          "value": "\"signal_contexts\".\"direction\" in ('long', 'short')"
-        },
-        "signal_contexts_h1_ck": {
-          "name": "signal_contexts_h1_ck",
-          "value": "\"signal_contexts\".\"h1_status\" in ('yes', 'no', 'against', 'na')"
-        },
-        "signal_contexts_h2_ck": {
-          "name": "signal_contexts_h2_ck",
-          "value": "\"signal_contexts\".\"h2_status\" in ('yes', 'no', 'na')"
-        },
-        "signal_contexts_h3_ck": {
-          "name": "signal_contexts_h3_ck",
-          "value": "\"signal_contexts\".\"h3_status\" in ('yes', 'no', 'na')"
-        },
-        "signal_contexts_payer_ck": {
-          "name": "signal_contexts_payer_ck",
-          "value": "\"signal_contexts\".\"h2_payer\" is null or \"signal_contexts\".\"h2_payer\" in ('long', 'short', 'none')"
-        },
-        "signal_contexts_breakout_ck": {
-          "name": "signal_contexts_breakout_ck",
-          "value": "\"signal_contexts\".\"range_breakout\" is null or \"signal_contexts\".\"range_breakout\" in ('up', 'down', 'none')"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.signal_events": {
@@ -7547,6 +7283,107 @@
         }
       },
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.signal_label_tokens": {
+      "name": "signal_label_tokens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "article_id": {
+          "name": "article_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "signal_label_tokens_hash_uq": {
+          "name": "signal_label_tokens_hash_uq",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "signal_label_tokens_expires_idx": {
+          "name": "signal_label_tokens_expires_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "signal_label_tokens_user_id_users_id_fk": {
+          "name": "signal_label_tokens_user_id_users_id_fk",
+          "tableFrom": "signal_label_tokens",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

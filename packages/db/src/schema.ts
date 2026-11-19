@@ -1991,10 +1991,16 @@ export const signalClassificationLabels = pgTable(
     reason: text("reason"),
     /** Tuỳ chọn, ≤ 500 ký tự. */
     note: text("note"),
+    /**
+     * #348: `random` (luồng `labels/next` với token hợp lệ; chỉ nhãn này tính cổng precision) | `trace` (mọi cách khác).
+     * Nhãn có trước migration 0050 là `trace` vì không chứng minh được là ngẫu nhiên.
+     */
+    source: text("source").notNull().default("trace"),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("signal_classification_labels_article_user_uq").on(t.articleId, t.labeledBy),
+    check("signal_classification_labels_source_ck", sql`${t.source} in ('random', 'trace')`),
     index("signal_classification_labels_classifier_idx").on(t.classifierVersion, t.articleId),
     check("signal_classification_labels_verdict_ck", sql`${t.verdict} in ('right', 'wrong')`),
     check(
@@ -2005,6 +2011,31 @@ export const signalClassificationLabels = pgTable(
       "signal_classification_labels_note_ck",
       sql`${t.note} is null or char_length(${t.note}) <= 500`,
     ),
+  ],
+);
+
+/**
+ * Token gắn nhãn ngẫu nhiên (#348): mỗi lần `GET /labels/next` trả một bài, server cấp một token ngẫu nhiên gắn với người
+ * gọi và bài đó, chỉ lưu sha256 của token. `PUT /articles/:id/label` kèm token hợp lệ (đúng người, đúng bài, chưa hết hạn,
+ * chưa dùng) thì nhãn là `random` và token bị đánh dấu đã dùng trong cùng transaction. Dòng hết hạn quá 1 ngày bị xoá
+ * khi cấp token mới.
+ */
+export const signalLabelTokens = pgTable(
+  "signal_label_tokens",
+  {
+    id: id(),
+    tokenHash: text("token_hash").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    articleId: text("article_id").notNull(),
+    expiresAt: tstz("expires_at").notNull(),
+    usedAt: tstz("used_at"),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("signal_label_tokens_hash_uq").on(t.tokenHash),
+    index("signal_label_tokens_expires_idx").on(t.expiresAt),
   ],
 );
 

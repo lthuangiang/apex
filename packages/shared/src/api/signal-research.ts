@@ -11,6 +11,7 @@ import {
   RANGE_BREAKOUTS,
 } from "../signal-research/context";
 import {
+  CLASSIFICATION_LABEL_SOURCES,
   CLASSIFICATION_VERDICTS,
   CLASSIFICATION_WRONG_REASONS,
   CLASSIFIER_GATE_STATUSES,
@@ -852,13 +853,23 @@ export const researchTraceCheckSchema = z.object({
 /** Nhãn của người đang xem cho một bài. */
 export const researchMyLabelSchema = z.object({
   classifierVersion: z.string(),
+  /** #306: 4 ký tự hex cuối id người gắn ("··a91f" của thiết kế, như `createdBy` của version); không lộ gì thêm. */
+  labeledBy: z.string().regex(/^[0-9a-f]{4}$/),
   verdict: z.enum(CLASSIFICATION_VERDICTS),
   /** Chỉ khi `verdict = wrong`. */
   reason: z.enum(CLASSIFICATION_WRONG_REASONS).nullable(),
   note: z.string().nullable(),
+  /**
+   * #348: `random` = lưu từ luồng gắn nhãn ngẫu nhiên với token hợp lệ của `labels/next` (chỉ nhãn này tính cổng);
+   * `trace` = mọi cách khác.
+   */
+  source: z.enum(CLASSIFICATION_LABEL_SOURCES),
   createdAt: iso,
   updatedAt: iso,
 });
+
+/** Token gắn nhãn ngẫu nhiên do `GET /labels/next` cấp (32 byte ngẫu nhiên, base64url). */
+export const researchLabelTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
 /** Body của `PUT /articles/:id/label`. Wrong bắt buộc `reason`; Right không được có `reason`. */
 export const researchLabelBodySchema = z
@@ -866,6 +877,12 @@ export const researchLabelBodySchema = z
     verdict: z.enum(CLASSIFICATION_VERDICTS),
     reason: z.enum(CLASSIFICATION_WRONG_REASONS).nullish(),
     note: z.string().trim().max(LABEL_NOTE_MAX).nullish(),
+    /**
+     * #348: token của `GET /labels/next` cho đúng bài này. Hợp lệ (đúng người, đúng bài, chưa hết hạn, chưa dùng) và
+     * người gọi chưa có nhãn cho bài → nhãn `random`; thiếu / sai / hết hạn / đã dùng → nhãn vẫn được lưu nhưng là
+     * `trace` (không lỗi). Client không thể tự nhận `random`.
+     */
+    labelToken: researchLabelTokenSchema.nullish(),
   })
   .superRefine((b, ctx) => {
     const hasReason = b.reason !== undefined && b.reason !== null;
@@ -912,6 +929,11 @@ export const researchLabelNextSchema = z.strictObject({
     .nullable(),
   /** Số bài tín hiệu của classifier hiện tại người này chưa gắn nhãn (gồm cả `item`). */
   remaining: int,
+  /**
+   * #348: token dùng một lần, hết hạn sau `LABEL_TOKEN_TTL_MIN` phút, gắn với người gọi và `item.article.id`; gửi lại
+   * trong `PUT /articles/:id/label` để nhãn được tính là `random`. null khi `item` null.
+   */
+  labelToken: researchLabelTokenSchema.nullable(),
 });
 
 /** Kết quả của các lệnh bài này đã mở (mọi News bot version), chỉ trả SAU khi đã lưu nhãn. */
@@ -939,17 +961,19 @@ export const researchClassifierRowSchema = z.object({
   startedAt: iso.nullable(),
   /** Số bài classifier này gọi là tín hiệu (tổng thể của precision). */
   signals: int,
-  /** Số bài có ít nhất một nhãn. */
+  /** Số bài có ít nhất một nhãn `random` (#348: chỉ nhãn random tính precision, khoảng Wilson và cổng). */
   labeled: int,
-  /** Số bài kết luận Right (đa số nhãn Right; hoà tính Wrong). */
+  /** Số bài kết luận Right theo nhãn `random` (đa số nhãn Right; hoà tính Wrong). */
   right: int,
+  /** #348: số bài có ít nhất một nhãn `trace` (không tính cổng; hiện riêng "from traces: n"). */
+  traceLabeled: int,
   precisionPct: z.number().nullable(),
   /** Khoảng Wilson 95% của precision, đơn vị %; null khi chưa có nhãn. */
   interval: z.object({ lo: z.number(), hi: z.number() }).nullable(),
   passes: z.boolean(),
   status: researchClassifierStatusSchema.exclude(["unknown"]),
   labelsToGo: int,
-  /** Lý do Wrong hay gặp nhất (đếm theo nhãn), nhiều trước. */
+  /** Lý do Wrong hay gặp nhất (đếm theo nhãn, cả `random` lẫn `trace`), nhiều trước. */
   mostCommonMistakes: z.array(z.object({ reason: z.enum(CLASSIFICATION_WRONG_REASONS), n: int })),
 });
 

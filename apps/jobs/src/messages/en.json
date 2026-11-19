@@ -16,7 +16,8 @@
       "users": "Open Users",
       "stats": "Open Stats",
       "botMonitor": "Open Bot Monitor",
-      "debugger": "Open SoDEX Debugger"
+      "debugger": "Open SoDEX Debugger",
+      "signalAnalysis": "Open Signal Analysis"
     },
     "titles": {
       "bot_paused": "🔴 <b>{bot} paused</b>",
@@ -50,7 +51,10 @@
       "team_mcp_user": "{n} user",
       "team_mcp_users": "{n} users",
       "team_invariant": "⚠️ <b>Invariant {invariant}</b> · {strategy} {market} {bot}{paper} · {detail}",
-      "team_invariant_resolved": "✅ <b>Invariant {invariant} OK again</b> · {strategy} {market} {bot}{paper}{detail}"
+      "team_invariant_resolved": "✅ <b>Invariant {invariant} OK again</b> · {strategy} {market} {bot}{paper}{detail}",
+      "team_sr_new_market": "🆕 <b>New SoDEX market {market}</b> is not in the Signal research asset map ({version}). Classify it as stock or crypto and bump NEWS_ASSET_MAP_VERSION.",
+      "team_sr_new_markets": "🆕 <b>{n} new SoDEX markets</b> are not in the Signal research asset map ({version}): {markets}{more}. Classify each as stock or crypto and bump NEWS_ASSET_MAP_VERSION.",
+      "team_sr_new_markets_more": " and {n} more"
     },
     "bodies": {
       "pausedReason": "{reason}. Open orders were kept.",

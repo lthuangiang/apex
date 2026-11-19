@@ -184,3 +184,41 @@ describe("team incident message", () => {
     ).toBe("📋 <b>Daily incidents · last 24 h</b>\nNo incidents in the last 24 h.");
   });
 });
+
+describe("new SoDEX market message (#311)", () => {
+  const row = (data: Record<string, unknown>): RenderRow => ({
+    type: "team_sr_new_market",
+    data,
+    botName: null,
+  });
+
+  it("names one market, or sums up many, and opens Signal Analysis", () => {
+    const one = renderTelegram(
+      [row({ markets: "XYZ-USD", total: 1, version: "assets-2026-11-19a" })],
+      BASE,
+    );
+    expect(one.text).toBe(
+      "🆕 <b>New SoDEX market XYZ-USD</b> is not in the Signal research asset map (assets-2026-11-19a). Classify it as stock or crypto and bump NEWS_ASSET_MAP_VERSION.",
+    );
+    expect(one.button).toEqual({
+      text: "Open Signal Analysis",
+      url: "https://desklabs.test/admin/signal-analysis",
+    });
+    const many = renderTelegram(
+      [row({ markets: "A-USD, B<C-USD", total: 12, version: "assets-2026-11-19a" })],
+      BASE,
+    );
+    expect(many.text).toBe(
+      "🆕 <b>12 new SoDEX markets</b> are not in the Signal research asset map (assets-2026-11-19a): A-USD, B&lt;C-USD and 10 more. Classify each as stock or crypto and bump NEWS_ASSET_MAP_VERSION.",
+    );
+    const merged = renderTelegram(
+      [
+        row({ markets: "A-USD", total: 1, version: "v" }),
+        row({ markets: "B-USD", total: 1, version: "v" }),
+      ],
+      BASE,
+    );
+    expect(merged.text.split("\n")).toHaveLength(2);
+    expect(merged.text).toContain("New SoDEX market B-USD");
+  });
+});

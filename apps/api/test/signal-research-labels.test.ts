@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   errorResponseSchema,
+  LABEL_TOKEN_TTL_MIN,
   meSchema,
   NEWS_CLASSIFIER,
   researchArticlesPageSchema,
@@ -119,16 +120,27 @@ async function trade(id: string, o: { articleId: string; classifier: string | nu
   );
 }
 
-/** Nhãn chèn thẳng cho một classifier giả: `right` bài Right, còn lại Wrong (lý do `other`). */
-async function bulkLabels(version: string, right: number, total: number) {
+/**
+ * Nhãn chèn thẳng cho một classifier giả: `right` bài Right, còn lại Wrong (lý do `other`). Mặc định `random` (#348: chỉ
+ * nhãn random tính cổng).
+ */
+async function bulkLabels(
+  version: string,
+  right: number,
+  total: number,
+  source: "random" | "trace" = "random",
+) {
   await env.pool.query(
-    `insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict, reason)
+    `insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict, reason, source)
      select gen_random_uuid(), $1 || '-' || g, $1, $2,
-       case when g <= $3 then 'right' else 'wrong' end, case when g <= $3 then null else 'other' end
+       case when g <= $3 then 'right' else 'wrong' end, case when g <= $3 then null else 'other' end, $5
      from generate_series(1, $4::int) g`,
-    [version, teamId, right, total],
+    [version, teamId, right, total, source],
   );
 }
+
+const next = async (c: TestClient) =>
+  researchLabelNextSchema.parse((await c.request("GET", `${base}/labels/next`)).json());
 
 const put = (c: TestClient, id: string, body: unknown, key?: string) =>
   c.request("PUT", `${base}/articles/${id}/label`, {
@@ -200,6 +212,8 @@ describe("classification labels (#304)", () => {
       expect(next.remaining).toBe(3);
       if (next.item !== null) seen.add(next.item.article.id);
       // Không có trường kết quả nào (kể cả null): chỉ đúng các khoá này.
+      expect(Object.keys(raw).sort()).toEqual(["item", "labelToken", "remaining"]);
+      expect(next.labelToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
       const item = raw.item as Record<string, Record<string, unknown>>;
       expect(Object.keys(item).sort()).toEqual(["article", "classification"]);
       expect(Object.keys(item.article ?? {}).sort()).toEqual(
@@ -260,7 +274,12 @@ describe("classification labels (#304)", () => {
       verdict: "right",
       reason: null,
       note: "looks fine",
+      // #306: chỉ 4 ký tự hex cuối id người gắn ("··a91f"), không lộ id đầy đủ.
+      labeledBy: teamId.replace(/-/g, "").slice(-4),
+      // #348: không có token của labels/next → trace.
+      source: "trace",
     });
+    expect(JSON.stringify(first.json())).not.toContain(teamId);
     // Sau khi lưu mới có kết quả lệnh.
     expect(saved.trades).toEqual([
       expect.objectContaining({
@@ -296,7 +315,9 @@ describe("classification labels (#304)", () => {
         verdict: "wrong",
         reason: "wrong_asset",
         hasNote: false,
-        previous: { verdict: "right", reason: null },
+        source: "trace",
+        tokenRejected: false,
+        previous: { verdict: "right", reason: null, source: "trace" },
       },
     });
     expect(JSON.stringify(audit.rows)).not.toContain("looks fine");
@@ -317,7 +338,7 @@ describe("classification labels (#304)", () => {
     await put(team, "s3", { verdict: "right" });
     expect(
       researchLabelNextSchema.parse((await team.request("GET", `${base}/labels/next`)).json()),
-    ).toEqual({ item: null, remaining: 0 });
+    ).toEqual({ item: null, remaining: 0, labelToken: null });
   });
 
   it("an older classifier's signal can be labelled from the trace, under that classifier", async () => {
@@ -337,15 +358,31 @@ describe("classification labels (#304)", () => {
     };
     expect(await score(team, "s1")).toMatchObject({
       labelable: true,
-      label: { verdict: "wrong", reason: "wrong_asset" },
+      label: {
+        verdict: "wrong",
+        reason: "wrong_asset",
+        labeledBy: teamId.replace(/-/g, "").slice(-4),
+      },
     });
     expect(await score(team2, "s1")).toMatchObject({ labelable: true, label: null });
     expect(await score(team, "n-none")).toMatchObject({ labelable: false, label: null });
   });
 
-  it("precision per classifier: per-article majority, a tie counts as wrong; top mistakes", async () => {
-    // s2: team Right, team2 Wrong → hoà → Wrong. s3: Right (một người). s1: Wrong.
-    await put(team2, "s2", { verdict: "wrong", reason: "person_not_company" });
+  it("precision per classifier counts random labels only; mistakes count random and trace labels", async () => {
+    // team đã gắn s1 Wrong, s2 Right, s3 Right từ trace (không token) → không tính. team2 gắn ngẫu nhiên qua labels/next:
+    // s2 Wrong, s1 / s3 Right → 2 / 3.
+    const verdicts: Record<string, object> = {
+      s1: { verdict: "right" },
+      s2: { verdict: "wrong", reason: "person_not_company" },
+      s3: { verdict: "right" },
+    };
+    for (let i = 0; i < 3; i += 1) {
+      const n = await next(team2);
+      const id = n.item?.article.id ?? "";
+      const r = await put(team2, id, { ...verdicts[id], labelToken: n.labelToken });
+      expect(researchLabelSavedSchema.parse(r.json()).label.source).toBe("random");
+    }
+    expect(await next(team2)).toEqual({ item: null, remaining: 0, labelToken: null });
     const c = researchClassifiersSchema.parse(
       (await team.request("GET", `${base}/classifiers`)).json(),
     );
@@ -355,26 +392,56 @@ describe("classification labels (#304)", () => {
       current: true,
       signals: 3,
       labeled: 3,
-      right: 1,
-      precisionPct: 33.33,
-      interval: wilsonInterval(1, 3),
+      right: 2,
+      traceLabeled: 3,
+      precisionPct: 66.67,
+      interval: wilsonInterval(2, 3),
       passes: false,
       status: "underPrecision",
       labelsToGo: 47,
+      // person_not_company từ nhãn random của team2, wrong_asset từ nhãn trace của team.
       mostCommonMistakes: [
         { reason: "person_not_company", n: 1 },
         { reason: "wrong_asset", n: 1 },
       ],
     });
+    // Classifier cũ chỉ có nhãn trace: không có precision, hiện riêng "from traces".
     expect(c.items.find((x) => x.classifierVersion === "news-classifier-v1")).toMatchObject({
       current: false,
       signals: 1,
-      labeled: 1,
+      labeled: 0,
       right: 0,
+      traceLabeled: 1,
+      precisionPct: null,
+      interval: null,
+      status: "needsLabels",
+      mostCommonMistakes: [{ reason: "person_not_company", n: 1 }],
     });
   });
 
-  it("gate edges: 49 vs 50 labels, 78% (39 / 50) vs 80% (40 / 50)", async () => {
+  it("per-article majority among random labels, a tie counts as wrong", async () => {
+    await env.pool.query(
+      `insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict, reason, source)
+       values (gen_random_uuid(), 'tie-1', 'cls-tie', $1, 'right', null, 'random'),
+              (gen_random_uuid(), 'tie-1', 'cls-tie', $2, 'wrong', 'other', 'random'),
+              (gen_random_uuid(), 'tie-2', 'cls-tie', $1, 'right', null, 'random'),
+              (gen_random_uuid(), 'tie-2', 'cls-tie', $2, 'wrong', 'other', 'trace')`,
+      [teamId, team2Id],
+    );
+    const c = researchClassifiersSchema.parse(
+      (await team.request("GET", `${base}/classifiers`)).json(),
+    );
+    // tie-1: hoà → Wrong; tie-2: chỉ nhãn random Right được tính → Right.
+    expect(c.items.find((x) => x.classifierVersion === "cls-tie")).toMatchObject({
+      labeled: 2,
+      right: 1,
+      traceLabeled: 1,
+      mostCommonMistakes: [{ reason: "other", n: 2 }],
+    });
+  });
+
+  it("gate edges: 49 vs 50 labels, 78% (39 / 50) vs 80% (40 / 50); trace labels never fill the gate", async () => {
+    await bulkLabels("cls-trace", 50, 50, "trace");
     await bulkLabels("cls-49", 49, 49);
     await bulkLabels("cls-50", 50, 50);
     await bulkLabels("cls-39", 39, 50);
@@ -394,6 +461,13 @@ describe("classification labels (#304)", () => {
       passes: true,
       precisionPct: 80,
       interval: { lo: 66.96, hi: 88.76 },
+    });
+    expect(of("cls-trace")).toMatchObject({
+      labeled: 0,
+      traceLabeled: 50,
+      passes: false,
+      status: "needsLabels",
+      labelsToGo: 50,
     });
   });
 
@@ -423,7 +497,7 @@ describe("classification labels (#304)", () => {
           closed: 1,
           status: "underPrecision",
           labeled: 3,
-          precisionPct: 33.33,
+          precisionPct: 66.67,
           labelsToGo: 47,
         },
       ]),
@@ -441,6 +515,134 @@ describe("classification labels (#304)", () => {
     expect(byId.get(tPass)).toEqual({ version: "cls-50", status: "passed" });
     expect(byId.get(tFail)).toEqual({ version: "cls-39", status: "underPrecision" });
     expect(byId.get(s1Trade)).toEqual({ version: CURRENT, status: "underPrecision" });
+  });
+});
+
+describe("label source: only a served labels/next token makes a label random (#348)", () => {
+  let team3: TestClient;
+  let team4: TestClient;
+  let team3Id: string;
+  let leaked = { article: "", token: "" };
+
+  beforeAll(async () => {
+    team3 = new TestClient(env.app);
+    team3Id = meSchema.parse(
+      (await signIn(env, team3, `lb3-${randomUUID()}@drift.test`)).json(),
+    ).id;
+    team4 = new TestClient(env.app);
+    const team4Id = meSchema.parse(
+      (await signIn(env, team4, `lb4-${randomUUID()}@drift.test`)).json(),
+    ).id;
+    await env.pool.query("update users set role = 'team' where id = any($1)", [[team3Id, team4Id]]);
+  });
+
+  const sourceOf = async (articleId: string, userId: string) =>
+    (
+      await env.pool.query<{ source: string }>(
+        "select source from signal_classification_labels where article_id = $1 and labeled_by = $2",
+        [articleId, userId],
+      )
+    ).rows[0]?.source;
+  const usedAt = async (token: string) =>
+    (
+      await env.pool.query<{ used_at: Date | null }>(
+        "select used_at from signal_label_tokens where token_hash = encode(sha256(convert_to($1, 'UTF8')), 'hex')",
+        [token],
+      )
+    ).rows[0]?.used_at;
+  const saved = (r: { json: () => unknown }) => researchLabelSavedSchema.parse(r.json()).label;
+
+  it("stores only the token hash; a forged token or a token for another article saves as trace", async () => {
+    const n1 = await next(team3);
+    const a = n1.item?.article.id ?? "";
+    const t1 = n1.labelToken ?? "";
+    leaked = { article: a, token: t1 };
+    const raw = await env.pool.query("select * from signal_label_tokens");
+    expect(JSON.stringify(raw.rows)).not.toContain(t1);
+
+    // Token giả đúng định dạng: vẫn lưu, nhưng là trace; audit ghi tokenRejected.
+    const forged = await put(team3, a, { verdict: "right", labelToken: "A".repeat(43) });
+    expect(forged.statusCode).toBe(200);
+    expect(saved(forged).source).toBe("trace");
+    // Bài đã có nhãn thì token thật cũng không "nâng" lên random, và token không bị tiêu.
+    const late = await put(team3, a, { verdict: "right", note: "again", labelToken: t1 });
+    expect(saved(late).source).toBe("trace");
+    expect(await usedAt(t1)).toBeNull();
+    const audit = await env.pool.query<{ metadata: Record<string, unknown> }>(
+      `select metadata from audit_log where action = 'signal_research.label_saved' and target = $1 and user_id = $2
+       order by occurred_at, id`,
+      [a, team3Id],
+    );
+    expect(audit.rows.map((r) => [r.metadata.source, r.metadata.tokenRejected])).toEqual([
+      ["trace", true],
+      ["trace", true],
+    ]);
+
+    // Token của bài B dùng cho bài C → trace, token vẫn còn; dùng đúng bài B → random.
+    const n2 = await next(team3);
+    const b = n2.item?.article.id ?? "";
+    const t2 = n2.labelToken ?? "";
+    const c = ["s1", "s2", "s3"].find((x) => x !== a && x !== b) ?? "";
+    expect(saved(await put(team3, c, { verdict: "right", labelToken: t2 })).source).toBe("trace");
+    expect(await usedAt(t2)).toBeNull();
+    expect(saved(await put(team3, b, { verdict: "right", labelToken: t2 })).source).toBe("random");
+    expect(await usedAt(t2)).not.toBeNull();
+
+    // Sửa ghi chú, giữ Right → vẫn random; đổi sang Wrong (có thể đã thấy kết quả lệnh) → trace, và không quay lại random.
+    expect(saved(await put(team3, b, { verdict: "right", note: "typo fix" })).source).toBe(
+      "random",
+    );
+    expect(
+      saved(await put(team3, b, { verdict: "wrong", reason: "other", labelToken: t2 })).source,
+    ).toBe("trace");
+    expect(saved(await put(team3, b, { verdict: "right" })).source).toBe("trace");
+    expect(await sourceOf(b, team3Id)).toBe("trace");
+  });
+
+  it("a token only works for the user it was issued to, and only until it expires", async () => {
+    // Token còn hạn, chưa dùng của team3 cho bài a (test trước) do team4 gửi (team4 chưa gắn bài a) → trace, không tiêu.
+    expect(
+      saved(await put(team4, leaked.article, { verdict: "right", labelToken: leaked.token }))
+        .source,
+    ).toBe("trace");
+    expect(await usedAt(leaked.token)).toBeNull();
+    expect(await next(team3)).toEqual({ item: null, remaining: 0, labelToken: null });
+
+    // Hết hạn (> LABEL_TOKEN_TTL_MIN phút) → trace, không tiêu.
+    const n4 = await next(team4);
+    const x = n4.item?.article.id ?? "";
+    const t4 = n4.labelToken ?? "";
+    const start = env.clock.now;
+    env.clock.now = new Date(start.getTime() + (LABEL_TOKEN_TTL_MIN + 1) * 60_000);
+    try {
+      expect(saved(await put(team4, x, { verdict: "right", labelToken: t4 })).source).toBe("trace");
+    } finally {
+      env.clock.now = start;
+    }
+    expect(await usedAt(t4)).toBeNull();
+
+    // Bài cuối, token còn hạn → random.
+    const n5 = await next(team4);
+    expect(n5.remaining).toBe(1);
+    const y = n5.item?.article.id ?? "";
+    expect(saved(await put(team4, y, { verdict: "right", labelToken: n5.labelToken })).source).toBe(
+      "random",
+    );
+  });
+
+  it("trace labels never move the gate: the current classifier still counts team2's 3 random labels", async () => {
+    const c = researchClassifiersSchema.parse(
+      (await team.request("GET", `${base}/classifiers`)).json(),
+    );
+    // Random: team2 s1 / s2 / s3 (2 Right) + team4 một bài (Right). Theo bài: s2 có hoà → Wrong, nên vẫn 2 / 3 Right.
+    // Mọi nhãn trace (team, team3, team4) không đổi gì.
+    const cur = c.items.find((r) => r.current);
+    expect(cur).toMatchObject({ labeled: 3, right: 2, traceLabeled: 3, precisionPct: 66.67 });
+    const random = await env.pool.query<{ n: number }>(
+      "select count(*)::int as n from signal_classification_labels where source = 'random' and classifier_version = $1",
+      [CURRENT],
+    );
+    expect(random.rows[0]?.n).toBe(4);
   });
 });
 

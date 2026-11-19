@@ -1,5 +1,6 @@
 import {
   createSignalBotVersion,
+  issueLabelToken,
   loadNextLabelArticle,
   loadSignalBotVersions,
   loadSignalClassifiers,
@@ -69,7 +70,7 @@ import { requireTeam } from "../account/team";
 // Signal research, lane tin tức (#271): chỉ role team (401 chưa đăng nhập, 403 người ngoài team, kiểm trước khi parse
 // tham số), chỉ đọc (transaction READ ONLY, statement timeout). Không bao giờ chạm SoDEX (giá của lệnh đang mở chỉ đọc
 // cache `md:last:*`). no-store. Ngoại lệ ghi (#304): `PUT /articles/:id/label` lưu nhãn phân loại của người gọi,
-// bắt buộc Idempotency-Key, ghi audit. #305: `POST /versions` (lưu News bot version bất biến) và
+// bắt buộc Idempotency-Key, ghi audit; `GET /labels/next` ghi token gắn nhãn ngẫu nhiên (#348, sau khi đọc). #305: `POST /versions` (lưu News bot version bất biến) và
 // `POST /versions/:id/status` (Pause / Resume / Stop / Retire), bắt buộc Idempotency-Key, audit trong service DB. Danh sách
 // market SoDEX (`/markets`, kiểm tài sản khi lưu) chỉ đọc bản chụp Redis `sr:markets` do scheduler ghi.
 
@@ -185,7 +186,9 @@ export async function signalResearchArticleTrace(
 
 /**
  * Bài ngẫu nhiên để gắn nhãn (#304): trong các bài classifier hiện tại gọi là tín hiệu mà người gọi chưa gắn nhãn. Không
- * có bất kỳ trường kết quả nào (schema strict), để kết quả lệnh không ảnh hưởng nhãn.
+ * có bất kỳ trường kết quả nào (schema strict), để kết quả lệnh không ảnh hưởng nhãn. #348: chọn bài trong transaction
+ * READ ONLY, rồi cấp token gắn nhãn ngẫu nhiên (ghi `signal_label_tokens`, ngoài transaction đọc) cho đúng bài đó; chỉ
+ * PUT kèm token này mới được nhãn `random`.
  */
 export async function signalResearchLabelNext(
   deps: SignalResearchDeps,
@@ -195,7 +198,11 @@ export async function signalResearchLabelNext(
   await requireTeam(deps.db, userId, FORBIDDEN);
   parseOrThrow(tzQuery, query);
   const out = await tx(deps, (t) => loadNextLabelArticle(t, userId));
-  return researchLabelNextSchema.parse(out);
+  const labelToken =
+    out.item === null
+      ? null
+      : await issueLabelToken(deps.db, { userId, articleId: out.item.article.id, now: deps.now() });
+  return researchLabelNextSchema.parse({ ...out, labelToken });
 }
 
 /** Lưu (upsert) nhãn của người gọi cho một bài tín hiệu; trả nhãn + kết quả lệnh của bài (đã lưu nên không còn ẩn). */
@@ -214,6 +221,7 @@ export async function signalResearchSaveLabel(
     verdict: b.verdict,
     reason: b.reason ?? null,
     note: b.note ?? null,
+    labelToken: b.labelToken ?? null,
     ip,
     now: deps.now(),
   });

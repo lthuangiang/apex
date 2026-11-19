@@ -18,9 +18,19 @@ export interface BottomSheetProps {
   closeLabel?: string;
   /** Từ 768px: dialog rộng (tới 64rem) cho bảng nhiều cột, thay vì 32rem. */
   wide?: boolean;
+  /**
+   * Từ 768px: sheet bám cạnh phải, cao hết màn hình (tới 48rem), cho form dài (ví dụ tạo News bot version, #306).
+   * Dưới 768px giống `fullScreen`.
+   */
+  side?: boolean;
+  /** Esc: gọi `event.preventDefault()` để không đóng (ví dụ khi một danh sách bên trong đang mở và Esc chỉ đóng nó). */
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
 }
 
 const overlayClass = "fixed inset-0 z-50 bg-ink/40";
+
+const sideClass =
+  "fixed z-50 flex flex-col gap-4 overflow-y-auto bg-surface p-5 shadow-xl inset-0 max-h-dvh pt-[calc(1.25rem+env(safe-area-inset-top))] pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:inset-y-4 md:left-auto md:right-4 md:max-h-[calc(100dvh-2rem)] md:w-full md:max-w-3xl md:rounded-card md:p-6";
 
 /**
  * Dialog trên mobile. Dưới 768px là sheet bám đáy; từ 768px là dialog giữa màn hình.
@@ -39,6 +49,8 @@ export function BottomSheet({
   fullScreen = false,
   closeLabel,
   wide = false,
+  side = false,
+  onEscapeKeyDown,
 }: BottomSheetProps) {
   const returnFocus = useReturnFocus();
   return (
@@ -47,12 +59,18 @@ export function BottomSheet({
         <Dialog.Overlay className={overlayClass} />
         <Dialog.Content
           className={cx(
-            // cx không gộp class trùng: thay hẳn bề rộng tối đa thay vì thêm class thứ hai.
-            wide ? dialogContentClass.replace("md:max-w-lg", "md:max-w-5xl") : dialogContentClass,
-            fullScreen &&
+            side
+              ? sideClass
+              : // cx không gộp class trùng: thay hẳn bề rộng tối đa thay vì thêm class thứ hai.
+                wide
+                ? dialogContentClass.replace("md:max-w-lg", "md:max-w-5xl")
+                : dialogContentClass,
+            !side &&
+              fullScreen &&
               "max-md:top-0 max-md:max-h-dvh max-md:rounded-none max-md:pt-[calc(1.25rem+env(safe-area-inset-top))]",
           )}
           {...returnFocus}
+          {...(onEscapeKeyDown === undefined ? {} : { onEscapeKeyDown })}
           {...(description ? {} : { "aria-describedby": undefined })}
         >
           {closeLabel === undefined ? (

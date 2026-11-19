@@ -399,6 +399,8 @@ describe("classifier v3 starts a new classifier segment (#320)", () => {
         classifierVersion: prev,
         labeledBy: labeler,
         verdict: "right",
+        // #348: chỉ nhãn random tính cổng.
+        source: "random",
       })),
     );
     try {
