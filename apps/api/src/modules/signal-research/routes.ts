@@ -1,4 +1,6 @@
 import {
+  loadSignalResearchArticles,
+  loadSignalResearchArticleTrace,
   loadSignalResearchSummary,
   loadSignalResearchTrade,
   loadSignalResearchTrades,
@@ -9,10 +11,16 @@ import {
   AppError,
   ErrorCode,
   NEWS_LIMIT_DEFAULTS,
+  researchArticlesPageSchema,
+  researchArticlesQuerySchema,
+  researchArticleTraceSchema,
+  researchSummaryQuerySchema,
   researchSummarySchema,
   researchTradeDetailSchema,
   researchTradesPageSchema,
   researchTradesQuerySchema,
+  type ResearchArticlesPage,
+  type ResearchArticleTrace,
   type ResearchSummary,
   type ResearchTradeDetail,
   type ResearchTradesPage,
@@ -56,7 +64,7 @@ export async function signalResearchSummary(
   query: unknown,
 ): Promise<ResearchSummary> {
   await requireTeam(deps.db, userId, FORBIDDEN);
-  parseOrThrow(tzQuery, query);
+  const { range } = parseOrThrow(researchSummaryQuerySchema, query);
   const out = await tx(deps, (q, check) =>
     loadSignalResearchSummary(
       q,
@@ -66,6 +74,7 @@ export async function signalResearchSummary(
         claudeDailyInputBudget: NEWS_LIMIT_DEFAULTS.claudeDailyInputBudget,
       },
       check,
+      range,
     ),
   );
   return researchSummarySchema.parse(out);
@@ -95,6 +104,32 @@ export async function signalResearchTrade(
   return researchTradeDetailSchema.parse(out);
 }
 
+/** Feed bài (#291): mọi bài SoSoValue của khoảng thời gian, kèm bước dừng / lý do / chi phí Claude. */
+export async function signalResearchArticles(
+  deps: SignalResearchDeps,
+  userId: string,
+  query: unknown,
+): Promise<ResearchArticlesPage> {
+  await requireTeam(deps.db, userId, FORBIDDEN);
+  const q = parseOrThrow(researchArticlesQuerySchema, query);
+  const out = await tx(deps, (t, check) => loadSignalResearchArticles(t, q, deps.now(), check));
+  return researchArticlesPageSchema.parse(out);
+}
+
+/** Trace một bài qua 5 bước (#291). Bài không có / backlog / version khác → 404. */
+export async function signalResearchArticleTrace(
+  deps: SignalResearchDeps,
+  userId: string,
+  id: string,
+  query: unknown,
+): Promise<ResearchArticleTrace> {
+  await requireTeam(deps.db, userId, FORBIDDEN);
+  parseOrThrow(tzQuery, query);
+  const out = await tx(deps, (t, check) => loadSignalResearchArticleTrace(t, id, check));
+  if (out === null) throw new AppError(ErrorCode.notFound, "Article not found.");
+  return researchArticleTraceSchema.parse(out);
+}
+
 export function registerSignalResearchRoutes(app: FastifyInstance, deps: SignalResearchDeps): void {
   const base = "/api/v1/admin/signal-research";
   app.get(`${base}/summary`, async (request, reply) => {
@@ -108,5 +143,18 @@ export function registerSignalResearchRoutes(app: FastifyInstance, deps: SignalR
   app.get<{ Params: { id: string } }>(`${base}/trades/:id`, async (request, reply) => {
     void reply.header("cache-control", "no-store");
     return signalResearchTrade(deps, requireAuth(request).userId, request.params.id, request.query);
+  });
+  app.get(`${base}/articles`, async (request, reply) => {
+    void reply.header("cache-control", "no-store");
+    return signalResearchArticles(deps, requireAuth(request).userId, request.query);
+  });
+  app.get<{ Params: { id: string } }>(`${base}/articles/:id/trace`, async (request, reply) => {
+    void reply.header("cache-control", "no-store");
+    return signalResearchArticleTrace(
+      deps,
+      requireAuth(request).userId,
+      request.params.id,
+      request.query,
+    );
   });
 }

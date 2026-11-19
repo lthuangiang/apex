@@ -7845,7 +7845,9 @@
         "sourceLate": "Source late",
         "noPrice": "No SoDEX price",
         "tooThin": "Too thin to trade",
-        "riskWindow": "Big-news window"
+        "riskWindow": "Big-news window",
+        "noTaggedCurrency": "No coin tagged",
+        "duplicate": "Duplicate"
       },
       "rules": {
         "title": "What counts as a news signal",

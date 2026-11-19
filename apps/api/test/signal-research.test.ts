@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  claudeCostUsd,
   errorResponseSchema,
   meSchema,
+  NEWS_CLASSIFIER,
+  researchArticlesPageSchema,
+  researchArticleTraceSchema,
   researchSummarySchema,
   researchTradeDetailSchema,
   researchTradesPageSchema,
@@ -113,6 +117,7 @@ describe("signal research (team only, read-only)", () => {
     const page = researchTradesPageSchema.parse(p.json());
     expect(page.items[0]).toMatchObject({
       id: tradeId,
+      articleId: "art-1",
       type: "news",
       label: "live",
       delaySecs: 180,
@@ -142,5 +147,699 @@ describe("signal research (team only, read-only)", () => {
     ]);
     expect(detail.heldSecs).toBeGreaterThan(0);
     expect((await team.request("GET", `${base}/trades/${randomUUID()}`)).statusCode).toBe(404);
+  });
+});
+
+// ── Feed bài và trace (#291) ─────────────────────────────────────────────────────────────────────────────────────────
+
+describe("signal research articles feed and trace (#291)", () => {
+  const ago = (min: number) => new Date(env.clock.now.getTime() - min * 60_000).toISOString();
+  const story1 = randomUUID();
+  const story2 = randomUUID();
+  const trade2 = randomUUID();
+  const ETH_CAND = '[{"symbol":"ETH","market":"ETH-USD","kind":"crypto"}]';
+
+  interface ArticleFixture {
+    id: string;
+    title?: string | null;
+    content?: string | null;
+    source?: string;
+    published: number;
+    collected: number;
+    matched?: string;
+    candidates?: string;
+    status: string;
+    classification?: object | null;
+    duplicateOf?: string | null;
+    usage?: [number, number | null, number | null, number | null, number | null] | null;
+    ruleVersion?: string;
+  }
+  async function article(a: ArticleFixture) {
+    const u = a.usage ?? null;
+    await env.pool.query(
+      `insert into signal_articles (id, source, url, title, content, published_at, collected_at, matched_currencies, candidates, content_hash,
+         status, duplicate_of, classification, claude_calls, claude_input_tokens, claude_cache_write_tokens, claude_cache_read_tokens,
+         claude_output_tokens, claude_model, claude_prompt_version, rule_version)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+      [
+        a.id,
+        a.source ?? "Reuters",
+        `https://example.test/${a.id}`,
+        a.title === undefined ? `Title ${a.id}` : a.title,
+        a.content ?? `Body of ${a.id}`,
+        ago(a.published),
+        ago(a.collected),
+        a.matched ?? '[{"symbol":"ETH","name":"Ethereum"}]',
+        a.candidates ?? "[]",
+        `hash-${a.id}`,
+        a.status,
+        a.duplicateOf ?? null,
+        a.classification === undefined || a.classification === null
+          ? null
+          : JSON.stringify(a.classification),
+        u?.[0] ?? null,
+        u?.[1] ?? null,
+        u?.[2] ?? null,
+        u?.[3] ?? null,
+        u?.[4] ?? null,
+        u === null ? null : NEWS_CLASSIFIER.model,
+        u === null ? null : NEWS_CLASSIFIER.promptVersion,
+        a.ruleVersion ?? "news-v2",
+      ],
+    );
+  }
+  async function event(
+    articleId: string,
+    min: number,
+    stage: string,
+    outcome: string,
+    extra: { reason?: string; detail?: object; storyId?: string; tradeId?: string } = {},
+  ) {
+    await env.pool.query(
+      `insert into signal_events (id, article_id, story_id, trade_id, stage, outcome, reason, detail, rule_version, at)
+       values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'news-v2', $8)`,
+      [
+        articleId,
+        extra.storyId ?? null,
+        extra.tradeId ?? null,
+        stage,
+        outcome,
+        extra.reason ?? null,
+        extra.detail === undefined ? null : JSON.stringify(extra.detail),
+        ago(min),
+      ],
+    );
+  }
+  const ethCls = {
+    catalyst: "etf_approved",
+    market: "ETH-USD",
+    relevance: "direct",
+    promotional: false,
+    eventDate: null,
+  };
+
+  beforeAll(async () => {
+    // 1. Vào lệnh (Long ETH), 2. gộp vào cùng câu chuyện.
+    await article({
+      id: "a-trade",
+      published: 104,
+      collected: 100,
+      candidates: ETH_CAND,
+      status: "classified",
+      classification: ethCls,
+      usage: [1, 512, 0, 4635, 118],
+    });
+    await article({
+      id: "a-merged",
+      source: "CoinDesk",
+      published: 60,
+      collected: 55,
+      candidates: ETH_CAND,
+      status: "classified",
+      classification: ethCls,
+      usage: [1, 500, 0, 4635, 100],
+    });
+    await env.pool.query(
+      `insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry, later_level,
+         outcome, locked, trade_id, rule_version)
+       values ($1, 'ETH-USD|etf_approved', 'ETH-USD', 'etf_approved', 'long', 'a-trade', $2,
+         '[{"name":"Reuters","tier":"top","articleId":"a-trade","at":"x"},{"name":"CoinDesk","tier":"top","articleId":"a-merged","at":"y"}]',
+         'medium', 'high', 'entered', true, $3, 'news-v2')`,
+      [story1, ago(100), trade2],
+    );
+    await env.pool.query(
+      `insert into signal_paper_trades (id, lane, story_id, article_id, market, token, catalyst, direction, size_usdc, qty, entry_price, entry_mid,
+         spread_at_entry_pct, fee_pct, entry_fee, typical_move_pct, tp_pct, sl_pct, tp_price, sl_price, max_hold_until, event_at, seen_at, opened_at,
+         moved_before_entry_pct, level_at_entry, sources_at_entry, outside_market_hours, price_source, status, rule_version)
+       values ($1, 'news', $2, 'a-trade', 'ETH-USD', 'ETH', 'etf_approved', 'long', 500, 0.1465, 3412.5, 3412.3, 0.011, 0.05, 0.25, 1.07,
+         1.6, 0.8, 3467.1, 3385.2, $3, $4, $5, $5, 0.3, 'medium', '[{"name":"Reuters","tier":"top"}]', false, 'book', 'open', 'news-v2')`,
+      [trade2, story1, ago(100 - 72 * 60), ago(104), ago(100)],
+    );
+    for (const id of ["a-trade", "a-merged"]) {
+      const at = id === "a-trade" ? 100 : 55;
+      await event(id, at, "collect", "pass");
+      await event(id, at, "normalize", "pass", { detail: { candidates: ["ETH-USD"] } });
+      await event(id, at, "understand", "pass", {
+        detail: {
+          market: "ETH-USD",
+          catalyst: "etf_approved",
+          direction: "long",
+          maxHoldHours: 72,
+        },
+      });
+    }
+    await event("a-trade", 100, "filter", "pass", {
+      storyId: story1,
+      detail: { level: "medium", tpPct: "1.6000", costPct: "0.1000", spreadPct: "0.0110" },
+    });
+    await event("a-trade", 100, "decide", "open", {
+      storyId: story1,
+      tradeId: trade2,
+      detail: { direction: "long", retry: false },
+    });
+    await event("a-merged", 55, "filter", "merge", {
+      storyId: story1,
+      reason: "SAME_STORY",
+      detail: { laterLevel: "high" },
+    });
+
+    // 3. Bị bỏ ở Filter: TP dưới 2 × chi phí.
+    await article({
+      id: "a-filter",
+      published: 90,
+      collected: 85,
+      matched: '[{"symbol":"SOL","name":"Solana"}]',
+      candidates: '[{"symbol":"SOL","market":"SOL-USD","kind":"crypto"}]',
+      status: "classified",
+      classification: { ...ethCls, catalyst: "hack_exploit", market: "SOL-USD" },
+      usage: [1, 600, 0, 4635, 90],
+    });
+    await env.pool.query(
+      `insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry, later_level,
+         outcome, locked, rule_version)
+       values ($1, 'SOL-USD|hack_exploit', 'SOL-USD', 'hack_exploit', 'short', 'a-filter', $2,
+         '[{"name":"Reuters","tier":"mid","articleId":"a-filter","at":"x"}]', 'low', 'low', 'skipped', false, 'news-v2')`,
+      [story2, ago(85)],
+    );
+    await event("a-filter", 85, "collect", "pass");
+    await event("a-filter", 85, "normalize", "pass");
+    await event("a-filter", 85, "understand", "pass", {
+      detail: { market: "SOL-USD", catalyst: "hack_exploit", direction: "short", maxHoldHours: 24 },
+    });
+    await event("a-filter", 85, "filter", "drop", {
+      storyId: story2,
+      reason: "MOVE_TOO_SMALL_FOR_COST",
+      detail: { level: "low", tpPct: "0.1500", costPct: "0.1000", spreadPct: "0.0200" },
+    });
+
+    // 4. Bị loại ở Score: quảng cáo (có usage). 8. Bài cũ trước 0045: qua Claude nhưng không có usage.
+    // 12. Chờ Claude quá lâu: bỏ trước Claude.
+    await article({
+      id: "a-promo",
+      published: 80,
+      collected: 75,
+      matched: '[{"symbol":"DOGE","name":"Dogecoin"}]',
+      candidates: '[{"symbol":"DOGE","market":"DOGE-USD","kind":"crypto"}]',
+      status: "classified",
+      classification: {
+        catalyst: "none",
+        market: "DOGE-USD",
+        relevance: "direct",
+        promotional: true,
+        eventDate: null,
+      },
+      usage: [1, 402, 0, 4635, 88],
+    });
+    await article({
+      id: "a-old",
+      published: 70,
+      collected: 66,
+      candidates: ETH_CAND,
+      status: "classified",
+      classification: { ...ethCls, catalyst: "none" },
+    });
+    await article({
+      id: "a-late",
+      published: 65,
+      collected: 64,
+      candidates: ETH_CAND,
+      status: "dropped",
+    });
+    for (const [id, at] of [
+      ["a-promo", 75],
+      ["a-old", 66],
+      ["a-late", 64],
+    ] as const) {
+      await event(id, at, "collect", "pass");
+      await event(id, at, "normalize", "pass");
+    }
+    await event("a-promo", 75, "understand", "drop", { reason: "PROMOTIONAL" });
+    await event("a-old", 66, "understand", "drop", { reason: "NOT_A_SIGNAL_TYPE" });
+    await event("a-late", 30, "understand", "drop", { reason: "CLASSIFIER_LATE" });
+
+    // 5. Không có trên SoDEX, 6. không gắn coin nào (tin flash, không tiêu đề), 7. trùng y hệt bài gốc đang chờ Claude.
+    await article({
+      id: "a-kntq",
+      published: 50,
+      collected: 47,
+      matched: '[{"symbol":"KNTQ","name":null}]',
+      status: "dropped",
+    });
+    await article({
+      id: "a-gold",
+      title: null,
+      content: "Spot gold broke below the 3700 threshold",
+      published: 45,
+      collected: 43,
+      matched: "[]",
+      status: "dropped",
+    });
+    await article({
+      id: "a-orig",
+      published: 42,
+      collected: 40,
+      candidates: ETH_CAND,
+      status: "pending",
+    });
+    await article({
+      id: "a-dup",
+      published: 41,
+      collected: 40,
+      status: "dropped",
+      duplicateOf: "a-orig",
+    });
+    for (const [id, at] of [
+      ["a-kntq", 47],
+      ["a-gold", 43],
+      ["a-orig", 40],
+      ["a-dup", 40],
+    ] as const)
+      await event(id, at, "collect", "pass");
+    await event("a-kntq", 47, "normalize", "drop", { reason: "NO_SODEX_MARKET" });
+    await event("a-gold", 43, "normalize", "drop", { reason: "NO_SODEX_MARKET" });
+    await event("a-orig", 40, "normalize", "pass");
+    await event("a-dup", 40, "normalize", "drop", { reason: "DUPLICATE" });
+
+    // Ngoài 1 ngày nhưng trong 7 ngày; backlog; version cũ.
+    await article({
+      id: "a-week",
+      published: 3 * 1440 + 5,
+      collected: 3 * 1440,
+      matched: '[{"symbol":"XYZ","name":null}]',
+      status: "dropped",
+    });
+    await event("a-week", 3 * 1440, "normalize", "drop", { reason: "NO_SODEX_MARKET" });
+    await article({ id: "a-backlog", published: 300, collected: 20, status: "backlog" });
+    await event("a-backlog", 20, "collect", "backlog", { reason: "BACKLOG_NOT_CLASSIFIED" });
+    await article({
+      id: "a-v1",
+      published: 10,
+      collected: 9,
+      status: "pending",
+      ruleVersion: "news-v1",
+    });
+  });
+
+  /** Mới nhất trước (theo giờ đăng). */
+  const IN_DAY = [
+    "a-dup",
+    "a-orig",
+    "a-gold",
+    "a-kntq",
+    "a-merged",
+    "a-late",
+    "a-old",
+    "a-promo",
+    "a-filter",
+    "a-trade",
+  ];
+  const feed = async (qs: string) => {
+    const r = await team.request("GET", `${base}/articles?${qs}`);
+    expect(r.statusCode).toBe(200);
+    expect(r.headers["cache-control"]).toBe("no-store");
+    return researchArticlesPageSchema.parse(r.json());
+  };
+  const trace = async (id: string) => {
+    const r = await team.request("GET", `${base}/articles/${id}/trace`);
+    expect(r.statusCode).toBe(200);
+    expect(r.headers["cache-control"]).toBe("no-store");
+    return researchArticleTraceSchema.parse(r.json());
+  };
+  const byKey = (t: Awaited<ReturnType<typeof trace>>) =>
+    Object.fromEntries(t.steps.map((s) => [s.key, s]));
+
+  it("401 signed out, 403 for non-team users, role checked before the query", async () => {
+    const anon = new TestClient(env.app);
+    for (const r of [`${base}/articles`, `${base}/articles/a-trade/trace`]) {
+      expect((await anon.request("GET", r)).statusCode).toBe(401);
+      expect((await user.request("GET", r)).statusCode).toBe(403);
+    }
+    for (const r of [
+      `${base}/articles?range=30d`,
+      `${base}/articles?show=nope&limit=abc`,
+      `${base}/articles?cursor=bad`,
+      `${base}/summary?range=nope`,
+    ])
+      expect((await user.request("GET", r)).statusCode).toBe(403);
+  });
+
+  it("validates the query: bad range / stage / reason / limit / cursor are 400 VALIDATION_FAILED", async () => {
+    const tampered = Buffer.from(JSON.stringify({ t: "nope", id: "a" })).toString("base64url");
+    for (const qs of [
+      "range=30d",
+      "stage=understand",
+      "reason=BACKLOG_NOT_CLASSIFIED",
+      "limit=500",
+      "cursor=not-a-cursor",
+      `cursor=${tampered}`,
+    ]) {
+      const r = await team.request("GET", `${base}/articles?${qs}`);
+      expect(r.statusCode).toBe(400);
+      expect(errorResponseSchema.parse(r.json()).error.code).toBe("VALIDATION_FAILED");
+    }
+    expect((await team.request("GET", `${base}/summary?range=30d`)).statusCode).toBe(400);
+  });
+
+  it("lists the last day newest first, without backlog or other rule versions; 7 days adds older ones", async () => {
+    const day = await feed("range=1d&limit=100");
+    const ids = day.items.map((x) => x.id);
+    // art-1 (khối đầu file) nằm sau "now" của đồng hồ test nên cũng trong khoảng; là bài chờ ở Collect.
+    expect(ids.filter((x) => x !== "art-1")).toEqual(IN_DAY);
+    expect(day.total).toBe(IN_DAY.length + 1);
+    expect(day.totalInRange).toBe(IN_DAY.length + 1);
+    expect(ids).not.toContain("a-backlog");
+    expect(ids).not.toContain("a-v1");
+    const week = await feed("range=7d&limit=100");
+    expect(week.items.map((x) => x.id)).toContain("a-week");
+    expect(week.totalInRange).toBe(IN_DAY.length + 2);
+    // Mặc định 1 ngày.
+    expect((await feed("")).totalInRange).toBe(day.totalInRange);
+  });
+
+  it("pages with a cursor without gaps or repeats", async () => {
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let i = 0; i < 10; i++) {
+      const p: Awaited<ReturnType<typeof feed>> = await feed(
+        `range=1d&limit=3${cursor === null ? "" : `&cursor=${cursor}`}`,
+      );
+      seen.push(...p.items.map((x) => x.id));
+      expect(p.total).toBe(IN_DAY.length + 1);
+      cursor = p.nextCursor;
+      if (cursor === null) break;
+    }
+    expect(seen.filter((x) => x !== "art-1")).toEqual(IN_DAY);
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  it("filters by show / stage / reason, with N of M counts", async () => {
+    const ids = async (qs: string) => {
+      const p = await feed(`range=1d&limit=100&${qs}`);
+      expect(p.total).toBe(p.items.length);
+      expect(p.totalInRange).toBe(IN_DAY.length + 1);
+      return p.items.map((x) => x.id);
+    };
+    expect(await ids("show=traded")).toEqual(["a-trade"]);
+    expect(await ids("show=dropped")).toEqual([
+      "a-dup",
+      "a-gold",
+      "a-kntq",
+      "a-late",
+      "a-old",
+      "a-promo",
+      "a-filter",
+    ]);
+    expect(await ids("show=claude")).toEqual([
+      "a-merged",
+      "a-old",
+      "a-promo",
+      "a-filter",
+      "a-trade",
+    ]);
+    expect(await ids("stage=decide")).toEqual(["a-trade"]);
+    expect(await ids("stage=filter")).toEqual(["a-merged", "a-filter"]);
+    expect(await ids("stage=score")).toEqual(["a-late", "a-old", "a-promo"]);
+    expect(await ids("stage=normalize")).toEqual(["a-dup", "a-orig", "a-kntq"]);
+    expect(await ids("stage=collect&show=dropped")).toEqual(["a-gold"]);
+    expect(await ids("reason=noTaggedCurrency")).toEqual(["a-gold"]);
+    expect(await ids("reason=notOnSodex")).toEqual(["a-kntq"]);
+    expect(await ids("reason=duplicate")).toEqual(["a-dup"]);
+    expect(await ids("reason=notCatalyst")).toEqual(["a-old"]);
+    expect(await ids("reason=tpUnderCost")).toEqual(["a-filter"]);
+    expect(await ids("reason=sourceLate")).toEqual(["a-late"]);
+  });
+
+  it("returns the item fields: stage, outcome, reason, Claude usage (null on old rows), trade", async () => {
+    const items = new Map((await feed("range=1d&limit=100")).items.map((x) => [x.id, x]));
+    const cost = claudeCostUsd({
+      input: 512,
+      cacheWrite: 0,
+      cacheRead: 4635,
+      output: 118,
+    }).toFixed();
+    expect(items.get("a-trade")).toMatchObject({
+      title: "Title a-trade",
+      source: "Reuters",
+      delaySecs: 240,
+      tagged: ["ETH"],
+      candidates: ["ETH-USD"],
+      asset: "ETH-USD",
+      side: "long",
+      stage: "decide",
+      outcome: "traded",
+      reason: null,
+      sentToClaude: true,
+      claude: {
+        calls: 1,
+        tokens: { input: 512, cacheWrite: 0, cacheRead: 4635, output: 118 },
+        costUsd: cost,
+        model: NEWS_CLASSIFIER.model,
+      },
+      tradeId: trade2,
+    });
+    expect(items.get("a-merged")).toMatchObject({
+      stage: "filter",
+      outcome: "merged",
+      reason: null,
+      mergeReason: "sameStory",
+      tradeId: null,
+    });
+    expect(items.get("a-gold")).toMatchObject({
+      title: null,
+      excerpt: "Spot gold broke below the 3700 threshold",
+      tagged: [],
+      stage: "collect",
+      outcome: "dropped",
+      reason: "noTaggedCurrency",
+      sentToClaude: false,
+      claude: null,
+    });
+    expect(items.get("a-old")).toMatchObject({
+      sentToClaude: true,
+      claude: null,
+      reason: "notCatalyst",
+    });
+    expect(items.get("a-late")).toMatchObject({
+      sentToClaude: false,
+      claude: null,
+      stage: "score",
+    });
+    expect(items.get("a-orig")).toMatchObject({
+      stage: "normalize",
+      outcome: "waiting",
+      reason: null,
+    });
+  });
+
+  it("traces a traded article through all five steps", async () => {
+    const t = await trace("a-trade");
+    expect(t.article.id).toBe("a-trade");
+    const s = byKey(t);
+    expect(t.steps.map((x) => [x.key, x.status])).toEqual([
+      ["collect", "pass"],
+      ["normalize", "pass"],
+      ["score", "pass"],
+      ["filter", "pass"],
+      ["decide", "pass"],
+    ]);
+    expect(s.collect).toMatchObject({
+      detail: {
+        source: "Reuters",
+        tier: "top",
+        delaySecs: 240,
+        tagged: [{ symbol: "ETH", name: "Ethereum" }],
+      },
+    });
+    expect(s.normalize).toMatchObject({
+      detail: {
+        candidates: [{ symbol: "ETH", market: "ETH-USD", kind: "crypto" }],
+        duplicateOf: null,
+        story: {
+          id: story1,
+          isNew: true,
+          sources: 2,
+          levelAtEntry: "medium",
+          laterLevel: "high",
+          outcome: "entered",
+          tradeId: trade2,
+        },
+      },
+    });
+    expect(s.score).toMatchObject({
+      detail: {
+        sentToClaude: true,
+        signalType: true,
+        newsType: "etfApproved",
+        side: "long",
+        maxHoldHours: 72,
+        asset: "ETH-USD",
+        relevance: "direct",
+        promotional: false,
+        level: "medium",
+        levelSources: [{ name: "Reuters", tier: "top" }],
+        claude: { calls: 1, model: NEWS_CLASSIFIER.model },
+      },
+    });
+    expect(s.filter).toMatchObject({
+      detail: {
+        level: "medium",
+        checks: [
+          { key: "sourceLive", ok: true, value: 4, limit: 30 },
+          { key: "priceAvailable", ok: true },
+          { key: "noOpenTrade", ok: true },
+          { key: "tpVsCost", ok: true, value: 1.6, limit: 0.2, costPct: 0.1, spreadPct: 0.011 },
+        ],
+      },
+    });
+    expect(s.decide).toMatchObject({
+      detail: {
+        tradeId: trade2,
+        side: "long",
+        sizeUsdc: "500",
+        entry: "3412.5",
+        tp: "3467.1",
+        tpPct: 1.6,
+        sl: "3385.2",
+        slPct: 0.8,
+        maxHoldHours: 72,
+        priceSource: "book",
+        retry: false,
+        status: "open",
+        random: null,
+      },
+    });
+  });
+
+  it("traces an article dropped at each step, and a merged one", async () => {
+    const gold = byKey(await trace("a-gold"));
+    expect(gold.collect).toMatchObject({
+      status: "drop",
+      reason: "noTaggedCurrency",
+      code: "NO_SODEX_MARKET",
+    });
+    expect(gold.normalize).toMatchObject({ status: "notReached", detail: null, at: null });
+
+    const dup = byKey(await trace("a-dup"));
+    expect(dup.normalize).toMatchObject({
+      status: "drop",
+      reason: "duplicate",
+      code: "DUPLICATE",
+      detail: { duplicateOf: { id: "a-orig", title: "Title a-orig" }, story: null },
+    });
+    expect(dup.score).toMatchObject({ status: "notReached", detail: null });
+
+    const kntq = byKey(await trace("a-kntq"));
+    expect(kntq.collect?.status).toBe("pass");
+    expect(kntq.normalize).toMatchObject({
+      status: "drop",
+      reason: "notOnSodex",
+      detail: { candidates: [] },
+    });
+
+    const promo = byKey(await trace("a-promo"));
+    expect(promo.score).toMatchObject({
+      status: "drop",
+      reason: "promotional",
+      code: "PROMOTIONAL",
+      detail: {
+        signalType: false,
+        newsType: null,
+        promotional: true,
+        level: null,
+        levelSources: null,
+      },
+    });
+    expect(promo.filter).toMatchObject({ status: "notReached", detail: null });
+
+    const old = byKey(await trace("a-old"));
+    expect(old.score).toMatchObject({
+      status: "drop",
+      detail: { sentToClaude: true, claude: null },
+    });
+
+    const filter = byKey(await trace("a-filter"));
+    expect(filter.filter).toMatchObject({
+      status: "drop",
+      reason: "tpUnderCost",
+      code: "MOVE_TOO_SMALL_FOR_COST",
+      detail: {
+        level: "low",
+        checks: [
+          { key: "sourceLive", ok: true },
+          { key: "priceAvailable", ok: true },
+          { key: "noOpenTrade", ok: true },
+          { key: "tpVsCost", ok: false, code: "MOVE_TOO_SMALL_FOR_COST", value: 0.15, limit: 0.2 },
+        ],
+      },
+    });
+    expect(filter.score).toMatchObject({
+      detail: { side: "short", newsType: "hack", level: "low" },
+    });
+    expect(filter.decide).toMatchObject({ status: "notReached", detail: null });
+
+    const merged = byKey(await trace("a-merged"));
+    expect(merged.filter).toMatchObject({
+      status: "merge",
+      mergeReason: "sameStory",
+      code: "SAME_STORY",
+      detail: { level: null, checks: [], laterLevel: "high" },
+    });
+    expect(merged.normalize).toMatchObject({ detail: { story: { id: story1, isNew: false } } });
+    expect(merged.decide?.status).toBe("notReached");
+
+    const waiting = byKey(await trace("a-orig"));
+    expect(waiting.normalize?.status).toBe("pass");
+    expect(waiting.score).toMatchObject({ status: "notReached", detail: null });
+  });
+
+  it("404 for an unknown, backlog or other-version article", async () => {
+    for (const id of ["nope", "a-backlog", "a-v1"]) {
+      const r = await team.request("GET", `${base}/articles/${id}/trace`);
+      expect(r.statusCode).toBe(404);
+      expect(errorResponseSchema.parse(r.json()).error.code).toBe("NOT_FOUND");
+    }
+  });
+
+  it("summary range switches the funnel and its per-article stop counts match the feed", async () => {
+    const get = async (qs: string) => {
+      const r = await team.request("GET", `${base}/summary${qs}`);
+      expect(r.statusCode).toBe(200);
+      return researchSummarySchema.parse(r.json());
+    };
+    const day = await get("?range=1d");
+    const week = await get("?range=7d");
+    const all = await get("");
+    expect(day.funnel?.days).toBe(1);
+    expect(week.funnel?.days).toBe(7);
+    const stop = (s: typeof day, reason: string) =>
+      s.funnel?.articleStops.find((x) => x.reason === reason)?.n ?? null;
+    expect(stop(day, "notOnSodex")).toBe(1);
+    expect(stop(week, "notOnSodex")).toBe(2);
+    expect(stop(all, "notOnSodex")).toBe(2);
+    expect(stop(day, "noTaggedCurrency")).toBe(1);
+    expect(stop(day, "duplicate")).toBe(1);
+    expect(day.funnel?.articleStops.find((x) => x.outcome === "traded")).toMatchObject({
+      stage: "decide",
+      n: 1,
+    });
+    expect(day.funnel?.articleStops.find((x) => x.outcome === "merged")).toMatchObject({
+      stage: "filter",
+      mergeReason: "sameStory",
+      n: 1,
+    });
+    // Tổng kết cũ: trùng y hệt vẫn không phải "bị loại".
+    expect(day.funnel?.drops.score.reasons.map((r) => r.reason)).not.toContain("duplicate");
+    // Bảng mức / cổng không đổi theo khoảng.
+    expect(day.rows).toEqual(all.rows);
+  });
+
+  it("trades carry the article id for the Trace button", async () => {
+    const p = researchTradesPageSchema.parse(
+      (await team.request("GET", `${base}/trades?show=all&limit=100`)).json(),
+    );
+    expect(p.items.find((x) => x.id === trade2)?.articleId).toBe("a-trade");
+    expect(p.items.find((x) => x.asset === "SOL-USD" && x.skipped !== null)?.articleId).toBe(
+      "a-filter",
+    );
   });
 });

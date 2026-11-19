@@ -109,6 +109,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
         ],
       },
     },
+    articleStops: [],
     outcomes: { closed: 30, tp: 12, sl: 11, maxHold: 7, open: 11 },
   },
   newsRulesVersion: 2,
@@ -252,6 +253,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
   items: [
     {
       id: TRADE_SOL,
+      articleId: "art-sol",
       type: "news",
       label: "live",
       asset: "SOL",
@@ -281,6 +283,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
     },
     {
       id: TRADE_ETH,
+      articleId: null,
       type: "whales",
       label: "replay",
       asset: "ETH",
@@ -308,6 +311,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
     },
     {
       id: "sr-0003",
+      articleId: null,
       type: "price",
       label: "replay",
       asset: "BTC",
@@ -329,6 +333,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
     },
     {
       id: "sr-0004",
+      articleId: "art-0004",
       type: "news",
       label: "live",
       asset: "NVDA",
@@ -358,6 +363,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
     },
     {
       id: "sr-0005",
+      articleId: null,
       type: "funding",
       label: "replay",
       asset: "ETH",
