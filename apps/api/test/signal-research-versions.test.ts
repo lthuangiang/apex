@@ -789,6 +789,15 @@ describe("News bot versions API (#305)", () => {
       details: { reason: "MARKET_LIST_MISSING" },
     });
     expect(await count("select count(*)::int as n from signal_bot_versions")).toBe(before);
+    // 503 xảy ra trước mọi ghi nên key được giải phóng (PRE_SIDE_EFFECT_CODES): cùng key thử lại thành công khi
+    // scheduler đã ghi bản chụp.
+    const key = randomUUID();
+    expect((await post(team, "/versions", withAssets(["BTC-USD"]), key)).statusCode).toBe(503);
+    setMarkets(1);
+    const retried = await post(team, "/versions", withAssets(["BTC-USD"]), key);
+    expect(retried.statusCode).toBe(201);
+    expect(researchVersionCreatedSchema.parse(retried.json()).warnings).toEqual([]);
+    setMarkets(null);
     // Không có danh sách tài sản thì không cần bản chụp.
     const noList = await post(team, "/versions", { name: "All assets", config: cfg, start: false });
     expect(noList.statusCode).toBe(201);
@@ -807,7 +816,7 @@ describe("News bot versions API (#305)", () => {
       status: "paused",
       warnings: ["market_list_stale"],
     });
-    expect(await count("select count(*)::int as n from signal_bot_versions")).toBe(before + 2);
+    expect(await count("select count(*)::int as n from signal_bot_versions")).toBe(before + 3);
     setMarkets(1);
   });
 });
