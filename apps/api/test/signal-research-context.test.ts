@@ -121,10 +121,10 @@ beforeAll(async () => {
   team = new TestClient(env.app);
   teamId = meSchema.parse((await signIn(env, team, `ctx-${randomUUID()}@drift.test`)).json()).id;
   await env.pool.query("update users set role = 'team' where id = $1", [teamId]);
-  // Classifier của các lệnh đã qua cổng precision (50 nhãn Right) → lệnh được tính.
+  // Classifier của các lệnh đã qua cổng precision (50 nhãn Right, nguồn random như DEC-340) → lệnh được tính.
   await env.pool.query(
-    `insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict)
-     select gen_random_uuid(), 'lbl-' || g, $1, $2, 'right' from generate_series(1, 50) g`,
+    `insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict, source)
+     select gen_random_uuid(), 'lbl-' || g, $1, $2, 'right', 'random' from generate_series(1, 50) g`,
     [CLS, teamId],
   );
 });
