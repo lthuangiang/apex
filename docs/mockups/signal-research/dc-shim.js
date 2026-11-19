@@ -1,3 +1,4 @@
+/* global window, document, requestAnimationFrame */
 // Minimal runtime for the design mockups in this folder (not product code).
 // Renders a <template id="dc-tpl"> with {{holes}}, <sc-for>, <sc-if> and onClick="{{fn}}",
 // using the Component class defined on the page, and patches the DOM in place on setState.
