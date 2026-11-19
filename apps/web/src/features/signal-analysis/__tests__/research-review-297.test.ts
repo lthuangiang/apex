@@ -13,7 +13,7 @@ import { traceView } from "../research/trace-text";
 import { ETH_TRACE } from "./news-trace-fixtures";
 
 // Các điểm review UI của #297 có thể kiểm bằng hàm thuần: TP / SL theo tick, mức lúc vào lệnh khi câu chuyện có thêm
-// nguồn, độ tương phản chữ cạnh tầng phễu (token trên nền tối).
+// nguồn; độ tương phản chữ trên tầng phễu sáng (#343).
 
 // Kiểu namespace của next-intl suy từ messages toàn cục; ở đây chỉ cần hàm dịch như `useTranslations`.
 const t = createTranslator({
@@ -76,7 +76,7 @@ describe("trace text (#297)", () => {
   });
 });
 
-describe("funnel note contrast (#297): 4.5:1 on the dark funnel background", () => {
+describe("funnel band contrast (#343): 4.5:1 on the light funnel", () => {
   const css = readFileSync(
     resolve(__dirname, "../../../../../../packages/ui/src/styles/tokens.css"),
     "utf8",
@@ -98,18 +98,39 @@ describe("funnel note contrast (#297): 4.5:1 on the dark funnel background", () 
     return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
   };
 
-  it("every note tone (totals, pass, drop, merge) is at least 4.5:1 on --ink", () => {
-    for (const tone of ["on-ink-accent", "on-ink-pos", "on-ink-neg-2", "on-ink-2"])
-      expect(ratio(token(tone), token("ink"))).toBeGreaterThanOrEqual(4.5);
+  // color-mix(in srgb, a p%, b): trộn kênh tuyến tính trong sRGB như trình duyệt.
+  const mix = (a: string, b: string, p: number): string => {
+    const ch = (h: string, k: number) => parseInt(h.slice(1 + k * 2, 3 + k * 2), 16);
+    const out = [0, 1, 2].map((k) => Math.round(ch(a, k) * p + ch(b, k) * (1 - p)));
+    return `#${out.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  };
+
+  it("every band's text is at least 4.5:1 on its fill (white on dark blues and green, ink on light blues)", () => {
+    const white = "#ffffff";
+    const pairs: [string, string][] = [
+      [white, token("accent-ink")],
+      [white, token("accent")],
+      [token("ink"), mix(token("accent"), token("surface"), 0.6)],
+      [token("ink"), token("surface")],
+      [token("ink"), mix(token("accent"), token("surface"), 0.25)],
+      [white, token("pos")],
+      [token("muted"), token("bg")],
+      [token("ink-2"), token("bg")],
+    ];
+    for (const [fg, bg] of pairs) expect(ratio(fg, bg)).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("the note animation only slides: no opacity left low if the animation is paused", () => {
+  it("the H3 warning tag and the Yes badge keep 4.5:1 (amber on warn-bg, accent-ink on accent-tint)", () => {
+    expect(ratio(token("warn"), token("warn-bg"))).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(token("accent-ink"), token("accent-tint"))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("context effects run only through motion-safe and the swimming whales hide on reduced motion", () => {
+    const src = readFileSync(resolve(__dirname, "../research/context-panel.tsx"), "utf8");
+    expect(src).not.toMatch(/(^|[\s"`])animate-\[/);
+    expect(src).toContain("motion-reduce:hidden motion-safe:animate-[sr-swim_2.6s");
     const globals = readFileSync(resolve(__dirname, "../../../app/globals.css"), "utf8");
-    const slide = /@keyframes sr-slide\s*\{([\s\S]*?)\n\}/.exec(globals)?.[1] ?? "";
-    expect(slide).toContain("transform");
-    expect(slide).not.toContain("opacity");
-    const src = readFileSync(resolve(__dirname, "../research/news-trace.tsx"), "utf8");
-    expect(src).toContain("animate-[sr-slide_");
-    expect(src).not.toContain("animate-[sr-fade_");
+    for (const k of ["sr-whale", "sr-sonar", "sr-tip", "sr-wobble", "sr-run", "sr-pop", "sr-swim"])
+      expect(globals).toContain(`@keyframes ${k} `);
   });
 });

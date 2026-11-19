@@ -7,6 +7,7 @@ import type {
   ResearchTraceStep,
 } from "@drift/shared";
 
+import { CTX_ETH, CTX_NONE } from "./context-fixtures";
 import { RESEARCH_SUMMARY } from "./research-fixtures";
 
 // Dữ liệu giả của News feed và funnel trace (#292), theo số mẫu của docs/mockups/signal-research/news-trace.html. Giờ ở
@@ -212,7 +213,7 @@ const check = (
 
 export const ETH_TRACE: ResearchArticleTrace = {
   article: ETH,
-  context: null,
+  context: CTX_ETH,
   steps: [
     collect(ETH, { ETH: "ETHEREUM" }),
     {
@@ -311,7 +312,8 @@ export const ETH_TRACE: ResearchArticleTrace = {
 
 export const SOL_TRACE: ResearchArticleTrace = {
   article: SOL,
-  context: null,
+  // #343: tín hiệu tới bước 4 rồi bị Filter loại; cả ba câu trả lời No ("no signal").
+  context: CTX_NONE,
   steps: [
     collect(SOL, {}),
     {

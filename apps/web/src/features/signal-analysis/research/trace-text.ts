@@ -65,10 +65,9 @@ export function reached(a: ResearchArticle, t: Tr): { text: string; tone: ChipTo
             : t("trace.chip.traded", { side: t(`sides.${a.side}`), asset: a.asset }),
         tone: "pos",
       };
-    case "dropped": {
-      const late = STAGES.indexOf(a.stage) >= 2;
-      return { text: t("trace.chip.dropped", { stage }), tone: late ? "neg" : "neutral" };
-    }
+    case "dropped":
+      // #343: "Dropped at …" luôn xám; xanh lá chỉ cho lệnh đã vào, đỏ chỉ cho lỗ / lỗi.
+      return { text: t("trace.chip.dropped", { stage }), tone: "neutral" };
     case "merged":
       // Gộp vào câu chuyện đã có không phải bị loại: màu trung tính.
       return { text: t("trace.chip.merged"), tone: "neutral" };
