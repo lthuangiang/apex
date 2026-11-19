@@ -300,6 +300,14 @@ export const EXTRA_CHECK_AFTER_VERSIONS = 3;
 /** Version qua cổng khi kiểm tra thêm bật phải lặp lại kết quả trên ngần này lệnh đóng tiếp theo. */
 export const VERSION_REPEAT_TRADES = 100;
 
+/**
+ * Số version đã thử = số News bot version đã lưu (Baseline + version team tạo, mọi trạng thái, kể cả đã dừng / retired).
+ * Rules v1 / v2 (trước khi có version) không tính (DEC-331; PM chốt ở review #324).
+ */
+export function versionsTriedOf(versions: readonly unknown[]): number {
+  return versions.length;
+}
+
 export function extraCheckOn(versionsTried: number): boolean {
   return versionsTried > EXTRA_CHECK_AFTER_VERSIONS;
 }

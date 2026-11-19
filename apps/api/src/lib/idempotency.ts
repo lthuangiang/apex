@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import type { Db } from "@drift/db";
 import { idempotencyKeys } from "@drift/db";
 import { AppError, ErrorCode, IDEMPOTENCY_KEY_HEADER, idempotencyKeySchema } from "@drift/shared";
@@ -8,6 +10,12 @@ import { sha256 } from "./crypto";
 
 // `Idempotency-Key` bắt buộc cho mọi POST/PATCH/DELETE đổi trạng thái của người dùng đã đăng nhập
 // (CODING_STANDARDS C7). Kết quả giữ 24 h; cùng key khác request (method, tài nguyên hoặc body) → 409.
+//
+// Handler lỗi (#316, DEC-334): key chỉ được giải phóng khi lỗi chắc chắn xảy ra
+// trước mọi tác dụng phụ, tức là (a) handler chưa gọi `markSideEffect()` VÀ (b) lỗi là AppError có mã trong
+// `PRE_SIDE_EFFECT_CODES`. Mọi lỗi khác giữ dòng ở `outcome = failed_unknown` (kèm mã lỗi): cùng key sau đó
+// nhận 409 `reason: "unknown"` và không bao giờ chạy lại (rule 1.7). Dòng chưa có kết quả = đang chạy → 409
+// `reason: "in_progress"`.
 
 export const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -31,6 +39,59 @@ export function idempotencyFingerprint(request: FastifyRequest, userId: string):
     IDEMPOTENCY_FINGERPRINT_PREFIX +
     sha256(JSON.stringify([request.method, route, params, userId, request.body ?? null]))
   );
+}
+
+/** Giá trị `idempotency_keys.outcome` khi handler lỗi mà không chắc chưa có tác dụng phụ. */
+export const IDEMPOTENCY_FAILED_UNKNOWN = "failed_unknown";
+
+/**
+ * Mã lỗi mà handler chỉ ném ra từ bước kiểm tra, trước khi ghi hay gọi ra ngoài: input sai, auth / 2FA,
+ * không tìm thấy, xung đột trạng thái kiểm trước khi ghi, rate limit (bucket Redis của chính DeskLabs, chặn
+ * trước khi gửi). Không có ở đây: INTERNAL_ERROR, SODEX_UNAVAILABLE / SODEX_TIMEOUT / SODEX_REJECTED,
+ * RECO_UNAVAILABLE, ANALYSIS_TIMEOUT và mọi lỗi không phải AppError: kết quả có thể đã xảy ra một phần.
+ * Một mã trong danh sách mà ném ra SAU `markSideEffect()` vẫn không giải phóng key.
+ */
+export const PRE_SIDE_EFFECT_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
+  ErrorCode.validationFailed,
+  ErrorCode.unauthenticated,
+  ErrorCode.forbidden,
+  ErrorCode.twoFactorRequired,
+  ErrorCode.twoFactorInvalid,
+  ErrorCode.otpInvalid,
+  ErrorCode.invalidCredentials,
+  ErrorCode.emailTaken,
+  ErrorCode.notFound,
+  ErrorCode.botNotFound,
+  ErrorCode.botStateConflict,
+  ErrorCode.stateConflict,
+  ErrorCode.orderBelowMinSize,
+  ErrorCode.builderFeeNotApproved,
+  ErrorCode.rateLimited,
+  ErrorCode.sodexAccountNotFound,
+  ErrorCode.sodexAccountInUse,
+  ErrorCode.signatureInvalid,
+  ErrorCode.telegramNotConnected,
+  ErrorCode.telegramLinkExpired,
+]);
+
+interface SideEffectScope {
+  started: boolean;
+}
+const sideEffects = new AsyncLocalStorage<SideEffectScope>();
+
+/**
+ * Handler gọi ngay trước phần không đảo ngược được (commit đổi state bot, version áp lên bot đang chạy,
+ * tạo key ở signer, ghi / gửi request ký cho SoDEX). Sau dấu này mọi lỗi, kể cả lỗi trong
+ * `PRE_SIDE_EFFECT_CODES`, giữ key ở `failed_unknown`. Ngoài `idempotent()` thì không làm gì.
+ */
+export function markSideEffect(): void {
+  const scope = sideEffects.getStore();
+  if (scope !== undefined) scope.started = true;
+}
+
+/** Lỗi này có được giải phóng key không (chỉ khi chắc chắn chưa có tác dụng phụ). */
+export function releasesKey(error: unknown, sideEffectStarted: boolean): boolean {
+  return !sideEffectStarted && error instanceof AppError && PRE_SIDE_EFFECT_CODES.has(error.code);
 }
 
 export interface IdempotentResult {
@@ -71,7 +132,10 @@ export async function idempotent(
   if (inserted.length === 0) {
     const [existing] = await db.select().from(idempotencyKeys).where(where).limit(1);
     if (existing === undefined) {
-      throw new AppError(ErrorCode.idempotencyKeyConflict, "Idempotency-Key is in use.");
+      // Dòng vừa bị giải phóng giữa insert và select (request trước lỗi ở bước kiểm tra).
+      throw new AppError(ErrorCode.idempotencyKeyConflict, "Idempotency-Key is in use.", {
+        reason: "in_progress",
+      });
     }
     if (!existing.requestHash.startsWith(IDEMPOTENCY_FINGERPRINT_PREFIX)) {
       // Dòng ghi trước #314 chỉ băm route pattern: không biết nó thuộc id nào, nên không phát lại
@@ -83,10 +147,26 @@ export async function idempotent(
         { reason: "fingerprint_outdated" },
       );
     }
-    if (existing.requestHash !== requestHash || existing.statusCode === null) {
+    if (existing.requestHash !== requestHash) {
       throw new AppError(
         ErrorCode.idempotencyKeyConflict,
         "Idempotency-Key was used for a different request.",
+      );
+    }
+    if (existing.outcome === IDEMPOTENCY_FAILED_UNKNOWN) {
+      // Lần trước lỗi khi có thể đã có tác dụng phụ: không chạy lại (rule 1.7). Client đọc lại trạng thái
+      // (bot, signature request…) rồi mới làm tiếp với key mới.
+      throw new AppError(
+        ErrorCode.idempotencyKeyConflict,
+        "Outcome of the earlier request with this Idempotency-Key is unknown. Check the current state before retrying with a new key.",
+        { reason: "unknown", errorCode: existing.errorCode },
+      );
+    }
+    if (existing.statusCode === null) {
+      throw new AppError(
+        ErrorCode.idempotencyKeyConflict,
+        "A request with this Idempotency-Key is still in progress.",
+        { reason: "in_progress" },
       );
     }
     if (options.sensitive === true) {
@@ -101,12 +181,31 @@ export async function idempotent(
       .send(existing.response);
   }
 
+  const scope: SideEffectScope = { started: false };
   let result: IdempotentResult;
   try {
-    result = await handler();
+    result = await sideEffects.run(scope, handler);
   } catch (error) {
-    // Lỗi xác định trước khi có tác dụng phụ: giải phóng key để client thử lại.
-    await db.delete(idempotencyKeys).where(where);
+    // Ghi trạng thái key lỗi thì chỉ log: client vẫn nhận lỗi gốc. Nếu không ghi được `failed_unknown`, dòng
+    // vẫn ở "đang chạy" (không bao giờ bị giải phóng nhầm) và hết hạn sau 24 h.
+    const keep = (e: unknown) => {
+      request.log.error({ err: e, traceId: request.id }, "idempotency key state not saved");
+    };
+    if (releasesKey(error, scope.started)) {
+      // Lỗi ở bước kiểm tra, chưa có tác dụng phụ: giải phóng key để client sửa rồi thử lại.
+      await db.delete(idempotencyKeys).where(where).catch(keep);
+    } else {
+      const errorCode = error instanceof AppError ? error.code : ErrorCode.internal;
+      request.log.warn(
+        { traceId: request.id, errorCode, sideEffectStarted: scope.started },
+        "idempotent request failed with an unknown outcome; key kept",
+      );
+      await db
+        .update(idempotencyKeys)
+        .set({ outcome: IDEMPOTENCY_FAILED_UNKNOWN, errorCode })
+        .where(where)
+        .catch(keep);
+    }
     throw error;
   }
   await db

@@ -234,7 +234,7 @@ describe("News bot versions API (#305)", () => {
     const r = await team.request("GET", `${base}/versions`);
     expect(r.headers["cache-control"]).toBe("no-store");
     const l = researchVersionsSchema.parse(r.json());
-    expect(l).toMatchObject({ running: 1, maxRunning: 3, versionsTried: 3, extraCheck: false });
+    expect(l).toMatchObject({ running: 1, maxRunning: 3, versionsTried: 1, extraCheck: false });
     expect(l.classifier).toMatchObject({ current: CURRENT, labeled: 0, passes: false });
     expect(l.items).toHaveLength(1);
     expect(l.items[0]).toMatchObject({
@@ -362,7 +362,7 @@ describe("News bot versions API (#305)", () => {
       ),
     ).toBe(1);
     const l = await list();
-    expect(l).toMatchObject({ running: 2, versionsTried: 4, extraCheck: true, repeatTrades: 100 });
+    expect(l).toMatchObject({ running: 2, versionsTried: 2, extraCheck: false, repeatTrades: 100 });
     expect(l.items.map((x) => x.number)).toEqual([4, 3]);
   });
 
@@ -373,6 +373,8 @@ describe("News bot versions API (#305)", () => {
       start: true,
     });
     expect(v5.statusCode).toBe(201);
+    // Baseline + 2 version đã lưu = 3 → kiểm tra thêm chưa bật (409 bên dưới không lưu gì nên không tính).
+    expect(await list()).toMatchObject({ versionsTried: 3, extraCheck: false });
     const fourth = await post(team, "/versions", { name: "Too many", config: cfg, start: true });
     expect(fourth.statusCode).toBe(409);
     expect(errOf(fourth)).toMatchObject({
@@ -388,7 +390,8 @@ describe("News bot versions API (#305)", () => {
       savedFrom: null,
       changedFromPrevious: null,
     });
-    expect((await list()).running).toBe(3);
+    // Baseline + 3 version đã lưu (kể cả paused) = 4 → bật.
+    expect(await list()).toMatchObject({ running: 3, versionsTried: 4, extraCheck: true });
   });
 
   it("status transitions follow #303 and are audited; config has no update route", async () => {
@@ -520,7 +523,8 @@ describe("News bot versions API (#305)", () => {
       [CURRENT, teamId],
     );
     const l = await list();
-    expect(l).toMatchObject({ versionsTried: 22, extraCheck: true });
+    // Baseline + v4, v5, v6 + 3 version chèn thẳng = 7 version đã lưu.
+    expect(l).toMatchObject({ versionsTried: 7, extraCheck: true });
     expect(l.classifier).toMatchObject({
       labeled: 50,
       passes: true,

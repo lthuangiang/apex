@@ -52,13 +52,12 @@ import {
   type ResearchTradeDetail,
   type ResearchTradesPage,
 } from "@drift/shared";
-import type { SodexRestClient } from "@drift/sodex";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
 import { parseOrThrow } from "../../lib/http";
-import { idempotent } from "../../lib/idempotency";
+import { idempotent, markSideEffect } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 import { requireTeam } from "../account/team";
 
@@ -70,6 +69,14 @@ import { requireTeam } from "../account/team";
 // market SoDEX (`/markets`, kiểm tài sản khi lưu) đọc qua cache TTL của client REST (như scheduler), không gọi SoDEX mỗi
 // request.
 
+/** Phần của một perps symbol SoDEX mà picker / kiểm tài sản cần. */
+interface PerpsSymbolLite {
+  name: string;
+  status: string;
+  displayName?: string | undefined;
+  baseCoin?: string | undefined;
+}
+
 export interface SignalResearchDeps {
   db: Db;
   now: () => Date;
@@ -80,8 +87,11 @@ export interface SignalResearchDeps {
    * SoDEX. Không truyền → không có lãi / lỗ chưa chốt.
    */
   prices?: LastPrices;
-  /** #305: danh sách perps SoDEX (cache TTL `MARKET_INFO_TTL_MS` trong client, cùng nguồn với scheduler). */
-  rest: Pick<SodexRestClient, "getPerpsSymbols">;
+  /**
+   * #305: danh sách perps SoDEX (`getPerpsSymbols` của client REST, cache TTL `MARKET_INFO_TTL_MS` trong client, cùng nguồn
+   * với scheduler). Kiểu khai báo tại chỗ: module này không import `@drift/sodex` (test "no SoDEX write path").
+   */
+  rest: { getPerpsSymbols: () => Promise<readonly PerpsSymbolLite[]> };
 }
 
 const FORBIDDEN = "Signal research is for the DeskLabs team only.";
@@ -319,6 +329,8 @@ export async function signalResearchCreateVersion(
     ip,
     now: deps.now(),
   });
+  // DEC-334: version đã commit; lỗi sau đây (đọc lại danh sách) không được giải phóng key, tránh lưu hai lần khi retry.
+  markSideEffect();
   return versionItem(deps, v.id);
 }
 
@@ -333,6 +345,7 @@ export async function signalResearchSetVersionStatus(
   const { id } = parseOrThrow(researchVersionParamsSchema, params);
   const b = parseOrThrow(researchVersionStatusBodySchema, body);
   await setSignalBotVersionStatus(deps.db, { id, status: b.status, userId, ip, now: deps.now() });
+  markSideEffect();
   return versionItem(deps, id);
 }
 

@@ -7,6 +7,7 @@ import {
   diffVersionConfig,
   effectiveMaxOpenTrades,
   extraCheckOn,
+  versionsTriedOf,
   gateStatus,
   MAX_RUNNING_VERSIONS,
   NEWS_CLASSIFIER,
@@ -170,7 +171,8 @@ export async function loadSignalBotVersions(
   const current = NEWS_CLASSIFIER.promptVersion;
   const currentGate = gates.get(current) ?? classifierGate({ labeled: 0, right: 0 });
   const currentStatus = classifierStatusOf(gates, current);
-  const versionsTried = rows.reduce((m, r) => Math.max(m, r.number), 0);
+  // PM chốt (#324): số version đã lưu (Baseline + version team tạo, mọi trạng thái); rules v1 / v2 không tính (DEC-331).
+  const versionsTried = versionsTriedOf(rows);
   const dayStart = Math.floor(now.getTime() / DAY_MS) * DAY_MS;
 
   const items: ResearchVersion[] = rows.map((r) => {

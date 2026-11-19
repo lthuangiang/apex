@@ -5,8 +5,10 @@ import { join } from "node:path";
 import {
   auditLog,
   candles1m,
+  classifierStatusOf,
   createDb,
   createSignalBotVersion,
+  loadClassifierGates,
   loadSignalResearchSummary,
   loadSignalResearchTrade,
   MIGRATIONS_FOLDER,
@@ -14,10 +16,12 @@ import {
   runningSignalBotVersions,
   setSignalBotVersionStatus,
   signalBotVersions,
+  signalClassificationLabels,
   signalClassifierVersions,
   signalEvents,
   signalPaperTrades,
   signalStories,
+  users,
   versionSegmentStart,
   type Db,
 } from "@drift/db";
@@ -345,6 +349,67 @@ describe("version service", () => {
         promptVersion: "test-prompt",
       }),
     ).toEqual(new Date(T0 + HOUR));
+  });
+});
+
+describe("classifier v3 starts a new classifier segment (#320)", () => {
+  it("trades classified by v3 count from v3's start, and v2 labels do not open the v3 gate", async () => {
+    const prev = "news-classifier-v2";
+    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v3");
+    // v2 chạy trước (mốc cũ hơn), rồi deploy v3: chu kỳ đầu của v3 ghi mốc của nó.
+    await db
+      .insert(signalClassifierVersions)
+      .values({ promptVersion: prev, model: "m", startedAt: new Date(T0 - 48 * HOUR) })
+      .onConflictDoNothing();
+    const { sr, book } = setup(
+      [item("a1", T0 - 2 * MIN, "Solana protocol drained in exploit")],
+      fakeClaude({ "Solana protocol drained in exploit": hack }),
+      () => T0,
+    );
+    book("SOL-USD", "99.99", "100.01", T0);
+    await sr.runCycle();
+    const [t] = await tradesOf(baselineId);
+    expect(t?.classifierVersion).toBe("news-classifier-v3");
+    const rows = await db.select().from(signalClassifierVersions);
+    const startOf = (v: string) => rows.find((r) => r.promptVersion === v)?.startedAt;
+    const v3Start = startOf("news-classifier-v3");
+    expect(v3Start).toBeDefined();
+    expect(v3Start?.getTime()).toBeGreaterThan(startOf(prev)?.getTime() ?? Infinity);
+    // Version lưu trước cả v2: đoạn đếm hiện tại bắt đầu ở mốc v3, không phải mốc v2.
+    const savedAt = new Date(T0 - 72 * HOUR);
+    expect(
+      await versionSegmentStart(db, {
+        versionCreatedAt: savedAt,
+        promptVersion: "news-classifier-v3",
+      }),
+    ).toEqual(v3Start);
+    expect(
+      await versionSegmentStart(db, { versionCreatedAt: savedAt, promptVersion: prev }),
+    ).toEqual(startOf(prev));
+    // 50 nhãn Right của v2 mở cổng của v2, không mở cổng của v3: lệnh v3 chưa được tính.
+    const [u] = await db
+      .insert(users)
+      .values({ email: "labeler-320@example.com" })
+      .returning({ id: users.id });
+    const labeler = u?.id ?? "";
+    await db.insert(signalClassificationLabels).values(
+      Array.from({ length: 50 }, (_, i) => ({
+        articleId: `v2-${String(i)}`,
+        classifierVersion: prev,
+        labeledBy: labeler,
+        verdict: "right",
+      })),
+    );
+    try {
+      const gates = await loadClassifierGates(db);
+      expect(classifierStatusOf(gates, prev)).toBe("passed");
+      expect(gates.has("news-classifier-v3")).toBe(false);
+      expect(classifierStatusOf(gates, t?.classifierVersion ?? null)).toBe("needsLabels");
+    } finally {
+      await db
+        .delete(signalClassificationLabels)
+        .where(eq(signalClassificationLabels.labeledBy, labeler));
+    }
   });
 });
 

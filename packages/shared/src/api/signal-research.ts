@@ -1111,7 +1111,7 @@ export const researchVersionsSchema = z.object({
   items: z.array(researchVersionSchema),
   running: int,
   maxRunning: int,
-  /** Số version đã thử = số version lớn nhất (số không dùng lại; Baseline là v3 vì rules v1, v2 đã thử trước). */
+  /** Số version đã lưu (Baseline + version team tạo, mọi trạng thái); rules v1 / v2 không tính. */
   versionsTried: int,
   /** > 3 version đã thử: version qua cổng phải lặp lại trên 100 lệnh đóng tiếp theo. */
   extraCheck: z.boolean(),

@@ -8,6 +8,7 @@ import {
   effectiveMaxOpenTrades,
   extraCheckOn,
   segmentStart,
+  versionsTriedOf,
   versionGateStatus,
   type BotVersionConfig,
 } from "../signal-research/versions";
@@ -168,6 +169,9 @@ describe("versionGateStatus", () => {
     );
     expect(extraCheckOn(3)).toBe(false);
     expect(extraCheckOn(4)).toBe(true);
+    // Baseline + 2 version đã lưu = 3 → tắt; Baseline + 3 = 4 → bật (mọi trạng thái đều tính).
+    expect(extraCheckOn(versionsTriedOf(["baseline", "v4", "v5"]))).toBe(false);
+    expect(extraCheckOn(versionsTriedOf(["baseline", "v4", "v5", "v6-retired"]))).toBe(true);
   });
 
   it("with the extra check a pass must repeat on the next 100 closed trades", () => {

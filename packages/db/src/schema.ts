@@ -247,6 +247,13 @@ export const idempotencyKeys = pgTable(
     requestHash: text("request_hash").notNull(),
     statusCode: smallint("status_code"),
     response: jsonb("response"),
+    /**
+     * `null` = đang chạy (chưa có `status_code`) hoặc đã xong; `failed_unknown` = handler lỗi khi có thể đã có
+     * tác dụng phụ, không chạy lại (#316). Dòng cũ để null nên vẫn đọc như trước.
+     */
+    outcome: text("outcome"),
+    /** Mã lỗi (ErrorCode) của lần chạy `failed_unknown`. */
+    errorCode: text("error_code"),
     expiresAt: tstz("expires_at").notNull(),
     ...timestamps,
   },
