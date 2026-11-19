@@ -1,9 +1,9 @@
 "use client";
 
 import type {
-  ResearchFunnel,
   ResearchLevelRow,
   ResearchPaperBot,
+  ResearchRange,
   ResearchRisk,
   ResearchSource,
   ResearchSummary,
@@ -11,7 +11,7 @@ import type {
   ResearchDirectionRow,
 } from "@drift/shared";
 import { useTranslations } from "next-intl";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api";
 
@@ -20,7 +20,8 @@ import type { PageCtx } from "../components/signal-analysis-page";
 import { clock, count, monthDay } from "../format";
 
 import { useResearchSummary } from "./api";
-import { balance, delay, delayLong, pctPlain, pctSigned, tone } from "./format";
+import { balance, delay, pctPlain, pctSigned, tone } from "./format";
+import { NewsTrace, type TraceRequest } from "./news-trace";
 import type { Tr } from "./text";
 import { ResearchTrades } from "./trades";
 import {
@@ -43,11 +44,13 @@ import {
 // Tab "Signal research" (team, #273; thiết kế docs/mockups/signal-research, #269 v3.4). Chỉ nghiên cứu, tiền giả: tin
 // được giao dịch paper khi xảy ra, whales / funding / price patterns chạy lại mỗi đêm. Không gì được gửi tới SoDEX. Mọi
 // số đến từ API team của #271; thiếu thì hiện "Not available" / "Not enough trades", không bao giờ 0 (quy tắc 1.8).
-// Dưới 768px theo mockup 390: chỉ "Where each type stands" (thẻ) và "Trades" (thẻ).
+// Dưới 768px theo mockup 390: News feed + funnel trace (#292), "Where each type stands" (thẻ) và "Trades" (thẻ).
 
 export function ResearchTab({ ctx }: { ctx: PageCtx }) {
   const t = useTranslations("signalAnalysis.research");
-  const q = useResearchSummary();
+  const [range, setRange] = useState<ResearchRange>("1d");
+  const [trace, setTrace] = useState<TraceRequest | null>(null);
+  const q = useResearchSummary(range);
   const v = q.data;
   const { onMeta, onForbidden } = ctx;
   useEffect(() => {
@@ -76,19 +79,37 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
     <>
       {q.isError ? <StaleNote time={clock(v.computedAt, ctx.tz, false)} /> : null}
       <Refreshing on={q.isPlaceholderData}>
-        <Body v={v} ctx={ctx} />
+        <Body
+          v={v}
+          ctx={ctx}
+          news={
+            <NewsTrace
+              ctx={ctx}
+              funnel={v.funnel}
+              range={range}
+              onRange={setRange}
+              request={trace}
+            />
+          }
+        />
       </Refreshing>
-      <ResearchTrades ctx={ctx} assets={v.assets} />
+      <ResearchTrades
+        ctx={ctx}
+        assets={v.assets}
+        onTrace={(id) => {
+          setTrace((x) => ({ id, seq: (x?.seq ?? 0) + 1 }));
+        }}
+      />
     </>
   );
 }
 
-function Body({ v, ctx }: { v: ResearchSummary; ctx: PageCtx }) {
+function Body({ v, ctx, news }: { v: ResearchSummary; ctx: PageCtx; news: ReactNode }) {
   return (
     <>
       <Sources items={v.sources} now={v.computedAt} tz={ctx.tz} />
       <PaperBots bots={v.bots} tz={ctx.tz} />
-      <Funnel f={v.funnel} />
+      {news}
       <Rules version={v.newsRulesVersion} levels={v.levels} />
       <Summary
         rows={v.rows}
@@ -301,160 +322,6 @@ function PaperBots({ bots, tz }: { bots: ResearchPaperBot[]; tz: string }) {
           )}
         </div>
       )}
-    </Block>
-  );
-}
-
-/* ---------------------------------------------------------------- Funnel */
-
-// Màu từng tầng: chỉ token (accent-ink → accent, rồi pos cho bước vào lệnh); chữ trắng đạt AA trên mọi tầng.
-const LAYERS = [
-  { w: 100, bg: "bg-accent-ink" },
-  { w: 90, bg: "bg-[color-mix(in_srgb,var(--accent-ink)_66%,var(--accent))]" },
-  { w: 80, bg: "bg-[color-mix(in_srgb,var(--accent-ink)_33%,var(--accent))]" },
-  { w: 70, bg: "bg-accent" },
-  { w: 60, bg: "bg-pos" },
-] as const;
-
-function Funnel({ f }: { f: ResearchFunnel | null }) {
-  const t = useTranslations("signalAnalysis.research.funnel");
-  const tr = useTranslations("signalAnalysis.research.reasons");
-  if (f === null)
-    return (
-      <Block id="sr-funnel" title={t("title", { days: 7 })} className="max-md:hidden">
-        <Na />
-      </Block>
-    );
-  const steps: { name: string; n: string; sub: string }[] = [
-    {
-      name: t("collect"),
-      n: t("collectN", { n: f.collected }),
-      sub: t("collectSub"),
-    },
-    {
-      name: t("normalize"),
-      n: t("normalizeN", { n: f.stories }),
-      sub: t("normalizeSub", { merged: f.merged }),
-    },
-    {
-      name: t("score"),
-      n: t("scoreN", { n: f.signals }),
-      sub: t("scoreSub", {
-        high: count(f.levels.high),
-        medium: count(f.levels.medium),
-        low: count(f.levels.low),
-      }),
-    },
-    { name: t("filter"), n: t("filterN", { n: count(f.passed) }), sub: t("filterSub") },
-    {
-      name: t("decide"),
-      n: t("decideN", { long: count(f.long), short: count(f.short) }),
-      sub: t("decideSub", { size: count(Number(f.sizeUsdc)) }),
-    },
-  ];
-  const drop = (d: ResearchFunnel["drops"]["score"]) =>
-    d.reasons.length === 0
-      ? t("dropNone")
-      : d.reasons.map((r) => t("reason", { label: tr(r.reason), n: count(r.n) })).join(" · ");
-  return (
-    <Block id="sr-funnel" title={t("title", { days: f.days })} className="max-md:hidden">
-      <div className="flex flex-wrap items-center gap-5">
-        <div className="flex flex-[1_1_230px] flex-col gap-3">
-          <div className="rounded-[16px] bg-surface-2 p-3.5">
-            <div className="text-xs font-bold text-muted">{t("delay")}</div>
-            <div className="text-2xl font-extrabold">
-              {f.delayMedianSecs === null ? <Na /> : delayLong(f.delayMedianSecs)}
-            </div>
-            <Sub>{t("delaySub", { every: delay(f.pollSecs) })}</Sub>
-          </div>
-          <div className="rounded-[16px] bg-surface-2 p-3.5">
-            <div className="text-xs font-bold text-muted">{t("cost")}</div>
-            <div className="text-2xl font-extrabold">
-              {f.claudeCostPerDay === null ? (
-                <Na />
-              ) : (
-                t("costValue", { usd: Number(f.claudeCostPerDay).toFixed(2) })
-              )}
-            </div>
-            <Sub>
-              {f.articlesRead === null ? (
-                <Na />
-              ) : f.soso === null ? (
-                t("costSubNoSoso", { articles: f.articlesRead })
-              ) : (
-                t("costSub", {
-                  articles: f.articlesRead,
-                  used: count(f.soso.used),
-                  limit: count(f.soso.limit),
-                })
-              )}
-            </Sub>
-          </div>
-        </div>
-        <div className="flex flex-[2_1_520px] flex-col items-center gap-1.5">
-          <div
-            role="img"
-            aria-label={t("aria", {
-              collected: f.collected,
-              stories: f.stories,
-              signals: count(f.signals),
-              passed: count(f.passed),
-              trades: f.long + f.short,
-              long: count(f.long),
-              short: count(f.short),
-            })}
-            className="flex w-full flex-col items-center gap-1.5"
-          >
-            {steps.map((s, i) => {
-              const l = LAYERS[i] ?? LAYERS[0];
-              // Đáy hẹp hơn đỉnh 5 % bề rộng phễu mỗi bên → hình thang nối tiếp nhau.
-              const inset = (5 / l.w) * 100;
-              return (
-                <div
-                  key={s.name}
-                  className={`flex h-[66px] flex-col items-center justify-center px-[8%] text-center text-white ${l.bg}`}
-                  style={{
-                    width: `${String(l.w)}%`,
-                    clipPath: `polygon(0 0,100% 0,${String(100 - inset)}% 100%,${String(inset)}% 100%)`,
-                  }}
-                >
-                  <span className="text-[17px] font-extrabold">
-                    {s.name}
-                    {"  "}
-                    {s.n}
-                  </span>
-                  <span className="text-xs opacity-90">{s.sub}</span>
-                </div>
-              );
-            })}
-          </div>
-          <p className="m-0 mt-1.5 flex flex-wrap items-center justify-center gap-2.5 rounded-[16px] border border-border px-4 py-2.5">
-            <span className="font-extrabold">{t("closed", { n: count(f.outcomes.closed) })}</span>
-            <span className="font-bold text-pos">{t("tp", { n: count(f.outcomes.tp) })}</span>
-            <span className="font-bold text-neg">{t("sl", { n: count(f.outcomes.sl) })}</span>
-            <span className="font-bold text-ink-2">
-              {t("maxHold", { n: count(f.outcomes.maxHold) })}
-            </span>
-            <span className="text-xs text-muted">{t("open", { n: count(f.outcomes.open) })}</span>
-          </p>
-        </div>
-        <div className="flex flex-[1_1_230px] flex-col gap-2">
-          <h3 className="m-0 text-[15px] font-extrabold">{t("drops")}</h3>
-          <p className="m-0 rounded-[14px] bg-surface-2 px-3 py-2.5 text-[13px] leading-normal">
-            <b aria-hidden="true">{t("dropScore", { n: f.drops.score.n })}</b>
-            <span className="sr-only">{t("dropScoreSr", { n: f.drops.score.n })}</span>
-            <br />
-            {drop(f.drops.score)}
-          </p>
-          <p className="m-0 rounded-[14px] bg-surface-2 px-3 py-2.5 text-[13px] leading-normal">
-            <b aria-hidden="true">{t("dropFilter", { n: f.drops.filter.n })}</b>
-            <span className="sr-only">{t("dropFilterSr", { n: f.drops.filter.n })}</span>
-            <br />
-            {drop(f.drops.filter)}
-          </p>
-          <Sub>{t("mergeNote")}</Sub>
-        </div>
-      </div>
     </Block>
   );
 }

@@ -3,9 +3,11 @@ import { z } from "zod";
 import { isoDateTimeSchema } from "../schemas";
 
 // Hợp đồng API của Signal research (#271; UI #273). Endpoint team (role team, chỉ đọc, transaction READ ONLY):
-//   GET /api/v1/admin/signal-research/summary?tz=
+//   GET /api/v1/admin/signal-research/summary?range=&tz=
 //   GET /api/v1/admin/signal-research/trades?type=&label=&asset=&show=&cursor=&limit=&tz=
 //   GET /api/v1/admin/signal-research/trades/:id?tz=
+//   GET /api/v1/admin/signal-research/articles?range=&show=&stage=&reason=&cursor=&limit=&tz=   (#291)
+//   GET /api/v1/admin/signal-research/articles/:id/trace?tz=                                   (#291)
 // CLI `signals:report` của scheduler in cùng dữ liệu. Tên export giữ đúng như bản sao tạm của web (#273) để web chỉ đổi
 // import. Quy ước: phần trăm là số theo đơn vị % (0.21 = +0.21%); tiền / giá là chuỗi thập phân; thời điểm là ISO UTC.
 // Giá trị không biết là null (web hiện "Not available" / "Not enough trades", không bao giờ 0, quy tắc 1.8). API không
@@ -38,6 +40,10 @@ export const RESEARCH_DROP_REASONS = [
   "noPrice",
   "tooThin",
   "riskWindow",
+  /** #291: SoSoValue không gắn coin nào (mã nội bộ `NO_SODEX_MARKET` với `matched_currencies` rỗng); dừng ở Collect. */
+  "noTaggedCurrency",
+  /** #291: trùng nội dung y hệt một bài đã lưu (`DUPLICATE`); dừng ở Normalize. */
+  "duplicate",
 ] as const;
 export const RESEARCH_NEWS_TYPES = [
   "hack",
@@ -107,6 +113,20 @@ export const researchFunnelSchema = z.object({
   short: int,
   sizeUsdc: dec,
   drops: z.object({ score: dropSchema, filter: dropSchema }),
+  /**
+   * #291: số BÀI (không phải event) theo bước dừng + kết quả + lý do, cùng cách tính với feed `/articles` (bấm một lý do
+   * thì feed ra đúng chừng ấy bài). Có `range` thì chỉ bài thu trong khoảng đó; không có thì mọi bài của version hiện tại.
+   * Không có bài backlog (xem `researchArticleSchema`).
+   */
+  articleStops: z.array(
+    z.object({
+      stage: z.enum(["collect", "normalize", "score", "filter", "decide"]),
+      outcome: z.enum(["traded", "dropped", "merged", "waiting"]),
+      reason: z.enum(RESEARCH_DROP_REASONS).nullable(),
+      mergeReason: z.enum(["sameStory", "storyTooOld"]).nullable(),
+      n: int,
+    }),
+  ),
   outcomes: z.object({ closed: int, tp: int, sl: int, maxHold: int, open: int }),
 });
 
@@ -226,6 +246,11 @@ export const researchSkipSchema = z.object({
 
 export const researchTradeSchema = z.object({
   id: z.string().min(1),
+  /**
+   * #291: bài để mở trace (`/articles/:id/trace`): lệnh → bài đã mở lệnh (bài đầu của lần thử đó); tín hiệu bị bỏ → bài
+   * bị bỏ ở Filter. null với replay / dòng thiếu bài.
+   */
+  articleId: z.string().nullable(),
   type,
   label,
   asset: z.string(),
@@ -366,6 +391,276 @@ export const researchTradeDetailSchema = z.object({
   heldSecs: int.nullable(),
   steps: z.array(researchStepSchema),
 });
+
+// ── Feed bài và trace từng bài (#291, thiết kế docs/mockups/signal-research/news-trace.html) ─────────────────────────
+
+export const RESEARCH_RANGES = ["1d", "7d"] as const;
+/** Năm bước của phễu; `score` = bước `understand` nội bộ (Claude + quy tắc). */
+export const RESEARCH_STAGES = ["collect", "normalize", "score", "filter", "decide"] as const;
+export const RESEARCH_ARTICLE_SHOWS = ["all", "traded", "dropped", "claude"] as const;
+/**
+ * `traded` = bài đã mở lệnh giấy; `dropped` = bị loại (có `reason`); `merged` = gộp vào câu chuyện đã có ở Filter
+ * (`mergeReason`), không phải bị loại; `waiting` = còn trong phễu (chờ Normalize / Claude).
+ */
+export const RESEARCH_ARTICLE_OUTCOMES = ["traded", "dropped", "merged", "waiting"] as const;
+export const RESEARCH_MERGE_REASONS = ["sameStory", "storyTooOld"] as const;
+export const RESEARCH_SOURCE_TIERS = ["top", "mid", "low"] as const;
+export const RESEARCH_STEP_STATUSES = ["pass", "drop", "merge", "notReached"] as const;
+export const RESEARCH_TRACE_CHECKS = [
+  "sourceLive",
+  "priceAvailable",
+  "noOpenTrade",
+  "tpVsCost",
+] as const;
+
+const tier = z.enum(RESEARCH_SOURCE_TIERS);
+const stage = z.enum(RESEARCH_STAGES);
+
+/** Usage Claude của MỘT bài (DEC-326). null ở trên = bài không qua Claude hoặc bài cũ trước khi lưu usage. */
+export const researchClaudeUsageSchema = z.object({
+  calls: int,
+  /** null khi có lần gọi không nhận được phản hồi (không biết token). */
+  tokens: z.object({ input: int, cacheWrite: int, cacheRead: int, output: int }).nullable(),
+  /** USD, chuỗi thập phân không làm tròn; null khi thiếu token hoặc model không có trong bảng giá. */
+  costUsd: dec.nullable(),
+  model: z.string().nullable(),
+  promptVersion: z.string().nullable(),
+});
+
+/**
+ * Một bài trong feed. Chỉ bài của version quy tắc hiện tại, KHÔNG có bài backlog (lưu thô, cũ hơn mốc dưới của Collect,
+ * không bao giờ vào phễu; tổng kết đếm riêng). `stage` = bước cuối bài tới được; bài bị loại thì là bước loại nó.
+ */
+export const researchArticleSchema = z.object({
+  id: z.string().min(1),
+  /** Tin flash không có tiêu đề: null, web hiện `excerpt`. */
+  title: z.string().nullable(),
+  /** ≤ 140 ký tự đầu của nội dung (đã bỏ HTML); null khi không có nội dung. */
+  excerpt: z.string().nullable(),
+  url: z.string().nullable(),
+  /** Tên nguồn (tác giả SoSoValue). */
+  source: z.string(),
+  /** Hạng nguồn theo bảng của version quy tắc hiện tại (`sourceTierOf`); null khi không xác định. */
+  tier: tier.nullable(),
+  publishedAt: iso,
+  collectedAt: iso,
+  /** Từ giờ đăng tới lúc DeskLabs thu bài. */
+  delaySecs: int,
+  /** Coin SoSoValue gắn cho bài (symbol), theo thứ tự SoSoValue. */
+  tagged: z.array(z.string()),
+  /** Market SoDEX ứng viên sau Normalize (rỗng khi chưa tới / không có). */
+  candidates: z.array(z.string()),
+  /** Market Claude chọn ở Score; null khi chưa phân loại hoặc không chọn. */
+  asset: z.string().nullable(),
+  /** Chiều theo loại tin, đã lưu khi bài qua Score; null khi không có. */
+  side: side.nullable(),
+  stage,
+  outcome: z.enum(RESEARCH_ARTICLE_OUTCOMES),
+  /** Chỉ khi `outcome = dropped`. */
+  reason: z.enum(RESEARCH_DROP_REASONS).nullable(),
+  /** Chỉ khi `outcome = merged`. */
+  mergeReason: z.enum(RESEARCH_MERGE_REASONS).nullable(),
+  /** Bài đã được gửi cho Claude (kể cả bài cũ chưa có usage). */
+  sentToClaude: z.boolean(),
+  claude: researchClaudeUsageSchema.nullable(),
+  /** Lệnh giấy bài này đã mở. */
+  tradeId: z.uuid().nullable(),
+});
+
+export const researchArticlesPageSchema = z.object({
+  items: z.array(researchArticleSchema),
+  nextCursor: z.string().nullable(),
+  /** Số bài khớp bộ lọc (N trong "N of M articles"). */
+  total: int,
+  /** Mọi bài trong khoảng thời gian, không lọc (M). */
+  totalInRange: int,
+});
+
+export const researchArticlesQuerySchema = z.object({
+  range: z.enum(RESEARCH_RANGES).default("1d"),
+  show: z.enum(RESEARCH_ARTICLE_SHOWS).default("all"),
+  stage: stage.optional(),
+  reason: z.enum(RESEARCH_DROP_REASONS).optional(),
+  cursor: z.string().max(400).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  tz: z.string().max(64).optional(),
+});
+
+export const researchSummaryQuerySchema = z.object({
+  /** Không có = như trước (#271): phễu tính mọi dữ liệu của version hiện tại. */
+  range: z.enum(RESEARCH_RANGES).optional(),
+  tz: z.string().max(64).optional(),
+});
+
+const sourceRef = z.object({ name: z.string(), tier });
+const pct = z.number().nullable();
+
+/** Câu chuyện của bài (tạo / gộp ở bước Filter; web hiện ở thẻ Normalize như thiết kế). */
+export const researchTraceStorySchema = z.object({
+  id: z.uuid(),
+  /** `MARKET|catalyst` nội bộ. */
+  key: z.string(),
+  market: z.string(),
+  newsType: z.enum(RESEARCH_NEWS_TYPES),
+  /** true = bài này mở dòng câu chuyện; false = gộp vào câu chuyện đã có. */
+  isNew: z.boolean(),
+  /** Số nguồn khác nhau của câu chuyện HIỆN TẠI (có thể gồm bài tới sau). */
+  sources: int,
+  levelAtEntry: level,
+  laterLevel: level,
+  outcome: z.enum(["entered", "skipped"]),
+  tradeId: z.uuid().nullable(),
+});
+
+export const researchTraceCheckSchema = z.object({
+  key: z.enum(RESEARCH_TRACE_CHECKS),
+  ok: z.boolean(),
+  /** Mã nội bộ của lần kiểm hỏng (`NO_BOOK_DATA`…); null khi qua. */
+  code: z.string().nullable(),
+  /** sourceLive: phút trễ; tpVsCost: TP %. null khi không lưu. */
+  value: pct,
+  /** sourceLive: trần phút; tpVsCost: TP tối thiểu % (= chi phí × bội số). */
+  limit: pct,
+  costPct: pct,
+  spreadPct: pct,
+  /** noOpenTrade hỏng: lệnh đang mở. */
+  openTradeId: z.uuid().nullable(),
+});
+
+const stepBase = {
+  status: z.enum(RESEARCH_STEP_STATUSES),
+  /** Lúc ghi event của bước; null khi chưa tới. */
+  at: iso.nullable(),
+  reason: z.enum(RESEARCH_DROP_REASONS).nullable(),
+  mergeReason: z.enum(RESEARCH_MERGE_REASONS).nullable(),
+  /** Mã nội bộ đã lưu (`NOT_A_SIGNAL_TYPE`…), web hiện nguyên văn như thiết kế. */
+  code: z.string().nullable(),
+};
+
+export const researchTraceStepSchema = z.discriminatedUnion("key", [
+  z.object({
+    key: z.literal("collect"),
+    ...stepBase,
+    detail: z.object({
+      publishedAt: iso,
+      collectedAt: iso,
+      delaySecs: int,
+      source: z.string(),
+      tier: tier.nullable(),
+      url: z.string().nullable(),
+      tagged: z.array(z.object({ symbol: z.string(), name: z.string().nullable() })),
+    }),
+  }),
+  z.object({
+    key: z.literal("normalize"),
+    ...stepBase,
+    detail: z
+      .object({
+        candidates: z.array(
+          z.object({ symbol: z.string(), market: z.string(), kind: z.enum(["crypto", "stock"]) }),
+        ),
+        duplicateOf: z
+          .object({
+            id: z.string(),
+            title: z.string().nullable(),
+            excerpt: z.string().nullable(),
+            publishedAt: iso,
+          })
+          .nullable(),
+        story: researchTraceStorySchema.nullable(),
+      })
+      .nullable(),
+  }),
+  z.object({
+    key: z.literal("score"),
+    ...stepBase,
+    detail: z
+      .object({
+        sentToClaude: z.boolean(),
+        /** false = Claude trả "none" (không phải loại tin trong danh sách); null = chưa phân loại. */
+        signalType: z.boolean().nullable(),
+        newsType: z.enum(RESEARCH_NEWS_TYPES).nullable(),
+        /** Chiều và giữ tối đa theo loại tin (quy tắc, không phải Claude). */
+        side: side.nullable(),
+        maxHoldHours: int.nullable(),
+        asset: z.string().nullable(),
+        relevance: z.enum(["direct", "passingMention"]).nullable(),
+        promotional: z.boolean().nullable(),
+        /** YYYY-MM-DD do Claude đọc ra. */
+        eventDate: z.string().nullable(),
+        /** Mã lỗi khi Claude không trả lời được ("Not understood"). */
+        error: z.string().nullable(),
+        /** Mức lúc quyết định (tính ở Filter); null khi bài không tới Filter hoặc bị gộp. */
+        level: level.nullable(),
+        laterLevel: level.nullable(),
+        /** Nguồn dùng để tính mức: lệnh → nguồn lúc vào; còn lại → nguồn HIỆN TẠI của câu chuyện; null khi không có. */
+        levelSources: z.array(sourceRef).nullable(),
+        claude: researchClaudeUsageSchema.nullable(),
+      })
+      .nullable(),
+  }),
+  z.object({
+    key: z.literal("filter"),
+    ...stepBase,
+    detail: z
+      .object({
+        level: level.nullable(),
+        /** Theo thứ tự pipeline; dừng ở lần kiểm hỏng đầu tiên. Rỗng khi bài bị gộp. */
+        checks: z.array(researchTraceCheckSchema),
+        /** Gộp: mức câu chuyện sau khi thêm bài này. */
+        laterLevel: level.nullable(),
+        /** Gộp `storyTooOld`: giờ bài đầu tiên được tính của câu chuyện. */
+        storyStartedAt: iso.nullable(),
+      })
+      .nullable(),
+  }),
+  z.object({
+    key: z.literal("decide"),
+    ...stepBase,
+    detail: z
+      .object({
+        tradeId: z.uuid(),
+        side,
+        sizeUsdc: dec,
+        entry: dec,
+        openedAt: iso,
+        tp: dec,
+        tpPct: pct,
+        sl: dec,
+        slPct: pct,
+        maxHoldHours: int,
+        maxHoldUntil: iso,
+        priceSource: z.enum(["book", "lastSpread"]).nullable(),
+        /** Lần thử lại của câu chuyện (bài đầu bị bỏ vì lý do tạm thời). */
+        retry: z.boolean(),
+        movedBeforePct: pct,
+        status: z.enum(["open", "closed"]),
+        /** Lệnh ngẫu nhiên cùng thời điểm / TP / SL / giữ; null tới khi tính xong (sau cửa sổ giữ). */
+        random: z.object({ longPct: pct, shortPct: pct, pct, longShare: pct }).nullable(),
+      })
+      .nullable(),
+  }),
+]);
+
+export const researchArticleTraceSchema = z.object({
+  article: researchArticleSchema,
+  /** Luôn đủ 5 bước theo thứ tự collect → decide. */
+  steps: z.array(researchTraceStepSchema).length(5),
+});
+
+export type ResearchRange = (typeof RESEARCH_RANGES)[number];
+export type ResearchStage = (typeof RESEARCH_STAGES)[number];
+export type ResearchDropReason = (typeof RESEARCH_DROP_REASONS)[number];
+export type ResearchNewsType = (typeof RESEARCH_NEWS_TYPES)[number];
+export type ResearchClaudeUsage = z.infer<typeof researchClaudeUsageSchema>;
+export type ResearchArticle = z.infer<typeof researchArticleSchema>;
+export type ResearchArticlesPage = z.infer<typeof researchArticlesPageSchema>;
+export type ResearchArticlesQuery = z.infer<typeof researchArticlesQuerySchema>;
+export type ResearchSummaryQuery = z.infer<typeof researchSummaryQuerySchema>;
+export type ResearchTraceStory = z.infer<typeof researchTraceStorySchema>;
+export type ResearchTraceCheck = z.infer<typeof researchTraceCheckSchema>;
+export type ResearchTraceStep = z.infer<typeof researchTraceStepSchema>;
+export type ResearchArticleTrace = z.infer<typeof researchArticleTraceSchema>;
 
 export type ResearchType = (typeof RESEARCH_TYPES)[number];
 export type ResearchLabel = (typeof RESEARCH_LABELS)[number];
