@@ -39,6 +39,8 @@ export const NOTIFICATION_TYPES = [
   // và chặn lặp theo loại; mỗi ngày một tin tổng hợp.
   "team_incident",
   "team_incident_digest",
+  // Signal research (#311): SoDEX mở market chưa có trong asset map (DEC-330); scheduler phát, mỗi market một lần.
+  "team_sr_new_market",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -60,6 +62,7 @@ export const NOTIFICATION_GROUPS = {
     "team_invariant",
     "team_incident",
     "team_incident_digest",
+    "team_sr_new_market",
   ],
 } as const satisfies Record<string, readonly NotificationType[]>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;
@@ -243,6 +246,8 @@ export const TEAM_INCIDENT_KINDS = Object.keys(TEAM_INCIDENT_SEVERITY) as [
   ...TeamIncidentKind[],
 ];
 export const TEAM_INCIDENT_DETAIL_MAX = 200;
+/** Signal research (#311): tối đa ngần này market mới thì mỗi market một tin; nhiều hơn thì một tin tổng hợp. */
+export const SR_NEW_MARKET_ALERT_MAX = 10;
 
 /** Ngưỡng và chặn lặp (#241). Thời gian tính bằng ms. */
 export const TEAM_INCIDENT_RULES = {
@@ -363,6 +368,17 @@ export const teamOpsEventSchema = z.discriminatedUnion("type", [
     /** Số sự cố trong 24 giờ qua theo loại (kể cả lần bị chặn lặp); loại không có thì không có khoá. */
     counts: z.record(z.string(), z.number().int().nonnegative()),
   }),
+  // Signal research (#311): market SoDEX mới chưa phân loại trong asset map (DEC-330). `markets` tối đa
+  // `SR_NEW_MARKET_ALERT_MAX` tên; `total` > số tên = tin tổng hợp (quá nhiều market mới cùng lúc).
+  z
+    .object({
+      type: z.literal("team_sr_new_market"),
+      markets: z.array(z.string().min(1).max(40)).min(1).max(SR_NEW_MARKET_ALERT_MAX),
+      total: z.number().int().positive(),
+      /** `NEWS_ASSET_MAP_VERSION` lúc phát. */
+      assetMapVersion: z.string().min(1).max(40),
+    })
+    .refine((e) => e.total >= e.markets.length, { path: ["total"] }),
   z.object({
     type: z.literal("team_mcp_daily_limit"),
     /** User chạm giới hạn ngày; jobs đọc email và che lúc fan-out (tối đa 3 email trong tin). */

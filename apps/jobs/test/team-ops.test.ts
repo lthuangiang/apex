@@ -169,6 +169,27 @@ describe("team ops fan-out", () => {
     ).toBe(0);
   });
 
+  it("sends a new SoDEX market alert with the market names and asset map version only (#311)", async () => {
+    const lead = await user({ role: "team", telegram: "active" });
+    expect(
+      await handleTeamOps(
+        { db, telegramEnabled: true },
+        {
+          type: "team_sr_new_market",
+          markets: ["XYZ-USD", "ABC-USD"],
+          total: 14,
+          assetMapVersion: "assets-2026-11-19a",
+        },
+      ),
+    ).toBeGreaterThan(0);
+    const row = (await queuedFor([lead])).find((r) => r.type === "team_sr_new_market");
+    expect(row?.payload).toEqual({
+      markets: "XYZ-USD, ABC-USD",
+      total: 14,
+      version: "assets-2026-11-19a",
+    });
+  });
+
   it("does not report team accounts, fake-money bots, or anything when Telegram is off", async () => {
     const lead = await user({ role: "team", telegram: "active" });
     const teammate = await user({ role: "team" });

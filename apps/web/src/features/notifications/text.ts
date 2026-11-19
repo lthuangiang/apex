@@ -125,6 +125,7 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
       case "team_invariant":
       case "team_incident":
       case "team_incident_digest":
+      case "team_sr_new_market":
         // Báo team chỉ đi Telegram (DEC-184), không có bản in-app; có ở đây để switch đủ.
         return { title: t(`types.${n.type}`), body: null };
       case "leader_big_move": {
