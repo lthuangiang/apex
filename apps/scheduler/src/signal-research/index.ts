@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import type { Db } from "@drift/db";
-import { NEWS_LIMIT_DEFAULTS, NEWS_RULES } from "@drift/shared";
+import {
+  NEWS_LIMIT_DEFAULTS,
+  NEWS_RULES,
+  SR_QUOTES_KEY,
+  SR_QUOTES_TTL_MS,
+  type SrQuotesSnapshot,
+} from "@drift/shared";
 import { z } from "zod";
 
 import { anthropicClassifier, type NewsClassifier } from "./classifier";
@@ -120,6 +126,8 @@ export interface Logger {
 
 export interface RedisLike {
   mget: (...keys: string[]) => Promise<(string | null)[]>;
+  /** Ghi bản chụp `sr:quotes` (#308); không có → không ghi (api không có lãi / lỗ chưa chốt). */
+  set?: (key: string, value: string, px: "PX", ms: number) => Promise<unknown>;
 }
 
 export interface PerpsSymbolInfo {
@@ -183,7 +191,20 @@ export function createSignalResearch(input: {
     spreadHists: (m, since) => spreadHists(input.db, m, since),
     tickSize: (m) => tickSizes().get(m) ?? null,
   });
-  const watcher = new PaperWatcher({ db: input.db, quotes, now, log: input.log });
+  const redisSet = input.redis.set?.bind(input.redis);
+  const watcher = new PaperWatcher({
+    db: input.db,
+    quotes,
+    now,
+    log: input.log,
+    ...(redisSet === undefined
+      ? {}
+      : {
+          publishQuotes: async (snap: SrQuotesSnapshot) => {
+            await redisSet(SR_QUOTES_KEY, JSON.stringify(snap), "PX", SR_QUOTES_TTL_MS);
+          },
+        }),
+  });
   const soso = input.soso ?? sosoClient(input.env.SOSO_API_KEY);
   const classifier = input.classifier ?? anthropicClassifier(input.env.DESK_AI_API_KEY, input.log);
   let cycleBusy = false;

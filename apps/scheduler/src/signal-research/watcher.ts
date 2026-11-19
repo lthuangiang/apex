@@ -10,9 +10,11 @@ import {
   SignalOutcome,
   SignalReason,
   SignalStage,
+  srQuotesSnapshot,
   TradeDirection,
   type PaperExitReason,
   type Quote,
+  type SrQuotesSnapshot,
 } from "@drift/shared";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -29,7 +31,12 @@ export interface WatcherDeps {
   db: Db;
   quotes: { quotes: (markets: readonly string[]) => Promise<Map<string, Quote | SignalReason>> };
   now: () => number;
-  log: { info: (obj: object, msg: string) => void };
+  log: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void };
+  /**
+   * #308: ghi bid / ask của market có lệnh mở (Redis `sr:quotes`) để api tính lãi / lỗ chưa chốt theo giá thoát thật.
+   * Không truyền → không ghi.
+   */
+  publishQuotes?: (snapshot: SrQuotesSnapshot) => Promise<void>;
 }
 
 const RELOAD_MS = 30_000;
@@ -216,6 +223,21 @@ export class PaperWatcher {
           .where(and(eq(signalPaperTrades.id, id), eq(signalPaperTrades.status, "open")));
       }
     }
+    await this.#publish(quotes);
     return closed;
+  }
+
+  /** Bản chụp giá mỗi lượt có lệnh mở; giá không có / cũ thì vắng mặt (api hiện như chưa có giá). Lỗi Redis chỉ log. */
+  async #publish(quotes: ReadonlyMap<string, Quote | SignalReason>): Promise<void> {
+    const publish = this.#deps.publishQuotes;
+    if (publish === undefined || this.#open.length === 0) return;
+    const markets = new Set(this.#open.map((t) => t.market));
+    const live = new Map<string, Quote>();
+    for (const [m, q] of quotes) if (markets.has(m) && isQuote(q)) live.set(m, q);
+    try {
+      await publish(srQuotesSnapshot(live));
+    } catch (err) {
+      this.#deps.log.warn({ err }, "signal research quotes snapshot not written");
+    }
   }
 }

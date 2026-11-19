@@ -84,7 +84,7 @@ export function combineQuote(input: {
 }): Quote | SignalReason {
   const { now, book, last } = input;
   if (book !== undefined && now - book.at <= NEWS_RULES.bookFreshMs)
-    return { bid: book.bid, ask: book.ask, source: "book" };
+    return { bid: book.bid, ask: book.ask, source: "book", at: book.at };
   if (last === undefined || now - last.at > NEWS_RULES.lastPriceFreshMs)
     return SignalReason.noPrice;
   const price = dec(last.price);
@@ -96,7 +96,7 @@ export function combineQuote(input: {
   )
     return SignalReason.noBookData;
   const half = dec(input.tickSize).mul(input.spread.ticks).div(2);
-  return { bid: price.sub(half), ask: price.add(half), source: "last_spread" };
+  return { bid: price.sub(half), ask: price.add(half), source: "last_spread", at: last.at };
 }
 
 export interface QuoteDeps {

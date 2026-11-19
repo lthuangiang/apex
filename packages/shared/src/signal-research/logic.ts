@@ -288,6 +288,11 @@ export interface Quote {
   ask: Decimal;
   /** `book`: giá tốt nhất SoDEX từ marketdata; `last_spread`: giá gần nhất ± nửa spread đo theo giờ. */
   source: "book" | "last_spread";
+  /**
+   * Thời điểm (ms) của dữ liệu giá gốc: giờ nhận sổ (`book`) hoặc giờ của giá gần nhất (`last_spread`). `combineQuote`
+   * của scheduler luôn điền; dùng để bỏ giá cũ khi tính lãi / lỗ chưa chốt (#308).
+   */
+  at?: number;
 }
 
 export function midOf(q: Pick<Quote, "bid" | "ask">): Decimal {
