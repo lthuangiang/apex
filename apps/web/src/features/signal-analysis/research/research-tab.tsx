@@ -20,7 +20,7 @@ import type { PageCtx } from "../components/signal-analysis-page";
 import { clock, count, monthDay } from "../format";
 
 import { useResearchSummary } from "./api";
-import { balance, delay, pctPlain, pctSigned, tone, usdSigned } from "./format";
+import { balance, delay, pctPlain, pctSigned, tone } from "./format";
 import { NewsTrace, type TraceRequest } from "./news-trace";
 import type { Tr } from "./text";
 import { ResearchTrades } from "./trades";
@@ -40,6 +40,7 @@ import {
   tdW,
   thR,
 } from "./ui";
+import { NewsVersions } from "./versions";
 
 // Tab "Signal research" (team, #273; thiết kế docs/mockups/signal-research, #269 v3.4). Chỉ nghiên cứu, tiền giả: tin
 // được giao dịch paper khi xảy ra, whales / funding / price patterns chạy lại mỗi đêm. Không gì được gửi tới SoDEX. Mọi
@@ -50,7 +51,9 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
   const t = useTranslations("signalAnalysis.research");
   const [range, setRange] = useState<ResearchRange>("1d");
   const [trace, setTrace] = useState<TraceRequest | null>(null);
-  const q = useResearchSummary(range);
+  // #306: News bot version của tổng kết, feed, trace và bảng Trades; null = Baseline (mặc định của API).
+  const [versionId, setVersionId] = useState<string | null>(null);
+  const q = useResearchSummary(range, versionId);
   const v = q.data;
   const { onMeta, onForbidden } = ctx;
   useEffect(() => {
@@ -82,6 +85,8 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
         <Body
           v={v}
           ctx={ctx}
+          versionId={versionId}
+          onVersion={setVersionId}
           news={
             <NewsTrace
               ctx={ctx}
@@ -89,6 +94,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
               range={range}
               onRange={setRange}
               request={trace}
+              versionId={versionId}
             />
           }
         />
@@ -96,6 +102,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
       <ResearchTrades
         ctx={ctx}
         assets={v.assets}
+        versionId={versionId}
         onTrace={(id) => {
           setTrace((x) => ({ id, seq: (x?.seq ?? 0) + 1 }));
         }}
@@ -104,11 +111,29 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
   );
 }
 
-function Body({ v, ctx, news }: { v: ResearchSummary; ctx: PageCtx; news: ReactNode }) {
+function Body({
+  v,
+  ctx,
+  news,
+  versionId,
+  onVersion,
+}: {
+  v: ResearchSummary;
+  ctx: PageCtx;
+  news: ReactNode;
+  versionId: string | null;
+  onVersion: (id: string) => void;
+}) {
   return (
     <>
       <Sources items={v.sources} now={v.computedAt} tz={ctx.tz} />
-      <PaperBots bots={v.bots} tz={ctx.tz} />
+      <PaperBots
+        bots={v.bots}
+        tz={ctx.tz}
+        versionId={versionId}
+        onVersion={onVersion}
+        summaryVersion={v.version?.id ?? null}
+      />
       {news}
       <Rules version={v.newsRulesVersion} levels={v.levels} />
       <Summary
@@ -233,7 +258,20 @@ function BotPill({ bot }: { bot: ResearchPaperBot }) {
   );
 }
 
-function PaperBots({ bots, tz }: { bots: ResearchPaperBot[]; tz: string }) {
+function PaperBots({
+  bots,
+  tz,
+  versionId,
+  onVersion,
+  summaryVersion,
+}: {
+  bots: ResearchPaperBot[];
+  tz: string;
+  versionId: string | null;
+  onVersion: (id: string) => void;
+  /** Version mà tổng kết (và lãi / lỗ chưa chốt của bot News) đang mô tả. */
+  summaryVersion: string | null;
+}) {
   const t = useTranslations("signalAnalysis.research.bots");
   const by = (k: ResearchPaperBot["type"]) => bots.find((b) => b.type === k);
   const news = by("news");
@@ -245,103 +283,68 @@ function PaperBots({ bots, tz }: { bots: ResearchPaperBot[]; tz: string }) {
     b === undefined || b.balance === null ? <Na /> : balance(b.balance);
   const ver = (b: ResearchPaperBot) =>
     b.rulesVersion === null ? <Na /> : t("version", { v: b.rulesVersion });
+  // #306: lane News là các News bot version (thẻ + bảng, `NewsVersions`); thẻ bot replay giữ như trước.
+  const others =
+    whales === undefined && group === undefined ? null : (
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(290px,1fr))] gap-3.5 max-md:hidden">
+        {whales === undefined ? null : (
+          <BotCard
+            title={t("names.whales")}
+            pill={<BotPill bot={whales} />}
+            body={t("body.whales")}
+            actions={
+              <>
+                <button type="button" disabled className={btn}>
+                  {t("pauseReplays")}
+                </button>
+                <button type="button" disabled className={btn}>
+                  {t("rules")}
+                </button>
+              </>
+            }
+          >
+            <div className="grid grid-cols-3 gap-2">
+              <Stat label={t("balance")} value={bal(whales)} />
+              <Stat
+                label={t("lastRun")}
+                value={
+                  whales.lastRun === null ? (
+                    <Na />
+                  ) : (
+                    t("lastRunValue", {
+                      time: clock(whales.lastRun.at, tz, false),
+                      n: whales.lastRun.trades,
+                    })
+                  )
+                }
+              />
+              <Stat label={t("rules")} value={ver(whales)} />
+            </div>
+          </BotCard>
+        )}
+        {group === undefined ? null : (
+          <BotCard title={t("names.group")} pill={<BotPill bot={group} />} body={t("body.group")}>
+            <div className="grid grid-cols-2 gap-2">
+              <Stat label={t("fundingBalance")} value={bal(funding)} />
+              <Stat label={t("priceBalance")} value={bal(price)} />
+            </div>
+          </BotCard>
+        )}
+      </div>
+    );
   return (
-    <Block id="sr-bots" title={t("title")} right={t("sub")} className="max-md:hidden">
-      {bots.length === 0 ? (
-        <Na />
-      ) : (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(290px,1fr))] gap-3.5">
-          {news === undefined ? null : (
-            <BotCard
-              title={t("names.news")}
-              pill={<BotPill bot={news} />}
-              body={t("body.news")}
-              actions={
-                <>
-                  {/* TODO(#271): nối Pause khi API có thao tác pause bot paper (trạng thái từ backend, quy tắc 1.6). */}
-                  <button type="button" disabled className={btn}>
-                    {t("pause")}
-                  </button>
-                  <a href="#sr-rules" className={btn}>
-                    {t("rules")}
-                  </a>
-                </>
-              }
-            >
-              <div className="grid grid-cols-3 gap-2">
-                <Stat
-                  label={t("balance")}
-                  value={
-                    news.balance === null ? (
-                      <Na />
-                    ) : (
-                      <>
-                        {balance(news.balance)}
-                        {/* #297: 10,000 + kết quả đã chốt; lãi / lỗ chưa chốt chỉ khi có giá SoDEX của mọi lệnh mở. */}
-                        {news.unrealized === null ? null : (
-                          <span
-                            className={`block text-xs font-bold ${tone(Number(news.unrealized))}`}
-                          >
-                            {t("unrealized", { pnl: usdSigned(news.unrealized) })}
-                          </span>
-                        )}
-                      </>
-                    )
-                  }
-                />
-                <Stat
-                  label={t("open")}
-                  value={news.openTrades === null ? <Na /> : t("openN", { n: news.openTrades })}
-                />
-                <Stat label={t("rules")} value={ver(news)} />
-              </div>
-            </BotCard>
-          )}
-          {whales === undefined ? null : (
-            <BotCard
-              title={t("names.whales")}
-              pill={<BotPill bot={whales} />}
-              body={t("body.whales")}
-              actions={
-                <>
-                  <button type="button" disabled className={btn}>
-                    {t("pauseReplays")}
-                  </button>
-                  <button type="button" disabled className={btn}>
-                    {t("rules")}
-                  </button>
-                </>
-              }
-            >
-              <div className="grid grid-cols-3 gap-2">
-                <Stat label={t("balance")} value={bal(whales)} />
-                <Stat
-                  label={t("lastRun")}
-                  value={
-                    whales.lastRun === null ? (
-                      <Na />
-                    ) : (
-                      t("lastRunValue", {
-                        time: clock(whales.lastRun.at, tz, false),
-                        n: whales.lastRun.trades,
-                      })
-                    )
-                  }
-                />
-                <Stat label={t("rules")} value={ver(whales)} />
-              </div>
-            </BotCard>
-          )}
-          {group === undefined ? null : (
-            <BotCard title={t("names.group")} pill={<BotPill bot={group} />} body={t("body.group")}>
-              <div className="grid grid-cols-2 gap-2">
-                <Stat label={t("fundingBalance")} value={bal(funding)} />
-                <Stat label={t("priceBalance")} value={bal(price)} />
-              </div>
-            </BotCard>
-          )}
-        </div>
-      )}
+    <Block id="sr-bots" title={t("title")}>
+      <NewsVersions
+        tz={tz}
+        selected={versionId}
+        onSelect={onVersion}
+        others={others}
+        unrealized={
+          summaryVersion === null || news === undefined
+            ? null
+            : { versionId: summaryVersion, value: news.unrealized }
+        }
+      />
     </Block>
   );
 }

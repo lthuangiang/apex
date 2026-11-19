@@ -1,0 +1,739 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import {
+  baselineVersionConfig,
+  researchVersionCreateBodySchema,
+  type ResearchMarkets,
+} from "@drift/shared";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
+import { NextIntlClientProvider, useTranslations } from "next-intl";
+import { useState, type ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { z } from "zod";
+
+import messages from "../../../../messages/en.json";
+import { SignalAnalysisPage } from "../components/signal-analysis-page";
+import { AssetPicker, type MarketsState } from "../research/asset-picker";
+import { bodyOf, configOf, draftOf, validate } from "../research/version-sheet";
+import { gateLines, gateText } from "../research/version-text";
+
+import { RESEARCH_SUMMARY, RESEARCH_TRADES } from "./research-fixtures";
+import {
+  BASELINE,
+  CLASSIFIERS,
+  MARKETS,
+  V4,
+  V4_ID,
+  V5_ID,
+  VERSIONS,
+  VERSIONS_FULL,
+} from "./versions-fixtures";
+
+// News bot versions (#306; mockup docs/mockups/signal-research/bot-versions*.html, API #305): thẻ, cổng, bảng, sheet
+// tạo version, picker tài sản, đổi versionId cho tổng kết / feed / lệnh. API giả trả fixture đã qua đúng zod schema.
+
+interface Call {
+  method: string;
+  path: string;
+  body: unknown;
+  key: string | undefined;
+}
+const state = vi.hoisted(
+  (): {
+    calls: Call[];
+    versions: unknown;
+    markets: unknown;
+    create: "ok" | "stale" | "full" | "network-once" | "unlisted";
+    networkFailed: boolean;
+  } => ({
+    calls: [],
+    versions: null,
+    markets: null,
+    create: "ok",
+    networkFailed: false,
+  }),
+);
+const NEW_ID = "00000000-0000-4000-8000-000000000007";
+
+vi.mock("@/features/account/market-hours-time", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/features/account/market-hours-time")>();
+  return { ...real, browserTimeZone: () => "Asia/Ho_Chi_Minh" };
+});
+
+vi.mock("@/lib/api", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/api")>();
+  return {
+    ...real,
+    api: (
+      method: string,
+      path: string,
+      schema: z.ZodType,
+      options: { body?: unknown; idempotencyKey?: string } = {},
+    ) => {
+      state.calls.push({ method, path, body: options.body, key: options.idempotencyKey });
+      const p = new URL(path, "http://x").pathname;
+      if (method === "POST" && p.endsWith("/signal-research/versions")) {
+        if (state.create === "full")
+          return Promise.reject(
+            new real.ApiError("STATE_CONFLICT", 409, { reason: "MAX_RUNNING_VERSIONS", max: 3 }),
+          );
+        if (state.create === "unlisted")
+          return Promise.reject(
+            new real.ApiError("VALIDATION_FAILED", 400, {
+              fieldErrors: { "config.assets.markets": ["not_listed"] },
+              markets: ["SOLV-USD"],
+            }),
+          );
+        if (state.create === "network-once" && !state.networkFailed) {
+          state.networkFailed = true;
+          return Promise.reject(new real.ApiError("NETWORK", 0));
+        }
+        const body = options.body as z.infer<typeof researchVersionCreateBodySchema>;
+        return Promise.resolve(
+          schema.parse({
+            ...V4,
+            id: NEW_ID,
+            number: 7,
+            name: body.name,
+            config: body.config,
+            changedFromPrevious: null,
+            savedFrom: null,
+            warnings: state.create === "stale" ? ["market_list_stale"] : [],
+          }),
+        );
+      }
+      if (method === "POST" && p.includes("/signal-research/versions/"))
+        return Promise.resolve(schema.parse({ ...V4, status: "paused" }));
+      if (p.endsWith("/signal-research/versions"))
+        return Promise.resolve(schema.parse(state.versions));
+      if (p.endsWith("/signal-research/classifiers"))
+        return Promise.resolve(schema.parse(CLASSIFIERS));
+      if (p.endsWith("/signal-research/markets"))
+        return Promise.resolve(schema.parse(state.markets));
+      if (p.endsWith("/signal-research/summary"))
+        return Promise.resolve(schema.parse(RESEARCH_SUMMARY));
+      if (p.endsWith("/signal-research/trades"))
+        return Promise.resolve(schema.parse(RESEARCH_TRADES));
+      if (p.endsWith("/signal-research/articles"))
+        return Promise.resolve(
+          schema.parse({ items: [], nextCursor: null, total: 0, totalInRange: 0 }),
+        );
+      return Promise.reject(new real.ApiError("NOT_FOUND", 404));
+    },
+  };
+});
+const media = vi.hoisted(() => ({ mobile: false }));
+vi.mock("@/lib/use-media", () => ({
+  useMediaQuery: () => media.mobile,
+  BELOW_LG: "(max-width: 1023px)",
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: () => undefined, replace: () => undefined }),
+}));
+vi.mock("@/components/workspace", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  Workspace: ({ children }: { children: ReactNode }) => <main>{children}</main>,
+  PageHead: ({ title, action }: { title: string; action?: ReactNode }) => (
+    <header>
+      <h1>{title}</h1>
+      {action}
+    </header>
+  ),
+}));
+
+const intlErrors: string[] = [];
+function Intl({ children }: { children: ReactNode }) {
+  return (
+    <NextIntlClientProvider
+      locale="en"
+      messages={messages}
+      timeZone="UTC"
+      onError={(e) => {
+        intlErrors.push(e.message);
+      }}
+    >
+      {children}
+    </NextIntlClientProvider>
+  );
+}
+function wrap() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <Intl>
+        <SignalAnalysisPage />
+      </Intl>
+    </QueryClientProvider>,
+  );
+}
+
+beforeEach(() => {
+  state.calls = [];
+  state.versions = VERSIONS;
+  state.markets = MARKETS;
+  state.create = "ok";
+  state.networkFailed = false;
+  media.mobile = false;
+  intlErrors.length = 0;
+  window.history.replaceState(null, "", "/admin/signal-analysis?tab=research");
+});
+afterEach(() => {
+  cleanup();
+});
+
+async function noViolations() {
+  const r = await axe.run(document.body, {
+    runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
+    rules: { "color-contrast": { enabled: false } },
+  });
+  expect(r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.html).join(" | ")}`)).toEqual([]);
+}
+
+const card = (name: string) => screen.findByRole("article", { name }, { timeout: 5_000 });
+const posts = () => state.calls.filter((c) => c.method === "POST");
+/** Nút "New version" ở đầu khối (thẻ "One more slot" có nút thứ hai cùng tên). */
+function newVersion(): HTMLElement {
+  const b = screen.getAllByRole("button", { name: "New version" })[0];
+  if (b === undefined) throw new Error("New version button");
+  return b;
+}
+
+describe("News bot versions: cards, gate and table", { timeout: 20_000 }, () => {
+  it("summary bar, extra check and version cards follow the mockup", async () => {
+    wrap();
+    const bots = await screen.findByRole("region", { name: "Paper bots" });
+    const base = await card("News bot v3 · Baseline");
+    expect(within(bots).getByText(/at most 3 versions run at once/)).toHaveTextContent(
+      "Running 2 of 3 · at most 3 versions run at once",
+    );
+    expect(within(bots).getByText("Versions tried: 4")).toBeInTheDocument();
+    expect(within(bots).getByText(/precision 84% on 37 labels/)).toHaveTextContent(
+      "Classifier news-classifier-v2 · precision 84% on 37 labels",
+    );
+    expect(
+      within(bots)
+        .getByText(/Extra check is on\./)
+        .closest("p"),
+    ).toHaveTextContent("on its next 100 closed trades before it counts.");
+
+    expect(
+      within(base).getByText("Saved Nov 18, 09:12 · locked, the reference for later versions"),
+    ).toBeInTheDocument();
+    expect(
+      within(base).getByText(
+        "All 12 news types · level Low and up · 500 USDC · TP 1.5× · SL 0.75× · now on classifier v2",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(base)
+        .getByText(/^Open 7 \/ 20/)
+        .closest("p"),
+    ).toHaveTextContent("Open 7 / 20 · today 3 / no limit · blocked by limit 0");
+    expect(
+      within(base).getByText(
+        "31 trades not counted · classifier v1 under 80%. Classifier v2 started a new count on Nov 19, 13:00; it waits for labels (13 to go).",
+      ),
+    ).toBeInTheDocument();
+    expect(within(base).getByRole("button", { name: "Copy to new version" })).toBeInTheDocument();
+
+    const v4 = await card("News bot v4 · Strict subject");
+    expect(
+      within(v4).getByText("Saved Nov 19, 13:05 by ··a91f · counts trades opened after that"),
+    ).toBeInTheDocument();
+    expect(within(v4).getByText(/^10 news types · level Medium and up/)).toBeInTheDocument();
+    expect(within(v4).getByText("Waits for labels")).toBeInTheDocument();
+    expect(
+      within(v4)
+        .getByText(/^Open 0 \/ 20/)
+        .closest("p"),
+    ).toHaveTextContent("Open 0 / 20 · today 0 / 5 · blocked by limit 0");
+    expect(
+      within(v4).getByText(
+        "Trades count once classifier v2 has 50 labels at 80% or better (13 to go).",
+      ),
+    ).toBeInTheDocument();
+    for (const b of ["Pause", "Stop", "Edit as new version", "Rules"])
+      expect(within(v4).getByRole("button", { name: b })).toBeInTheDocument();
+
+    // Paused + Only these 2 mã: Resume, "Effectively 2", tiến độ lặp lại của kiểm tra thêm.
+    const v5 = await card("News bot v5 · Majors only");
+    expect(within(v5).getByRole("button", { name: "Resume" })).toBeInTheDocument();
+    expect(within(v5).getByText("Effectively 2: one trade per asset")).toBeInTheDocument();
+    expect(
+      within(v5).getByText(
+        "Passed on its first 120 closed trades. It must repeat the result on the next 100: 40 so far.",
+      ),
+    ).toBeInTheDocument();
+    // Version đã dừng chỉ ở bảng.
+    expect(screen.queryByRole("article", { name: "News bot v6 · Wider stops" })).toBeNull();
+    expect(within(bots).getByRole("heading", { name: "One more slot" })).toBeInTheDocument();
+    await noViolations();
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("All versions table: changes, classifiers, counted, blocked by limit and gate text", async () => {
+    wrap();
+    const tbl = await screen.findByRole("table", { name: "All News bot versions" });
+    const row = (n: RegExp) => within(tbl).getByRole("row", { name: n });
+    const v6 = row(/v6 · Wider stops/);
+    expect(within(v6).getByText("SL 0.75× → 1.0×")).toBeInTheDocument();
+    expect(within(v6).getByText("Stopped early")).toBeInTheDocument();
+    expect(within(v6).getByText("2")).toBeInTheDocument();
+    const v5 = row(/v5 · Majors only/);
+    expect(within(v5).getByText("Passed once · repeat 40 / 100")).toBeInTheDocument();
+    expect(
+      within(v5).getByText(/Lowest level Medium → High · .*Only BTC-USD, ETH-USD/),
+    ).toBeInTheDocument();
+    expect(within(v5).getByText("+0.21%")).toBeInTheDocument();
+    const v4 = row(/v4 · Strict subject/);
+    expect(
+      within(v4).getByText(/^Treasury buy off · Treasury sell off · Lowest level Low → Medium/),
+    ).toBeInTheDocument();
+    expect(within(v4).getByText("Not enough trades")).toBeInTheDocument();
+    const v3 = row(/v3 · Baseline/);
+    expect(within(v3).getByText("v1 → v2")).toBeInTheDocument();
+    expect(within(v3).getByText("31 · 0 counted")).toBeInTheDocument();
+    expect(within(v3).getByText("Not copied from a version")).toBeInTheDocument();
+    // PM (#313): "under 80%" luôn kèm số nhãn.
+    expect(
+      within(v3).getByText("Not counted · classifier v1 under 80% · 24 labels"),
+    ).toBeInTheDocument();
+  });
+
+  it("gate texts: current classifier under 80% names it with its label count", () => {
+    function Probe() {
+      const t = useTranslations("signalAnalysis.research.versions");
+      const labels = new Map(CLASSIFIERS.items.map((r) => [r.classifierVersion, r]));
+      const v = {
+        ...V4,
+        gate: {
+          ...V4.gate,
+          status: "not_counted" as const,
+          classifierStatus: "underPrecision" as const,
+        },
+      };
+      return (
+        <>
+          <p>{gateText(v, labels, t)}</p>
+          <p>{gateLines(v, labels, "UTC", t).join(" ")}</p>
+          <p>
+            {gateText(
+              { ...BASELINE, gate: { ...BASELINE.gate, classifierStatus: "unknown" } },
+              labels,
+              t,
+            )}
+          </p>
+        </>
+      );
+    }
+    render(
+      <Intl>
+        <Probe />
+      </Intl>,
+    );
+    expect(
+      screen.getByText("Not counted · classifier v2 under 80% · 37 labels"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Not counted · classifier v2 under 80% · 37 labels."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Not counted")).toBeInTheDocument();
+  });
+
+  it("choosing a version switches versionId of the summary, news feed and trades", async () => {
+    wrap();
+    const v4 = await card("News bot v4 · Strict subject");
+    const pick = within(v4).getByRole("button", { name: "News bot v4 · Strict subject" });
+    expect(pick).toHaveAttribute("aria-pressed", "false");
+    state.calls = [];
+    await userEvent.click(pick);
+    await waitFor(() => {
+      expect(
+        state.calls.some(
+          (c) => c.path.includes("/summary?") && c.path.includes(`versionId=${V4_ID}`),
+        ),
+      ).toBe(true);
+    });
+    await waitFor(() => {
+      expect(
+        state.calls.some(
+          (c) => c.path.includes("/articles?") && c.path.includes(`versionId=${V4_ID}`),
+        ),
+      ).toBe(true);
+      expect(
+        state.calls.some(
+          (c) => c.path.includes("/trades?") && c.path.includes(`versionId=${V4_ID}`),
+        ),
+      ).toBe(true);
+    });
+    expect(
+      within(await card("News bot v4 · Strict subject")).getByRole("button", {
+        name: "News bot v4 · Strict subject",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/below show/)).toHaveTextContent(
+      "Summary, news feed and trades below show News bot v4 · Strict subject.",
+    );
+    // Bảng All versions cũng chọn được.
+    const tbl = screen.getByRole("table", { name: "All News bot versions" });
+    await userEvent.click(within(tbl).getByRole("button", { name: "v5 · Majors only" }));
+    await waitFor(() => {
+      expect(state.calls.some((c) => c.path.includes(`versionId=${V5_ID}`))).toBe(true);
+    });
+  });
+
+  it("Pause sends the status with an Idempotency-Key and shows Pausing… until the backend answers", async () => {
+    wrap();
+    const v4 = await card("News bot v4 · Strict subject");
+    await userEvent.click(within(v4).getByRole("button", { name: "Pause" }));
+    await waitFor(() => {
+      expect(posts()).toHaveLength(1);
+    });
+    const [p] = posts();
+    expect(p?.path).toContain(`/versions/${V4_ID}/status`);
+    expect(p?.body).toEqual({ status: "paused" });
+    expect(p?.key).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("Stop asks first, then sends stopped", async () => {
+    wrap();
+    const v4 = await card("News bot v4 · Strict subject");
+    await userEvent.click(within(v4).getByRole("button", { name: "Stop" }));
+    const dlg = await screen.findByRole("dialog", { name: "Stop v4 · Strict subject?" });
+    expect(posts()).toHaveLength(0);
+    await userEvent.click(within(dlg).getByRole("button", { name: "Stop v4" }));
+    await waitFor(() => {
+      expect(posts()[0]?.body).toEqual({ status: "stopped" });
+    });
+  });
+});
+
+// Nhiều thao tác gõ phím: chậm khi máy bận (CI chạy song song).
+describe("New version sheet", { timeout: 20_000 }, () => {
+  it("validation: dot decimals, TP vs cost at least 1, then the exact payload with one key", async () => {
+    wrap();
+    await card("News bot v3 · Baseline");
+    await userEvent.click(newVersion());
+    const dlg = await screen.findByRole("dialog", { name: "New version" });
+    expect(within(dlg).getByText("Saving creates v7.")).toBeInTheDocument();
+    expect(
+      within(dlg).getByText("Running 2 of 3 · saving starts v7 now · written to the audit log"),
+    ).toBeInTheDocument();
+
+    const tp = within(dlg).getByRole("textbox", { name: "Take profit" });
+    await userEvent.clear(tp);
+    await userEvent.type(tp, "1,5");
+    expect(
+      within(dlg).getByText("Use a number like 1.5, with a dot for decimals."),
+    ).toBeInTheDocument();
+    const minTp = within(dlg).getByRole("textbox", { name: "Skip if take profit is under" });
+    await userEvent.clear(minTp);
+    await userEvent.type(minTp, "0.5");
+    expect(
+      within(dlg).getAllByText("At least 1. Below 1 the fees are bigger than the take profit."),
+    ).toHaveLength(2);
+    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    expect(within(dlg).getByRole("alert")).toHaveTextContent("Fix the fields marked above.");
+    expect(within(dlg).getByText("Required.")).toBeInTheDocument();
+    expect(posts()).toHaveLength(0);
+
+    await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "High only");
+    await userEvent.clear(tp);
+    await userEvent.type(tp, "1.5");
+    await userEvent.clear(minTp);
+    await userEvent.type(minTp, "2");
+    await userEvent.selectOptions(
+      within(dlg).getByRole("combobox", { name: "Lowest level to trade" }),
+      "high",
+    );
+    await userEvent.click(within(dlg).getByRole("checkbox", { name: "Trade Treasury buy" }));
+    await userEvent.click(within(dlg).getByRole("radio", { name: "Limit" }));
+    await userEvent.type(within(dlg).getByRole("textbox", { name: "Trades per day" }), "4");
+    await userEvent.click(within(dlg).getByRole("radio", { name: "Close at market" }));
+    await noViolations();
+    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await waitFor(() => {
+      expect(posts()).toHaveLength(1);
+    });
+    const base = baselineVersionConfig();
+    const want = {
+      name: "High only",
+      config: {
+        ...base,
+        minLevel: "high",
+        news: { ...base.news, treasury_buy: { enabled: false, maxHoldHours: 48 } },
+        maxNewTradesPerDay: 4,
+        onOppositeNews: "close",
+      },
+      savedFromVersionId: null,
+      start: true,
+    };
+    expect(posts()[0]?.body).toEqual(want);
+    expect(researchVersionCreateBodySchema.parse(posts()[0]?.body)).toEqual(want);
+    expect(posts()[0]?.key).toMatch(/^[0-9a-f-]{36}$/);
+    // Lưu xong: sheet đóng, câu báo, tổng kết chuyển sang version mới.
+    expect(await screen.findByText("Saved v7 · High only.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => {
+      expect(state.calls.some((c) => c.path.includes(`versionId=${NEW_ID}`))).toBe(true);
+    });
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("copy from v4: Changed from v4 summary, Only these hides Crypto / Stocks, picker, Effectively N", async () => {
+    wrap();
+    const v4 = await card("News bot v4 · Strict subject");
+    await userEvent.click(within(v4).getByRole("button", { name: "Edit as new version" }));
+    const dlg = await screen.findByRole("dialog", { name: "New version · from v4" });
+    expect(
+      within(dlg).getByText("Saving creates v7. v4 keeps running unchanged."),
+    ).toBeInTheDocument();
+    expect(within(dlg).getByText("No changes from v4 yet.")).toBeInTheDocument();
+    await userEvent.selectOptions(
+      within(dlg).getByRole("combobox", { name: "Lowest level to trade" }),
+      "high",
+    );
+    expect(within(dlg).getByText(/^Changed from v4:/)).toHaveTextContent(
+      "Changed from v4: Lowest level Medium → High.",
+    );
+    expect(within(dlg).getByRole("checkbox", { name: "Crypto" })).toBeInTheDocument();
+    await userEvent.click(within(dlg).getByRole("radio", { name: "Only these" }));
+    expect(within(dlg).queryByRole("checkbox", { name: "Crypto" })).toBeNull();
+    expect(within(dlg).queryByRole("checkbox", { name: "Stocks on SoDEX" })).toBeNull();
+    const search = await within(dlg).findByRole("combobox", { name: "Search SoDEX markets" });
+    await userEvent.type(search, "btc");
+    await userEvent.keyboard("{Enter}");
+    await userEvent.clear(search);
+    await userEvent.type(search, "eth");
+    await userEvent.keyboard("{Enter}");
+    expect(within(dlg).getByText("Effectively 2: one trade per asset")).toBeInTheDocument();
+    expect(within(dlg).getByText(/^Changed from v4:/)).toHaveTextContent(
+      "Changed from v4: Lowest level Medium → High · Assets All → Only these · Only BTC-USD, ETH-USD.",
+    );
+    // Esc chỉ đóng danh sách, không đóng sheet.
+    await userEvent.keyboard("{Escape}");
+    expect(within(dlg).queryByRole("listbox")).toBeNull();
+    expect(screen.getByRole("dialog", { name: "New version · from v4" })).toBeInTheDocument();
+    await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "Majors");
+    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await waitFor(() => {
+      expect(posts()).toHaveLength(1);
+    });
+    const body = posts()[0]?.body as { config: { assets: unknown }; savedFromVersionId: string };
+    expect(body.savedFromVersionId).toBe(V4_ID);
+    expect(body.config.assets).toEqual({
+      mode: "only",
+      markets: ["BTC-USD", "ETH-USD"],
+      crypto: true,
+      stocks: true,
+    });
+  });
+
+  it("at 3 of 3 the Save button is off: Pause or stop a version first.", async () => {
+    state.versions = VERSIONS_FULL;
+    wrap();
+    await card("News bot v3 · Baseline");
+    expect(screen.queryByRole("heading", { name: "One more slot" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "New version" }));
+    const dlg = await screen.findByRole("dialog", { name: "New version" });
+    expect(within(dlg).getByRole("button", { name: "Save and start v6" })).toBeDisabled();
+    expect(within(dlg).getByText("Pause or stop a version first.")).toBeInTheDocument();
+  });
+
+  it("shows the stale market list warning of the response", async () => {
+    state.create = "stale";
+    wrap();
+    await card("News bot v3 · Baseline");
+    await userEvent.click(newVersion());
+    const dlg = await screen.findByRole("dialog", { name: "New version" });
+    await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "X");
+    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    expect(
+      await screen.findByText(
+        "Saved v7 · X. The market list was out of date when the assets were checked.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("API errors: 3 running and an unlisted market say what to do; the sheet stays open", async () => {
+    state.create = "unlisted";
+    wrap();
+    await card("News bot v3 · Baseline");
+    await userEvent.click(newVersion());
+    const dlg = await screen.findByRole("dialog", { name: "New version" });
+    await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "X");
+    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    expect(await within(dlg).findByRole("alert")).toHaveTextContent(
+      "Not listed on SoDEX now: SOLV-USD.",
+    );
+    state.create = "full";
+    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await waitFor(() => {
+      expect(within(dlg).getByRole("alert")).toHaveTextContent("Pause or stop a version first.");
+    });
+  });
+
+  it("a network error is retried once with the same Idempotency-Key", async () => {
+    state.create = "network-once";
+    wrap();
+    await card("News bot v3 · Baseline");
+    await userEvent.click(newVersion());
+    const dlg = await screen.findByRole("dialog", { name: "New version" });
+    await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "Retry");
+    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await waitFor(
+      () => {
+        expect(posts()).toHaveLength(2);
+      },
+      { timeout: 4000 },
+    );
+    expect(posts()[0]?.key).toBe(posts()[1]?.key);
+    expect(await screen.findByText("Saved v7 · Retry.")).toBeInTheDocument();
+  });
+
+  it("Rules opens the saved config read-only", async () => {
+    wrap();
+    const v4 = await card("News bot v4 · Strict subject");
+    await userEvent.click(within(v4).getByRole("button", { name: "Rules" }));
+    const dlg = await screen.findByRole("dialog", { name: "Rules · News bot v4 · Strict subject" });
+    expect(within(dlg).getByRole("textbox", { name: "Name" })).toBeDisabled();
+    expect(within(dlg).getByRole("textbox", { name: "Name" })).toHaveValue("Strict subject");
+    expect(within(dlg).getByRole("checkbox", { name: "Trade Treasury buy" })).not.toBeChecked();
+    expect(within(dlg).queryByRole("button", { name: /Save/ })).toBeNull();
+  });
+});
+
+describe("sheet helpers", () => {
+  const ok = { ...draftOf(baselineVersionConfig(), "A") };
+  it("validate: required, dot decimals, whole numbers, ranges, balance, assets", () => {
+    expect(validate(ok)).toEqual({});
+    expect(validate({ ...ok, name: " " }).name).toEqual({ key: "required" });
+    expect(validate({ ...ok, size: "1,5" }).size).toEqual({ key: "number" });
+    expect(validate({ ...ok, size: "0" }).size).toEqual({ key: "positive" });
+    expect(validate({ ...ok, size: "10000.01" }).size).toEqual({ key: "aboveBalance" });
+    expect(validate({ ...ok, minTp: "0.99" }).minTp).toEqual({ key: "atLeastOne" });
+    expect(validate({ ...ok, minTp: "1" }).minTp).toBeUndefined();
+    expect(validate({ ...ok, maxDelay: "31" }).maxDelay).toEqual({ key: "range", min: 1, max: 30 });
+    expect(validate({ ...ok, maxOpen: "2.5" }).maxOpen).toEqual({ key: "whole" });
+    expect(validate({ ...ok, dayLimit: true, perDay: "" }).perDay).toEqual({ key: "required" });
+    expect(validate({ ...ok, mode: "only", markets: [] }).markets).toEqual({ key: "pickAsset" });
+    expect(validate({ ...ok, crypto: false, stocks: false }).kinds).toEqual({ key: "pickKind" });
+    // Only these bỏ qua Crypto / Stocks.
+    expect(
+      validate({ ...ok, mode: "only", markets: ["SOL-USD"], crypto: false, stocks: false }),
+    ).toEqual({});
+  });
+  it("configOf / bodyOf: All mode sends an empty list but keeps picked assets in the draft", () => {
+    const d = { ...ok, mode: "all" as const, markets: ["SOL-USD"] };
+    expect(configOf(d)?.assets.markets).toEqual([]);
+    expect(configOf({ ...d, mode: "except" })?.assets.markets).toEqual(["SOL-USD"]);
+    expect(bodyOf({ ...ok, name: "  B " }, V4)).toMatchObject({
+      name: "B",
+      savedFromVersionId: V4_ID,
+      start: true,
+    });
+    expect(bodyOf({ ...ok, tp: "x" }, null)).toBeNull();
+    expect(bodyOf({ ...ok, name: "" }, null)).toBeNull();
+    // Tên trống không chặn phần "Changed from vN" (config vẫn tính được).
+    expect(configOf({ ...ok, name: "" })).not.toBeNull();
+  });
+});
+
+describe("asset picker", { timeout: 20_000 }, () => {
+  function Harness({
+    markets,
+    mobile = false,
+    initial = [],
+  }: {
+    markets: MarketsState;
+    mobile?: boolean;
+    initial?: string[];
+  }) {
+    const [v, setV] = useState<string[]>(initial);
+    return (
+      <Intl>
+        <AssetPicker markets={markets} value={v} onChange={setV} mode="only" mobile={mobile} />
+        <output data-testid="value">{v.join(",")}</output>
+      </Intl>
+    );
+  }
+  const ready: MarketsState = { data: MARKETS, loading: false, error: false };
+
+  it("search, groups, Halted tag, keyboard ↑ ↓ Enter Esc, chips with × and Clear all", async () => {
+    render(<Harness markets={ready} />);
+    const input = screen.getByRole("combobox", { name: "Search SoDEX markets" });
+    await userEvent.click(input);
+    const list = screen.getByRole("listbox", { name: "SoDEX markets" });
+    expect(within(list).getByRole("group", { name: "Crypto" })).toBeInTheDocument();
+    expect(within(list).getByRole("option", { name: /XYZ-USD/ })).toHaveTextContent("Halted");
+    await userEvent.type(input, "sol");
+    const opts = within(screen.getByRole("listbox")).getAllByRole("option");
+    expect(opts.map((o) => o.textContent)).toEqual([
+      expect.stringContaining("SOL-USD · Solana"),
+      expect.stringContaining("SOLV-USD · Solv Protocol"),
+    ]);
+    expect(screen.getByText('No stock matches "sol"')).toBeInTheDocument();
+    expect(input).toHaveAttribute("aria-activedescendant", opts[0]?.id);
+    await userEvent.keyboard("{ArrowDown}");
+    expect(input).toHaveAttribute("aria-activedescendant", opts[1]?.id);
+    await userEvent.keyboard("{ArrowUp}{Enter}");
+    expect(screen.getByTestId("value")).toHaveTextContent("SOL-USD");
+    expect(screen.getByRole("option", { name: /SOL-USD · Solana/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await userEvent.click(screen.getByRole("option", { name: /SOLV-USD/ }));
+    expect(screen.getByTestId("value")).toHaveTextContent("SOL-USD,SOLV-USD");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Remove SOL-USD" }));
+    expect(screen.getByTestId("value")).toHaveTextContent("SOLV-USD");
+    await userEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    expect(screen.getByTestId("value")).toHaveTextContent("");
+    await noViolations();
+  });
+
+  it("stale list warns; missing list disables the picker with a message", () => {
+    const stale: ResearchMarkets = { ...MARKETS, stale: true };
+    const a = render(<Harness markets={{ data: stale, loading: false, error: false }} />);
+    expect(screen.getByText("Market list may be out of date")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Search SoDEX markets" })).toBeEnabled();
+    a.unmount();
+    render(
+      <Harness
+        markets={{
+          data: { items: null, updatedAt: null, stale: true },
+          loading: false,
+          error: false,
+        }}
+        initial={["BTC-USD"]}
+      />,
+    );
+    expect(screen.getByRole("combobox", { name: "Search SoDEX markets" })).toBeDisabled();
+    expect(
+      screen.getByText(
+        "The SoDEX market list isn’t available yet, so assets can’t be picked. Try again in a few minutes.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Market list may be out of date")).toBeNull();
+    // Chip đã chọn vẫn hiện (không mất dữ liệu).
+    expect(screen.getByRole("button", { name: "Remove BTC-USD" })).toBeInTheDocument();
+  });
+
+  it("mobile: bottom sheet with search, chips and Done · n picked", async () => {
+    render(<Harness markets={ready} mobile initial={["BTC-USD"]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Pick assets" }));
+    const dlg = await screen.findByRole("dialog", { name: "Only these assets" });
+    await userEvent.type(
+      within(dlg).getByRole("combobox", { name: "Search SoDEX markets" }),
+      "sol",
+    );
+    await userEvent.click(within(dlg).getByRole("option", { name: /SOL-USD · Solana/ }));
+    await userEvent.click(within(dlg).getByRole("button", { name: "Done · 2 picked" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByTestId("value")).toHaveTextContent("BTC-USD,SOL-USD");
+  });
+});

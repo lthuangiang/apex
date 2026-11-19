@@ -5,7 +5,13 @@ import type { ResearchSummary, ResearchTradeDetail, ResearchTradesPage } from "@
 
 export const RESEARCH_SUMMARY: ResearchSummary = {
   computedAt: "2026-11-18T15:37:00.000Z",
-  version: null,
+  // #306: tổng kết mặc định là của Baseline (v3, như versions-fixtures.ts).
+  version: {
+    id: "00000000-0000-4000-8000-000000000003",
+    number: 3,
+    name: "Baseline",
+    isBaseline: true,
+  },
   sources: [
     {
       key: "sosoNews",
