@@ -20,9 +20,10 @@ import { safeEntrySnapshot } from "./snapshot";
 // S10 Volume Farm (DEC-80): vòng lặp FARM của bot "standard" trong apex (src/modules/Watcher.ts), viết lại dạng
 // hàm thuần cho engine của DRIFT.
 //   idle ──tín hiệu──▶ entering (post-only) ──fill──▶ open ──điều kiện thoát──▶ exiting ──đóng hết──▶ idle (cooldown)
-// - Vào: hướng theo `farmSignal`; tồn kho ròng (Σ long − Σ short đã đóng) vượt `orderSizeMaxUsd` thì buộc đi ngược
-//   lệnh trước (apex MM inventory hard block); `reverseSignal` đảo hướng. Cỡ lệnh và thời gian giữ ngẫu nhiên
-//   (người dùng chọn giữ như apex, DEC-80), dùng PRNG tất định theo (botId, cycle) để backtest lặp lại được.
+// - Vào: hướng theo `farmSignal`; tồn kho ròng (Σ long − Σ short đã đóng) vượt `orderSizeMaxUsd` thì buộc đi theo
+//   hướng làm giảm tồn kho ròng (#285); `reverseSignal` chỉ đảo hướng của tín hiệu, không đảo lượt cân. Cỡ lệnh và
+//   thời gian giữ ngẫu nhiên (người dùng chọn giữ như apex, DEC-80), dùng PRNG tất định theo (botId, cycle) để backtest
+//   lặp lại được.
 // - Lệnh vào post-only trong spread (mua = ask − 1 tick, bán = bid + 1 tick); 10 s chưa khớp thì huỷ, lượt sau đặt lại
 //   khi SoDEX đã xác nhận lệnh cũ kết thúc (DEC-317). Sau `takerAfter` lần
 //   không khớp liên tiếp và `allowTaker` thì vào bằng lệnh market (IOC).
@@ -554,15 +555,18 @@ function tryEnter(
     );
   let direction: "long" | "short" = sig.direction;
   const notes: string[] = [];
-  // Khối lượng long / short của các lượt đã đóng lệch quá một lệnh lớn nhất: buộc đi ngược lượt trước (apex MM
-  // inventory hard block, DEC-80). Bot đang phẳng nên đây là một lượt mới như mọi lượt; câu Decisions nói đúng là cân
-  // khối lượng, không phải đưa vị thế về 0 (DEC-304).
-  const balanced = dec(s.netExposure).abs().gt(c.orderSizeMaxUsd) && s.lastSide !== null;
+  // Khối lượng long / short của các lượt đã đóng lệch quá một lệnh lớn nhất: buộc đi theo hướng làm giảm lệch
+  // (`netExposure` dương thì short, âm thì long; #285 sửa DEC-80, trước đây đi ngược lượt trước nên lệch có thể tăng
+  // thêm). Bot đang phẳng nên đây là một lượt mới như mọi lượt; câu Decisions nói đúng là cân khối lượng, không phải
+  // đưa vị thế về 0 (DEC-304).
+  const exposure = dec(s.netExposure);
+  const balanced = exposure.abs().gt(c.orderSizeMaxUsd);
   if (balanced) {
-    direction = s.lastSide === "long" ? "short" : "long";
+    direction = exposure.gt(0) ? "short" : "long";
     notes.push(`Went ${direction} to balance long and short volume.`);
-  }
-  if (c.reverseSignal) {
+  } else if (c.reverseSignal) {
+    // Reverse chỉ đảo hướng của tín hiệu, không đảo lượt cân long / short (#285): đảo lượt cân làm lệch tăng mãi và
+    // bot đi một phía suốt kỳ.
     direction = direction === "long" ? "short" : "long";
     notes.push(`Reversed to ${direction} because "Reverse the signal" is on.`);
     // DEC-158: chặn ngược xu hướng nằm trong farmSignal, chạy trước khi đảo; kiểm lại trên hướng sau khi đảo để

@@ -575,6 +575,172 @@ describe("volume farm — inventory rebalance (netExposure hard block)", () => {
   });
 });
 
+describe("volume farm — balancing reduces netExposure, Reverse only flips the signal (#285)", () => {
+  const logs = (a: StrategyAction[]) =>
+    a.filter((x): x is Extract<StrategyAction, { type: "log" }> => x.type === "log");
+  // 120 nến 1 phút kết thúc ngay trước `end`: drift 0.00003 → SIDEWAY (tín hiệu long), 0.0001 → TREND_UP (long).
+  const marketAt = (end: number, drift: number): StrategyEvent => ({
+    type: "timer",
+    at: end,
+    market: {
+      market: "BTC-USD",
+      candles: candles(drift, 80_000, 120).map((k) => ({ ...k, t: k.t + (end - T0) })),
+      book,
+    },
+  });
+
+  it("goes short when exposure is long even though the last trade was short", () => {
+    const start: VolumeFarmState = {
+      ...volumeFarm.initialState(cfg()),
+      netExposure: "300",
+      lastSide: "short",
+    };
+    const { all } = run(cfg(), [timer(T0)], start);
+    // Trước #285: đi ngược lượt trước (short) nên buộc long, làm lệch tăng lên.
+    expect(places(all)[0]?.side).toBe("sell");
+    const why = logs(all).find((l) => l.decision === "Enter short")?.why ?? "";
+    expect(why).toMatch(/Went short to balance long and short volume\./);
+  });
+
+  it("goes long when exposure is short even though the last trade was long", () => {
+    const start: VolumeFarmState = {
+      ...volumeFarm.initialState(cfg()),
+      netExposure: "-300",
+      lastSide: "long",
+    };
+    const { all } = run(cfg(), [marketAt(T0, -0.0001)], start);
+    expect(places(all)[0]?.side).toBe("buy");
+  });
+
+  it("does not reverse a balancing entry and skips no counter-trend check for it", () => {
+    // TREND_UP, tín hiệu long; Reverse bật. Lệch long → cân đi short. Nếu Reverse đảo lượt cân, hướng thành long; nếu
+    // chạy kiểm tra DEC-158 trên lượt cân thì short ngược uptrend bị chặn. Cả hai đều không được xảy ra.
+    const start: VolumeFarmState = {
+      ...volumeFarm.initialState(cfg()),
+      netExposure: "300",
+      lastSide: "long",
+    };
+    const { all } = run(cfg({ reverseSignal: true }), [marketAt(T0, 0.0001)], start);
+    expect(places(all)[0]?.side).toBe("sell");
+    const entered = logs(all).find((l) => l.decision === "Enter short");
+    expect(entered?.why).toMatch(/Went short to balance long and short volume\./);
+    expect(entered?.why).not.toMatch(/Reversed to/);
+    expect(logs(all).some((l) => l.decision === "Skipped entry")).toBe(false);
+  });
+
+  it("still reverses a signal entry with the DEC-158 check when exposure is within the limit", () => {
+    const start: VolumeFarmState = {
+      ...volumeFarm.initialState(cfg()),
+      netExposure: "150",
+      lastSide: "long",
+    };
+    const sideways = run(cfg({ reverseSignal: true }), [marketAt(T0, 0.00003)], start);
+    expect(places(sideways.all)[0]?.side).toBe("sell");
+    expect(logs(sideways.all).find((l) => l.decision === "Enter short")?.why).toMatch(
+      /Reversed to short because "Reverse the signal" is on\./,
+    );
+    const trend = run(cfg({ reverseSignal: true }), [marketAt(T0, 0.0001)], start);
+    expect(places(trend.all)).toEqual([]);
+    expect(logs(trend.all).map((l) => l.why)).toEqual([
+      '"Reverse the signal" would trade short against an uptrend, so the bot waits.',
+    ]);
+  });
+
+  /** Chạy `n` lượt đầy đủ (vào → khớp → chốt lời → khớp lệnh thoát) với cỡ lệnh ngẫu nhiên của bot. */
+  function cycles(c: VolumeFarmConfig, n: number) {
+    let s = volumeFarm.initialState(c);
+    let at = T0;
+    const entries: { side: "buy" | "sell"; balanced: boolean; exposureBefore: number }[] = [];
+    const exposures: number[] = [];
+    for (let i = 0; i < n; i += 1) {
+      at += 60_000;
+      const exposureBefore = Number(s.netExposure);
+      const enter = volumeFarm.step(c, s, marketAt(at, 0.00003), ctx);
+      const o = places(enter.actions).find((x) => !x.reduceOnly);
+      if (o === undefined) throw new Error(`no entry at cycle ${String(i)}`);
+      const why = logs(enter.actions).find((l) => l.decision.startsWith("Enter"))?.why ?? "";
+      entries.push({ side: o.side, balanced: why.includes("to balance"), exposureBefore });
+      s = enter.state;
+      const price = o.price ?? "80000";
+      let r = volumeFarm.step(
+        c,
+        s,
+        { type: "fill", at: at + 1_000, clOrdID: o.clOrdID, price, quantity: o.quantity, fee: "0" },
+        ctx,
+      );
+      s = r.state;
+      // Giá chạy có lợi 1% → chốt lời.
+      const tp = o.side === "buy" ? "80800" : "79200";
+      r = volumeFarm.step(
+        c,
+        s,
+        { type: "tick", at: at + 2_000, market: "BTC-USD", price: tp },
+        ctx,
+      );
+      s = r.state;
+      const exit = places(r.actions).find((x) => x.reduceOnly && x.clOrdID === s.exit?.id);
+      if (exit === undefined) throw new Error(`no exit at cycle ${String(i)}`);
+      r = volumeFarm.step(
+        c,
+        s,
+        {
+          type: "fill",
+          at: at + 3_000,
+          clOrdID: exit.clOrdID,
+          price: exit.price ?? tp,
+          quantity: exit.quantity,
+          fee: "0",
+        },
+        ctx,
+      );
+      s = r.state;
+      // SoDEX xác nhận stop gốc của lượt đã huỷ (DEC-119), để lượt sau không phải chờ.
+      for (const x of r.actions)
+        if (x.type === "cancel")
+          s = volumeFarm.step(
+            c,
+            s,
+            { type: "orderDone", at: at + 3_500, clOrdID: x.clOrdID },
+            ctx,
+          ).state;
+      expect(s.phase).toBe("idle");
+      exposures.push(Number(s.netExposure));
+    }
+    return { entries, exposures };
+  }
+
+  it.each([false, true])(
+    "keeps exposure bounded and balancing short-lived over many random-size cycles (Reverse %s)",
+    (reverseSignal) => {
+      // Tín hiệu luôn long (SIDEWAY): không có cân thì lệch tăng mãi; với cân đúng hướng, lệch luôn quay về dưới ngưỡng.
+      const c = cfg({ reverseSignal, maxLoss: "100000", cooldownSecs: 0 });
+      const { entries, exposures } = cycles(c, 200);
+      const limit = Number(c.orderSizeMaxUsd);
+      // Mỗi lượt cân làm giảm |lệch| và lệch không bao giờ vượt ngưỡng + một lệnh lớn nhất.
+      for (const [i, e] of entries.entries()) {
+        if (!e.balanced) continue;
+        expect(e.side).toBe(e.exposureBefore > 0 ? "sell" : "buy");
+        expect(Math.abs(exposures[i] ?? Infinity)).toBeLessThan(Math.abs(e.exposureBefore));
+      }
+      for (const x of exposures) expect(Math.abs(x)).toBeLessThanOrEqual(limit * 2 + 1);
+      // Cân không bật liên tục: sau mỗi lượt cân, lệch về dưới ngưỡng trong vài lượt.
+      let streak = 0;
+      let longest = 0;
+      for (const e of entries) {
+        streak = e.balanced ? streak + 1 : 0;
+        longest = Math.max(longest, streak);
+      }
+      expect(longest).toBeLessThanOrEqual(2);
+      const share = entries.filter((e) => e.balanced).length / entries.length;
+      expect(share).toBeGreaterThan(0);
+      expect(share).toBeLessThan(0.6);
+      expect(entries.some((e) => !e.balanced && e.side === (reverseSignal ? "sell" : "buy"))).toBe(
+        true,
+      );
+    },
+  );
+});
+
 describe("volume farm order price", () => {
   const market = (b: Partial<BookTop>, tick: string) => {
     const c: StepContext = {
@@ -1498,8 +1664,14 @@ describe("volume farm — signal snapshot on entries (#221)", () => {
       lastSide: "long" as const,
     };
     const snap = snapOf(run(cfg({ reverseSignal: true }), [timer(T0)], start, snapCtx).all);
-    // Cân long / short buộc short, Reverse đảo lại thành long.
-    expect(snap).toMatchObject({ direction: "long", side: "long", reversed: true, balanced: true });
+    // Cân long / short buộc short; Reverse không đảo lượt cân (#285). `reversed` vẫn nghĩa là "Reverse the signal"
+    // bật lúc vào (schema DEC-311); hướng thật bị đảo khi `reversed && !balanced`.
+    expect(snap).toMatchObject({
+      direction: "long",
+      side: "short",
+      reversed: true,
+      balanced: true,
+    });
   });
 
   it("records the try number and a market order after misses", () => {
