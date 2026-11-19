@@ -185,7 +185,7 @@ export function LabelForm({
       ) : null}
       {saved === null ? null : (
         <p role="status" className="m-0 text-xs text-muted">
-          {t("saved", { time: clock(saved.updatedAt, tz, false) })}
+          {t("saved", { who: saved.labeledBy, time: clock(saved.updatedAt, tz, false) })}
         </p>
       )}
     </div>

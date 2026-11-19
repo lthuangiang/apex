@@ -128,6 +128,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
             articleId: ART,
             label: {
               classifierVersion: "news-classifier-v2",
+              labeledBy: "a91f",
               verdict: b.verdict,
               reason: b.reason ?? null,
               note: b.note ?? null,
@@ -332,7 +333,7 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
     expect(within(card).queryByText("Result hidden while labelling")).toBeNull();
     expect(
       within(card).getByText(
-        "Labelled at 13:22 · one label per person per article · change it any time",
+        "Labelled by ··a91f at 13:22 · one label per person per article · change it any time",
       ),
     ).toBeInTheDocument();
     // Bài tiếp theo: đọc lại labels/next.
@@ -354,6 +355,7 @@ describe("label box on the trace Score card", () => {
           hidden={false}
           initial={{
             classifierVersion: "news-classifier-v2",
+            labeledBy: "b7c2",
             verdict: "right",
             reason: null,
             note: null,
@@ -367,7 +369,9 @@ describe("label box on the trace Score card", () => {
     expect(screen.getByRole("button", { name: "Save label" })).toBeDisabled();
     expect(screen.queryByText(/stays hidden/)).toBeNull();
     expect(
-      screen.getByText("Labelled at 13:00 · one label per person per article · change it any time"),
+      screen.getByText(
+        "Labelled by ··b7c2 at 13:00 · one label per person per article · change it any time",
+      ),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Wrong" }));
     await userEvent.selectOptions(
