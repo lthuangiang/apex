@@ -63,6 +63,8 @@ import { DROP, newsTypeOf } from "./signal-research-keys";
 // Báo cáo Signal research (#271; hợp đồng: packages/shared/src/api/signal-research.ts, UI #273), dùng chung cho CLI của
 // scheduler và endpoint team của api. Chỉ đọc; nơi gọi bọc trong transaction chỉ đọc. Chỉ tính version quy tắc hiện tại
 // (`NEWS_RULES.version`), như cổng của #263. Hiện chỉ lane News · live có dữ liệu. Thiếu số → null, không bao giờ 0.
+// Ngoại lệ (#298): danh sách lệnh và chi tiết một lệnh hiện cả lệnh của version cũ (lịch sử); tổng kết, chẩn đoán và
+// cổng chỉ đếm version hiện tại.
 
 type Q = Db | DbTx;
 type TradeRow = typeof signalPaperTrades.$inferSelect;
@@ -120,6 +122,14 @@ const liveNews = () =>
     eq(signalPaperTrades.lane, NEWS_RULES.lane),
     eq(signalPaperTrades.label, "live"),
   );
+/** Lệnh News · live của MỌI version (#298): chỉ cho danh sách / chi tiết lệnh, không bao giờ cho tổng kết hay cổng. */
+const liveNewsHistory = () =>
+  and(eq(signalPaperTrades.lane, NEWS_RULES.lane), eq(signalPaperTrades.label, "live"));
+/** "news-v2" → 2; dạng lạ → version hiện tại. */
+const versionNumberOf = (v: string): number => {
+  const m = /^news-v(\d+)$/.exec(v);
+  return m?.[1] === undefined ? NEWS_RULES.versionNumber : Number(m[1]);
+};
 
 const level = (v: string | null): "high" | "medium" | "low" =>
   v === "high" ? "high" : v === "medium" ? "medium" : "low";
@@ -855,7 +865,7 @@ export async function loadSignalResearchTrades(
   }
   const rows: Row[] = [];
   if (query.show !== "skipped") {
-    const where: (SQL | undefined)[] = [liveNews()];
+    const where: (SQL | undefined)[] = [liveNewsHistory()];
     if (query.asset !== undefined) where.push(eq(signalPaperTrades.market, query.asset));
     if (cur !== null)
       where.push(
@@ -874,7 +884,6 @@ export async function loadSignalResearchTrades(
   }
   if (query.show !== "entered") {
     const where: (SQL | undefined)[] = [
-      eq(signalEvents.ruleVersion, NEWS_RULES.version),
       eq(signalEvents.stage, "filter"),
       eq(signalEvents.outcome, "drop"),
     ];
@@ -1079,7 +1088,7 @@ export async function loadSignalResearchTrade(
   const [trade] = await q
     .select()
     .from(signalPaperTrades)
-    .where(and(eq(signalPaperTrades.id, id), liveNews()));
+    .where(and(eq(signalPaperTrades.id, id), liveNewsHistory()));
   let skip: EventRow | null = null;
   if (trade === undefined) {
     const [e] = await q
@@ -1113,7 +1122,7 @@ export async function loadSignalResearchTrade(
   const end = trade?.exitedAt?.getTime() ?? now.getTime();
   return {
     trade: item,
-    rulesVersion: NEWS_RULES.versionNumber,
+    rulesVersion: versionNumberOf(trade?.ruleVersion ?? story.ruleVersion),
     sizeUsdc: trade === undefined ? null : dec(trade.sizeUsdc).toFixed(),
     heldSecs:
       trade === undefined ? null : Math.max(0, Math.round((end - trade.openedAt.getTime()) / 1000)),

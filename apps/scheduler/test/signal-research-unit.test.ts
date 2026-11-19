@@ -8,6 +8,7 @@ import {
   anthropicClassifier,
   articleUsageValues,
   cacheSelfCheck,
+  classifierTool,
   emptyUsage,
   parseAnswer,
   weightedInput,
@@ -19,6 +20,7 @@ import {
 } from "../src/signal-research/index";
 import { collectFloor } from "../src/signal-research/pipeline";
 import { combineQuote, LiveBooks, medianTicks } from "../src/signal-research/prices";
+import { CLASSIFIER_SYSTEM } from "../src/signal-research/prompt";
 import { sosoClient } from "../src/signal-research/soso";
 
 const MIN = 60_000;
@@ -160,6 +162,36 @@ describe("classifier answer", () => {
       error: "invalid_answer",
     });
   });
+  it("treasury amount: copied as written, unknown / blank / missing → null, never invented", () => {
+    const t = { ...ok, catalyst: "treasury_buy" };
+    expect(parseAnswer({ ...t, treasury_amount: " $40M " }, cands)).toMatchObject({
+      ok: true,
+      value: { treasuryAmount: "$40M" },
+    });
+    for (const amount of ["unknown", "UNKNOWN", "  ", undefined])
+      expect(parseAnswer({ ...t, treasury_amount: amount }, cands)).toMatchObject({
+        ok: true,
+        value: { treasuryAmount: null },
+      });
+    expect(parseAnswer({ ...t, treasury_amount: 40 }, cands)).toEqual({
+      ok: false,
+      error: "invalid_answer",
+    });
+  });
+  it("tool: treasury_amount is optional, the other fields stay required", () => {
+    const schema = classifierTool(["SOL-USD"]).input_schema as {
+      properties: Record<string, unknown>;
+      required: string[];
+    };
+    expect(schema.properties.treasury_amount).toMatchObject({ type: "string" });
+    expect(schema.required).toEqual([
+      "catalyst",
+      "market",
+      "relevance",
+      "promotional",
+      "event_date",
+    ]);
+  });
   it("budget is in input-equivalent units: cache write 2× (1 h TTL), cache read 0.1×, output 5×", () => {
     expect(weightedInput({ input: 100, cacheWrite: 50, cacheRead: 1000, output: 20 })).toBe(
       100 + 100 + 100 + 100,
@@ -188,6 +220,84 @@ describe("classifier answer", () => {
     good(u(4300, 0));
     good(u(0, 4300));
     expect(ok).toEqual([]);
+  });
+});
+
+describe("classifier prompt news-classifier-v2 (#298)", () => {
+  it("has its own prompt version, separate from the rule version", () => {
+    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v2");
+  });
+  it("regulatory_action: only against the project / company itself, never an individual employee", () => {
+    expect(CLASSIFIER_SYSTEM).toContain("The target of the action must be the project or company");
+    expect(CLASSIFIER_SYSTEM).toContain("an individual who works or used to work at the company");
+    expect(CLASSIFIER_SYSTEM).toMatch(/Former Google engineer charged .*→ none, market NONE/);
+  });
+  it("civil lawsuits by investors are not regulatory_action", () => {
+    expect(CLASSIFIER_SYSTEM).toContain("civil lawsuit filed by investors");
+    expect(CLASSIFIER_SYSTEM).toMatch(/Meta investors file class-action lawsuit.*→ none/);
+  });
+  it("listing / delisting: the token must be the subject, a tag is not enough", () => {
+    expect(CLASSIFIER_SYSTEM).toContain("The asset must itself be the token being listed");
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "a coin the news provider tagged although the article never names it",
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /built on Chainlink.*LINK is only named as related technology/,
+    );
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "Being a candidate (a tag from the news provider) is not enough",
+    );
+  });
+  it("treasury: amount copied as written or unknown, never estimated", () => {
+    expect(CLASSIFIER_SYSTEM).toContain("treasury_amount");
+    expect(CLASSIFIER_SYSTEM).toContain("Never estimate, convert or round an amount");
+    expect(CLASSIFIER_SYSTEM).toMatch(/sells 12 BTC.*treasury_amount "12 BTC"/);
+  });
+  it("keeps the cached prefix: tools + system with cache_control, same max_tokens", async () => {
+    let body: Record<string, unknown> = {};
+    vi.stubGlobal("fetch", (_url: unknown, init: { body: string }) => {
+      body = JSON.parse(init.body) as Record<string, unknown>;
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: "m",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            content: [],
+            stop_reason: "end_turn",
+            stop_sequence: null,
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    });
+    try {
+      await anthropicClassifier("k").classify(
+        {
+          title: "t",
+          content: "c",
+          source: "s",
+          publishedAt: 0,
+          candidates: [],
+          universe: ["SOL-USD"],
+        },
+        1,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(body.max_tokens).toBe(NEWS_CLASSIFIER.maxTokens);
+    expect(body.system).toEqual([
+      {
+        type: "text",
+        text: CLASSIFIER_SYSTEM,
+        cache_control: { type: "ephemeral", ttl: NEWS_CLASSIFIER.cacheTtl },
+      },
+    ]);
+    expect(body.tools).toHaveLength(1);
+    expect(JSON.stringify(body.messages)).not.toContain(CLASSIFIER_SYSTEM.slice(0, 40));
   });
 });
 

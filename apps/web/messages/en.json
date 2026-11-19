@@ -2790,7 +2790,9 @@
     "signalAnalysis.research.sources.names.claude",
     "signalAnalysis.research.bots.unrealized",
     "signalAnalysis.research.trades.unrealized",
-    "signalAnalysis.research.trades.openCard"
+    "signalAnalysis.research.trades.openCard",
+    "signalAnalysis.research.reasons.assetNotInText",
+    "signalAnalysis.research.reasons.treasuryMajorAsset"
   ],
   "beta": {
     "label": "Beta",
@@ -7893,7 +7895,9 @@
           "tooThin": "too thin",
           "riskWindow": "big-news window",
           "noTaggedCurrency": "no coin tagged",
-          "duplicate": "duplicate"
+          "duplicate": "duplicate",
+          "assetNotInText": "asset not in article",
+          "treasuryMajorAsset": "treasury on BTC / ETH"
         },
         "reasonLabels": {
           "notCatalyst": "Not a catalyst",
@@ -7908,7 +7912,9 @@
           "tooThin": "Too thin to trade",
           "riskWindow": "Big-news window",
           "noTaggedCurrency": "No coin tagged",
-          "duplicate": "Duplicate"
+          "duplicate": "Duplicate",
+          "assetNotInText": "Asset not in the article",
+          "treasuryMajorAsset": "Treasury on BTC or ETH"
         },
         "reasonChip": "{label} · {n}",
         "drops": "Why they dropped out",
@@ -7949,6 +7955,8 @@
           "riskWindow": "big-news window",
           "noTaggedCurrency": "no coin tagged",
           "duplicate": "same text as an article already stored",
+          "assetNotInText": "the asset is not named in the title or text",
+          "treasuryMajorAsset": "treasury news on BTC or ETH is not traded",
           "sameStory": "joined a story already open",
           "storyTooOld": "story too old to trade again",
           "traded": "{side} {market}, {size} USDC"
@@ -8086,7 +8094,9 @@
         "tooThin": "Too thin to trade",
         "riskWindow": "Big-news window",
         "noTaggedCurrency": "No coin tagged",
-        "duplicate": "Duplicate"
+        "duplicate": "Duplicate",
+        "assetNotInText": "Asset not in the article",
+        "treasuryMajorAsset": "Treasury news on BTC or ETH"
       },
       "rules": {
         "title": "What counts as a news signal",

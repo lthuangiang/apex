@@ -36,6 +36,8 @@ export const DROP: ReadonlyMap<string, ResearchDropReason> = new Map<string, Res
   ["NOT_A_SIGNAL_TYPE", "notCatalyst"],
   ["PASSING_MENTION", "notCatalyst"],
   ["CATALYST_ASSET_MISMATCH", "notCatalyst"],
+  ["ASSET_NOT_IN_TEXT", "assetNotInText"],
+  ["TREASURY_MAJOR_ASSET", "treasuryMajorAsset"],
   ["PROMOTIONAL", "promotional"],
   ["NOT_UNDERSTOOD", "notUnderstood"],
   ["CLAUDE_BUDGET_REACHED", "notUnderstood"],

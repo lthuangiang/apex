@@ -86,6 +86,10 @@ export const SignalReason = {
   promotional: "PROMOTIONAL",
   eventTooOld: "EVENT_TOO_OLD",
   wrongAssetKind: "CATALYST_ASSET_MISMATCH",
+  /** news-v3 (#298): ký hiệu / tên của tài sản Claude chọn không có trong tiêu đề hay nội dung bài. */
+  assetNotInText: "ASSET_NOT_IN_TEXT",
+  /** news-v3 (#298): treasury_buy / treasury_sell trên BTC hoặc ETH không bao giờ giao dịch. */
+  treasuryMajorAsset: "TREASURY_MAJOR_ASSET",
   // filter
   sameStory: "SAME_STORY",
   /** Câu chuyện chưa vào lệnh nhưng bài đầu tiên đã quá `retryWindowMinutes`: gộp, không vào lệnh. */
@@ -112,13 +116,15 @@ export const PaperExitReason = {
 export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitReason];
 
 /**
- * Quy tắc tin tức v2 (#269 Design v3.3 mục 1 + mục 7, v3.4). Mọi con số là giả thuyết của nghiên cứu, không phải
- * tham số đã kiểm chứng.
+ * Quy tắc tin tức v3 (#269 Design v3.3 mục 1 + mục 7, v3.4; #298). Mọi con số là giả thuyết của nghiên cứu, không phải
+ * tham số đã kiểm chứng. v3 so với v2: tài sản phải có trong tiêu đề / nội dung bài (`ASSET_NOT_IN_TEXT`), treasury không
+ * giao dịch BTC / ETH (`TREASURY_MAJOR_ASSET`), prompt classifier `news-classifier-v2`. Lệnh của version cũ vẫn hiện ở
+ * danh sách lệnh (lịch sử) nhưng không tính vào tổng kết và cổng.
  */
 export const NEWS_RULES = {
-  version: "news-v2",
+  version: "news-v3",
   /** Số version (API hiện dạng số). */
-  versionNumber: 2,
+  versionNumber: 3,
   lane: "news",
   /** Bảng loại tin → chiều + giữ tối đa. Chiều do loại tin quyết định, Claude chỉ gọi tên loại tin và tài sản. */
   catalysts: {
@@ -167,6 +173,11 @@ export const NEWS_RULES = {
       kinds: [AssetKind.crypto],
     },
   } satisfies Record<SignalCatalyst, CatalystRule>,
+  /**
+   * Treasury buy / sell trên các market này không bao giờ giao dịch (#298): công ty nhỏ mua / bán ít BTC hay ETH không
+   * tác động tới giá. Token khác vẫn giữ; Claude không trích được số tiền thì gắn cờ `smallTreasury` để phân tích sau.
+   */
+  treasuryExcludedMarkets: ["BTC-USD", "ETH-USD"],
   /** Cỡ lệnh paper cố định (USDC). */
   sizeUsdc: "500",
   /** TP / SL = bội số của biến động thường gặp trong khoảng giữ tối đa. */
@@ -297,6 +308,37 @@ export const STOCK_MARKETS: Readonly<Record<string, string>> = {
   TSM: "TSM-USD",
 };
 
+/**
+ * Tên thương hiệu của cổ phiếu khác tên SoSoValue / mã SoDEX (#298): dùng cho kiểm "tài sản có trong bài" của news-v3.
+ * Danh sách nhỏ, tường minh; thêm tên = tăng version quy tắc.
+ */
+export const STOCK_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  "AAPL-USD": ["Apple"],
+  "AMZN-USD": ["Amazon"],
+  "COIN-USD": ["Coinbase"],
+  "CRWD-USD": ["CrowdStrike"],
+  "CRWV-USD": ["CoreWeave"],
+  "GOOGL-USD": ["Google", "Alphabet"],
+  "HOOD-USD": ["Robinhood"],
+  "INTC-USD": ["Intel"],
+  "MCD-USD": ["McDonald's"],
+  "META-USD": ["Meta", "Facebook"],
+  "MRNA-USD": ["Moderna"],
+  "MRVL-USD": ["Marvell"],
+  "MSFT-USD": ["Microsoft"],
+  "MSTR-USD": ["MicroStrategy"],
+  "MU-USD": ["Micron"],
+  "NBIS-USD": ["Nebius"],
+  "NKE-USD": ["Nike"],
+  "NVDA-USD": ["Nvidia"],
+  "ORCL-USD": ["Oracle"],
+  "PLTR-USD": ["Palantir"],
+  "SMCI-USD": ["Supermicro", "Super Micro"],
+  "SNDK-USD": ["SanDisk"],
+  "TSLA-USD": ["Tesla"],
+  "TSM-USD": ["TSMC", "Taiwan Semiconductor"],
+};
+
 /** Market SoDEX là cổ phiếu (để gắn nhãn "outside market hours"). */
 export const STOCK_MARKET_SET: ReadonlySet<string> = new Set(Object.values(STOCK_MARKETS));
 
@@ -312,7 +354,7 @@ export const NEWS_CLASSIFIER = {
   model: "claude-haiku-4-5",
   /** TTL của prompt cache: chu kỳ 5 phút đúng bằng TTL mặc định nên dùng 1 giờ (ghi 2×, đọc 0.1×). */
   cacheTtl: "1h",
-  promptVersion: "news-classifier-v1",
+  promptVersion: "news-classifier-v2",
   maxTokens: 400,
   /** Tối đa ngần này ký tự nội dung bài gửi cho Claude. */
   maxContentChars: 4000,

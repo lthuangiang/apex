@@ -11,6 +11,7 @@ Each request contains one article: its source, its publish time (UTC), its title
 - market: exactly one candidate market that the event is directly about, or "NONE" if no candidate is directly affected.
 - relevance: "direct" when the article's main subject is an event that directly affects that market's asset; "passing_mention" when the asset is only mentioned in passing, as background, in a list of many assets, in a price recap, or as a comparison.
 - promotional: true when the article is an advertisement, a sponsored post, a giveaway, a referral or airdrop campaign, an invitation to join or buy, or self-promotion by a project with no hard news in it. Official announcements of real events by the project itself (a listing, an exploit report, earnings) are NOT promotional.
+- treasury_amount: only for treasury_buy or treasury_sell, the amount bought or sold copied exactly as the article writes it (for example "4,225 BTC", "$472M", "1.2 million SOL"), or "unknown" if the article gives no amount. Never estimate, convert or round an amount. Leave it out for every other catalyst.
 - event_date: the UTC calendar date (YYYY-MM-DD) on which the reported event actually happened, read from the article. If the article reports today's event or does not say when it happened, use the publish date. If the article clearly recaps an older event (for example "last month's hack", "in 2022"), use that older date as best you can. Use "unknown" only if you truly cannot tell.
 
 # Catalyst list
@@ -18,21 +19,25 @@ Pick the catalyst by the event itself, never by tone or by how the price moved. 
 
 hack_exploit: funds were stolen or put at risk through a hack, exploit, private key compromise, bridge drain, smart-contract bug, rug pull, or a confirmed security breach at an exchange or protocol, affecting that asset's own protocol, chain, issuer or holders. Do not use for phishing warnings in general, for data leaks of customer addresses without funds at risk, or for a hack of an unrelated platform that merely held the asset.
 
-listing: a major centralized exchange (for example Binance, Coinbase, Upbit, OKX, Bybit, Robinhood, Kraken) announces it will list or has listed spot or perpetual trading for the asset, or adds a new trading pair that opens the asset to a large new market. Do not use for small exchanges, DEX pools, launchpad sales, or rumors that a listing "may" happen.
+listing: a major centralized exchange (for example Binance, Coinbase, Upbit, OKX, Bybit, Robinhood, Kraken) announces it will list or has listed spot or perpetual trading for the asset, or adds a new trading pair that opens the asset to a large new market. The asset must itself be the token being listed, and its name or symbol must be written in the title or text. Do not use for small exchanges, DEX pools, launchpad sales, or rumors that a listing "may" happen. Do not use for a candidate that is only the quote side of a new pair (a "XYZ/ETH" pair is a listing of XYZ, not of ETH), the chain or network the listed token runs on, a token the listed project integrates or uses (for example an oracle), or a coin the news provider tagged although the article never names it.
 
-delisting: a major exchange announces it will delist the asset, suspend its trading, remove its trading pairs, or put it on a monitoring / warning tag that precedes delisting.
+delisting: a major exchange announces it will delist the asset, suspend its trading, remove its trading pairs, or put it on a monitoring / warning tag that precedes delisting. As for listing, the asset must itself be the token being delisted and must be named in the title or text.
 
 etf_approved: a regulator approves, or an issuer launches trading of, an exchange-traded fund or product that holds the asset (for example a spot SOL ETF approval or first trading day).
 
 etf_delayed_or_rejected: a regulator delays a decision on, extends the review of, or rejects an ETF that holds the asset, or an issuer withdraws its application.
 
-regulatory_action: a regulator, prosecutor or government takes an action against the asset's issuer, foundation, main company or core developers: a lawsuit, charges, a fine, a sanction, an enforcement order, a ban, an investigation made public, an arrest of its leaders. For a stock, an enforcement action against the company itself.
+regulatory_action: a regulator, prosecutor or government takes an action against the asset's issuer, foundation, main company or core developers: a lawsuit, charges, a fine, a sanction, an enforcement order, a ban, an investigation made public, an arrest of its leaders. For a stock, an enforcement action against the company itself. The target of the action must be the project or company that owns the token or stock, as an organization, or its founders or leaders acting for it. It is NOT regulatory_action when:
+- the action targets an individual who works or used to work at the company (an employee, a former engineer, a trader) for their own conduct, such as insider trading, theft of trade secrets or fraud done on their own account; the company is only their employer;
+- the case is a civil lawsuit filed by investors, shareholders, users, customers or competitors (for example a class action or a securities suit by shareholders), even if it is about the company; only a regulator, prosecutor, court acting for a government, or government body counts;
+- the action targets an exchange, fund or other company that merely holds, lists or trades the asset.
+In those cases answer "none".
 
 favorable_ruling: a court ruling, settlement, dismissal of charges, regulatory clearance, or official classification that is favorable to the asset's issuer or project (for example a lawsuit against the project is dropped, or the token is ruled not a security).
 
-treasury_buy: a company, fund or government announces that it bought, or will buy, the asset for its treasury or reserve, with a stated amount or a formal plan (for example "Strategy bought 5,000 BTC", "Company X raises funds to buy ETH for its treasury"). The market is the coin bought, not the company's stock.
+treasury_buy: a company, fund or government announces that it bought the asset for its treasury or reserve (a completed purchase, with or without a stated amount), or that it will buy it under a formal plan (for example "Strategy bought 5,000 BTC", "Company X raises funds to buy ETH for its treasury"). The market is the coin bought, not the company's stock. Put the amount in treasury_amount exactly as written, or "unknown".
 
-treasury_sell: a company, fund or government announces that it sold, or moved to sell, the asset from its treasury or reserve, or a large known holder (a government, a bankrupt estate, a defunct exchange) begins distributing or selling it. The market is the coin sold.
+treasury_sell: a company, fund or government announces that it sold, or moved to sell, the asset from its treasury or reserve, or a large known holder (a government, a bankrupt estate, a defunct exchange) begins distributing or selling it. The market is the coin sold. Put the amount in treasury_amount exactly as written, or "unknown". Classify the event as it is, whatever its size; do not drop a treasury event because the amount looks small.
 
 earnings_beat: for a stock market only: the company reports quarterly or annual results that beat expectations, or raises its guidance or outlook.
 
@@ -46,6 +51,7 @@ none: anything else. This includes: partnerships, integrations, product launches
 - Name the candidate that the event directly affects. For a hack of a protocol, name the protocol's own token if it is a candidate. For an ETF, name the coin the ETF holds. For a treasury purchase, name the coin bought. For earnings, name the company's stock.
 - If the directly affected asset is not among the candidates, answer market "NONE" (and usually catalyst "none").
 - Never name a market that is not in the candidate list for this request, even if it appears in the tool's list of allowed values. The tool lists every market of the exchange; this request's candidates are a small subset.
+- Only name a market whose asset is written in the title or the article text, by its symbol or its name. Being a candidate (a tag from the news provider) is not enough: if the article never names the asset, answer market "NONE".
 - If an article is about many assets at once (a market recap, a list of top gainers), use relevance "passing_mention".
 
 # Examples
@@ -93,6 +99,20 @@ none: anything else. This includes: partnerships, integrations, product launches
 41. "Project H confirms the exploit reported earlier; losses now estimated at $12M" — hack_exploit, H's token, direct (a follow-up on the same hack still names the hack).
 42. "Exchange lists a new perpetual for asset Z with 50x leverage" — listing only for a major exchange; a new perpetual on a major exchange counts.
 
+# Negative examples (these look like a catalyst but are not)
+43. "Former Google engineer charged by the DOJ with stealing AI trade secrets" — candidates GOOGL-USD → none, market NONE. The prosecutor acts against an individual employee for his own conduct, not against Alphabet / Google.
+44. "SEC charges ex-employee of company N with insider trading in N shares" — candidates N-USD → none. The target is a person, not company N.
+45. "Meta investors file class-action lawsuit over privacy disclosures" — candidates META-USD → none. A civil lawsuit by investors is not a regulator, prosecutor or government action.
+46. "Shareholders sue Tesla board over pay package" — candidates TSLA-USD → none (a civil suit by shareholders).
+47. "Users file lawsuit against exchange E over a frozen account" — none (a civil suit by users, and the target is the exchange).
+48. "SEC sues company N over misleading statements to investors" — candidates N-USD → regulatory_action, N-USD, direct (the regulator acts against the company itself; compare with 45).
+49. "Binance will list token Q, a new oracle network built on Chainlink" — candidates LINK-USD, Q-USD → listing, Q-USD, direct. If Q is not a candidate, answer none, market NONE: LINK is only named as related technology, it is not being listed.
+50. "Upbit lists ABC with KRW, BTC and USDT pairs" — candidates ABC-USD, BTC-USD → listing, ABC-USD. BTC is only the quote side of a pair.
+51. "Coinbase adds trading for three new tokens" — candidates LINK-USD, and the article never writes LINK or Chainlink → none, market NONE (the tag alone does not make LINK the listed token).
+52. "Small listed company F sells 12 BTC to cover operating costs" — candidates BTC-USD → treasury_sell, BTC-USD, direct, treasury_amount "12 BTC". Classify what happened; the size is checked later, not by you.
+53. "Company G says it has bought DOGE for its treasury" and the text gives no amount — candidates DOGE-USD → treasury_buy, DOGE-USD, direct, treasury_amount "unknown" (never guess an amount).
+54. "Analyst says company H should buy SOL for its treasury" — none (an opinion, not an announcement).
+
 # Edge cases
 - A headline that is a question or a rumor ("Will Binance list X?", "Sources say…") is not an announcement: use "none" unless the article confirms the event.
 - A recap that mixes many events (a daily newsletter, "what happened this week") is "passing_mention" for every asset in it.
@@ -100,6 +120,8 @@ none: anything else. This includes: partnerships, integrations, product launches
 - If the text is a short social-media post, judge it by what it states as fact. A post that only reposts a link with an opinion is "none".
 - If the event is about a different asset with a similar ticker (a stock and a coin sharing a symbol), choose the candidate whose kind (crypto or stock) matches the subject; if none matches, answer market "NONE".
 - When a stock company buys a coin for its treasury, the catalyst is about the coin (treasury_buy on the coin), not an earnings event for the stock.
+- For regulatory_action, ask: who is the target? Only the project or company of the candidate (or its leaders acting for it) counts; a staff member's personal case or a civil suit by investors does not.
+- For listing and delisting, ask: which token is being listed? Only that token counts; quote coins, chains and tagged-but-unnamed coins do not.
 - When an article is not in English, classify it the same way.
 
 # Rules for your answer

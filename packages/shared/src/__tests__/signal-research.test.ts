@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { Decimal } from "../money";
 import {
+  assetAliases,
+  assetInText,
   candidatesOf,
   closeResult,
   costCheck,
@@ -13,9 +15,11 @@ import {
   oneWayFeePct,
   planTrade,
   roundTripCost,
+  smallTreasury,
   sourceTierOf,
   spreadPctOf,
   storyKey,
+  treasuryOnMajorAsset,
   typicalMovePct,
 } from "../signal-research/logic";
 import { gateStatus, randomResult, replayOnCandles, tradesNeeded } from "../signal-research/report";
@@ -26,7 +30,7 @@ const d = (v: string) => new Decimal(v);
 const MARKETS = new Set(["BTC-USD", "SOL-USD", "1000PEPE-USD", "NVDA-USD", "MSTR-USD", "COIN-USD"]);
 const H = 3_600_000;
 
-describe("rules v2", () => {
+describe("rules v3", () => {
   it("maps every catalyst to the direction and max hold of #269 v3.3", () => {
     expect(catalystRule("hack_exploit")).toMatchObject({ direction: "short", maxHoldHours: 24 });
     expect(catalystRule("listing")).toMatchObject({ direction: "long", maxHoldHours: 24 });
@@ -55,7 +59,141 @@ describe("rules v2", () => {
     });
     expect(catalystRule("token_unlock")).toMatchObject({ direction: "short", maxHoldHours: 48 });
     expect(SIGNAL_CATALYSTS).toHaveLength(12);
-    expect(NEWS_RULES.version).toBe("news-v2");
+    expect(NEWS_RULES.version).toBe("news-v3");
+    expect(NEWS_RULES.versionNumber).toBe(3);
+    expect(SignalReason.assetNotInText).toBe("ASSET_NOT_IN_TEXT");
+    expect(SignalReason.treasuryMajorAsset).toBe("TREASURY_MAJOR_ASSET");
+  });
+});
+
+describe("asset must be written in the article (news-v3, #298)", () => {
+  const coin = (symbol: string, market = `${symbol}-USD`) => ({
+    symbol,
+    market,
+    kind: "crypto" as const,
+  });
+  const stock = (symbol: string, market = `${symbol}-USD`) => ({
+    symbol,
+    market,
+    kind: "stock" as const,
+  });
+  const ethM = [{ symbol: "ETH", name: "Ethereum" }];
+
+  it("symbols match only as the exact uppercase token, at a word boundary", () => {
+    expect(assetInText("Big news for $ETH holders", null, coin("ETH"), ethM)).toBe(true);
+    expect(assetInText(null, "The ETH-USD perp jumped", coin("ETH"), ethM)).toBe(true);
+    expect(assetInText("big news for $eth holders", null, coin("ETH"), [])).toBe(false);
+    expect(assetInText("Binance lists 1000PEPE", null, coin("PEPE", "1000PEPE-USD"), [])).toBe(
+      true,
+    );
+    expect(assetInText("PEPE rallies", null, coin("PEPE", "1000PEPE-USD"), [])).toBe(true);
+    expect(assetInText("Upbit lists S", null, coin("S"), [])).toBe(true);
+    expect(assetInText("it's a busy day", "this is", coin("S"), [])).toBe(false);
+  });
+
+  it("needs a word boundary: ETH does not match ETHENA or ETHFI", () => {
+    expect(assetInText("Binance will list ETHENA and ETHFI", null, coin("ETH"), ethM)).toBe(false);
+    expect(assetInText("Ethereal raises funds", null, coin("ETH"), ethM)).toBe(false);
+  });
+
+  it("symbols that are English words do not match the lowercase word", () => {
+    const cases: [string, string, string | null, string][] = [
+      ["LINK", "CHAINLINK", null, "Read the link to the report"],
+      ["TON", "Toncoin", null, "Miners moved a ton of coins"],
+      ["GAS", "Gas", null, "Network gas fees rose today"],
+      ["ONE", "Harmony", null, "This was one of the biggest days"],
+      ["NEAR", "Near", null, "Analysts see near-term pressure"],
+      ["SUN", "Sun", null, "sun rises over the market"],
+    ];
+    for (const [symbol, name, , text] of cases)
+      expect(assetInText(text, null, coin(symbol), [{ symbol, name }])).toBe(false);
+  });
+
+  it("one-word names need a capital first letter; multi-word names match as a phrase", () => {
+    const near = [{ symbol: "NEAR", name: "Near" }];
+    expect(assetInText("Near Protocol ships an upgrade", null, coin("NEAR"), near)).toBe(true);
+    expect(assetInText("near protocol news", null, coin("NEAR"), near)).toBe(false);
+    const nearP = [{ symbol: "NEAR", name: "NEAR Protocol" }];
+    expect(assetInText("near protocol news", null, coin("NEAR"), nearP)).toBe(true);
+    const sol = [{ symbol: "SOL", name: "Solana" }];
+    expect(assetInText("Solana ETF filed", null, coin("SOL"), sol)).toBe(true);
+    expect(assetInText("SOLANA ETF filed", null, coin("SOL"), sol)).toBe(true);
+    expect(assetInText("solana etf filed", null, coin("SOL"), sol)).toBe(false);
+    const shib = [{ symbol: "SHIB", name: "Shiba Inu" }];
+    expect(assetInText("shiba inu burns tokens", null, coin("SHIB"), shib)).toBe(true);
+  });
+
+  it("drops a coin that is only a SoSoValue tag (LINK case); Chainlink (LINK) passes", () => {
+    const m = [{ symbol: "LINK", name: "CHAINLINK" }];
+    expect(
+      assetInText("Coinbase adds three new tokens", "Trading opens today.", coin("LINK"), m),
+    ).toBe(false);
+    expect(assetInText("Chainlink (LINK) hits a high", null, coin("LINK"), m)).toBe(true);
+    expect(assetInText("Oracle feeds from LINK", null, coin("LINK"), m)).toBe(true);
+    expect(assetInText("Binance lists Q, built on Chainlink oracles", null, coin("LINK"), m)).toBe(
+      true,
+    );
+    expect(assetInText("Bitlink launches", "unlinked", coin("LINK"), m)).toBe(false);
+  });
+
+  it("stocks: no first-word guess; multi-word names as phrases; brands only from the explicit map", () => {
+    const amd = [{ symbol: "AMD", name: '{"EN": "ADVANCED MICRO DEVICES, INC."}' }];
+    expect(assetAliases(stock("AMD"), amd).map((a) => a.text)).toEqual([
+      "AMD",
+      "ADVANCED MICRO DEVICES, INC.",
+      "ADVANCED MICRO DEVICES",
+    ]);
+    expect(assetInText("Advanced chips in demand", null, stock("AMD"), amd)).toBe(false);
+    expect(assetInText("Advanced Micro Devices beats", null, stock("AMD"), amd)).toBe(true);
+    const ual = [{ symbol: "UAL", name: '{"EN": "UNITED AIRLINES HOLDINGS, INC."}' }];
+    expect(assetInText("United States regulators act", null, stock("UAL"), ual)).toBe(false);
+    for (const sym of ["XYZ", "SQ"]) {
+      const block = [{ symbol: sym, name: '{"EN": "BLOCK, INC."}' }];
+      // Only the full legal name (a phrase) and the ticker; never the one word "Block".
+      expect(assetAliases(stock(sym), block).map((a) => a.text)).toEqual([sym, "BLOCK, INC."]);
+      expect(assetInText("Block rewards rose after the halving", null, stock(sym), block)).toBe(
+        false,
+      );
+    }
+    const g = [{ symbol: "GOOGL", name: '{"EN": "ALPHABET INC. CLASS A"}' }];
+    expect(assetInText("Former Google engineer charged", null, stock("GOOGL"), g)).toBe(true);
+    expect(assetInText("Alphabet results", null, stock("GOOGL"), g)).toBe(true);
+    expect(assetInText("Googleplex tour", null, stock("GOOGL"), g)).toBe(false);
+    expect(assetInText("google it", null, stock("GOOGL"), g)).toBe(false);
+    const m = [{ symbol: "META", name: '{"EN": "META PLATFORMS, INC."}' }];
+    expect(assetInText("Facebook parent fined", null, stock("META"), m)).toBe(true);
+    expect(assetInText("Meta investors sue", null, stock("META"), m)).toBe(true);
+    expect(assetInText("the meta of this cycle", null, stock("META"), m)).toBe(false);
+    const n = [{ symbol: "NVDA", name: '{"EN": "NVIDIA CORPORATION"}' }];
+    expect(assetInText("Nvidia beats estimates", null, stock("NVDA"), n)).toBe(true);
+    // Brand aliases are for their own market only.
+    expect(assetInText("Google invests in AI", null, stock("NVDA"), n)).toBe(false);
+  });
+
+  it("ignores names of other tagged currencies", () => {
+    const m = [
+      { symbol: "LINK", name: "CHAINLINK" },
+      { symbol: "ETH", name: "Ethereum" },
+    ];
+    expect(assetInText("Ethereum upgrade", null, coin("LINK"), m)).toBe(false);
+  });
+});
+
+describe("treasury rules (news-v3, #298)", () => {
+  it("never trades treasury news on BTC or ETH; other catalysts and coins are untouched", () => {
+    expect(treasuryOnMajorAsset("treasury_sell", "BTC-USD")).toBe(true);
+    expect(treasuryOnMajorAsset("treasury_buy", "ETH-USD")).toBe(true);
+    expect(treasuryOnMajorAsset("treasury_buy", "SOL-USD")).toBe(false);
+    expect(treasuryOnMajorAsset("hack_exploit", "BTC-USD")).toBe(false);
+    expect(treasuryOnMajorAsset("etf_approved", "ETH-USD")).toBe(false);
+  });
+
+  it("flags small treasury only for treasury news with no amount", () => {
+    expect(smallTreasury("treasury_buy", null)).toBe(true);
+    expect(smallTreasury("treasury_sell", undefined)).toBe(true);
+    expect(smallTreasury("treasury_buy", " unknown ")).toBe(true);
+    expect(smallTreasury("treasury_buy", "$40M")).toBe(false);
+    expect(smallTreasury("listing", null)).toBe(false);
   });
 });
 

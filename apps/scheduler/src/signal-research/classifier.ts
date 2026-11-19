@@ -10,6 +10,7 @@ import { CLASSIFIER_SYSTEM } from "./prompt";
 
 const TOOL_NAME = "record_classification";
 const TIMEOUT_MS = 20_000;
+const TREASURY_AMOUNT_MAX = 80;
 
 export interface ClassifyInput {
   title: string | null;
@@ -28,6 +29,11 @@ export interface Classification {
   relevance: "direct" | "passing_mention";
   promotional: boolean;
   eventDate: string | null;
+  /**
+   * news-v3 (#298): số tiền treasury mua / bán đúng như bài viết ("4,225 BTC", "$472M"); null = Claude không trích được
+   * (hoặc không phải tin treasury). Không bao giờ tự đoán. Thiếu = null.
+   */
+  treasuryAmount?: string | null;
 }
 
 export interface ClaudeUsage {
@@ -123,7 +129,15 @@ const answerSchema = z.object({
   relevance: z.enum(["direct", "passing_mention"]),
   promotional: z.boolean(),
   event_date: z.string().regex(/^(\d{4}-\d{2}-\d{2}|unknown)$/),
+  treasury_amount: z.string().optional(),
 });
+
+/** Số tiền treasury như bài viết; rỗng / "unknown" / thiếu → null. Cắt ngắn để không lưu cả đoạn văn. */
+function amountOf(raw: string | undefined): string | null {
+  const a = (raw ?? "").trim();
+  if (a === "" || a.toLowerCase() === "unknown") return null;
+  return a.slice(0, TREASURY_AMOUNT_MAX);
+}
 
 /** Kiểm câu trả lời của Claude: đúng schema, market là "NONE" hoặc một ứng viên của bài. */
 export function parseAnswer(
@@ -143,6 +157,7 @@ export function parseAnswer(
       relevance: a.relevance,
       promotional: a.promotional,
       eventDate: a.event_date === "unknown" ? null : a.event_date,
+      treasuryAmount: amountOf(a.treasury_amount),
     },
   };
 }
@@ -170,6 +185,11 @@ export function classifierTool(universe: readonly string[]): Anthropic.Tool {
         event_date: {
           type: "string",
           description: "UTC date YYYY-MM-DD when the event happened, or unknown.",
+        },
+        treasury_amount: {
+          type: "string",
+          description:
+            'Only for treasury_buy or treasury_sell: the amount bought or sold, copied exactly as the article states it (for example "4,225 BTC" or "$472M"), or unknown if the article states no amount. Never estimate. Leave it out for other catalysts.',
         },
       },
       required: ["catalyst", "market", "relevance", "promotional", "event_date"],

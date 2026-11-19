@@ -10,6 +10,7 @@ import {
   SOSO_OFFICIAL_CATEGORY,
   SOURCE_TIERS,
   SourceTier,
+  STOCK_BRAND_ALIASES,
   STOCK_MARKET_SET,
   STOCK_MARKETS,
   TradeDirection,
@@ -94,6 +95,125 @@ export function stripHtml(html: string): string {
 }
 
 // ── Understand ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Một cách viết của tài sản trong bài và cách khớp (review PM #301):
+ * - `symbol`: ký hiệu, luôn phân biệt hoa thường (chỉ chữ HOA: "LINK" khớp, "link" không);
+ * - `word`: tên một từ, phải viết hoa chữ đầu ("Near" / "NEAR" khớp, "near" không);
+ * - `phrase`: tên ≥ 2 từ, khớp cả cụm, không phân biệt hoa thường ("taiwan semiconductor").
+ */
+export interface AssetAlias {
+  text: string;
+  match: "symbol" | "word" | "phrase";
+}
+
+/** Đuôi pháp lý / loại cổ phiếu bỏ khỏi tên ("ADVANCED MICRO DEVICES, INC." → "ADVANCED MICRO DEVICES"). */
+const NAME_SUFFIX =
+  /[\s,]+(inc|incorporated|corp|corporation|co|company|ltd|limited|plc|holdings?|group|sa|nv|ag|se|adr|xstock|class\s+[a-c]|common\s+stock|ordinary\s+shares)\.?$/i;
+
+const tidy = (s: string) => s.replace(/[‘’ʼ]/g, "'").replace(/\s+/g, " ").trim();
+
+function plainName(name: string | null): string | null {
+  if (name === null) return null;
+  if (isStockName(name)) return /"EN"\s*:\s*"([^"]*)"/i.exec(name)?.[1] ?? null;
+  return name;
+}
+
+function stripSuffixes(name: string): string {
+  let out = name.replace(/[.,]+$/, "");
+  for (let prev = ""; prev !== out;) {
+    prev = out;
+    out = out.replace(NAME_SUFFIX, "").replace(/[.,]+$/, "");
+  }
+  return out;
+}
+
+const wordsOf = (s: string) => s.split(" ").length;
+
+/**
+ * Các cách viết của một ứng viên để kiểm "tài sản có trong bài" (news-v3, #298): ký hiệu SoSoValue và gốc market SoDEX
+ * ("1000PEPE-USD" → "1000PEPE", "PEPE") khớp chữ HOA; tên SoSoValue gắn với ký hiệu đó và tên đã bỏ đuôi pháp lý. Cổ
+ * phiếu: tên đã bỏ đuôi chỉ dùng khi còn ≥ 2 từ ("BLOCK, INC." → "Block" là từ thường, không dùng); tên thương hiệu một từ
+ * chỉ đến từ bảng tường minh `STOCK_BRAND_ALIASES` (Nvidia, Google…). Không đoán tên từ chữ đầu.
+ */
+export function assetAliases(
+  candidate: Candidate,
+  matched: readonly MatchedCurrency[],
+): AssetAlias[] {
+  const out = new Map<string, AssetAlias>();
+  const add = (raw: string, symbol: boolean) => {
+    const text = tidy(raw);
+    if (text.length === 0) return;
+    const match = symbol ? "symbol" : wordsOf(text) >= 2 ? "phrase" : "word";
+    const key = `${match}:${match === "symbol" ? text.toUpperCase() : text.toLowerCase()}`;
+    if (!out.has(key))
+      out.set(key, { text: match === "symbol" ? text.toUpperCase() : text, match });
+  };
+  const stock = candidate.kind === AssetKind.stock;
+  const base = candidate.market.replace(/-USD$/i, "");
+  add(candidate.symbol, true);
+  add(base, true);
+  if (/^1000./.test(base)) add(base.slice(4), true);
+  for (const m of matched) {
+    if (m.symbol.trim().toUpperCase() !== candidate.symbol.toUpperCase()) continue;
+    const name = plainName(m.name);
+    if (name === null || tidy(name).length < 2) continue;
+    const full = tidy(name);
+    if (!stock || wordsOf(full) >= 2) add(full, false);
+    const short = stripSuffixes(full);
+    if (short.length >= 2 && (!stock || wordsOf(short) >= 2)) add(short, false);
+  }
+  if (stock) for (const brand of STOCK_BRAND_ALIASES[candidate.market] ?? []) add(brand, false);
+  return [...out.values()];
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const startsUpper = (s: string) => {
+  const c = s.charAt(0);
+  return c === c.toUpperCase();
+};
+
+/** Có cách viết nào của tài sản trong văn bản, đứng riêng một từ ("ETH" không khớp "ETHENA"). */
+export function mentionsAsset(text: string, aliases: readonly AssetAlias[]): boolean {
+  const t = tidy(text);
+  return aliases.some((a) => {
+    const body = `(?<![\\p{L}\\p{N}])${escapeRe(a.text)}(?![\\p{L}\\p{N}])`;
+    if (a.match === "symbol") return new RegExp(body, "u").test(t);
+    if (a.match === "phrase") return new RegExp(body, "iu").test(t);
+    return [...t.matchAll(new RegExp(body, "giu"))].some((m) => startsUpper(m[0]));
+  });
+}
+
+/** Tài sản Claude chọn phải có trong tiêu đề hoặc nội dung bài (news-v3, #298); không thì `ASSET_NOT_IN_TEXT`. */
+export function assetInText(
+  title: string | null,
+  content: string | null,
+  candidate: Candidate,
+  matched: readonly MatchedCurrency[],
+): boolean {
+  return mentionsAsset(`${title ?? ""}\n${content ?? ""}`, assetAliases(candidate, matched));
+}
+
+const isTreasury = (c: SignalCatalyst) => c === "treasury_buy" || c === "treasury_sell";
+const TREASURY_EXCLUDED: ReadonlySet<string> = new Set(NEWS_RULES.treasuryExcludedMarkets);
+
+/** news-v3 (#298): treasury buy / sell trên BTC / ETH không bao giờ giao dịch (`TREASURY_MAJOR_ASSET`). */
+export function treasuryOnMajorAsset(catalyst: SignalCatalyst, market: string): boolean {
+  return isTreasury(catalyst) && TREASURY_EXCLUDED.has(market);
+}
+
+/**
+ * Cờ "small treasury?" (#298): tin treasury mà Claude không trích được số tiền (thiếu, rỗng hoặc "unknown"). Chỉ để phân
+ * tích sau, không chặn lệnh; không bao giờ tự đoán số tiền.
+ */
+export function smallTreasury(
+  catalyst: SignalCatalyst,
+  amount: string | null | undefined,
+): boolean {
+  if (!isTreasury(catalyst)) return false;
+  const a = (amount ?? "").trim().toLowerCase();
+  return a === "" || a === "unknown";
+}
 
 export function sourceTierOf(author: string, category: number | null): SourceTier {
   const known = SOURCE_TIERS[author.trim().toLowerCase()];

@@ -854,3 +854,122 @@ describe("per-article Claude usage (#290)", () => {
     });
   });
 });
+
+describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, version gate", () => {
+  const perps = () => [
+    ...PERPS,
+    { name: "LINK-USD", status: "TRADING", tickSize: "0.001", takerFee: "0.0004" },
+  ];
+
+  it("drops a tag-only asset and treasury on BTC after Claude; flags small treasury on other coins", async () => {
+    const items = [
+      item("v1", T0 - 3 * MIN, "Coinbase adds three new tokens", {
+        matched_currencies: [{ symbol: "LINK", name: "CHAINLINK" }],
+      }),
+      item("v2", T0 - 2 * MIN, "Small firm F sells 12 BTC to cover costs", {
+        matched_currencies: [{ symbol: "BTC", name: "Bitcoin" }],
+      }),
+      item("v3", T0 - MIN, "Company G says it bought Solana for its treasury"),
+    ];
+    const claude = fakeClaude({
+      "Coinbase adds three new tokens": { ...hack, catalyst: "listing", market: "LINK-USD" },
+      "Small firm F sells 12 BTC to cover costs": {
+        ...hack,
+        catalyst: "treasury_sell",
+        market: "BTC-USD",
+        treasuryAmount: "12 BTC",
+      },
+      "Company G says it bought Solana for its treasury": {
+        ...hack,
+        catalyst: "treasury_buy",
+        treasuryAmount: null,
+      },
+    });
+    const { sr, errors } = setup({ items: () => items, claude, now: () => T0, perps });
+    await sr.runCycle();
+    expect(errors).toEqual([]);
+
+    const ev = await db
+      .select({
+        articleId: signalEvents.articleId,
+        outcome: signalEvents.outcome,
+        reason: signalEvents.reason,
+        detail: signalEvents.detail,
+      })
+      .from(signalEvents)
+      .where(eq(signalEvents.stage, "understand"));
+    const by = new Map(ev.map((e) => [e.articleId, e]));
+    expect(by.get("v1")).toMatchObject({ outcome: "drop", reason: "ASSET_NOT_IN_TEXT" });
+    expect(by.get("v2")).toMatchObject({ outcome: "drop", reason: "TREASURY_MAJOR_ASSET" });
+    expect(by.get("v3")).toMatchObject({
+      outcome: "pass",
+      reason: null,
+      detail: { market: "SOL-USD", catalyst: "treasury_buy", smallTreasury: true },
+    });
+    const [a3] = await db.select().from(signalArticles).where(eq(signalArticles.id, "v3"));
+    expect(a3?.classification).toMatchObject({ treasuryAmount: null, smallTreasury: true });
+    const [a2] = await db.select().from(signalArticles).where(eq(signalArticles.id, "v2"));
+    expect(a2?.classification).toMatchObject({ treasuryAmount: "12 BTC" });
+    expect(a2?.classification).not.toHaveProperty("smallTreasury");
+    // Bỏ ở Understand vì lỗi của bài: không tạo story cho LINK / BTC.
+    const stories = await db.select({ market: signalStories.market }).from(signalStories);
+    expect(stories.map((s) => s.market)).toEqual(["SOL-USD"]);
+
+    const summary = await loadSignalResearchSummary(db, new Date(T0), {
+      sosoMonthlyLimit: 9500,
+      claudeDailyInputBudget: 2_000_000,
+    });
+    expect(summary.funnel?.drops.score.reasons).toEqual(
+      expect.arrayContaining([
+        { reason: "assetNotInText", n: 1 },
+        { reason: "treasuryMajorAsset", n: 1 },
+      ]),
+    );
+  });
+
+  it("news-v2 trades stay in the trade list as history but never count toward the summary / gate", async () => {
+    const storyId = "00000000-0000-4000-8000-000000000298";
+    const tradeId = "00000000-0000-4000-8000-000000000299";
+    await pool.query(
+      `insert into signal_articles (id, source, title, published_at, collected_at, matched_currencies, candidates, content_hash, status, rule_version)
+       values ('old-1', 'Bloomberg', 'Old v2 story', '2026-11-17T10:00:00Z', '2026-11-17T10:03:00Z', '[]', '[]', 'old', 'classified', 'news-v2')`,
+    );
+    await pool.query(
+      `insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry, later_level, outcome, locked, rule_version)
+       values ($1, 'SOL-USD|regulatory_action', 'SOL-USD', 'regulatory_action', 'short', 'old-1', '2026-11-17T10:03:00Z',
+               '[{"name":"Bloomberg","tier":"top","articleId":"old-1","at":"2026-11-17T10:00:00.000Z"}]', 'medium', 'medium', 'entered', true, 'news-v2')`,
+      [storyId],
+    );
+    await pool.query(
+      `insert into signal_paper_trades (id, lane, story_id, article_id, market, token, catalyst, direction, size_usdc, qty, entry_price, entry_mid,
+         spread_at_entry_pct, fee_pct, entry_fee, typical_move_pct, tp_pct, sl_pct, tp_price, sl_price, max_hold_until, event_at, seen_at, opened_at,
+         moved_before_entry_pct, level_at_entry, sources_at_entry, outside_market_hours, price_source, status, exit_price, exit_reason, exited_at,
+         exit_fee, result_usdc, result_pct, rule_version)
+       values ($1, 'news', $2, 'old-1', 'SOL-USD', 'SOL', 'regulatory_action', 'short', 500, 3.5, 142.18, 142.2, 0.03, 0.05, 0.25, 1.33,
+         2, 1, 139.34, 143.6, '2026-11-20T10:03:00Z', '2026-11-17T10:00:00Z', '2026-11-17T10:03:00Z', '2026-11-17T10:03:05Z', -0.6, 'medium',
+         '[{"name":"Bloomberg","tier":"top"}]', false, 'book', 'closed', 139.3, 'take_profit', '2026-11-18T09:12:00Z', 0.24, 9.5, 1.9, 'news-v2')`,
+      [tradeId, storyId],
+    );
+    expect(NEWS_RULES.version).toBe("news-v3");
+    // Một chu kỳ v3 (bài không phải tín hiệu) để lane có dữ liệu của version hiện tại.
+    const { sr } = setup({
+      items: () => [item("now-1", T0 - MIN, "SOL market recap")],
+      claude: fakeClaude({}),
+      now: () => T0,
+    });
+    await sr.runCycle();
+
+    const summary = await loadSignalResearchSummary(db, new Date(T0), {
+      sosoMonthlyLimit: 9500,
+      claudeDailyInputBudget: 2_000_000,
+    });
+    expect(summary.rows[0]).toMatchObject({ rulesVersion: 3, closed: 0, opened: 0 });
+    expect(summary.funnel?.outcomes).toEqual({ closed: 0, tp: 0, sl: 0, maxHold: 0, open: 0 });
+    expect(summary.assets).not.toContain("SOL-USD");
+
+    const page = await loadSignalResearchTrades(db, { limit: 50, show: "all" }, new Date(T0));
+    expect(page.items.map((i) => i.id)).toContain(tradeId);
+    const detail = await loadSignalResearchTrade(db, tradeId, new Date(T0));
+    expect(detail).toMatchObject({ rulesVersion: 2 });
+  });
+});

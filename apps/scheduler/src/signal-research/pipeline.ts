@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { signalArticles, signalPaperTrades, signalStories, type Db } from "@drift/db";
 import {
   AssetKind,
+  assetInText,
   candidatesOf,
   catalystRule,
   costCheck,
@@ -20,11 +21,13 @@ import {
   SignalOutcome,
   SignalReason,
   SignalStage,
+  smallTreasury,
   sourceTierOf,
   spreadPctOf,
   STOCK_MARKET_SET,
   storyKey,
   stripHtml,
+  treasuryOnMajorAsset,
   type Candidate,
   type Quote,
   type SignalCatalyst,
@@ -126,6 +129,10 @@ const candidateList = z.array(
   z.object({ symbol: z.string(), market: z.string(), kind: z.enum(["crypto", "stock"]) }),
 );
 const matchedList = z.array(z.object({ symbol: z.string(), name: z.string().nullable() }));
+const matchedOf = (v: unknown) => {
+  const p = matchedList.safeParse(v);
+  return p.success ? p.data : [];
+};
 
 interface Signal {
   articleId: string;
@@ -373,7 +380,13 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     await markSource(db, "claude", now, null);
     report.classified += 1;
     const c = out.value;
-    const classification = { ...c, ruleVersion: NEWS_RULES.version };
+    // Cờ "small treasury?" (#298): tin treasury mà Claude không trích được số tiền; chỉ để phân tích sau.
+    const small = c.catalyst !== "none" && smallTreasury(c.catalyst, c.treasuryAmount);
+    const classification = {
+      ...c,
+      ruleVersion: NEWS_RULES.version,
+      ...(small ? { smallTreasury: true } : {}),
+    };
     const candidate = candidates.find((x) => x.market === c.market);
     let reason: SignalReason | null = null;
     if (c.catalyst === "none") reason = SignalReason.notSignalType;
@@ -382,6 +395,12 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     else if (c.promotional) reason = SignalReason.promotional;
     else if (!catalystRule(c.catalyst).kinds.includes(candidate.kind))
       reason = SignalReason.wrongAssetKind;
+    // news-v3 (#298): kiểm tất định sau Claude. Tài sản phải được viết trong bài (tag SoSoValue thôi chưa đủ);
+    // treasury trên BTC / ETH không giao dịch.
+    else if (!assetInText(a.title, a.content, candidate, matchedOf(a.matchedCurrencies)))
+      reason = SignalReason.assetNotInText;
+    else if (treasuryOnMajorAsset(c.catalyst, candidate.market))
+      reason = SignalReason.treasuryMajorAsset;
     else if (eventTooOld(c.eventDate, a.publishedAt.getTime())) reason = SignalReason.eventTooOld;
     const signal: Signal | null =
       candidate === undefined || c.catalyst === "none"
@@ -418,6 +437,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
             catalyst: signal.catalyst,
             direction: rule.direction,
             maxHoldHours: rule.maxHoldHours,
+            ...(small ? { smallTreasury: true } : {}),
           },
           at: now,
         },
