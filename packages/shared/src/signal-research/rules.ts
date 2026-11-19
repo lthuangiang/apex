@@ -313,11 +313,30 @@ export const STOCK_MARKETS: Readonly<Record<string, string>> = {
  * Danh sách nhỏ, tường minh; thêm tên = tăng version quy tắc.
  */
 export const STOCK_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  "AAPL-USD": ["Apple"],
+  "AMZN-USD": ["Amazon"],
+  "COIN-USD": ["Coinbase"],
+  "CRWD-USD": ["CrowdStrike"],
+  "CRWV-USD": ["CoreWeave"],
   "GOOGL-USD": ["Google", "Alphabet"],
+  "HOOD-USD": ["Robinhood"],
+  "INTC-USD": ["Intel"],
+  "MCD-USD": ["McDonald's"],
   "META-USD": ["Meta", "Facebook"],
-  "TSM-USD": ["TSMC", "Taiwan Semiconductor"],
+  "MRNA-USD": ["Moderna"],
+  "MRVL-USD": ["Marvell"],
+  "MSFT-USD": ["Microsoft"],
   "MSTR-USD": ["MicroStrategy"],
+  "MU-USD": ["Micron"],
+  "NBIS-USD": ["Nebius"],
+  "NKE-USD": ["Nike"],
+  "NVDA-USD": ["Nvidia"],
+  "ORCL-USD": ["Oracle"],
+  "PLTR-USD": ["Palantir"],
   "SMCI-USD": ["Supermicro", "Super Micro"],
+  "SNDK-USD": ["SanDisk"],
+  "TSLA-USD": ["Tesla"],
+  "TSM-USD": ["TSMC", "Taiwan Semiconductor"],
 };
 
 /** Market SoDEX là cổ phiếu (để gắn nhãn "outside market hours"). */

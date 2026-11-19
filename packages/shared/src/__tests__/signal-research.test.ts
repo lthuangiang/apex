@@ -67,63 +67,107 @@ describe("rules v3", () => {
 });
 
 describe("asset must be written in the article (news-v3, #298)", () => {
-  const eth = { symbol: "ETH", market: "ETH-USD", kind: "crypto" as const };
-  const link = { symbol: "LINK", market: "LINK-USD", kind: "crypto" as const };
-  const pepe = { symbol: "PEPE", market: "1000PEPE-USD", kind: "crypto" as const };
-  const nvda = { symbol: "NVDA", market: "NVDA-USD", kind: "stock" as const };
-  const meta = { symbol: "META", market: "META-USD", kind: "stock" as const };
-  const googl = { symbol: "GOOGL", market: "GOOGL-USD", kind: "stock" as const };
-  const s = { symbol: "S", market: "S-USD", kind: "crypto" as const };
-
-  it("matches the symbol, the market base and the SoSoValue name, case-insensitively", () => {
-    const m = [{ symbol: "ETH", name: "Ethereum" }];
-    expect(assetInText("Big news for $eth holders", null, eth, m)).toBe(true);
-    expect(assetInText(null, "The ETH-USD perp jumped", eth, m)).toBe(true);
-    expect(assetInText("ethereum foundation sells", "", eth, m)).toBe(true);
-    expect(assetInText("Binance lists 1000PEPE", null, pepe, [])).toBe(true);
-    expect(assetInText("PEPE rallies", null, pepe, [])).toBe(true);
+  const coin = (symbol: string, market = `${symbol}-USD`) => ({
+    symbol,
+    market,
+    kind: "crypto" as const,
   });
-
-  it("needs a word boundary: ETH does not match ETHENA, ETHFI or WETHER", () => {
-    const m = [{ symbol: "ETH", name: "Ethereum" }];
-    expect(assetInText("Binance will list ETHENA and ETHFI", "wether", eth, m)).toBe(false);
-    expect(assetInText("Ethereal raises funds", null, eth, m)).toBe(false);
+  const stock = (symbol: string, market = `${symbol}-USD`) => ({
+    symbol,
+    market,
+    kind: "stock" as const,
   });
+  const ethM = [{ symbol: "ETH", name: "Ethereum" }];
 
-  it("drops a coin that is only a SoSoValue tag (LINK case)", () => {
-    const m = [{ symbol: "LINK", name: "CHAINLINK" }];
-    expect(assetInText("Coinbase adds three new tokens", "Trading opens today.", link, m)).toBe(
-      false,
+  it("symbols match only as the exact uppercase token, at a word boundary", () => {
+    expect(assetInText("Big news for $ETH holders", null, coin("ETH"), ethM)).toBe(true);
+    expect(assetInText(null, "The ETH-USD perp jumped", coin("ETH"), ethM)).toBe(true);
+    expect(assetInText("big news for $eth holders", null, coin("ETH"), [])).toBe(false);
+    expect(assetInText("Binance lists 1000PEPE", null, coin("PEPE", "1000PEPE-USD"), [])).toBe(
+      true,
     );
-    expect(assetInText("Binance lists Q, built on Chainlink oracles", null, link, m)).toBe(true);
-    expect(assetInText("Bitlink launches", "unlinked", link, m)).toBe(false);
+    expect(assetInText("PEPE rallies", null, coin("PEPE", "1000PEPE-USD"), [])).toBe(true);
+    expect(assetInText("Upbit lists S", null, coin("S"), [])).toBe(true);
+    expect(assetInText("it's a busy day", "this is", coin("S"), [])).toBe(false);
   });
 
-  it("uses the stock name without legal suffixes and its first word", () => {
-    const n = [{ symbol: "NVDA", name: '{"EN": "NVIDIA CORPORATION"}' }];
-    expect(assetAliases(nvda, n).map((a) => a.text)).toEqual([
-      "NVDA",
-      "NVIDIA CORPORATION",
-      "NVIDIA",
+  it("needs a word boundary: ETH does not match ETHENA or ETHFI", () => {
+    expect(assetInText("Binance will list ETHENA and ETHFI", null, coin("ETH"), ethM)).toBe(false);
+    expect(assetInText("Ethereal raises funds", null, coin("ETH"), ethM)).toBe(false);
+  });
+
+  it("symbols that are English words do not match the lowercase word", () => {
+    const cases: [string, string, string | null, string][] = [
+      ["LINK", "CHAINLINK", null, "Read the link to the report"],
+      ["TON", "Toncoin", null, "Miners moved a ton of coins"],
+      ["GAS", "Gas", null, "Network gas fees rose today"],
+      ["ONE", "Harmony", null, "This was one of the biggest days"],
+      ["NEAR", "Near", null, "Analysts see near-term pressure"],
+      ["SUN", "Sun", null, "sun rises over the market"],
+    ];
+    for (const [symbol, name, , text] of cases)
+      expect(assetInText(text, null, coin(symbol), [{ symbol, name }])).toBe(false);
+  });
+
+  it("one-word names need a capital first letter; multi-word names match as a phrase", () => {
+    const near = [{ symbol: "NEAR", name: "Near" }];
+    expect(assetInText("Near Protocol ships an upgrade", null, coin("NEAR"), near)).toBe(true);
+    expect(assetInText("near protocol news", null, coin("NEAR"), near)).toBe(false);
+    const nearP = [{ symbol: "NEAR", name: "NEAR Protocol" }];
+    expect(assetInText("near protocol news", null, coin("NEAR"), nearP)).toBe(true);
+    const sol = [{ symbol: "SOL", name: "Solana" }];
+    expect(assetInText("Solana ETF filed", null, coin("SOL"), sol)).toBe(true);
+    expect(assetInText("SOLANA ETF filed", null, coin("SOL"), sol)).toBe(true);
+    expect(assetInText("solana etf filed", null, coin("SOL"), sol)).toBe(false);
+    const shib = [{ symbol: "SHIB", name: "Shiba Inu" }];
+    expect(assetInText("shiba inu burns tokens", null, coin("SHIB"), shib)).toBe(true);
+  });
+
+  it("drops a coin that is only a SoSoValue tag (LINK case); Chainlink (LINK) passes", () => {
+    const m = [{ symbol: "LINK", name: "CHAINLINK" }];
+    expect(
+      assetInText("Coinbase adds three new tokens", "Trading opens today.", coin("LINK"), m),
+    ).toBe(false);
+    expect(assetInText("Chainlink (LINK) hits a high", null, coin("LINK"), m)).toBe(true);
+    expect(assetInText("Oracle feeds from LINK", null, coin("LINK"), m)).toBe(true);
+    expect(assetInText("Binance lists Q, built on Chainlink oracles", null, coin("LINK"), m)).toBe(
+      true,
+    );
+    expect(assetInText("Bitlink launches", "unlinked", coin("LINK"), m)).toBe(false);
+  });
+
+  it("stocks: no first-word guess; multi-word names as phrases; brands only from the explicit map", () => {
+    const amd = [{ symbol: "AMD", name: '{"EN": "ADVANCED MICRO DEVICES, INC."}' }];
+    expect(assetAliases(stock("AMD"), amd).map((a) => a.text)).toEqual([
+      "AMD",
+      "ADVANCED MICRO DEVICES, INC.",
+      "ADVANCED MICRO DEVICES",
     ]);
-    expect(assetInText("Nvidia beats estimates", null, nvda, n)).toBe(true);
-    const m = [{ symbol: "META", name: '{"EN": "META PLATFORMS, INC."}' }];
-    expect(assetInText("Meta investors sue", null, meta, m)).toBe(true);
+    expect(assetInText("Advanced chips in demand", null, stock("AMD"), amd)).toBe(false);
+    expect(assetInText("Advanced Micro Devices beats", null, stock("AMD"), amd)).toBe(true);
+    const ual = [{ symbol: "UAL", name: '{"EN": "UNITED AIRLINES HOLDINGS, INC."}' }];
+    expect(assetInText("United States regulators act", null, stock("UAL"), ual)).toBe(false);
+    for (const sym of ["XYZ", "SQ"]) {
+      const block = [{ symbol: sym, name: '{"EN": "BLOCK, INC."}' }];
+      // Only the full legal name (a phrase) and the ticker; never the one word "Block".
+      expect(assetAliases(stock(sym), block).map((a) => a.text)).toEqual([sym, "BLOCK, INC."]);
+      expect(assetInText("Block rewards rose after the halving", null, stock(sym), block)).toBe(
+        false,
+      );
+    }
     const g = [{ symbol: "GOOGL", name: '{"EN": "ALPHABET INC. CLASS A"}' }];
-    expect(assetAliases(googl, g).map((a) => a.text)).toContain("ALPHABET");
-    // "Google" is not the ticker GOOGL (word boundary) but is in the explicit brand map.
-    expect(assetInText("Former Google engineer charged", null, googl, g)).toBe(true);
-    expect(assetInText("Googleplex tour", null, googl, g)).toBe(false);
-    expect(assetInText("Facebook parent fined", null, meta, m)).toBe(true);
-    // Brand aliases are for stocks only, and only for their own market.
-    expect(assetInText("Google invests in AI", null, nvda, n)).toBe(false);
-  });
-
-  it("matches 1–2 letter symbols only in capitals", () => {
-    const m = [{ symbol: "S", name: "Sonic" }];
-    expect(assetInText("it's a busy day", "this is", s, [])).toBe(false);
-    expect(assetInText("Upbit lists S", null, s, [])).toBe(true);
-    expect(assetInText("sonic labs news", null, s, m)).toBe(true);
+    expect(assetInText("Former Google engineer charged", null, stock("GOOGL"), g)).toBe(true);
+    expect(assetInText("Alphabet results", null, stock("GOOGL"), g)).toBe(true);
+    expect(assetInText("Googleplex tour", null, stock("GOOGL"), g)).toBe(false);
+    expect(assetInText("google it", null, stock("GOOGL"), g)).toBe(false);
+    const m = [{ symbol: "META", name: '{"EN": "META PLATFORMS, INC."}' }];
+    expect(assetInText("Facebook parent fined", null, stock("META"), m)).toBe(true);
+    expect(assetInText("Meta investors sue", null, stock("META"), m)).toBe(true);
+    expect(assetInText("the meta of this cycle", null, stock("META"), m)).toBe(false);
+    const n = [{ symbol: "NVDA", name: '{"EN": "NVIDIA CORPORATION"}' }];
+    expect(assetInText("Nvidia beats estimates", null, stock("NVDA"), n)).toBe(true);
+    // Brand aliases are for their own market only.
+    expect(assetInText("Google invests in AI", null, stock("NVDA"), n)).toBe(false);
   });
 
   it("ignores names of other tagged currencies", () => {
@@ -131,7 +175,7 @@ describe("asset must be written in the article (news-v3, #298)", () => {
       { symbol: "LINK", name: "CHAINLINK" },
       { symbol: "ETH", name: "Ethereum" },
     ];
-    expect(assetInText("Ethereum upgrade", null, link, m)).toBe(false);
+    expect(assetInText("Ethereum upgrade", null, coin("LINK"), m)).toBe(false);
   });
 });
 
