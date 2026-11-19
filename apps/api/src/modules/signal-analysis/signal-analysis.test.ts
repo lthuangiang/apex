@@ -137,6 +137,8 @@ describe("signal analysis helpers", () => {
       strategy: "volume_maker",
       userId: "u",
       createdAt: 0,
+      state: "running",
+      version: 1,
       config: { orderSize: "100" },
     };
     const f = (
@@ -369,6 +371,8 @@ describe("signal analysis helpers", () => {
       strategy: "volume_farm",
       userId,
       createdAt,
+      state: "stopped",
+      version: 2,
       config: null,
     });
     const ua = "00000000-0000-4000-8000-0000bbbbbbbb";
@@ -390,6 +394,8 @@ describe("signal analysis helpers", () => {
       strategy: "volume_farm",
       createdAt: "2026-11-12T00:00:00.000Z",
       tail: "aaaaaaaa",
+      state: "stopped",
+      version: 2,
     });
     expect(out[2]?.tail).toBe("bbbbbbbb");
   });

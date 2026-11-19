@@ -441,6 +441,9 @@ describe("Signal Analysis API", () => {
     for (const b of v.botList) {
       expect(b.tail).toBe(tail);
       expect(Number.isNaN(Date.parse(b.createdAt))).toBe(false);
+      // Trạng thái + version cho bộ chọn bot (#289); bot test chưa có version đang chạy.
+      expect(b.state).toBe("running");
+      expect(b.version).toBeNull();
     }
     expect(r.body).not.toContain("@drift.test");
     const mm = v.byStrategy.find((s) => s.key === "volume_maker");

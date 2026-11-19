@@ -39,6 +39,8 @@ const head = {
       strategy: "volume_farm" as const,
       createdAt: "2026-11-02T08:00:00.000Z",
       tail: "a1b2c3d4",
+      state: "running" as const,
+      version: 3,
     },
     {
       id: BOT_MM,
@@ -47,6 +49,8 @@ const head = {
       strategy: "volume_maker" as const,
       createdAt: "2026-11-01T08:00:00.000Z",
       tail: "7c21e0b4",
+      state: "stopped" as const,
+      version: 4,
     },
     {
       id: BOT_VB_OLD,
@@ -55,6 +59,8 @@ const head = {
       strategy: "volume_farm" as const,
       createdAt: "2026-11-05T08:00:00.000Z",
       tail: "7c21e0b4",
+      state: "paused" as const,
+      version: 1,
     },
     {
       id: BOT_VB_NEW,
@@ -64,6 +70,8 @@ const head = {
       // 23:30 UTC ngày 12 = ngày 13 ở UTC+7: đổi Show in UTC thì ngày đổi.
       createdAt: "2026-11-12T23:30:00.000Z",
       tail: "7c21e0b4",
+      state: "running" as const,
+      version: 2,
     },
   ],
 };

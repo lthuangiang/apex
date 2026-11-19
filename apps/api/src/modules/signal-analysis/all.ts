@@ -288,6 +288,8 @@ export function botFacets(ids: Iterable<string>, bots: Map<string, BotInfo>) {
               strategy: b.strategy,
               createdAt: new Date(b.createdAt).toISOString(),
               tail: tailOf(b.userId),
+              state: b.state,
+              version: b.version,
             },
           ];
     })

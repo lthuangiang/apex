@@ -107,6 +107,7 @@ export function VbTab({ ctx }: { ctx: PageCtx }) {
           <BotSelect
             label={t("filters.bot")}
             allLabel={t("filters.allVbBots")}
+            strategy="volume_farm"
             bots={v?.botList ?? []}
             value={f.botId}
             tz={ctx.tz}

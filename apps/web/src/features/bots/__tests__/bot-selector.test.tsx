@@ -9,7 +9,9 @@ import type { ReactNode } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
+import { DEFAULT_FILTERS } from "../bot-picker";
 import {
+  BotPickerPanel,
   BotSelector,
   BotSelectorError,
   BotSelectorSkeleton,
@@ -355,5 +357,57 @@ describe("selector states", () => {
     const dialog = screen.getByRole("dialog", { name: "Switch bot" });
     expect(opts(dialog)).toHaveLength(2);
     expect(opts(dialog).filter((o) => o.getAttribute("aria-selected") === "true")).toEqual([]);
+  });
+
+  it("reused outside Trading Agent (#289): All row, onSelect, fixed strategy, account, no PnL column", () => {
+    const onSelect = vi.fn();
+    const lite = [current, runB, stopped2].map((b) => ({
+      id: b.id,
+      name: b.name,
+      strategy: b.strategy,
+      market: b.market,
+      marketLabel: null,
+      state: b.state,
+      reasonCode: null,
+      needsAttention: false,
+      activeVersion: b.activeVersion,
+      createdAt: b.createdAt,
+      updatedAt: b.updatedAt,
+      account: "Account ··b569370e",
+    }));
+    wrap(
+      <BotPickerPanel
+        bots={lite}
+        currentId={null}
+        filters={{ ...DEFAULT_FILTERS, showStopped: true }}
+        setFilters={() => undefined}
+        phone={false}
+        onPick={() => undefined}
+        onEscape={null}
+        onSelect={onSelect}
+        allOption={{ label: "All MM bots", sub: "3 bots" }}
+        fixedStrategy
+        created={() => "Nov 2"}
+        keysHint="↑ ↓ to move · Enter to choose · Esc to close"
+        manageLink={false}
+      />,
+    );
+    expect(screen.queryByRole("combobox", { name: "Strategy" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Manage all bots/ })).not.toBeInTheDocument();
+    const list = screen.getByRole("listbox", { name: "Switch bot" });
+    const rows = within(list).getAllByRole("option");
+    expect(rows[0]).toHaveTextContent("All MM bots");
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+    expect(rows[1]).toHaveAttribute(
+      "aria-label",
+      `BTC Market Making, id ending ${current.id.slice(-8)}, BTC-USD, version 4, Account ··b569370e, Running`,
+    );
+    expect(rows[1]).toHaveTextContent("Created Nov 2 · Account ··b569370e");
+    expect(list.textContent).not.toMatch(/net PnL|USDC/);
+    fireEvent.click(within(list).getByRole("option", { name: /^BTC Market Making/ }));
+    expect(onSelect).toHaveBeenLastCalledWith(current.id);
+    fireEvent.click(within(list).getByText("All MM bots"));
+    expect(onSelect).toHaveBeenLastCalledWith(null);
+    expect(push).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,7 @@
 import type { Db } from "@drift/db";
 import {
   AppError,
+  type BotState,
   dec,
   Decimal,
   ErrorCode,
@@ -196,6 +197,9 @@ export interface BotInfo {
   userId: string;
   /** Lúc tạo bot, ms epoch (bộ chọn bot hiện ngày tạo). */
   createdAt: number;
+  /** Trạng thái hiện tại và version đang chạy (bộ chọn bot, #289). */
+  state: BotState;
+  version: number | null;
   config: unknown;
 }
 
@@ -206,7 +210,8 @@ export async function liveBots(
 ): Promise<BotInfo[]> {
   const r = await q.execute(sql`
     select b.id::text as id, b.name, b.market, b.strategy, b.user_id::text as "userId",
-           (extract(epoch from b.created_at) * 1000)::float8 as "createdAt", bv.config
+           (extract(epoch from b.created_at) * 1000)::float8 as "createdAt", b.state,
+           bv.version, bv.config
       from bots b
       left join bot_versions bv on bv.id = b.active_version_id
       where b.mode = 'live' and b.strategy in (${inList(strategies)})`);

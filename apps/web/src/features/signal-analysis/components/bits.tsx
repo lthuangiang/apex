@@ -1,11 +1,19 @@
 "use client";
 
-import type { SignalBotFacet, SignalHiddenLead, SignalSuggestion } from "@drift/shared";
-import { AlertTriangle, Info, RefreshCw } from "lucide-react";
+import {
+  BotState,
+  type SignalBotFacet,
+  type SignalHiddenLead,
+  type SignalSuggestion,
+} from "@drift/shared";
+import { BottomSheet } from "@drift/ui";
+import { AlertTriangle, ChevronDown, Info, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
-import { shortId } from "@/features/bots/bot-picker";
+import { DEFAULT_FILTERS, shortId, type PickerFilters } from "@/features/bots/bot-picker";
+import { BotPickerPanel, PHONE, type PickerBot } from "@/features/bots/components/bot-selector";
+import { useMediaQuery } from "@/lib/use-media";
 
 import { monthDay } from "../format";
 
@@ -556,14 +564,16 @@ export function useKeepSelected() {
 }
 
 /**
- * Bộ chọn bot của tab VB / MM: select gốc (a11y), mỗi account một `<optgroup>` ("Account ··{tail}", DEC-288: không
- * email), nhóm theo nhãn account, bot mới nhất trước. Mỗi dòng "{name} · {created} · {id}" như bộ chọn bot của Trading
- * Agent (DEC-294); ngày theo múi giờ của trang (trình duyệt, hoặc UTC khi bật Show in UTC). Bot đang chọn mà kỳ mới
- * không có fill vẫn hiện, ghi "(no fills in this range)", trong nhóm account của nó.
+ * Bộ lọc Bot của tab VB / MM (#289): dùng lại bộ chọn "Switch bot" của Trading Agent (tìm theo tên / market / id, lọc
+ * State / Market, nhóm theo trạng thái) trong BottomSheet. Chỉ bot của chiến lược của tab; Strategy cố định nên ẩn. Có
+ * dòng "All VB bots" / "All MM bots". Mỗi dòng ghi account ("Account ··{tail}", DEC-288: không email); ngày tạo theo
+ * múi giờ của trang (trình duyệt, hoặc UTC khi bật Show in UTC). Không có PnL theo bot ở API này nên dòng không có cột
+ * PnL (quy tắc 1.8). Nhóm Stopped mở sẵn. Bot đang chọn mà kỳ mới không có fill vẫn nằm trong danh sách, ghi "(no fills in this range)".
  */
 export function BotSelect({
   label,
   allLabel,
+  strategy,
   bots,
   value,
   tz,
@@ -571,62 +581,117 @@ export function BotSelect({
 }: {
   label: string;
   allLabel: string;
+  strategy: SignalBotFacet["strategy"];
   bots: readonly SignalBotFacet[];
   value: string | null;
   tz: string;
   onChange: (id: string | null) => void;
 }) {
   const t = useTranslations("signalAnalysis");
+  const ta = useTranslations("agent.selector");
+  const phone = useMediaQuery(PHONE);
+  const [open, setOpen] = useState(false);
+  const [filters, setFilters] = useState<PickerFilters>(DEFAULT_FILTERS);
+  const labelId = useId();
+  const valueId = useId();
   const seen = useRef(new Map<string, SignalBotFacet>());
   for (const b of bots) seen.current.set(b.id, b);
+  const own = bots.filter((b) => b.strategy === strategy);
   const missing =
-    value === null || bots.some((b) => b.id === value) ? undefined : seen.current.get(value);
-  const text = (b: SignalBotFacet) =>
-    t("filters.botOption", { name: b.name, created: monthDay(b.createdAt, tz), id: shortId(b.id) });
-  const groups = new Map<string, { value: string; label: string }[]>();
-  const sorted = [...bots].sort(
-    (a, b) =>
-      a.tail.localeCompare(b.tail) ||
-      b.createdAt.localeCompare(a.createdAt) ||
-      a.id.localeCompare(b.id),
-  );
-  for (const b of missing === undefined ? sorted : [...sorted, missing]) {
-    const g = groups.get(b.tail) ?? [];
-    g.push({
-      value: b.id,
-      label: b === missing ? t("filters.noFills", { name: text(b) }) : text(b),
-    });
-    groups.set(b.tail, g);
-  }
-  // Bot đang chọn chưa từng thấy (vd id trên URL): vẫn giữ giá trị, ghi id.
-  const unknown =
-    value !== null && missing === undefined && !bots.some((b) => b.id === value)
-      ? { value, label: t("filters.noFills", { name: shortId(value) }) }
-      : null;
+    value === null || own.some((b) => b.id === value) ? undefined : seen.current.get(value);
+  const items: PickerBot[] = (missing === undefined ? own : [...own, missing]).map((b) => ({
+    id: b.id,
+    name: b === missing ? t("filters.noFills", { name: b.name }) : b.name,
+    strategy: b.strategy,
+    market: b.market,
+    marketLabel: null,
+    state: b.state,
+    reasonCode: null,
+    needsAttention: false,
+    activeVersion: b.version,
+    createdAt: b.createdAt,
+    // Không có thời điểm cập nhật: trong nhóm, bot mới tạo trước.
+    updatedAt: b.createdAt,
+    account: t("account", { tail: b.tail }),
+  }));
+  const selected = value === null ? undefined : items.find((b) => b.id === value);
+  const openWith = (query = "") => {
+    // Danh sách chỉ có bot có fill trong kỳ, nên bot đã dừng cũng mở sẵn (không thu gọn sau "Show N stopped bots").
+    setFilters({ ...DEFAULT_FILTERS, query, showStopped: true });
+    setOpen(true);
+  };
+  // Gõ chữ khi đang ở nút mở: mở panel và bắt đầu tìm, như Trading Agent.
+  const onKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key.length === 1 && e.key !== " " && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      openWith(e.key);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      openWith();
+    }
+  };
   return (
-    <label className="flex flex-col gap-1 text-[12.5px] font-bold text-ink-2">
-      {label}
-      <select
-        value={value ?? ""}
-        onChange={(e) => {
-          onChange(e.target.value === "" ? null : e.target.value);
+    <div className="flex flex-col gap-1">
+      <span id={labelId} className="text-[12.5px] font-bold text-ink-2">
+        {label}
+      </span>
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-labelledby={`${labelId} ${valueId}`}
+        onClick={() => {
+          openWith();
         }}
-        className={selectCls}
+        onKeyDown={onKey}
+        className={`${selectCls} flex max-w-xs items-center gap-2 text-left`}
       >
-        <option value="">{allLabel}</option>
-        {[...groups]
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([tail, opts]) => (
-            <optgroup key={tail} label={t("account", { tail })}>
-              {opts.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        {unknown === null ? null : <option value={unknown.value}>{unknown.label}</option>}
-      </select>
-    </label>
+        <span id={valueId} className="flex min-w-0 flex-auto items-baseline gap-1.5">
+          {value === null ? (
+            <span className="truncate">{allLabel}</span>
+          ) : selected === undefined ? (
+            // Bot đang chọn chưa từng thấy (không có trong danh sách nào): vẫn giữ giá trị, ghi id.
+            <span className="truncate">{t("filters.noFills", { name: shortId(value) })}</span>
+          ) : (
+            <>
+              <span className="truncate">{selected.name}</span>{" "}
+              <span className="flex-none font-mono text-xs font-normal text-muted">
+                {shortId(selected.id)}
+              </span>
+            </>
+          )}
+        </span>
+        <ChevronDown aria-hidden="true" size={16} className="flex-none text-muted" />
+      </button>
+      <BottomSheet
+        open={open}
+        onOpenChange={setOpen}
+        title={ta("switchBot")}
+        description={ta("count", {
+          n: items.filter((b) => b.state !== BotState.archived).length,
+        })}
+        closeLabel={ta("close")}
+        fullScreen
+        wide
+      >
+        <BotPickerPanel
+          bots={items}
+          currentId={value}
+          filters={filters}
+          setFilters={setFilters}
+          phone={phone}
+          onPick={() => {
+            setOpen(false);
+          }}
+          onEscape={null}
+          onSelect={onChange}
+          allOption={{ label: allLabel, sub: ta("count", { n: own.length }) }}
+          fixedStrategy
+          created={(iso) => monthDay(iso, tz)}
+          keysHint={t("filters.botKeys")}
+          manageLink={false}
+        />
+      </BottomSheet>
+    </div>
   );
 }
