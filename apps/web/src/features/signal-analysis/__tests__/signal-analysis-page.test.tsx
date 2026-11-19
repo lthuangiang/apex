@@ -35,6 +35,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
     ...real,
     api: (_method: string, path: string, schema: z.ZodType) => {
       state.paths.push(path);
+      // Bộ chọn bot (#289) hỏi /me, /markets khi mở: không phải dữ liệu của trang này.
+      if (!path.includes("/admin/signal-analysis"))
+        return Promise.reject(new real.ApiError("NOT_FOUND", 404));
       if (state.mode === "forbidden") return Promise.reject(new real.ApiError("FORBIDDEN", 403));
       if (state.mode === "error") return Promise.reject(new real.ApiError("INTERNAL_ERROR", 500));
       if (state.mode === "pending") return new Promise(() => undefined);
@@ -49,7 +52,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
             ...MM,
             range: "14d",
             markets: ["BTC-USD"],
-            botList: MM.botList.filter((b) => b.tail !== "a1b2c3d4"),
+            // Kỳ 14 ngày: bot Market Making duy nhất không có fill.
+            botList: MM.botList.filter((b) => b.strategy !== "volume_maker"),
           }),
         );
       if (url.pathname.endsWith("/mm/quantiles"))
@@ -81,6 +85,11 @@ vi.mock("@/lib/api", async (importOriginal) => {
     },
   };
 });
+// Bộ lọc Bot dùng bộ chọn của Trading Agent (#289): desktop; danh sách market / me không cần cho trang này.
+vi.mock("@/lib/use-media", () => ({ useMediaQuery: () => false }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: () => undefined, replace: () => undefined }),
+}));
 vi.mock("@/components/workspace", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   Workspace: ({ children }: { children: ReactNode }) => <main>{children}</main>,
@@ -314,65 +323,94 @@ describe("Signal Analysis page", { timeout: 30_000 }, () => {
     expect(market).toHaveValue("ETH-USD");
   });
 
-  it("bot picker: one group per account, newest first, name · created date · short id", async () => {
+  it("bot picker: the Trading Agent Switch bot list, only this tab's bots, account on every row", async () => {
     state.tz = "Asia/Ho_Chi_Minh";
     window.history.replaceState(null, "", "/admin/signal-analysis?tab=vb");
     wrap();
     await screen.findByText("Last 7 days · 1,284 entries");
-    const bot = screen.getByRole("combobox", { name: "Bot" });
-    const groups = within(bot).getAllByRole("group");
-    expect(groups.map((g) => g.getAttribute("label"))).toEqual([
-      "Account ··7c21e0b4",
-      "Account ··a1b2c3d4",
+    const trigger = screen.getByRole("button", { name: "Bot All VB bots" });
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+    await userEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Switch bot" });
+    // Chỉ bot Volume Builder: không có bộ lọc Strategy, không có bot Market Making.
+    expect(within(dialog).queryByRole("combobox", { name: "Strategy" })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("combobox", { name: "Market" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("combobox", { name: "Find a bot" })).toHaveFocus();
+    const list = within(dialog).getByRole("listbox", { name: "Switch bot" });
+    const options = within(list).getAllByRole("option");
+    expect(options[0]).toHaveTextContent("All VB bots");
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+    expect(options.slice(1).map((o) => o.getAttribute("aria-label"))).toEqual([
+      "ETH vb 3, id ending 0001a1eb, ETH-USD, version 2, Account ··7c21e0b4, Running",
+      "ETH vb 3, id ending 00000002, ETH-USD, version 3, Account ··a1b2c3d4, Running",
+      "ETH vb 3, id ending 000001eb, ETH-USD, version 1, Account ··7c21e0b4, Paused",
     ]);
-    // Không email.
-    expect(bot.textContent).not.toMatch(/@/);
-    const [mine, other] = groups;
-    if (mine === undefined || other === undefined) throw new Error("groups");
-    // Mới nhất trước; 23:30 UTC ngày 12 là ngày 13 ở UTC+7.
-    expect(
-      within(mine)
-        .getAllByRole("option")
-        .map((o) => o.textContent),
-    ).toEqual([
-      "ETH vb 3 · Nov 13 · ··0001a1eb",
-      "ETH vb 3 · Nov 5 · ··000001eb",
-      "BTC maker 01 · Nov 1 · ··00000001",
-    ]);
-    expect(
-      within(other)
-        .getAllByRole("option")
-        .map((o) => o.textContent),
-    ).toEqual(["ETH vb 3 · Nov 2 · ··00000002"]);
+    expect(list.textContent).not.toMatch(/BTC maker 01|@|net PnL/);
+    // Ngày tạo theo múi giờ của trang: 23:30 UTC ngày 12 là ngày 13 ở UTC+7.
+    expect(options[1]).toHaveTextContent("Created Nov 13");
     await noViolations();
-    // Show in UTC: cùng bot, ngày theo UTC.
-    await userEvent.click(screen.getByRole("button", { name: "Show in UTC" }));
-    expect(
-      await within(bot).findByRole("option", { name: "ETH vb 3 · Nov 12 · ··0001a1eb" }),
-    ).toBeInTheDocument();
-    expect(within(bot).queryByRole("option", { name: /Nov 13/ })).not.toBeInTheDocument();
-    // Chọn một bot: bộ lọc đi theo id.
-    await userEvent.selectOptions(bot, "ETH vb 3 · Nov 12 · ··0001a1eb");
+    // Chọn một bot: bộ lọc đi theo id, nút hiện tên + đuôi id.
+    await userEvent.click(within(list).getByRole("option", { name: /id ending 0001a1eb/ }));
     await waitFor(() => {
       expect(
         state.paths.some((p) => p.includes("botId=0195f3a0-0000-7000-8000-00000001a1eb")),
       ).toBe(true);
     });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bot ETH vb 3 ··0001a1eb" })).toBeInTheDocument();
+    // Show in UTC: cùng bot, ngày theo UTC.
+    await userEvent.click(screen.getByRole("button", { name: "Show in UTC" }));
+    await userEvent.click(screen.getByRole("button", { name: "Bot ETH vb 3 ··0001a1eb" }));
+    const again = await screen.findByRole("dialog", { name: "Switch bot" });
+    const picked = within(within(again).getByRole("listbox")).getByRole("option", {
+      selected: true,
+    });
+    expect(picked).toHaveTextContent("Created Nov 12");
+    // Tìm theo id, Enter chọn; "All" ẩn khi đang tìm.
+    await userEvent.type(within(again).getByRole("combobox", { name: "Find a bot" }), "000001eb");
+    expect(within(again).queryByRole("option", { name: /All VB bots/ })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => {
+      expect(
+        state.paths.some((p) => p.includes("botId=0195f3a0-0000-7000-8000-0000000001eb")),
+      ).toBe(true);
+    });
+    // Về "All VB bots".
+    await userEvent.click(screen.getByRole("button", { name: "Bot ETH vb 3 ··000001eb" }));
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("option", { name: /All VB bots/ }),
+    );
+    expect(await screen.findByRole("button", { name: "Bot All VB bots" })).toBeInTheDocument();
     expect(intlErrors).toEqual([]);
   });
 
-  it("keeps the selected bot in its account group when the new range has no fills for it", async () => {
+  it("keeps the selected bot in the picker when the new range has no fills for it", async () => {
     window.history.replaceState(null, "", "/admin/signal-analysis?tab=mm");
     wrap();
     await screen.findByText("Last 7 days · 18,420 quote fills");
-    const bot = screen.getByRole("combobox", { name: "Bot" });
-    await userEvent.selectOptions(bot, "0195f3a0-0000-7000-8000-000000000002");
+    await userEvent.click(screen.getByRole("button", { name: "Bot All MM bots" }));
+    const dialog = await screen.findByRole("dialog", { name: "Switch bot" });
+    // Chỉ bot Market Making; bot đã dừng vẫn hiện (nhóm Stopped mở sẵn).
+    const options = within(within(dialog).getByRole("listbox")).getAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual([
+      expect.stringContaining("All MM bots"),
+      expect.stringContaining("BTC maker 01"),
+    ]);
+    await userEvent.click(within(dialog).getByRole("option", { name: /^BTC maker 01/ }));
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "Time" }), "14d");
     await screen.findByText("Last 14 days · 18,420 quote fills");
-    const kept = within(bot).getByRole("option", {
-      name: /^ETH vb 3 · Nov \d+ · ··00000002 \(no fills in this range\)$/,
+    const trigger = screen.getByRole("button", {
+      name: "Bot BTC maker 01 (no fills in this range) ··00000001",
     });
-    expect(kept.parentElement?.getAttribute("label")).toBe("Account ··a1b2c3d4");
-    expect(bot).toHaveValue("0195f3a0-0000-7000-8000-000000000002");
+    await userEvent.click(trigger);
+    const kept = within(within(await screen.findByRole("dialog")).getByRole("listbox")).getByRole(
+      "option",
+      { selected: true },
+    );
+    expect(kept).toHaveTextContent("BTC maker 01 (no fills in this range)");
+    expect(kept).toHaveTextContent("Account ··7c21e0b4");
+    expect(state.paths.some((p) => p.includes("botId=0195f3a0-0000-7000-8000-000000000001"))).toBe(
+      true,
+    );
   });
 });
