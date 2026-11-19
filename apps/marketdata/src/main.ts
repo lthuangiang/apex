@@ -38,7 +38,7 @@ import { BinanceFair, binanceSymbolOf } from "./binance-fair";
 import { BinanceBookStream, binancePerpSymbols } from "./binance-stream";
 import { CopyAllocator } from "./copy-allocator";
 import { HlLeaderTracker } from "./hl-leaders";
-import { getCursor, saveLeaderEvents, setCursor } from "./leader-store";
+import { getCursor, markPolled, saveLeaderEvents, setCursor } from "./leader-store";
 import { LeaderWatcher } from "./leaders";
 import { LiquidationScanner } from "./liquidations";
 import { MmCostCollector } from "./mm-cost";
@@ -222,6 +222,7 @@ const hlLeaders = new HlLeaderTracker({
   publish: publishLeader,
   getCursor: (a) => getCursor(db, "hyperliquid", a),
   setCursor: (a, ms) => setCursor(db, "hyperliquid", a, ms),
+  markPolled: (a, ms) => markPolled(db, "hyperliquid", a, ms),
   onEvents: (a, events, seenAt) =>
     saveLeaderEvents(db, "hyperliquid", a, events, seenAt, {
       minUsd: env.COPY_BIG_MOVE_MIN_USD ?? null,

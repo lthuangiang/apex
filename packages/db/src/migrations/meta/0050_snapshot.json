@@ -1,5 +1,5 @@
 {
-  "id": "227a1581-bacb-41bb-8e60-3e9d66c2434c",
+  "id": "dd68cc46-7483-4eab-b832-f8b7d27959fb",
   "prevId": "85a8bf63-6cbe-44c6-9765-9be804def72f",
   "version": "7",
   "dialect": "postgresql",
@@ -4442,6 +4442,12 @@
         "fill_cursor": {
           "name": "fill_cursor",
           "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_polled_at": {
+          "name": "last_polled_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

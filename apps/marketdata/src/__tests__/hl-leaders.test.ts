@@ -32,6 +32,7 @@ function harness(over: Partial<HlLeaderTrackerDeps> = {}) {
   const cursors = new Map<string, number>();
   const events: [string, LeaderEvent[]][] = [];
   const polled: [string, number][] = [];
+  const marked: [string, number][] = [];
   const deps: HlLeaderTrackerDeps = {
     copied: () => Promise.resolve([A]),
     followed: () => Promise.resolve([]),
@@ -61,6 +62,10 @@ function harness(over: Partial<HlLeaderTrackerDeps> = {}) {
       cursors.set(a, ms);
       return Promise.resolve();
     },
+    markPolled: (a, ms) => {
+      marked.push([a, ms]);
+      return Promise.resolve();
+    },
     onEvents: (a, e) => {
       events.push([a, e]);
       return Promise.resolve();
@@ -76,6 +81,7 @@ function harness(over: Partial<HlLeaderTrackerDeps> = {}) {
     cursors,
     events,
     polled,
+    marked,
     advance: (ms: number) => (now += ms),
   };
 }
@@ -183,6 +189,44 @@ describe("HlLeaderTracker", () => {
     await h.t.poll();
     expect(h.polled).toEqual([[B, T + 1]]);
     expect(h.cursors.get(B)).toBe(T + 11);
+  });
+
+  it("marks a successful poll, even with no new fill or when only setting the cursor; never a failed one (#349)", async () => {
+    let fail = false;
+    const h = harness({
+      copied: () => Promise.resolve([]),
+      followed: () => Promise.resolve([B]),
+      hl: {
+        clearinghouseState: () => Promise.resolve({ assetPositions: [] }),
+        userFillsByTime: () => (fail ? Promise.reject(new Error("429")) : Promise.resolve([])),
+      },
+    });
+    await h.t.poll();
+    expect(h.marked).toEqual([[B, T]]);
+    h.advance(120_000);
+    await h.t.poll();
+    expect(h.marked).toEqual([
+      [B, T],
+      [B, T + 120_000],
+    ]);
+    fail = true;
+    h.advance(120_000);
+    await h.t.poll();
+    expect(h.marked).toHaveLength(2);
+  });
+
+  it("marks a streaming wallet when its sync read succeeds, not when it fails", async () => {
+    const ok = harness();
+    await ok.t.sync();
+    expect(ok.marked).toEqual([[A, T]]);
+    const bad = harness({
+      hl: {
+        clearinghouseState: () => Promise.reject(new Error("429")),
+        userFillsByTime: () => Promise.resolve([]),
+      },
+    });
+    await bad.t.sync();
+    expect(bad.marked).toEqual([]);
   });
 
   it("groups buffered fills into events once their 60 s window has passed", async () => {

@@ -124,9 +124,14 @@ async function leaderboardRun(date: string, finishedAt: number, wallets: string[
 let userId = "";
 
 /**
- * Ví DeskLabs theo dõi: được follow (lúc `followedAt`) và marketdata đã đọc fill (`fill_cursor`), trừ khi `polled = false`.
+ * Ví DeskLabs theo dõi: được follow (lúc `followedAt`); `polledAt` = lần marketdata đọc ví thành công gần nhất (mặc định
+ * 2 phút trước T0; null = chưa đọc thành công lần nào).
  */
-async function track(address: string, followedAt = T0 - 3 * DAY, polled = true) {
+async function track(
+  address: string,
+  followedAt = T0 - 3 * DAY,
+  polledAt: number | null = T0 - 2 * MIN,
+) {
   await db.insert(leaderFollows).values({
     userId,
     source: "hyperliquid",
@@ -135,7 +140,12 @@ async function track(address: string, followedAt = T0 - 3 * DAY, polled = true) 
   });
   await db
     .insert(leaderWallets)
-    .values({ source: "hyperliquid", address, fillCursor: polled ? followedAt : null })
+    .values({
+      source: "hyperliquid",
+      address,
+      fillCursor: followedAt,
+      lastPolledAt: polledAt === null ? null : new Date(polledAt),
+    })
     .onConflictDoNothing();
 }
 
@@ -330,7 +340,7 @@ describe("context capture values", () => {
   it("H1: na when no tracked wallet has data, even if leaderboard wallets traded the asset", async () => {
     // Leaderboard có 3 ví, BTC có trên Hyperliquid, có ví cùng chiều; nhưng không ví nào vừa được follow vừa đã được đọc fill.
     await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xaaa", "0xbbb", "0xeee"]);
-    await track("0xaaa", T0 - 3 * DAY, false);
+    await track("0xaaa", T0 - 3 * DAY, null);
     await track("0xbbb", T0 + MIN);
     await whale("0xeee", "BTC-USD", "5", T0 - 12 * MIN, T0 - 11 * MIN);
     await captureSignalContext(db, btcLong("none"), T0, quote("100"));
@@ -340,6 +350,33 @@ describe("context capture values", () => {
       h1AssetOnHyperliquid: true,
       h1AgreeingWallets: 0,
       h1AgreeingUsdc: null,
+    });
+  });
+
+  it("H1: N counts only wallets with a successful poll in the 60 min before; none left → na", async () => {
+    await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xp1", "0xp2", "0xp3"]);
+    await track("0xp1", T0 - 3 * DAY, T0 - 30 * MIN); // poll thành công 30 phút trước: đếm
+    await track("0xp2", T0 - 3 * DAY, T0 - 90 * MIN); // poll thành công cuối cùng 90 phút trước: không đếm
+    // Poll lỗi không đổi `last_polled_at` (marketdata chỉ ghi khi đọc thành công): ví có con trỏ fill nhưng không có lần đọc
+    // thành công nào trong cửa sổ.
+    await track("0xp3", T0 - 3 * DAY, null);
+    await whale("0xp2", "BTC-USD", "5", T0 - 12 * MIN, T0 - 11 * MIN);
+    await captureSignalContext(db, btcLong("window"), T0, quote("100"));
+    expect(await snapshot("window")).toMatchObject({
+      h1Status: "no",
+      h1WalletsChecked: 1,
+      h1AgreeingWallets: 0,
+    });
+
+    // Ví còn lại hợp lệ cũng chỉ poll thành công lần cuối 61 phút trước: không còn ví nào → na.
+    await db.execute(
+      sql`update leader_wallets set last_polled_at = ${new Date(T0 - 61 * MIN)} where address = '0xp1'`,
+    );
+    await captureSignalContext(db, btcLong("stale"), T0, quote("100"));
+    expect(await snapshot("stale")).toMatchObject({
+      h1Status: "na",
+      h1WalletsChecked: 0,
+      h1AssetOnHyperliquid: true,
     });
   });
 
@@ -356,7 +393,7 @@ describe("context capture values", () => {
     await track("0xa1");
     await track("0xA2");
     await track("0xa3");
-    await track("0xa4", T0 - DAY, false); // follow nhưng chưa đọc fill: không có dữ liệu
+    await track("0xa4", T0 - DAY, null); // follow nhưng chưa đọc thành công lần nào: không có dữ liệu
     await track("0xa5", T0 + MIN); // follow sau quyết định
     await track("0xa7"); // chỉ vào leaderboard sau quyết định
     // 0xa6: trong leaderboard, không ai follow. Hai người cùng follow một ví vẫn là một ví.

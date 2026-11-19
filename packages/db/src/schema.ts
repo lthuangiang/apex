@@ -1118,6 +1118,11 @@ export const leaderWallets = pgTable(
     lastOnLeaderboardAt: tstz("last_on_leaderboard_at"),
     /** Fill mới nhất đã đọc (ms UTC) cho T0 / T1, để lần poll sau chỉ đọc phần mới. */
     fillCursor: bigint("fill_cursor", { mode: "number" }),
+    /**
+     * Lần marketdata đọc ví THÀNH CÔNG gần nhất (T1: poll fill, kể cả khi không có fill mới hay lần đầu chỉ đặt con trỏ; T0:
+     * đọc lại vị thế ở vòng sync). Đọc lỗi thì không đổi. H1 của ngữ cảnh tín hiệu (#349) chỉ đếm ví có mốc này trong 60 phút.
+     */
+    lastPolledAt: tstz("last_polled_at"),
     ...timestamps,
   },
   (t) => [primaryKey({ columns: [t.source, t.address] })],

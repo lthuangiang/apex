@@ -54,7 +54,9 @@ const closedBefore = (t: number) => new Date(t - MIN_MS);
  * H1 (review PR #349): tập ví = ví DeskLabs ĐANG THEO DÕI lúc quyết định, vì sự kiện live chỉ có cho các ví này (DEC-321):
  * - được follow trên Hyperliquid (`leader_follows.created_at` < quyết định);
  * - đã có trong một lần xếp hạng `ok` XONG trước quyết định (chống survivorship #263);
- * - có dữ liệu: marketdata đã đọc fill của ví (`leader_wallets.fill_cursor` khác null).
+ * - có dữ liệu: marketdata đọc ví THÀNH CÔNG trong 60 phút trước quyết định (`leader_wallets.last_polled_at` ≥ quyết định −
+ *   60 phút; poll lỗi không đổi mốc này). Không chặn trên: bước 4 chạy ngay sau giờ quyết định của chu kỳ (sau phân loại),
+ *   marketdata có thể vừa poll lại ví trong khoảng đó và mốc chỉ tiến lên; sự kiện vẫn chỉ tính khi `seen_at` < quyết định.
  * N = số ví này ("N wallets checked"). Tài sản có trên Hyperliquid = có trong `markets` của một ví ở lần xếp hạng `ok` gần
  * nhất xong trước quyết định, hoặc đã có sự kiện cá voi trên market đó thấy trước quyết định. Sự kiện tính: của các ví trong
  * tập, loại mở / tăng, trong 60 phút trước, thấy trước quyết định.
@@ -70,7 +72,7 @@ async function whaleInputs(db: Exec, market: string, t: number) {
     select distinct lower(f.address) as address
       from leader_follows f
       join leader_wallets w
-        on w.source = f.source and lower(w.address) = lower(f.address) and w.fill_cursor is not null
+        on w.source = f.source and lower(w.address) = lower(f.address) and w.last_polled_at >= ${from}
      where f.source = 'hyperliquid' and f.created_at < ${at}
        and exists (
          select 1 from leader_stats_daily s

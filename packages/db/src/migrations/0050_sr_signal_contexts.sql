@@ -1,6 +1,7 @@
 -- Signal research: ngữ cảnh của tín hiệu tin (#329; #330 snapshot + H3, #331 H1, #332 H2). Một dòng mỗi bài qua Score,
 -- chụp đúng lúc quyết định (bước 4, trước Filter), chỉ từ dữ liệu có timestamp < decided_at; không bao giờ tính lại
 -- (trigger chặn UPDATE). Chỉ ghi, không chặn lệnh. Không có cột OI: SoDEX không có lịch sử OI trong dữ liệu đã lưu.
+-- leader_wallets.last_polled_at: lần marketdata đọc ví thành công gần nhất (H1 chỉ đếm ví đọc được trong 60 phút, #349).
 CREATE TABLE "signal_contexts" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"article_id" text NOT NULL,
@@ -39,6 +40,7 @@ CREATE TABLE "signal_contexts" (
 	CONSTRAINT "signal_contexts_breakout_ck" CHECK ("signal_contexts"."range_breakout" is null or "signal_contexts"."range_breakout" in ('up', 'down', 'none'))
 );
 --> statement-breakpoint
+ALTER TABLE "leader_wallets" ADD COLUMN "last_polled_at" timestamp with time zone;--> statement-breakpoint
 CREATE UNIQUE INDEX "signal_contexts_article_uq" ON "signal_contexts" USING btree ("article_id");--> statement-breakpoint
 CREATE INDEX "signal_contexts_decided_idx" ON "signal_contexts" USING btree ("decided_at");--> statement-breakpoint
 CREATE INDEX "leader_events_market_at_idx" ON "leader_events" USING btree ("source","market","at");--> statement-breakpoint

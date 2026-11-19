@@ -82,7 +82,8 @@ export interface H1Result {
   status: H1Status;
   /**
    * N = số ví thật sự được kiểm: ví DeskLabs đang theo dõi (được follow trước quyết định, đã có trong một lần xếp hạng xong
-   * trước quyết định) mà marketdata đã đọc fill ("N wallets checked"; không bao giờ là số ví của cả leaderboard).
+   * trước quyết định) mà marketdata đọc thành công trong 60 phút trước quyết định ("N wallets checked"; không bao giờ là số
+   * ví của cả leaderboard).
    */
   walletsChecked: number;
   /** Tài sản có trên Hyperliquid (theo dữ liệu đã lưu trước quyết định). */
