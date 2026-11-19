@@ -21,6 +21,7 @@ import { clock, count, monthDay } from "../format";
 
 import { useResearchSummary } from "./api";
 import { balance, delay, pctPlain, pctSigned, tone } from "./format";
+import { ClassifierQuality } from "./labels";
 import { NewsTrace, type TraceRequest } from "./news-trace";
 import type { Tr } from "./text";
 import { ResearchTrades } from "./trades";
@@ -134,6 +135,7 @@ function Body({
         onVersion={onVersion}
         summaryVersion={v.version?.id ?? null}
       />
+      <ClassifierQuality tz={ctx.tz} />
       {news}
       <Rules version={v.newsRulesVersion} levels={v.levels} />
       <Summary
