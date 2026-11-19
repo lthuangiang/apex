@@ -50,6 +50,8 @@ export interface TestEnv {
   reco: FakeReco;
   /** Id key mà signer giả coi là không giải mã được. */
   unusableKeys: Set<string>;
+  /** Giá trị Redis `sr:markets` giả (danh sách market SoDEX do scheduler ghi, #305); null = chưa có. */
+  srMarkets: { value: string | null };
   close(): Promise<void>;
 }
 
@@ -81,9 +83,11 @@ export async function startTestEnv(
   };
   const prices = new Map<string, { price: string; at: number }>();
   const reco: FakeReco = { markets: [], down: false };
+  const srMarkets: { value: string | null } = { value: null };
   const app = await buildApp({
     lastPrice: (market) => Promise.resolve(prices.get(market) ?? null),
     reco: fakeRecoClient(reco),
+    srMarkets: () => Promise.resolve(srMarkets.value),
     rateLimiter: memoryRateLimiter(),
     rateLimits: { perIp: 1_000_000, perUser: 1_000_000, windowMs: 60_000 },
     prices: (markets) =>
@@ -157,6 +161,7 @@ export async function startTestEnv(
     sodex,
     prices,
     reco,
+    srMarkets,
     async close() {
       await app.close();
       await pool.end();
