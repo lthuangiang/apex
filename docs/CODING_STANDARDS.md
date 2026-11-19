@@ -77,7 +77,7 @@ UI không hiển thị `message` thô của server cho người dùng; UI map `c
 ## C7. Quy ước REST
 - Prefix `/api/v1`. Danh từ số nhiều: `/bots`, `/bots/:id/versions`, `/bots/:id/actions/pause`.
 - Hành động trạng thái dùng `POST /bots/:id/actions/<action>`; trả `202 Accepted` kèm trạng thái chuyển tiếp, không trả trạng thái cuối.
-- `Idempotency-Key` (UUID) **bắt buộc** với mọi `POST/PATCH/DELETE` thay đổi trạng thái; server lưu kết quả 24 h. Key gắn với method + route + path params + user + body: dùng lại key cho id khác hoặc body khác → `409 IDEMPOTENCY_KEY_CONFLICT`, không phát lại (DEC-332).
+- `Idempotency-Key` (UUID) **bắt buộc** với mọi `POST/PATCH/DELETE` thay đổi trạng thái; server lưu kết quả 24 h. Key gắn với method + route + path params + user + body: dùng lại key cho id khác hoặc body khác → `409 IDEMPOTENCY_KEY_CONFLICT`, không phát lại (DEC-332). Handler lỗi: key chỉ được giải phóng khi lỗi là mã kiểm tra trước tác dụng phụ (`PRE_SIDE_EFFECT_CODES`) và handler chưa gọi `markSideEffect()`; route tài chính gọi `markSideEffect()` ngay trước phần không đảo ngược. Lỗi khác giữ key (`failed_unknown`): cùng request sau đó → 409 `details.reason = "unknown"` (đối soát, không chạy lại); request đầu chưa xong → 409 `reason = "in_progress"` (DEC-TBD-api-idempotency-release).
 - Thời gian: ISO 8601 UTC (`2026-10-26T14:02:09Z`). Tiền, giá, khối lượng: **chuỗi số thập phân** (`"129948.11"`), không dùng number.
 - Phân trang bằng cursor: `?cursor=…&limit=50` → `{ items, nextCursor }`.
 - Schema request/response định nghĩa bằng zod trong `packages/shared`, sinh OpenAPI từ đó.

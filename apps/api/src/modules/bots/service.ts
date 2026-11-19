@@ -79,6 +79,7 @@ import { and, desc, eq, gte, inArray, isNull, max, or, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 
 import { AuditAction, audit } from "../../lib/audit";
+import { markSideEffect } from "../../lib/idempotency";
 import { iso } from "../security/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
 
@@ -1437,6 +1438,8 @@ async function command(
     await tx
       .insert(outbox)
       .values({ topic: `user.${b.sodexAccountId}.bot`, payload: { botId, state: next } });
+    // Mọi kiểm tra đã qua; từ COMMIT trở đi state mới (và event cho engine) có thể đã ghi (#316).
+    markSideEffect();
     return u ?? b;
   });
 }
@@ -1619,6 +1622,8 @@ export async function newestPendingConfig(
  * (clOrdID theo version, không trùng lệnh của lần chạy trước) và state mới; fill và Decisions cũ vẫn giữ.
  */
 async function newRunVersion(deps: BotDeps, botId: string): Promise<void> {
+  // Version chạy mới thay version cũ: lỗi từ đây là kết quả không rõ (#316).
+  markSideEffect();
   await deps.db.transaction(async (tx) => {
     const [last] = await tx
       .select()
@@ -1779,6 +1784,9 @@ export async function newVersion(
         appliedAt: draft ? new Date() : null,
       })
       .returning();
+    // Bot đang chạy / pause: engine sẽ áp version `pending` này, lỗi từ đây là kết quả không rõ (#316). Bot draft /
+    // stopped chỉ đổi cấu hình chưa chạy, nên lỗi kiểm tra sau đó (vd 2FA của Copy) vẫn giải phóng key.
+    if (!draft) markSideEffect();
     if (draft && row !== undefined) {
       await tx
         .update(botVersions)

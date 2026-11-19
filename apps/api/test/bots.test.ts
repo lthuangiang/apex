@@ -1464,6 +1464,38 @@ describe("Idempotency-Key is bound to the bot it was used on (#314)", () => {
   });
 });
 
+describe("Idempotency-Key after a failed bot action (#316)", () => {
+  it("releases the key when Start fails its checks, so the client is not stuck on the same key", async () => {
+    const { client, secret } = await connectedUser(`idem-release-${randomUUID()}@drift.test`);
+    env.sodex.setBuilder(ADDRESS, Number(TEST_BUILDER_ID), 50);
+    const res = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name: "R", paramSource: "manual", config: grid },
+    });
+    const id = res.json<{ id: string }>().id;
+    const key = randomUUID();
+    const body = { acknowledged: true, twoFactorCode: nextTotp(secret) };
+    // Giá cũ: start check "fresh price" không qua → 400 trước khi đổi state.
+    env.prices.set("vBTC_vUSDC", { price: "100", at: env.clock.now.getTime() - 3_600_000 });
+    const failed = await client.request("POST", `/api/v1/bots/${id}/actions/start`, {
+      body,
+      idempotencyKey: key,
+    });
+    expect(failed.statusCode, failed.body).toBe(400);
+    expect(
+      (await env.pool.query("select 1 from idempotency_keys where key = $1", [key])).rowCount,
+    ).toBe(0);
+
+    env.prices.set("vBTC_vUSDC", { price: "100", at: env.clock.now.getTime() });
+    const retried = await client.request("POST", `/api/v1/bots/${id}/actions/start`, {
+      body,
+      idempotencyKey: key,
+    });
+    expect(retried.statusCode, retried.body).toBe(202);
+    expect(retried.headers["idempotent-replayed"]).toBeUndefined();
+    expect(retried.json()).toMatchObject({ id, state: "starting" });
+  });
+});
+
 describe("Waiting for price (IMP-01, DEC-91)", () => {
   it("shows what a running bot waits for, and nothing once it is not running", async () => {
     const { client } = await connectedUser(`waiting-${randomUUID()}@drift.test`);
