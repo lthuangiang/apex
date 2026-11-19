@@ -11,7 +11,7 @@ import { sha256 } from "./crypto";
 // `Idempotency-Key` bắt buộc cho mọi POST/PATCH/DELETE đổi trạng thái của người dùng đã đăng nhập
 // (CODING_STANDARDS C7). Kết quả giữ 24 h; cùng key khác request (method, tài nguyên hoặc body) → 409.
 //
-// Handler lỗi (#316, DEC-TBD-api-idempotency-release): key chỉ được giải phóng khi lỗi chắc chắn xảy ra
+// Handler lỗi (#316, DEC-334): key chỉ được giải phóng khi lỗi chắc chắn xảy ra
 // trước mọi tác dụng phụ, tức là (a) handler chưa gọi `markSideEffect()` VÀ (b) lỗi là AppError có mã trong
 // `PRE_SIDE_EFFECT_CODES`. Mọi lỗi khác giữ dòng ở `outcome = failed_unknown` (kèm mã lỗi): cùng key sau đó
 // nhận 409 `reason: "unknown"` và không bao giờ chạy lại (rule 1.7). Dòng chưa có kết quả = đang chạy → 409
