@@ -63,6 +63,7 @@ import {
   signalStories,
 } from "./schema";
 import { loadArticleStops, rangeSince } from "./signal-research-articles";
+import { loadContextSummary } from "./signal-research-context";
 import { DROP, newsTypeOf, oppositeOf, reasonLimitOf } from "./signal-research-keys";
 import { classifierStatusOf, loadClassifierGates } from "./signal-research-labels";
 import {
@@ -521,6 +522,9 @@ export async function loadSignalResearchSummary(
       ? null
       : all.reduce((s, t) => s.add(costOf(t)), new Decimal(0)).div(all.length);
   const on = enabledSince !== null;
+  // #329: "Does context help?" trên cùng tập lệnh với cổng chính (lệnh đã đóng được tính).
+  const context = on ? await loadContextSummary(q, scope, counted) : null;
+  check();
 
   return {
     computedAt: iso(now),
@@ -654,6 +658,7 @@ export async function loadSignalResearchSummary(
       : [],
     risk: null,
     assets: [...new Set(all.map((t) => t.market))].sort(),
+    context,
   };
 }
 

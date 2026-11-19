@@ -79,6 +79,7 @@ function article(p: Partial<ResearchArticle> & Pick<ResearchArticle, "id">): Res
     versionId: null,
     shadowTradeId: null,
     opposite: null,
+    context: null,
     ...p,
   };
 }
@@ -211,6 +212,7 @@ const check = (
 
 export const ETH_TRACE: ResearchArticleTrace = {
   article: ETH,
+  context: null,
   steps: [
     collect(ETH, { ETH: "ETHEREUM" }),
     {
@@ -309,6 +311,7 @@ export const ETH_TRACE: ResearchArticleTrace = {
 
 export const SOL_TRACE: ResearchArticleTrace = {
   article: SOL,
+  context: null,
   steps: [
     collect(SOL, {}),
     {
@@ -380,6 +383,7 @@ export const SOL_TRACE: ResearchArticleTrace = {
 
 export const KNTQ_TRACE: ResearchArticleTrace = {
   article: KNTQ,
+  context: null,
   steps: [
     collect(KNTQ, {}),
     {
@@ -399,6 +403,7 @@ export const KNTQ_TRACE: ResearchArticleTrace = {
 
 export const HYPE_TRACE: ResearchArticleTrace = {
   article: HYPE,
+  context: null,
   steps: [
     collect(HYPE, { BTC: "BITCOIN", HYPE: "HYPERLIQUID" }),
     {

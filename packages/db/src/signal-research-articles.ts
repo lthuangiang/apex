@@ -24,7 +24,14 @@ import { z } from "zod";
 
 import type { Db } from "./client";
 import type { DbTx } from "./read-only";
-import { signalArticles, signalEvents, signalPaperTrades, signalStories } from "./schema";
+import {
+  signalArticles,
+  signalContexts,
+  signalEvents,
+  signalPaperTrades,
+  signalStories,
+} from "./schema";
+import { contextFlagsOf, loadSignalContexts, signalContextOf } from "./signal-research-context";
 import {
   DROP,
   newsTypeOf,
@@ -277,6 +284,7 @@ function articleItem(
   a: ArticleRow,
   s: StateRow,
   scope: SignalVersionScope | null,
+  context: typeof signalContexts.$inferSelect | undefined,
 ): ResearchArticle {
   const cls = parseOr(classificationSchema, a.classification, {});
   const ud = parseOr(understandDetail, s.u_detail, {});
@@ -306,6 +314,7 @@ function articleItem(
     versionId: scope?.id ?? null,
     shadowTradeId: dropped ? shadowTradeOf(s.code, "drop", s.f_trade_id) : null,
     opposite: dropped ? oppositeAt(s.code, "drop", s.f_detail) : null,
+    context: context === undefined ? null : contextFlagsOf(context),
   };
 }
 
@@ -374,9 +383,11 @@ export async function loadSignalResearchArticles(
             (a) => [a.id, a],
           ),
         );
+  const contexts = await loadSignalContexts(q, ids);
+  check();
   const items = rows.flatMap((r) => {
     const a = articles.get(r.id);
-    return a === undefined ? [] : [articleItem(a, r, scope)];
+    return a === undefined ? [] : [articleItem(a, r, scope, contexts.get(r.id))];
   });
   const last = rows.at(-1);
   const c = counts.rows[0];
@@ -746,9 +757,11 @@ export async function loadSignalResearchArticleTrace(
       : await q.select().from(signalArticles).where(eq(signalArticles.id, a.duplicateOf));
   const labelable = (await signalClassifierOf(q, id)) !== null;
   const label = viewerId === null ? null : await loadMyLabel(q, id, viewerId);
+  const context = (await loadSignalContexts(q, [id])).get(id);
   check();
   return {
-    article: articleItem(a, s, scope),
+    article: articleItem(a, s, scope, context),
+    context: context === undefined ? null : signalContextOf(context),
     steps: stepsOf({
       a,
       s,

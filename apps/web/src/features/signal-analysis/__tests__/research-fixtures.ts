@@ -282,6 +282,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
     next: { event: "FOMC", from: "2026-11-18T18:45:00.000Z", to: "2026-11-18T19:45:00.000Z" },
   },
   assets: ["BTC", "ETH", "SOL", "NVDA"],
+  context: null,
 };
 
 export const TRADE_SOL = "sr-0001";

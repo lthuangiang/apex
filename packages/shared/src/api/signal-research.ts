@@ -2,6 +2,15 @@ import { z } from "zod";
 
 import { isoDateTimeSchema } from "../schemas";
 import {
+  CONTEXT_COMPARE_STATUSES,
+  CONTEXT_SOURCES,
+  FUNDING_PAYERS,
+  H1_STATUSES,
+  H2_STATUSES,
+  H3_STATUSES,
+  RANGE_BREAKOUTS,
+} from "../signal-research/context";
+import {
   CLASSIFICATION_VERDICTS,
   CLASSIFICATION_WRONG_REASONS,
   CLASSIFIER_GATE_STATUSES,
@@ -37,6 +46,9 @@ import {
 // Giá trị không biết là null (web hiện "Not available" / "Not enough trades", không bao giờ 0, quy tắc 1.8). API không
 // trả câu chữ tiếng Anh: mọi bước / lý do là khoá cố định, web dịch.
 // Hiện chỉ lane News (live paper) có dữ liệu; Whales / Funding / Price (replay, #274) để trống tới khi được ghi vào.
+// #329 (Signal context): bước 4 · Context giữa Score và Filter. Trace có `context` (thẻ bước 4, giá trị đã lưu lúc quyết
+// định), mỗi bài trong feed có `context` (cờ gọn H1 / H2 / H3), tổng kết có `context` (so có / không theo từng giả thuyết,
+// độ phủ). `steps` của trace giữ 5 bước (collect → decide) để web cũ không vỡ; web mới chèn thẻ Context sau Score.
 
 export const RESEARCH_TYPES = ["news", "whales", "funding", "price"] as const;
 export const RESEARCH_LABELS = ["live", "replay"] as const;
@@ -286,6 +298,129 @@ export const researchRiskSchema = z.object({
   next: z.object({ event: z.string().min(1), from: iso, to: iso }).nullable(),
 });
 
+// ── Signal context (#329) ────────────────────────────────────────────────────────────────────────────────────────────
+
+const contextSource = z.enum(CONTEXT_SOURCES);
+const h1Status = z.enum(H1_STATUSES);
+const h2Status = z.enum(H2_STATUSES);
+const h3Status = z.enum(H3_STATUSES);
+
+/**
+ * Cờ ngữ cảnh gọn của một bài trong feed (tag H1 / H2 / H3). null ở trên = bài không có snapshot (bị loại trước bước 4,
+ * hoặc bài trước khi có bước này).
+ */
+export const researchContextFlagsSchema = z.object({
+  /** `live` = chụp lúc chạy ("Recorded"); `backfilled` = dựng lại sau, chỉ từ dữ liệu trước quyết định. */
+  source: contextSource,
+  h1: h1Status,
+  h2: h2Status,
+  h3: h3Status,
+});
+
+/**
+ * Thẻ bước 4 · Context của trace: giá trị lưu đúng lúc quyết định, không bao giờ tính lại; chỉ ghi, không đổi lệnh.
+ * Phần trăm theo đơn vị % (0.6 = 0.6%); funding là tỷ lệ thô mỗi kỳ (chuỗi thập phân, 0.0001 = 0.01%).
+ */
+export const researchSignalContextSchema = z.object({
+  decidedAt: iso,
+  source: contextSource,
+  /** Version của cách tính (ngưỡng cố định của version đó). */
+  contextVersion: z.string().min(1),
+  market: z.string(),
+  side,
+  /** H1 · Whales agree: ví đã có trong leaderboard TRƯỚC quyết định mở / tăng vị thế cùng chiều trong `windowMinutes`. */
+  h1: z.object({
+    status: h1Status,
+    /** Số ví leaderboard được xét ("214 wallets checked"); null với dòng không lưu. */
+    walletsChecked: int.nullable(),
+    agreeingWallets: int.nullable(),
+    opposingWallets: int.nullable(),
+    /** Tổng notional (USD) của ví cùng chiều; null khi không có ví cùng chiều. */
+    agreeingUsdc: dec.nullable(),
+    /** Fill đầu tiên của ví cùng chiều ("first at 09:41"). */
+    firstAt: iso.nullable(),
+    windowMinutes: int,
+  }),
+  /** H2 · Funding against the crowd: Long khi percentile ≤ 20, Short khi ≥ 80 (30 ngày, funding SoDEX). */
+  h2: z.object({
+    status: h2Status,
+    /** Funding kỳ gần nhất trước quyết định, tỷ lệ thô mỗi kỳ; null khi không có. */
+    fundingRate: dec.nullable(),
+    fundingTime: iso.nullable(),
+    /** Kỳ funding (giờ), suy từ dữ liệu; null khi không biết. */
+    intervalHours: z.number().nonnegative().nullable(),
+    /** Percentile 0–100 trong 30 ngày; null khi `na`. */
+    percentile: z.number().min(0).max(100).nullable(),
+    samples: int.nullable(),
+    /** Bên trả funding. */
+    payer: z.enum(FUNDING_PAYERS).nullable(),
+    /** Ngưỡng percentile của chiều này ("Long needs ≤ 20th" / "Short needs ≥ 80th"). */
+    thresholdPercentile: z.number().min(0).max(100),
+    lookbackDays: int,
+  }),
+  /** H3 · Price already moved: giá đã chạy theo chiều tín hiệu ≥ 1 × biến động 1 giờ thường gặp. */
+  h3: z.object({
+    status: h3Status,
+    /** Giá đã chạy từ giờ đăng tới lúc quyết định (%, có dấu: dương = tăng); null khi thiếu giá. */
+    movedPct: z.number().nullable(),
+    typicalMovePct: z.number().nullable(),
+    /** Ngưỡng (%) = bội số × biến động thường gặp. */
+    thresholdPct: z.number().nullable(),
+  }),
+  /** Chỉ số khám phá: không dùng để mở tuỳ chọn version. Open interest: SoDEX không có, không lưu. */
+  exploratory: z.object({
+    /** Khối lượng giờ cuối ÷ trung bình mỗi giờ của 24 giờ ("1.8×"); null khi không có. */
+    volumeVs24h: z.number().nonnegative().nullable(),
+    rangeBreakout: z.enum(RANGE_BREAKOUTS).nullable(),
+  }),
+});
+
+const contextGroup = z.object({
+  closed: int,
+  /** Trung bình sau phí mỗi lệnh (% của size); null khi đang `collecting` (không cho nhìn trộm trước khi đủ mẫu). */
+  avgPct: z.number().nullable(),
+});
+
+/**
+ * So có / không một giả thuyết trên lệnh thật đã đóng của version (chỉ lệnh có classifier đã qua cổng precision, như cổng
+ * chính; chỉ snapshot `live`). `na` bị loại khỏi cả hai nhóm (H1 "against" tính vào "without").
+ */
+export const researchContextQuestionSchema = z.object({
+  key: z.enum(["h1", "h2", "h3"]),
+  with: contextGroup,
+  without: contextGroup,
+  /** Chênh (có − không), % ; null khi `collecting`. */
+  diffPct: z.number().nullable(),
+  /** Khoảng 95% theo block bootstrap ngày ghép cặp; null khi `collecting` hoặc < 2 ngày. */
+  range: z.object({ lo: z.number(), hi: z.number() }).nullable(),
+  clusters: int,
+  status: z.enum(CONTEXT_COMPARE_STATUSES),
+  /** Còn thiếu bao nhiêu lệnh đóng ở mỗi nhóm ("Collecting 18 more with · 9 more without"); 0 khi đủ. */
+  needWith: int,
+  needWithout: int,
+});
+
+export const researchContextSummarySchema = z.object({
+  contextVersion: z.string().min(1),
+  /** Nhóm so sánh chỉ dùng snapshot `live` (backfilled tách riêng, chưa có ở giai đoạn này). */
+  source: z.literal("live"),
+  /** Mỗi nhóm cần ≥ ngần này lệnh đóng mới có kết luận. */
+  minClosedPerGroup: int,
+  questions: z.array(researchContextQuestionSchema).length(3),
+  /** Lệnh đóng được tính nhưng không có snapshot `live` (mở trước khi có bước Context, hoặc chỉ có bản backfilled). */
+  closedWithoutLiveSnapshot: int,
+  /** Độ phủ trên mọi tín hiệu có snapshot `live` (từ lúc version được lưu; Baseline: mọi lúc). */
+  coverage: z.object({
+    signals: int,
+    whale: int,
+    funding: int,
+    priceRun: int,
+    backfilled: int,
+    /** SoDEX không có lịch sử open interest trong dữ liệu của DeskLabs: không dùng, không lấy của sàn khác. */
+    openInterest: z.literal("notAvailable"),
+  }),
+});
+
 export const researchSummarySchema = z.object({
   computedAt: iso,
   /** #305: News bot version của tổng kết (mặc định Baseline); null khi không có version nào (dữ liệu trước version). */
@@ -304,6 +439,8 @@ export const researchSummarySchema = z.object({
   directions: z.array(researchDirectionRowSchema),
   risk: researchRiskSchema.nullable(),
   assets: z.array(z.string()),
+  /** #329: Does context help? (theo version của tổng kết); null khi lane chưa chạy. */
+  context: researchContextSummarySchema.nullable(),
 });
 
 export const researchWhatSchema = z.discriminatedUnion("type", [
@@ -625,6 +762,8 @@ export const researchArticleSchema = z.object({
   opposite: z
     .object({ action: z.enum(["closed", "kept"]), tradeId: z.uuid().nullable() })
     .nullable(),
+  /** #329: cờ ngữ cảnh lúc quyết định (dùng chung mọi version); null khi bài không có snapshot. */
+  context: researchContextFlagsSchema.nullable(),
 });
 
 export const researchArticlesPageSchema = z.object({
@@ -945,6 +1084,11 @@ export const researchArticleTraceSchema = z.object({
   article: researchArticleSchema,
   /** Luôn đủ 5 bước theo thứ tự collect → decide. */
   steps: z.array(researchTraceStepSchema).length(5),
+  /**
+   * #329: bước 4 · Context (giữa Score và Filter), dùng chung mọi version. null = bài không có snapshot (dừng trước bước 4,
+   * hoặc bài trước khi có bước này): web hiện bước Context "not reached".
+   */
+  context: researchSignalContextSchema.nullable(),
 });
 
 export type ResearchRange = (typeof RESEARCH_RANGES)[number];
@@ -1188,3 +1332,7 @@ export type ResearchMarkets = z.infer<typeof researchMarketsSchema>;
 export type ResearchTradeOpposite = z.infer<typeof researchTradeOppositeSchema>;
 export type ResearchTradeShadow = z.infer<typeof researchTradeShadowSchema>;
 export type ResearchTraceQuery = z.infer<typeof researchTraceQuerySchema>;
+export type ResearchContextFlags = z.infer<typeof researchContextFlagsSchema>;
+export type ResearchSignalContext = z.infer<typeof researchSignalContextSchema>;
+export type ResearchContextQuestion = z.infer<typeof researchContextQuestionSchema>;
+export type ResearchContextSummary = z.infer<typeof researchContextSummarySchema>;
