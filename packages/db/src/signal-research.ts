@@ -1,11 +1,11 @@
 import {
   AppError,
+  claudeCostUsd,
   dec,
   Decimal,
   ErrorCode,
   GATE_MIN_CLOSED,
   gateStatus,
-  NEWS_CLASSIFIER,
   NEWS_RULES,
   SOURCE_HEALTH,
   summarizeByDay,
@@ -221,16 +221,14 @@ function sourceStatus(
   return age <= t.delayedMs ? "delayed" : "down";
 }
 
-function claudeCostUsd(u: typeof signalResearchUsage.$inferSelect): Decimal {
-  const p = NEWS_CLASSIFIER.pricing;
-  const m = new Decimal(1_000_000);
-  const input = new Decimal(u.claudeInputTokens)
-    .add(new Decimal(u.claudeCacheWriteTokens).mul(p.cacheWriteMultiple))
-    .add(new Decimal(u.claudeCacheReadTokens).mul(p.cacheReadMultiple));
-  return input
-    .mul(p.inputPerM)
-    .div(m)
-    .add(new Decimal(u.claudeOutputTokens).mul(p.outputPerM).div(m));
+/** Chi phí một ngày, cùng công thức với chi phí từng bài (`claudeCostUsd` của `@drift/shared`). */
+function dailyClaudeCostUsd(u: typeof signalResearchUsage.$inferSelect): Decimal {
+  return claudeCostUsd({
+    input: u.claudeInputTokens,
+    cacheWrite: u.claudeCacheWriteTokens,
+    cacheRead: u.claudeCacheReadTokens,
+    output: u.claudeOutputTokens,
+  });
 }
 
 /**
@@ -434,7 +432,7 @@ export async function loadSignalResearchSummary(
     });
   }
   const soso = health.get("sosovalue");
-  const costs = usage.filter((u) => u.claudeCalls > 0).map(claudeCostUsd);
+  const costs = usage.filter((u) => u.claudeCalls > 0).map(dailyClaudeCostUsd);
   const avgEntryCost =
     all.length === 0
       ? null
@@ -606,7 +604,7 @@ export async function loadSignalResearchDiagnostics(q: Q, now: Date) {
       cacheWriteTokens: u.claudeCacheWriteTokens,
       cacheReadTokens: u.claudeCacheReadTokens,
       outputTokens: u.claudeOutputTokens,
-      costUsd: claudeCostUsd(u).toDecimalPlaces(4).toFixed(),
+      costUsd: dailyClaudeCostUsd(u).toDecimalPlaces(4).toFixed(),
     })),
     /** Lưu thô, không phân loại (cũ hơn mốc dưới của Collect): nhóm đếm riêng, không phải "bị loại". */
     backlog: steps

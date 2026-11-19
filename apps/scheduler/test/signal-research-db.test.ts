@@ -12,7 +12,7 @@ import {
   signalStories,
   type Db,
 } from "@drift/db";
-import { NEWS_RULES } from "@drift/shared";
+import { articleClaudeUsage, NEWS_CLASSIFIER, NEWS_RULES } from "@drift/shared";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -769,8 +769,85 @@ describe("review PR #278 fixes", () => {
           true,
         );
       expect(await db.select().from(signalPaperTrades)).toHaveLength(1);
+      const [f1] = await db.select().from(signalArticles).where(eq(signalArticles.id, "f1"));
+      expect(f1).toMatchObject({
+        claudeCalls: 1,
+        claudeInputTokens: 100,
+        claudeCacheWriteTokens: 4200,
+        claudeCacheReadTokens: 0,
+        claudeOutputTokens: 20,
+        claudeModel: NEWS_CLASSIFIER.model,
+        claudePromptVersion: NEWS_CLASSIFIER.promptVersion,
+      });
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("per-article Claude usage (#290)", () => {
+  it("stores each article's own usage on the article; articles that never reach Claude stay null", async () => {
+    await saveNewsState(db, T0 - 3 * 24 * HOUR, T0 - 3 * 24 * HOUR);
+    const items = [
+      item("u1", T0 - 2 * MIN, "SOL hack usage", { author: "Odaily" }),
+      item("u2", T0 - MIN, "nothing here"),
+      item("u3", T0 - 25 * HOUR, "stale usage"),
+    ];
+    const claude = fakeClaude({ "SOL hack usage": hack });
+    const s = setup({
+      items: () => items,
+      claude,
+      now: () => T0,
+      env: { SIGNAL_NEWS_MAX_CATCHUP_MIN: String(4 * 24 * 60) },
+    });
+    book(s.sr, "SOL-USD", "99.99", "100.01", T0);
+    await s.sr.runCycle();
+    const rows = new Map((await db.select().from(signalArticles)).map((r) => [r.id, r] as const));
+    for (const id of ["u1", "u2"])
+      expect(rows.get(id)).toMatchObject({
+        claudeCalls: 1,
+        claudeInputTokens: 1500,
+        claudeCacheWriteTokens: 0,
+        claudeCacheReadTokens: 0,
+        claudeOutputTokens: 40,
+        claudeModel: NEWS_CLASSIFIER.model,
+        claudePromptVersion: NEWS_CLASSIFIER.promptVersion,
+      });
+    // 1 500 × 1 / 1M + 40 × 5 / 1M = 0.0017 USD
+    const u1 = rows.get("u1");
+    expect(u1 === undefined ? undefined : articleClaudeUsage(u1)?.costUsd).toBe("0.0017");
+    const u3 = rows.get("u3");
+    expect(u3).toMatchObject({ status: "dropped", claudeCalls: null, claudeInputTokens: null });
+    expect(u3 === undefined ? undefined : articleClaudeUsage(u3)).toBeNull();
+    // Bảng ngày vẫn cộng như cũ: tổng của các bài = số trong ngày.
+    const [day] = await db.select().from(signalResearchUsage);
+    expect(day).toMatchObject({ claudeCalls: 2, claudeInputTokens: 3000, claudeOutputTokens: 80 });
+  });
+
+  it("unknown usage (a call without a response) leaves the token columns null and the $ Not available", async () => {
+    const items = [item("n1", T0 - MIN, "network trouble")];
+    const claude: NewsClassifier = {
+      classify: () =>
+        Promise.resolve({
+          ok: false as const,
+          error: "api:APIConnectionError",
+          usage: { ...emptyUsage(), calls: 2, input: 500, output: 10 },
+          usageKnown: false,
+        }),
+    };
+    const { sr } = setup({ items: () => items, claude, now: () => T0 });
+    await sr.runCycle();
+    const [a] = await db.select().from(signalArticles).where(eq(signalArticles.id, "n1"));
+    expect(a).toMatchObject({
+      status: "classified",
+      claudeCalls: 2,
+      claudeInputTokens: null,
+      claudeOutputTokens: null,
+    });
+    expect(a === undefined ? undefined : articleClaudeUsage(a)).toMatchObject({
+      calls: 2,
+      tokens: null,
+      costUsd: null,
+    });
   });
 });

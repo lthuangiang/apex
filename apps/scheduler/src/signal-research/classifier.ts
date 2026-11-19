@@ -38,9 +38,13 @@ export interface ClaudeUsage {
   output: number;
 }
 
+/**
+ * `usageKnown` (#290): false khi có lần gọi không biết token (lỗi mạng / timeout, không có phản hồi HTTP: request có thể
+ * đã chạy và tính tiền). Lỗi có HTTP status (4xx / 5xx) không tính tiền nên token 0 là số thật. Thiếu = true.
+ */
 export type ClassifyOutcome =
-  | { ok: true; value: Classification; usage: ClaudeUsage }
-  | { ok: false; error: string; usage: ClaudeUsage };
+  | { ok: true; value: Classification; usage: ClaudeUsage; usageKnown?: boolean }
+  | { ok: false; error: string; usage: ClaudeUsage; usageKnown?: boolean };
 
 export interface NewsClassifier {
   /** `maxAttempts` (1 hoặc 2): số lần gọi API tối đa, kể cả thử lại (trần mỗi chu kỳ đếm lần gọi). */
@@ -80,6 +84,37 @@ export function weightedInput(
       u.cacheRead * Number(p.cacheReadMultiple) +
       u.output * out,
   );
+}
+
+/** Cột usage của `signal_articles` (#290). */
+export interface ArticleUsageValues {
+  claudeCalls: number;
+  claudeInputTokens: number | null;
+  claudeCacheWriteTokens: number | null;
+  claudeCacheReadTokens: number | null;
+  claudeOutputTokens: number | null;
+  claudeModel: string;
+  claudePromptVersion: string;
+}
+
+/**
+ * Usage của MỘT bài từ kết quả classify của bài đó (#290, DEC-TBD-sr-article-usage). Mỗi request chỉ chứa một bài nên
+ * gán thẳng, không chia; thử lại cộng vào cùng bài. Không biết token của một lần gọi (`usageKnown` false) → mọi cột token
+ * null, không ghi một phần. Model / prompt version là giá trị đã gửi trong request.
+ */
+export function articleUsageValues(
+  out: Pick<ClassifyOutcome, "usage" | "usageKnown">,
+): ArticleUsageValues {
+  const known = out.usageKnown !== false;
+  return {
+    claudeCalls: out.usage.calls,
+    claudeInputTokens: known ? out.usage.input : null,
+    claudeCacheWriteTokens: known ? out.usage.cacheWrite : null,
+    claudeCacheReadTokens: known ? out.usage.cacheRead : null,
+    claudeOutputTokens: known ? out.usage.output : null,
+    claudeModel: NEWS_CLASSIFIER.model,
+    claudePromptVersion: NEWS_CLASSIFIER.promptVersion,
+  };
 }
 
 const answerSchema = z.object({
@@ -238,6 +273,7 @@ export function anthropicClassifier(apiKey: string, log?: ClassifierLog): NewsCl
 
   async function once(input: ClassifyInput): Promise<{
     usage: ClaudeUsage;
+    known: boolean;
     result: { ok: true; value: Classification } | { ok: false; error: string };
   }> {
     try {
@@ -258,8 +294,12 @@ export function anthropicClassifier(apiKey: string, log?: ClassifierLog): NewsCl
       check?.(usage);
       const block = r.content.find((b) => b.type === "tool_use");
       if (block === undefined)
-        return { usage, result: { ok: false, error: `no_tool_use:${r.stop_reason ?? ""}` } };
-      return { usage, result: parseAnswer(block.input, input.candidates) };
+        return {
+          usage,
+          known: true,
+          result: { ok: false, error: `no_tool_use:${r.stop_reason ?? ""}` },
+        };
+      return { usage, known: true, result: parseAnswer(block.input, input.candidates) };
     } catch (e) {
       // Chỉ tên lớp lỗi + HTTP status, không bao giờ message thô (có thể kèm header / request). Lần gọi lỗi vẫn tính là
       // một lần gọi API cho trần mỗi chu kỳ.
@@ -267,6 +307,8 @@ export function anthropicClassifier(apiKey: string, log?: ClassifierLog): NewsCl
       const name = e instanceof Error ? e.name : "error";
       return {
         usage: { ...emptyUsage(), calls: 1 },
+        // Có HTTP status = API đã trả lỗi, không tính tiền; không có (mạng / timeout) = không biết token.
+        known: status !== "",
         result: { ok: false, error: `api:${name}${status === "" ? "" : `:${status}`}` },
       };
     }
@@ -275,12 +317,25 @@ export function anthropicClassifier(apiKey: string, log?: ClassifierLog): NewsCl
   return {
     async classify(input, maxAttempts = 2) {
       const first = await once(input);
-      if (first.result.ok) return { ok: true, value: first.result.value, usage: first.usage };
-      if (maxAttempts < 2) return { ok: false, error: first.result.error, usage: first.usage };
+      if (first.result.ok)
+        return {
+          ok: true,
+          value: first.result.value,
+          usage: first.usage,
+          usageKnown: first.known,
+        };
+      if (maxAttempts < 2)
+        return {
+          ok: false,
+          error: first.result.error,
+          usage: first.usage,
+          usageKnown: first.known,
+        };
       const second = await once(input);
       const usage = addUsage(first.usage, second.usage);
-      if (second.result.ok) return { ok: true, value: second.result.value, usage };
-      return { ok: false, error: second.result.error, usage };
+      const usageKnown = first.known && second.known;
+      if (second.result.ok) return { ok: true, value: second.result.value, usage, usageKnown };
+      return { ok: false, error: second.result.error, usage, usageKnown };
     },
   };
 }

@@ -1715,6 +1715,19 @@ export const signalArticles = pgTable(
     /** Kết quả phân loại đã kiểm (catalyst, market, eventDate…) hoặc lỗi; null = chưa phân loại. */
     classification: jsonb("classification"),
     classifiedAt: tstz("classified_at"),
+    /**
+     * Usage Claude của riêng bài này (#290, DEC-TBD-sr-article-usage): mỗi lần classify là một bài, cộng mọi lần gọi
+     * (kể cả thử lại). Null hết = bài không qua Claude hoặc bài cũ trước migration 0045 ("Not available", không bao giờ 0).
+     * `claude_calls` có số mà token null = có lần gọi không nhận được phản hồi (lỗi mạng / timeout), không biết token.
+     */
+    claudeCalls: integer("claude_calls"),
+    claudeInputTokens: integer("claude_input_tokens"),
+    claudeCacheWriteTokens: integer("claude_cache_write_tokens"),
+    claudeCacheReadTokens: integer("claude_cache_read_tokens"),
+    claudeOutputTokens: integer("claude_output_tokens"),
+    /** Model đã gửi trong request (`NEWS_CLASSIFIER.model`, khớp bảng giá) và version prompt lúc gọi. */
+    claudeModel: text("claude_model"),
+    claudePromptVersion: text("claude_prompt_version"),
     ruleVersion: text("rule_version").notNull(),
     ...timestamps,
   },

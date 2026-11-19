@@ -33,7 +33,13 @@ import { and, asc, eq, gte, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { fillRandomBaselines } from "./baseline";
-import { addUsage, weightedInput, type NewsClassifier } from "./classifier";
+import {
+  addUsage,
+  articleUsageValues,
+  weightedInput,
+  type ArticleUsageValues,
+  type NewsClassifier,
+} from "./classifier";
 import { SOSO_PAGE_SIZE, type SosoClient, type SosoNewsItem } from "./soso";
 import {
   addClaudeUsage,
@@ -294,6 +300,8 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
   let calls = 0;
   for (const a of pending) {
     const age = now - a.publishedAt.getTime();
+    // Usage Claude của riêng bài này (#290); ghi cùng lần cập nhật trạng thái bài. Bài bỏ trước Claude để null.
+    let claude: ArticleUsageValues | null = null;
     const drop = async (
       reason: SignalReason,
       classification: Record<string, unknown> | null,
@@ -306,6 +314,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
             status: classification === null ? "dropped" : "classified",
             classification,
             classifiedAt: classification === null ? null : new Date(now),
+            ...claude,
           })
           .where(eq(signalArticles.id, a.id));
         await recordEvents(tx, [
@@ -351,6 +360,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       Math.min(ATTEMPTS, left),
     );
     calls += Math.max(1, out.usage.calls);
+    claude = articleUsageValues(out);
     await addClaudeUsage(db, now, out.usage);
     used = { ...used, ...addUsage(used, out.usage) };
     report.claudeCalls += out.usage.calls;
@@ -395,7 +405,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     await db.transaction(async (tx) => {
       await tx
         .update(signalArticles)
-        .set({ status: "classified", classification, classifiedAt: new Date(now) })
+        .set({ status: "classified", classification, classifiedAt: new Date(now), ...claude })
         .where(eq(signalArticles.id, a.id));
       await recordEvents(tx, [
         {
