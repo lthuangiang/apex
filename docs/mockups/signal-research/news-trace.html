@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Signal research · news trace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.news{transition:background .2s,border-color .2s,transform .2s}
+.news:hover{transform:translateX(3px);border-color:#2e62e8}
+.glow{animation:glow 1s ease-in-out infinite}
+@keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(46,98,232,.55)}50%{box-shadow:0 0 0 10px rgba(46,98,232,0)}}
+.token{transition:top .75s cubic-bezier(.65,0,.35,1),left .6s cubic-bezier(.65,0,.35,1),transform .6s,background .3s,border-color .3s,color .3s,opacity .4s}
+.band{transition:background .35s,transform .35s,filter .35s}
+.band:hover{filter:brightness(1.12)}
+.note{transition:opacity .4s,transform .4s,color .3s}
+.reveal{animation:reveal .45s cubic-bezier(.2,.8,.2,1) both}
+@keyframes reveal{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+.spark{animation:spark 1.2s linear infinite}
+@keyframes spark{from{background-position:0 0}to{background-position:0 40px}}
+@media (prefers-reduced-motion: reduce){.glow,.reveal,.spark{animation:none}.token,.band,.note{transition:none}}
+</style>
+</head>
+<body>
+<!-- Standalone copy of the approved canvas artboard (issue #288). ?demo=0 turns off the auto-run; ?speed=slow|normal|fast. -->
+<div style="box-sizing: border-box; width: 100%; max-width: 1440px; margin: 0 auto; padding: 32px 24px 48px; font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; display: flex; flex-direction: column; gap: 18px">
+  <div style="display: flex; flex-direction: column; gap: 4px">
+    <h1 style="margin: 0; font-size: 28px; font-weight: 800">Signal Analysis</h1>
+    <p style="margin: 0; font-size: 14px; color: #5f6684">Team only.</p>
+  </div>
+  <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+    <nav aria-label="Signal Analysis tabs" style="display: flex; flex-wrap: wrap; gap: 4px; background: #fff; border: 1px solid #e3e7f5; border-radius: 14px; padding: 6px">
+      <a href="#" style="padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 700; color: #141a33; text-decoration: none">All</a>
+      <a href="#" style="padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 700; color: #141a33; text-decoration: none">Volume Builder</a>
+      <a href="#" style="padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 700; color: #141a33; text-decoration: none">Market Making</a>
+      <a href="#" aria-current="page" style="padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 700; color: #fff; background: #2e62e8; text-decoration: none">Signal research</a>
+    </nav>
+    <span style="font-size: 13px; color: #3b4262">Times in your time zone: Asia/Saigon (UTC+7)</span>
+  </div>
+
+  <section style="background: #fff; border: 1px solid #e3e7f5; border-radius: 18px; padding: 16px 24px; font-size: 13px; color: #3b4262; display: flex; flex-wrap: wrap; gap: 8px 18px">
+    <strong style="color: #141a33">Sources</strong><span>SoSoValue news · Live · 2 min ago</span><span>SoDEX prices · Live</span><span>Whale events · last replay 01:00</span><span>Funding rates · replayed 01:00</span>
+  </section>
+  <section style="background: #fff; border: 1px solid #e3e7f5; border-radius: 18px; padding: 16px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center">
+    <strong style="font-size: 18px">Paper bots</strong>
+    <span style="font-size: 13px; color: #5f6684">Unchanged: News bot · Whales bot · Funding · Price patterns</span>
+  </section>
+
+  <section id="funnel" aria-labelledby="fn-title" style="background: #fff; border: 1px solid #e3e7f5; border-radius: 18px; padding: 24px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+      <h2 id="fn-title" style="margin: 0; font-size: 20px; font-weight: 800">How news becomes a paper trade · <span data-range-label>last 1 day</span></h2>
+      <div id="ranges" role="group" aria-label="Period" style="display: flex; gap: 4px; background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 12px; padding: 4px">
+      </div>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+      <div style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 800">News feed</h3>
+          <span id="feed-count" style="font-size: 12px; color: #5f6684"></span>
+        </div>
+        <div id="filters" role="group" aria-label="Filter articles" style="display: flex; flex-wrap: wrap; gap: 6px">
+        </div>
+        <div id="stage-filter" style="display: contents"></div>
+        <ul id="items" style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+        </ul>
+        <a href="#" style="font-size: 13px; font-weight: 700; align-self: flex-start; padding: 10px 0">Load more</a>
+      </div>
+
+      <div id="trace" style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+        <div style="display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; min-height: 44px">
+          <div id="trace-head" style="display: contents"></div>
+          <div id="trace-actions" style="display: flex; gap: 8px; flex: none"></div>
+        </div>
+
+        <div style="background: #141a33; border-radius: 16px; padding: 20px 16px 22px; overflow: hidden">
+          <div id="bands" style="position: relative; height: 392px">
+            <div aria-hidden="true" style="position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background-image: linear-gradient(#3b4262 50%, transparent 50%); background-size: 2px 20px" class="spark"></div>
+          </div>
+          <p id="verdict" role="status" style="margin: 8px 0 0; text-align: center; font-size: 14px; font-weight: 800; color: #c9d4ff"></p>
+        </div>
+
+        <div id="totals" style="display: contents">
+          <div style="display: flex; flex-wrap: wrap; gap: 12px">
+            <div style="flex: 1 1 180px; border: 1px solid #e3e7f5; border-radius: 14px; padding: 14px 16px">
+              <div style="font-size: 12px; color: #5f6684">Delay, news out → collected</div>
+              <div style="font-size: 22px; font-weight: 800"><span id="tot-delay"></span></div>
+              <div style="font-size: 12px; color: #5f6684">median · SoSoValue checked every 5 min</div>
+            </div>
+            <div style="flex: 1 1 180px; border: 1px solid #e3e7f5; border-radius: 14px; padding: 14px 16px">
+              <div style="font-size: 12px; color: #5f6684">Claude cost</div>
+              <div style="font-size: 22px; font-weight: 800"><span id="tot-cost"></span></div>
+              <div style="font-size: 12px; color: #5f6684"><span id="tot-cost-sub"></span></div>
+            </div>
+            <div style="flex: 2 1 320px; border: 1px solid #e3e7f5; border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+              <div style="font-size: 13px; font-weight: 800">Why they dropped out</div>
+              <div id="reasons" style="display: flex; flex-wrap: wrap; gap: 6px">
+              </div>
+              <span style="font-size: 12px; color: #5f6684">Click a reason to list those articles in the feed.</span>
+            </div>
+          </div>
+        </div>
+
+        <ol id="steps" style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px"></ol>
+      </div>
+    </div>
+  </section>
+
+  <section style="background: #fff; border: 1px solid #e3e7f5; border-radius: 18px; padding: 16px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px">
+    <strong style="font-size: 18px">What counts as a news signal</strong><span style="font-size: 13px; color: #5f6684">Unchanged</span>
+  </section>
+  <section style="background: #fff; border: 1px solid #e3e7f5; border-radius: 18px; padding: 16px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px">
+    <strong style="font-size: 18px">Where each signal type stands</strong><span style="font-size: 13px; color: #5f6684">Unchanged</span>
+  </section>
+
+  <section aria-labelledby="tr-title" style="background: #fff; border: 1px solid #e3e7f5; border-radius: 18px; padding: 24px; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap">
+      <h2 id="tr-title" style="margin: 0; font-size: 20px; font-weight: 800">Trades</h2>
+      <span style="font-size: 13px; color: #5f6684">New: each news row has Trace, which opens the funnel above on that article.</span>
+    </div>
+    <div style="overflow-x: auto; border: 1px solid #e3e7f5; border-radius: 12px">
+      <table style="width: 100%; min-width: 760px; border-collapse: collapse; font-size: 13px">
+        <thead>
+          <tr style="background: #f5f7fd; color: #3b4262; text-align: left">
+            <th scope="col" style="padding: 10px 12px">Signal</th>
+            <th scope="col" style="padding: 10px 12px">Seen</th>
+            <th scope="col" style="padding: 10px 12px">What happened</th>
+            <th scope="col" style="padding: 10px 12px">Result after fees</th>
+            <th scope="col" style="padding: 10px 12px"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Trace</span></th>
+          </tr>
+        </thead>
+        <tbody id="trades">
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var params = new URLSearchParams(location.search);
+  var DEMO = params.get('demo') !== '0';
+  var MS = { slow: 1400, normal: 950, fast: 550 }[params.get('speed') || 'normal'] || 950;
+
+  function buildData() {
+    const E = { short: '', summary: '', rows: [] };
+    var all = [
+      { id: 'eth', time: '10:16', delay: '4 min after release', title: 'SEC approves in-kind creations for spot ETH ETFs', source: 'SoSoValue · Reuters (top tier)', assets: 'ETH', stop: 5, drop: false, reason: null, reached: 'Long ETH · paper trade', why: 'Long ETH-USD, 500 USDC', cost: '$0.0021',
+        steps: [
+          { short: 'Seen 4 min after release', summary: 'Read from the SoSoValue news feed in the 10:20 check. Not a duplicate of an article already stored.', rows: [['Published', '10:16:02'], ['Collected', '10:20:11 (4 min 9 s later)'], ['Source', 'Reuters, top tier'], ['SoSoValue tags', 'ETHEREUM (ETH)']] },
+          { short: 'ETH → ETH-USD · new story', summary: 'Matched the tagged coin to a SoDEX market, then looked for a story about the same asset and catalyst in the last 120 min. None, so it opened a new story.', rows: [['Candidates', 'ETH-USD'], ['On SoDEX', 'ETH-USD perps: yes'], ['Story', 'New · ETF approved · ETH'], ['Sources in story', '1']] },
+          { short: 'ETF approved · Medium · $0.0021', summary: 'Claude read the title and the first 4,000 characters and named the type and the asset. The rules, not Claude, set the direction and the level.', rows: [['News type', 'ETF approved → Long'], ['Asset', 'ETH (the article is about ETH ETFs)'], ['Relevance', 'Main subject, not a passing mention'], ['Promotional', 'No'], ['Level', 'Medium: one top-tier source'], ['Claude tokens', 'in 512 · cache read 4,635 · out 118'], ['Claude cost', '$0.0021 (claude-haiku-4-5)']] },
+          { short: '4 of 4 checks passed', summary: 'All checks passed.', rows: [['Price', 'ETH-USD book 2 s old, spread 1.1 bp'], ['Take profit vs cost', '1.6% vs 2 × 0.10% cost: ok'], ['Open trade on ETH', 'None'], ['Source on time', '4 min (limit 30 min)']] },
+          { short: 'Long ETH-USD · 500 USDC', summary: 'Opened a paper trade on the News bot.', rows: [['Side', 'Long ETH-USD'], ['Size', '500 USDC (fake money)'], ['Entry', '3,412.50 at 10:20:14'], ['Take profit / Stop loss', '3,467.10 (+1.6%) / 3,385.20 (−0.8%)'], ['Max hold', '3 d'], ['Random twin', 'Long, same TP / SL, for the baseline']] }
+        ] },
+      { id: 'hype', time: '10:29', delay: '4 min after release', title: 'Hyperliquid: six whales liquidated for about $38.73M in BTC', source: 'SoSoValue · on-chain data (low tier)', assets: 'BTC, HYPE', stop: 3, drop: true, reason: 'notCatalyst', reached: 'Dropped at Score', why: 'passing mention, not a signal type', cost: '$0.0019',
+        steps: [
+          { short: 'Seen 4 min after release', summary: 'Read in the 10:33 check.', rows: [['Published', '10:29:40'], ['Collected', '10:33:52 (4 min 12 s later)'], ['SoSoValue tags', 'BITCOIN (BTC), HYPERLIQUID (HYPE)']] },
+          { short: 'BTC-USD, HYPE-USD · new story', summary: 'Both tagged coins have SoDEX markets, so both stay candidates.', rows: [['Candidates', 'BTC-USD, HYPE-USD'], ['Story', 'New']] },
+          { short: 'No signal type · $0.0019', summary: 'Claude found no news type from the list. BTC and HYPE are only mentioned; liquidations are market data, not a catalyst.', rows: [['News type', 'None'], ['Relevance', 'Passing mention'], ['Result', 'Dropped: NOT_A_SIGNAL_TYPE'], ['Claude tokens', 'in 431 · cache read 4,635 · out 96'], ['Claude cost', '$0.0019 (claude-haiku-4-5)']] },
+          E, E
+        ] },
+      { id: 'promo', time: '09:41', delay: '5 min after release', title: 'XYZ launches 50,000 DOGE giveaway for new traders', source: 'SoSoValue · partner post (low tier)', assets: 'DOGE', stop: 3, drop: true, reason: 'promotional', reached: 'Dropped at Score', why: 'promotional post', cost: '$0.0018',
+        steps: [
+          { short: 'Seen 5 min after release', summary: 'Read in the 09:46 check.', rows: [['Published', '09:41:10'], ['Collected', '09:46:02 (4 min 52 s later)'], ['SoSoValue tags', 'DOGECOIN (DOGE)']] },
+          { short: 'DOGE → DOGE-USD · new story', summary: 'DOGE has a SoDEX market, so the article goes on to Claude.', rows: [['Candidates', 'DOGE-USD'], ['Story', 'New']] },
+          { short: 'Promotional · $0.0018', summary: 'Claude marked the post as an advert: a giveaway is not news about DOGE itself. Promotional posts never become signals.', rows: [['News type', 'None'], ['Promotional', 'Yes'], ['Result', 'Dropped: PROMOTIONAL'], ['Claude tokens', 'in 402 · cache read 4,635 · out 88'], ['Claude cost', '$0.0018 (claude-haiku-4-5)']] },
+          E, E
+        ] },
+      { id: 'sol', time: '09:52', delay: '6 min after release', title: 'Solana Foundation flags exploit in a lending protocol', source: 'SoSoValue · project account (mid tier)', assets: 'SOL', stop: 4, drop: true, reason: 'tpUnderCost', reached: 'Dropped at Filter', why: 'take profit under 2× cost', cost: '$0.0022',
+        steps: [
+          { short: 'Seen 6 min after release', summary: 'Read in the 09:58 check.', rows: [['Published', '09:52:30'], ['Collected', '09:58:05 (5 min 35 s later)']] },
+          { short: 'SOL → SOL-USD · new story', summary: 'Matched SOL to SOL-USD and opened a new story.', rows: [['Candidates', 'SOL-USD'], ['Story', 'New · hack or exploit · SOL']] },
+          { short: 'Hack → Short · Low · $0.0022', summary: 'Claude named a hack on Solana. The exploited protocol has no token on SoDEX, so the asset is SOL.', rows: [['News type', 'Hack or exploit → Short'], ['Asset', 'SOL'], ['Level', 'Low: one mid-tier source'], ['Claude cost', '$0.0022 (claude-haiku-4-5)']] },
+          { short: 'TP 0.15% < 2× cost', summary: 'The expected move is too small to beat the cost of a trade.', rows: [['Take profit vs cost', '0.15% vs 2 × 0.10% = 0.20%'], ['Result', 'Dropped: MOVE_TOO_SMALL_FOR_COST']] },
+          E
+        ] },
+      { id: 'kntq', time: '10:01', delay: '3 min after release', title: 'Bithumb will list the KNTQ/KRW trading pair', source: 'SoSoValue · exchange notice (top tier)', assets: 'KNTQ', stop: 2, drop: true, reason: 'notOnSodex', reached: 'Dropped at Normalize', why: 'KNTQ is not on SoDEX', cost: 'No Claude call',
+        steps: [
+          { short: 'Seen 3 min after release', summary: 'Read in the 10:04 check.', rows: [['Published', '10:01:12'], ['Collected', '10:04:30 (3 min 18 s later)']] },
+          { short: 'KNTQ not on SoDEX', summary: 'No SoDEX market for KNTQ, so the article stops here and Claude is not called.', rows: [['Candidates', 'None'], ['Result', 'Dropped: NO_SODEX_MARKET']] },
+          E, E, E
+        ] },
+      { id: 'dup', time: '10:15', delay: '5 min after release', title: 'Data: four whale addresses withdrew 13,408 ETH from exchanges', source: 'SoSoValue · on-chain data (low tier)', assets: 'ETH', stop: 2, drop: true, reason: 'duplicate', reached: 'Dropped at Normalize', why: 'same text as an article already stored', cost: 'No Claude call',
+        steps: [
+          { short: 'Seen 5 min after release', summary: 'Read in the 10:20 check.', rows: [['Published', '10:15:20'], ['Collected', '10:20:11 (4 min 51 s later)']] },
+          { short: 'Duplicate of 10:13 article', summary: 'The text matches an article stored 2 minutes earlier (same content hash), so it adds nothing and Claude is not called again.', rows: [['Duplicate of', 'Four whales together withdrew $23.73M worth of ETH… (10:13)'], ['Result', 'Dropped: DUPLICATE']] },
+          E, E, E
+        ] },
+      { id: 'gold', time: '10:13', delay: '2 min after release', title: 'Spot gold broke below the 3700 threshold', source: 'SoSoValue · flash', assets: 'No coin tagged', stop: 1, drop: true, reason: 'noCoin', reached: 'Dropped at Collect', why: 'no coin tagged', cost: 'No Claude call',
+        steps: [
+          { short: 'No coin tagged', summary: 'SoSoValue tagged no coin, so the article cannot be about a SoDEX asset.', rows: [['Published', '10:13:00'], ['Result', 'Dropped: no tagged currency']] },
+          E, E, E, E
+        ] }
+    ];
+    return all;
+  }
+
+  var ALL = buildData();
+  var NAMES = ['Collect', 'Normalize', 'Score', 'Filter', 'Decide'];
+  var REASONS = { noCoin: ['No coin tagged', 1], notOnSodex: ['Not on SoDEX', 2], duplicate: ['Duplicate', 2], notCatalyst: ['Not a catalyst', 3], promotional: ['Promotional', 3], tpUnderCost: ['Take profit under 2× cost', 4] };
+  var TOTALS = {
+    '1d': { counts: ['58 articles', '25 stories', '3 signals', '1 left', 'Long 1 · Short 0'], notes: ['every SoSoValue article', '33 out · 31 not on SoDEX, 2 duplicate', '22 out · 15 not a catalyst, 4 promo', '2 out · TP under cost, no price', '500 USDC each · TP / SL from volatility'], delay: '4 min 20 s', cost: '$0.03 today', costSub: '11 articles sent to Claude · cap $2.00 / day', rc: { noCoin: 3, notOnSodex: 31, duplicate: 2, notCatalyst: 15, promotional: 4, tpUnderCost: 1 } },
+    '7d': { counts: ['1,240 articles', '380 stories', '96 signals', '41 left', 'Long 29 · Short 12'], notes: ['every SoSoValue article', '860 merged or out', '284 out · not a catalyst 210', '55 out · TP under cost 27', '500 USDC each · TP / SL from volatility'], delay: '3 min 10 s', cost: '$0.42 / day', costSub: '1,240 articles read · SoSoValue 2,016 of 10,000 calls this month', rc: { noCoin: 40, notOnSodex: 52, duplicate: 808, notCatalyst: 210, promotional: 22, tpUnderCost: 27 } }
+  };
+  var BLUES = ['#1d47b8', '#2453d0', '#2e62e8', '#4a7bf0', '#16a05a'];
+  var WIDTHS = [54, 47, 40, 33, 26];
+  var ROW = 76, TOP = 4;
+  var TRADES = [
+    { sig: 'ETH · Long', seen: '10:16 · 4 min after release', what: 'SEC approves in-kind creations for spot ETH ETFs · Medium', result: 'Open · +$1.20', color: '#0f7a43', id: 'eth' },
+    { sig: 'SOL · Short', seen: '09:52 · 6 min after release', what: 'Skipped: take profit under 2× cost (0.15% vs 0.20%)', result: 'Not traded', color: '#5f6684', id: 'sol' }
+  ];
+
+  var state = { sel: null, step: 6, filter: 'all', stage: null, reason: null, range: '1d' };
+  var timer = null, demoTimer = null, runId = 0, stepsKey = null;
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function setState(patch) { for (var k in patch) state[k] = patch[k]; render(); }
+
+  function run(id, scroll) {
+    if (timer) clearInterval(timer);
+    if (demoTimer) { clearTimeout(demoTimer); demoTimer = null; }
+    runId++;
+    setState({ sel: id, step: 0 });
+    if (scroll) { var el = $('funnel'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    timer = setInterval(function () {
+      var s = state.step + 1;
+      setState({ step: s });
+      if (s >= 6) { clearInterval(timer); timer = null; }
+    }, MS);
+  }
+  function back() { if (timer) { clearInterval(timer); timer = null; } setState({ sel: null, step: 6 }); }
+
+  function on(b) { return 'min-height: 40px; padding: 0 12px; border-radius: 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; border: 1px solid ' + (b ? '#2e62e8' : '#d5dcf2') + '; background: ' + (b ? '#2e62e8' : '#fff') + '; color: ' + (b ? '#fff' : '#141a33'); }
+  function chip(x) {
+    var bg = !x.drop ? '#ddf4e7' : x.stop >= 3 ? '#fde4e1' : '#eef1fa';
+    var fg = !x.drop ? '#0f7a43' : x.stop >= 3 ? '#a72826' : '#3b4262';
+    return 'display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: ' + bg + '; color: ' + fg;
+  }
+
+  // Bands, labels and notes stay in the DOM so their styles transition like the canvas.
+  var bandEls = [];
+  (function mountBands() {
+    var host = $('bands');
+    NAMES.forEach(function (name, i) {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'position: absolute; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.addEventListener('click', function () { setState({ stage: state.stage === i + 1 ? null : i + 1, reason: null }); });
+      var label = document.createElement('div'); label.className = 'note';
+      var note = document.createElement('div'); note.className = 'note';
+      wrap.appendChild(btn); wrap.appendChild(label); wrap.appendChild(note);
+      host.appendChild(wrap);
+      bandEls.push({ btn: btn, label: label, note: note });
+    });
+  })();
+  var tokenEl = null;
+
+  function render() {
+    var f = state.filter, stage = state.stage, reason = state.reason, range = state.range;
+    var TOT = TOTALS[range];
+    var shown = ALL.filter(function (x) { return f === 'all' || (f === 'traded' && !x.drop) || (f === 'dropped' && x.drop) || (f === 'claude' && x.cost.indexOf('$') === 0); });
+    if (stage !== null) shown = shown.filter(function (x) { return x.stop === stage; });
+    if (reason !== null) shown = shown.filter(function (x) { return x.reason === reason; });
+    var tracing = state.sel !== null;
+    var cur = ALL.filter(function (x) { return x.id === state.sel; })[0] || ALL[0];
+    var step = state.step;
+    var pos = Math.min(step, cur.stop);
+    function st(i) {
+      if (!tracing) return 'total';
+      var n = i + 1;
+      if (n > cur.stop) return step > cur.stop ? 'skip' : 'idle';
+      if (n < pos) return 'pass';
+      if (n === pos) return step > n ? (n === cur.stop && cur.drop ? 'drop' : 'pass') : 'active';
+      return 'idle';
+    }
+    var rangeLabel = range === '1d' ? 'last 1 day' : 'last 7 days';
+    document.querySelectorAll('[data-range-label]').forEach(function (el) { el.textContent = rangeLabel; });
+
+    // Period toggle
+    $('ranges').innerHTML = [['1d', '1 day'], ['7d', '7 days']].map(function (r) {
+      var p = range === r[0];
+      var style = 'min-height: 36px; padding: 0 14px; border-radius: 8px; border: 0; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; background: ' + (p ? '#fff' : 'transparent') + '; color: ' + (p ? '#141a33' : '#5f6684') + (p ? '; box-shadow: 0 1px 3px rgba(20,26,51,.15)' : '');
+      return '<button type="button" data-range="' + r[0] + '" aria-pressed="' + p + '" style="' + style + '">' + r[1] + '</button>';
+    }).join('');
+
+    // Feed
+    $('feed-count').textContent = shown.length + ' of 58 articles';
+    $('filters').innerHTML = [['all', 'All'], ['traded', 'Traded'], ['dropped', 'Dropped'], ['claude', 'Sent to Claude']].map(function (x) {
+      return '<button type="button" data-filter="' + x[0] + '" aria-pressed="' + (f === x[0]) + '" style="' + on(f === x[0]) + '">' + x[1] + '</button>';
+    }).join('');
+    var stageFilterLabel = stage !== null ? 'Stopped at ' + stage + ' · ' + NAMES[stage - 1] : reason !== null ? 'Reason: ' + REASONS[reason][0] : '';
+    $('stage-filter').innerHTML = (stage !== null || reason !== null)
+      ? '<div style="display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 8px 12px; border-radius: 10px; background: #e6ecfe; font-size: 13px; font-weight: 700; color: #1d47b8"><span>' + esc(stageFilterLabel) + '</span><button type="button" data-clear style="all: unset; cursor: pointer; min-height: 32px; padding: 0 6px; text-decoration: underline">Clear</button></div>'
+      : '';
+    $('items').innerHTML = shown.map(function (x) {
+      var sel = tracing && x.id === cur.id;
+      var cardStyle = 'all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer; padding: 12px 14px; border-radius: 12px; border: 1px solid ' + (sel ? '#2e62e8' : '#e3e7f5') + '; background: ' + (sel ? '#e6ecfe' : '#fff');
+      return '<li><button type="button" class="news" data-pick="' + x.id + '" aria-pressed="' + sel + '" style="' + cardStyle + '">' +
+        '<span style="display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #5f6684"><span>' + esc(x.time) + ' · ' + esc(x.delay) + '</span><span>' + esc(x.cost) + '</span></span>' +
+        '<span style="display: block; font-size: 14px; font-weight: 700; color: #141a33; margin: 4px 0 6px">' + esc(x.title) + '</span>' +
+        '<span style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center"><span style="' + chip(x) + '">' + esc(x.reached) + '</span><span style="font-size: 12px; color: #5f6684">' + esc(x.assets) + '</span></span>' +
+        '</button></li>';
+    }).join('');
+
+    // Trace header
+    $('trace-head').innerHTML = tracing
+      ? '<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><h3 style="margin: 0; font-size: 18px; font-weight: 800">' + esc(cur.title) + '</h3><span style="font-size: 12px; color: #5f6684">' + esc(cur.source) + ' · published ' + esc(cur.time) + ' · <a href="#">Open article</a></span></div>'
+      : '<p style="margin: 0; font-size: 13px; color: #3b4262; max-width: 560px">Totals for ' + rangeLabel + '. Click a step to list its articles, or pick an article to watch it go through.</p>';
+    $('trace-actions').innerHTML = tracing
+      ? '<div style="display: flex; gap: 8px"><button type="button" data-back style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 13px; font-weight: 800; color: #141a33; cursor: pointer">Back to totals</button><button type="button" data-replay style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #2e62e8; background: #2e62e8; font: inherit; font-size: 13px; font-weight: 800; color: #fff; cursor: pointer">Replay</button></div>'
+      : '';
+
+    // Funnel bands
+    NAMES.forEach(function (name, i) {
+      var s = st(i);
+      var sel = !tracing && stage === i + 1;
+      var bg = s === 'total' ? BLUES[i] : s === 'pass' ? BLUES[i] : s === 'drop' ? '#c2312f' : s === 'active' ? '#2e62e8' : s === 'skip' ? '#1c2342' : '#232b4d';
+      var showNote = s === 'total' || s === 'pass' || s === 'drop';
+      var el = bandEls[i];
+      el.btn.className = 'band' + (s === 'active' ? ' glow' : '');
+      el.btn.textContent = s === 'total' ? TOT.counts[i] : '';
+      el.btn.setAttribute('aria-label', tracing ? name : 'List articles that stopped at ' + name);
+      el.btn.disabled = tracing;
+      el.btn.style.cssText = 'all: unset; pointer-events: auto; cursor: ' + (tracing ? 'default' : 'pointer') + '; position: absolute; left: 50%; top: ' + (TOP + i * ROW) + 'px; width: ' + WIDTHS[i] + '%; height: 60px; transform: translateX(-50%)' + (s === 'active' || sel ? ' scale(1.04)' : '') + '; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: #fff; white-space: nowrap; clip-path: polygon(0 0, 100% 0, 95% 100%, 5% 100%); background: ' + bg + (sel ? '; outline: 3px solid #fff' : '');
+      el.label.textContent = (i + 1) + ' · ' + name;
+      el.label.style.cssText = 'position: absolute; right: ' + (50 + WIDTHS[i] / 2 + 2) + '%; top: ' + (TOP + i * ROW + 19) + 'px; text-align: right; white-space: nowrap; font-size: 14px; font-weight: 800; color: ' + (s === 'idle' || s === 'skip' ? '#7c84a6' : s === 'drop' ? '#ff9e95' : '#ffffff');
+      el.note.textContent = s === 'total' ? TOT.notes[i] : s === 'drop' ? 'Dropped · ' + cur.steps[i].short : cur.steps[i].short;
+      el.note.style.cssText = 'position: absolute; left: ' + (50 + WIDTHS[i] / 2 + 2) + '%; right: 0; top: ' + (TOP + i * ROW + 12) + 'px; font-size: 13px; line-height: 1.35; font-weight: 700; color: ' + (s === 'total' ? '#c9d4ff' : s === 'drop' ? '#ffb3ab' : '#c9f2d9') + '; opacity: ' + (showNote ? 1 : 0) + '; transform: translateX(' + (showNote ? '0' : '-8px') + ')';
+    });
+
+    // Token chip
+    var finished = step > cur.stop;
+    var dropped = finished && cur.drop;
+    var traded = finished && !cur.drop;
+    if (tracing) {
+      if (!tokenEl) {
+        tokenEl = document.createElement('div');
+        tokenEl.className = 'token';
+        tokenEl.setAttribute('aria-hidden', 'true');
+        $('bands').appendChild(tokenEl);
+      }
+      var tokTop = pos === 0 ? -48 : TOP + (pos - 1) * ROW + 12;
+      tokenEl.textContent = dropped ? 'Out · ' + cur.assets : traded ? 'Paper trade · ' + cur.assets : cur.assets;
+      tokenEl.style.cssText = 'position: absolute; z-index: 2; top: ' + (dropped ? tokTop + 30 : tokTop) + 'px; left: ' + (dropped ? 'calc(50% + 46px)' : '50%') + '; transform: translateX(-50%)' + (dropped ? ' rotate(-4deg)' : '') + '; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 800; box-shadow: 0 6px 20px rgba(0,0,0,.35); border: 2px solid ' + (dropped ? '#ff8a80' : traded ? '#7be0a6' : '#7fa2ff') + '; background: ' + (dropped ? '#c2312f' : traded ? '#16a05a' : '#fff') + '; color: ' + (dropped || traded ? '#fff' : '#141a33') + '; opacity: ' + (step === 0 ? 0 : 1);
+    } else if (tokenEl) {
+      tokenEl.remove();
+      tokenEl = null;
+    }
+
+    // Verdict
+    var verdict = !tracing ? 'Pick an article on the left, or click a step to list its articles.' : !finished ? (pos === 0 ? 'Article arriving…' : 'Step ' + pos + ' · ' + NAMES[pos - 1] + '…') : cur.drop ? 'Stopped at ' + NAMES[cur.stop - 1] + ': ' + cur.why + ' · Claude ' + cur.cost : 'Reached Decide: ' + cur.why + ' · Claude ' + cur.cost;
+    $('verdict').textContent = verdict;
+    $('verdict').style.color = !tracing || !finished ? '#c9d4ff' : cur.drop ? '#ff9e95' : '#7be0a6';
+
+    // Totals panel
+    $('totals').style.display = tracing ? 'none' : 'contents';
+    $('tot-delay').textContent = TOT.delay;
+    $('tot-cost').textContent = TOT.cost;
+    $('tot-cost-sub').textContent = TOT.costSub;
+    $('reasons').innerHTML = Object.keys(REASONS).map(function (k) {
+      return '<button type="button" data-reason="' + k + '" aria-pressed="' + (reason === k) + '" style="' + on(reason === k) + '">' + esc(REASONS[k][0] + ' · ' + TOT.rc[k]) + '</button>';
+    }).join('');
+
+    // Step cards: append new cards only, so each one plays its reveal once.
+    var ol = $('steps');
+    ol.style.display = tracing ? 'flex' : 'none';
+    var key = tracing ? cur.id + ':' + runId : null;
+    if (key !== stepsKey) { ol.innerHTML = ''; stepsKey = key; }
+    if (tracing) {
+      var visible = [];
+      cur.steps.forEach(function (s, i) { var k = st(i); if (k === 'pass' || k === 'drop') visible.push({ s: s, i: i, k: k }); });
+      if (visible.length < ol.children.length) { ol.innerHTML = ''; }
+      visible.slice(ol.children.length).forEach(function (v) {
+        var drop = v.k === 'drop';
+        var li = document.createElement('li');
+        li.className = 'reveal';
+        li.style.cssText = 'border: 1px solid ' + (drop ? '#f3b9b3' : '#e3e7f5') + '; border-radius: 14px; padding: 14px 16px; background: #fff; box-shadow: 0 2px 10px rgba(20,26,51,.05)';
+        li.innerHTML = '<div style="display: flex; align-items: center; gap: 10px">' +
+          '<span style="flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; background: ' + (drop ? '#c2312f' : BLUES[v.i]) + '">' + (v.i + 1) + '</span>' +
+          '<span style="font-size: 15px; font-weight: 800; flex: 1">' + NAMES[v.i] + '</span>' +
+          '<span style="flex: none; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; background: ' + (drop ? '#fde4e1' : '#ddf4e7') + '; color: ' + (drop ? '#a72826' : '#0f7a43') + '">' + (drop ? 'Dropped' : 'Passed') + '</span></div>' +
+          '<p style="margin: 8px 0 0 38px; font-size: 13px; color: #3b4262">' + esc(v.s.summary) + '</p>' +
+          '<dl style="margin: 8px 0 0 38px; display: flex; flex-direction: column; gap: 5px; font-size: 13px">' +
+          v.s.rows.map(function (r) { return '<div style="display: grid; grid-template-columns: minmax(0, 170px) minmax(0, 1fr); gap: 14px"><dt style="color: #5f6684">' + esc(r[0]) + '</dt><dd style="margin: 0; color: #141a33; font-weight: 700">' + esc(r[1]) + '</dd></div>'; }).join('') +
+          '</dl>';
+        ol.appendChild(li);
+      });
+    }
+  }
+
+  function renderTrades() {
+    $('trades').innerHTML = TRADES.map(function (t) {
+      return '<tr style="border-top: 1px solid #e3e7f5">' +
+        '<td style="padding: 12px; font-weight: 800">' + esc(t.sig) + '<br><span style="font-size: 12px; font-weight: 500; color: #5f6684">News · Live paper</span></td>' +
+        '<td style="padding: 12px; color: #3b4262">' + esc(t.seen) + '</td>' +
+        '<td style="padding: 12px">' + esc(t.what) + '</td>' +
+        '<td style="padding: 12px; font-weight: 800; color: ' + t.color + '">' + esc(t.result) + '</td>' +
+        '<td style="padding: 12px; text-align: right"><button type="button" data-trace="' + t.id + '" style="min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 13px; font-weight: 800; color: #1d47b8; cursor: pointer">Trace</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('button');
+    if (!t) return;
+    var d = t.dataset;
+    if (d.range) setState({ range: d.range });
+    else if (d.filter) setState({ filter: d.filter });
+    else if (d.reason) setState({ reason: state.reason === d.reason ? null : d.reason, stage: null });
+    else if ('clear' in d) setState({ stage: null, reason: null });
+    else if (d.pick) run(d.pick, false);
+    else if ('back' in d) back();
+    else if ('replay' in d) run(state.sel, false);
+    else if (d.trace) run(d.trace, true);
+  });
+
+  renderTrades();
+  render();
+  if (DEMO) demoTimer = setTimeout(function () { demoTimer = null; run('eth', false); }, 1500);
+})();
+</script>
+</body>
+</html>
