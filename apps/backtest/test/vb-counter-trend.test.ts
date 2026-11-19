@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { Decimal } from "@drift/shared";
+import { dec, Decimal } from "@drift/shared";
 import type { Candle } from "@drift/strategies";
 import { describe, expect, it } from "vitest";
 
@@ -13,12 +13,14 @@ import {
   studyConfig,
 } from "../src/vb-counter-trend/load";
 import {
+  bookTrade,
   diffByDay,
   gapsOf,
   groupStats,
   moveBucket,
   runStudy,
   simulate,
+  simulateSeeds,
   toMarkdown,
   type StudyTrade,
 } from "../src/vb-counter-trend/study";
@@ -38,6 +40,7 @@ function trade(at: number, netBp: number, notional = 100): StudyTrade {
     regime: "SIDEWAY",
     move3m: null,
     balanced: false,
+    doubleClosed: false,
     entryNotional: d(notional),
     volume: d(notional * 2),
     gross: net.add("0.03"),
@@ -151,24 +154,40 @@ describe("simulate (real volumeFarm through the backtest engine)", () => {
       { market: "ETH-USD", candles, rules: base.rules, config, configSource: "test", liveBots: 0 },
       fees,
       { from: base.from, to: base.to },
+      2,
     );
-    expect(rep.rows.map((x) => `${x.variant.key}${x.reverse ? "+" : "-"}`)).toEqual([
+    expect(rep.rows.map((x) => `${x.key}${x.reverse ? "+" : "-"}`)).toEqual([
       "A-",
       "B-",
+      "B′-",
       "C-",
       "D-",
       "A+",
       "B+",
+      "B′+",
       "C+",
       "D+",
     ]);
     const n = (k: string, rev: boolean) =>
-      rep.rows.find((x) => x.variant.key === k && x.reverse === rev)?.all.n ?? -1;
+      rep.rows.find((x) => x.key === k && x.reverse === rev)?.all.n ?? -1;
     // Không chặn thì không ít lượt hơn A trên cùng dữ liệu (cùng nhịp cooldown, chỉ thêm cơ hội).
     expect(n("C", false)).toBeGreaterThan(0);
     expect(n("D", false)).toBeGreaterThan(0);
     expect(rep.random.all.n).toBeGreaterThan(0);
-    expect(rep.rows.every((x) => x.vsRandom !== null)).toBe(true);
+    expect(rep.random.sim.runs).toBe(2);
+    for (const x of rep.rows) {
+      expect(x.vsR).not.toBeNull();
+      expect(x.vsOwn).not.toBeNull();
+      expect(x.own?.runs).toBe(2);
+      // Lượt tín hiệu + lượt cân long / short = mọi lượt.
+      expect(x.entryType.signal.s.n + x.entryType.balanced.s.n).toBe(x.all.n);
+      expect(x.exclDouble.n).toBe(x.all.n - x.doubleClosed);
+    }
+    // Baseline riêng giữ thời điểm vào của biến thể: số lệnh vào mỗi seed gần bằng biến thể (đường giá khác sau mỗi lượt
+    // nên không bằng hẳn).
+    const a = rep.rows[0];
+    if (a?.own == null) throw new Error("missing row");
+    expect(a.own.entryOrders / a.own.runs).toBeGreaterThan(a.sim.entryOrders * 0.6);
     const md = toMarkdown([rep], {
       source: "test",
       generatedAt: T0,
@@ -176,8 +195,86 @@ describe("simulate (real volumeFarm through the backtest engine)", () => {
       notes: [],
     });
     expect(md).toContain("## ETH-USD");
-    expect(md).toContain("| R random |");
+    expect(md).toContain("| R random, no gates |");
+    expect(md).toContain("Few clusters");
+    expect(md).toContain("~4 min");
+    expect(md).toContain("Signal entries vs DEC-80 balancing entries");
     expect(md).toContain("By regime at entry");
+  });
+});
+
+describe("bookTrade (double close until #284)", () => {
+  const f = (at: number, tag: string, side: "buy" | "sell", price: string, quantity: string) => ({
+    at,
+    tag,
+    side,
+    price,
+    quantity,
+    fee: dec(price).mul(quantity).mul("0.0002").toFixed(),
+  });
+
+  it("books a clean trade exactly", () => {
+    const b = bookTrade([
+      f(0, "vf:1:in:0", "buy", "100", "2"),
+      f(60, "vf:1:out:0", "sell", "101", "2"),
+    ]);
+    expect(b?.gross.toFixed()).toBe("2");
+    expect(b?.fees.toFixed()).toBe(d("0.04").add("0.0404").toFixed());
+    expect(b?.doubleClosed).toBe(false);
+  });
+
+  it("books a double close at the first close, capped at the entry quantity", () => {
+    // Stop khớp trước (99), lệnh thoát của bot khớp thêm (98) và đảo vị thế: chỉ tính lần đóng đầu, đủ 2.
+    const b = bookTrade([
+      f(0, "vf:2:in:0", "buy", "100", "2"),
+      f(60, "vf:2:sl", "sell", "99", "2"),
+      f(60, "vf:2:out:0", "sell", "98", "2"),
+    ]);
+    expect(b?.gross.toFixed()).toBe("-2");
+    expect(b?.exitNotional.toFixed()).toBe("198");
+    expect(b?.fees.toFixed()).toBe(d("0.04").add("0.0396").toFixed());
+    expect(b?.doubleClosed).toBe(true);
+  });
+
+  it("drops a leftover from the previous cycle: the stop closing more than the entry is capped", () => {
+    // Vị thế thừa 1 của lượt trước: stop đóng 3, chỉ tính 2 của lượt này; phí của lần đóng theo tỉ lệ 2/3.
+    const b = bookTrade([
+      f(0, "vf:3:in:0", "buy", "100", "2"),
+      f(60, "vf:3:sl", "sell", "99", "3"),
+    ]);
+    expect(b?.gross.toFixed()).toBe("-2");
+    expect(b?.fees.toFixed()).toBe(
+      d("0.04").add(d("99").mul(3).mul("0.0002").mul(2).div(3)).toFixed(),
+    );
+    expect(b?.doubleClosed).toBe(true);
+  });
+
+  it("an entry without a close is still open", () => {
+    expect(bookTrade([f(0, "vf:4:in:0", "buy", "100", "2")])).toBeNull();
+  });
+});
+
+describe("random baselines", () => {
+  it("pools several coin seeds", () => {
+    const start = T0;
+    const config = studyConfig("ETH-USD", STUDY_DEFAULT_CONFIG);
+    if (config === null) throw new Error("study default must parse");
+    const input = {
+      market: "ETH-USD",
+      candles: path(600, start),
+      rules: { tickSize: "0.01", stepSize: "0.00000001", minQuantity: "0", minNotional: "0" },
+      config,
+      fees,
+      research: { randomDirection: true },
+      from: start + 180 * 60_000,
+      to: start + 600 * 60_000,
+    };
+    const one = simulate({ ...input, research: { randomDirection: true, randomSalt: "0" } });
+    const three = simulateSeeds(input, 3);
+    expect(three.runs).toBe(3);
+    expect(three.trades.length).toBeGreaterThan(one.trades.length);
+    const sides = (xs: typeof one.trades) => xs.map((t) => t.side).join("");
+    expect(sides(three.trades)).not.toBe(sides(one.trades));
   });
 });
 

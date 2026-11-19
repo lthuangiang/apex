@@ -237,11 +237,15 @@ export interface StepContext {
  *   Reverse thì kiểm lại trên hướng sau khi đảo (DEC-158);
  * - `final_only`: chỉ chặn một lần, trên hướng bot thực sự vào (sau cân long / short và Reverse), cùng công thức ngưỡng
  *   0.70 của `farmSignal`;
+ * - `final_unless_balanced` (B′): như `final_only` nhưng miễn chặn cho lượt bị buộc hướng vì cân long / short (DEC-80),
+ *   giống A khi Reverse tắt (tránh bot đứng chờ khi hướng buộc ngược trend);
  * - `off`: không chặn;
- * - `fade`: không chặn theo regime; chỉ vào khi hướng cuối cùng NGƯỢC cú chạy 3 phút vừa rồi (giá lên thì chỉ short, giá
- *   xuống thì chỉ long; không đo được hoặc bằng 0 thì bỏ lượt).
+ * - `fade`: không chặn theo regime; chỉ vào khi hướng cuối cùng NGƯỢC cú chạy gần nhất (công thức `chg3mBps` của snapshot:
+ *   giá so với close của nến đã đóng ≤ lúc quyết định − 3 phút, tức 3–4 phút; trong backtest timer nằm 1 ms trước giờ đóng
+ *   nến nên luôn là 4 nến). Giá lên thì chỉ short, giá xuống thì chỉ long; không đo được hoặc bằng 0 thì bỏ lượt.
  */
-export type VbCounterTrendMode = "pre_and_post" | "final_only" | "off" | "fade";
+export type VbCounterTrendMode =
+  "pre_and_post" | "final_only" | "final_unless_balanced" | "off" | "fade";
 
 export interface VbResearchOptions {
   counterTrendMode?: VbCounterTrendMode;
@@ -250,6 +254,13 @@ export interface VbResearchOptions {
    * Reverse và mọi bộ chặn xu hướng; các bước khác (cooldown, spread, giá đặt, giữ, thoát) giữ nguyên.
    */
   randomDirection?: boolean;
+  /**
+   * Baseline ngẫu nhiên RIÊNG của biến thể: biến thể quyết định vào hay không (tín hiệu, cân long / short, Reverse, cổng
+   * của biến thể) như thường; nếu vào thì thay hướng bằng tung đồng xu. Giữ thời điểm vào của biến thể, chỉ đổi hướng.
+   */
+  randomAfterGates?: boolean;
+  /** Muối của đồng xu (nhiều seed cho baseline ngẫu nhiên); thiếu = "". */
+  randomSalt?: string;
 }
 
 export interface StepResult<S> {

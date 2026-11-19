@@ -498,7 +498,17 @@ function guards(c: VolumeFarmConfig, s: VolumeFarmState, ctx: StepContext) {
   return null;
 }
 
-/** Biến thể `fade` (#282): đo cú chạy trong chừng này phút trước lúc vào. */
+/** Đồng xu tất định của baseline ngẫu nhiên (#282), theo (botId, cycle, muối). */
+function coin(ctx: StepContext, cycle: number): "long" | "short" {
+  return farmRandom(ctx.botId, cycle, `dir${ctx.vbResearch?.randomSalt ?? ""}`) < 0.5
+    ? "long"
+    : "short";
+}
+
+/**
+ * Biến thể `fade` (#282): mốc của cú chạy, cùng công thức `chg3mBps` của snapshot (nến đã đóng ≤ lúc quyết định − 3 phút,
+ * nên thực tế 3–4 phút; trong backtest là 4 nến).
+ */
 export const VB_FADE_MOVE_MINS = 3;
 
 /**
@@ -512,8 +522,10 @@ function researchGate(
   candles: Parameters<typeof farmSignal>[0],
   sig: { regime: FarmRegime; score: number },
   direction: "long" | "short",
+  balanced: boolean,
 ): { code: string; why: string } | null {
-  if (mode === "final_only" && counterTrendBlocked(sig.regime, direction, sig.score))
+  const finalCheck = mode === "final_only" || (mode === "final_unless_balanced" && !balanced);
+  if (finalCheck && counterTrendBlocked(sig.regime, direction, sig.score))
     return {
       code: "COUNTER_TREND_BLOCKED",
       why: `Research: ${direction} goes against ${REGIME_TEXT[sig.regime]}, so the bot waits.`,
@@ -530,7 +542,7 @@ function researchGate(
   if (move === null || move === 0 || (direction === "long") === move > 0)
     return {
       code: "FADE_WITH_MOVE",
-      why: `Research: ${direction} does not fade the last ${String(VB_FADE_MOVE_MINS)} min move (${move === null ? "n/a" : String(move)} bp), so the bot waits.`,
+      why: `Research: ${direction} does not fade the recent move (${move === null ? "n/a" : String(move)} bp), so the bot waits.`,
     };
   return null;
 }
@@ -604,7 +616,7 @@ function tryEnter(
   let direction: "long" | "short" = sig.direction;
   const notes: string[] = [];
   if (random) {
-    direction = farmRandom(ctx.botId, s.cycle + 1, "dir") < 0.5 ? "long" : "short";
+    direction = coin(ctx, s.cycle + 1);
     notes.push(`Research baseline: random direction ${direction}.`);
   }
   // Khối lượng long / short của các lượt đã đóng lệch quá một lệnh lớn nhất: buộc đi ngược lượt trước (apex MM
@@ -630,8 +642,12 @@ function tryEnter(
         `"Reverse the signal" would trade ${direction} against ${regime}, so the bot waits.`,
       );
   }
-  const research = researchGate(ctMode, s, at, candles, sig, direction);
+  const research = researchGate(ctMode, s, at, candles, sig, direction, balanced);
   if (research !== null) return skipEntry(research.code, research.why);
+  if (ctx.vbResearch?.randomAfterGates === true) {
+    direction = coin(ctx, s.cycle + 1);
+    notes.push(`Research baseline: random direction ${direction} after the variant's gates.`);
+  }
   const side = direction === "long" ? "buy" : "sell";
   const cycle = s.cycle + 1;
   const min = dec(c.orderSizeMinUsd);

@@ -153,18 +153,24 @@ describe("volume farm research variants (#282)", () => {
   });
 
   // Hướng vào (buy / sell) hoặc null = bỏ lượt, theo biến thể A–D.
-  const expected: Record<string, Record<"A" | "B" | "C" | "D", "buy" | "sell" | null>> = {
+  const expected: Record<string, Record<"A" | "B" | "B2" | "C" | "D", "buy" | "sell" | null>> = {
     // Tín hiệu short yếu trong uptrend, giá vừa giảm 3 phút.
-    "up dip": { A: null, B: null, C: "sell", D: null },
+    "up dip": { A: null, B: null, B2: null, C: "sell", D: null },
     // Reverse → long, cùng xu hướng; A vẫn chặn vì bước chặn trước khi đảo.
-    "up dip, reverse": { A: null, B: "buy", C: "buy", D: "buy" },
-    "up run": { A: "buy", B: "buy", C: "buy", D: null },
-    "up run, reverse": { A: null, B: null, C: "sell", D: "sell" },
+    "up dip, reverse": { A: null, B: "buy", B2: "buy", C: "buy", D: "buy" },
+    "up run": { A: "buy", B: "buy", B2: "buy", C: "buy", D: null },
+    "up run, reverse": { A: null, B: null, B2: null, C: "sell", D: "sell" },
     // Cân long / short buộc short trong uptrend: A cho qua (chặn trên hướng tín hiệu), B chặn hướng cuối.
-    "up run, balance": { A: "sell", B: null, C: "sell", D: "sell" },
-    "down bounce, reverse": { A: null, B: "sell", C: "sell", D: "sell" },
+    "up run, balance": { A: "sell", B: null, B2: "sell", C: "sell", D: "sell" },
+    "down bounce, reverse": { A: null, B: "sell", B2: "sell", C: "sell", D: "sell" },
   };
-  const modes = { A: "pre_and_post", B: "final_only", C: "off", D: "fade" } as const;
+  const modes = {
+    A: "pre_and_post",
+    B: "final_only",
+    B2: "final_unless_balanced",
+    C: "off",
+    D: "fade",
+  } as const;
 
   for (const [name, cs, reverse, balanced] of cases)
     it(`enters as expected per variant: ${name}`, () => {
@@ -172,7 +178,7 @@ describe("volume farm research variants (#282)", () => {
       const start = balanced ? balancedStart(c) : undefined;
       const want = expected[name];
       if (want === undefined) throw new Error(`missing expectation for ${name}`);
-      for (const k of ["A", "B", "C", "D"] as const) {
+      for (const k of ["A", "B", "B2", "C", "D"] as const) {
         const r = run(c, timerOf(cs), withMode({ counterTrendMode: modes[k] }), start);
         expect([k, sideOf(r.actions)]).toEqual([k, want[k]]);
         if (want[k] === null) expect(skipOf(r.actions)).not.toBeNull();
@@ -182,7 +188,41 @@ describe("volume farm research variants (#282)", () => {
   it("fade explains the skip and blocks on the final direction", () => {
     const r = run(cfg(), timerOf(UP_RUN), withMode({ counterTrendMode: "fade" }));
     expect(r.state.lastSkip).toBe("FADE_WITH_MOVE");
-    expect(skipOf(r.actions)).toMatch(/does not fade the last 3 min move/);
+    expect(skipOf(r.actions)).toMatch(/does not fade the recent move/);
+  });
+
+  it("a variant's own random baseline keeps its gates and only flips a coin for the direction", () => {
+    for (const [name, cs, reverse, balanced] of cases) {
+      const c = cfg({ reverseSignal: reverse });
+      const start = balanced ? balancedStart(c) : undefined;
+      for (const k of ["A", "B", "B2", "C", "D"] as const) {
+        for (const salt of ["0", "1", "2"]) {
+          const r = run(
+            c,
+            timerOf(cs),
+            withMode({ counterTrendMode: modes[k], randomAfterGates: true, randomSalt: salt }),
+            start,
+          );
+          const coin = farmRandom(ctx.botId, 1, `dir${salt}`) < 0.5 ? "buy" : "sell";
+          // Biến thể bỏ lượt → baseline cũng bỏ; biến thể vào → baseline vào cùng lúc, hướng theo đồng xu.
+          expect([name, k, salt, sideOf(r.actions)]).toEqual([
+            name,
+            k,
+            salt,
+            expected[name]?.[k] === null ? null : coin,
+          ]);
+        }
+      }
+    }
+    // Các muối cho ra đồng xu khác nhau ở ít nhất một lượt.
+    const coins = new Set(
+      ["0", "1", "2", "3", "4"].flatMap((salt) =>
+        [1, 2, 3, 4, 5, 6].map(
+          (cy) => `${String(cy)}:${String(farmRandom(ctx.botId, cy, `dir${salt}`) < 0.5)}`,
+        ),
+      ),
+    );
+    expect(coins.size).toBeGreaterThan(6);
   });
 
   it("random direction ignores the signal, Reverse and balance", () => {
