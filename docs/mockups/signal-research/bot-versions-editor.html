@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New News bot version</title>
+
+</head>
+<body>
+
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#8a90a8}
+a{color:#1d47b8}a:hover{color:#141a33}
+input,select{font:inherit}
+</style>
+
+<div style="box-sizing: border-box; width: 100%; max-width: 1440px; margin: 0 auto; padding: 32px 24px; font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; display: flex; justify-content: flex-end; background: #8a90a8">
+  <div role="dialog" aria-labelledby="ed-t" style="width: 100%; max-width: 760px; background: #fff; border-radius: 18px; padding: 24px; display: flex; flex-direction: column; gap: 18px; box-shadow: 0 20px 60px rgba(20,26,51,.3)">
+    <div style="display: flex; justify-content: space-between; gap: 12px; align-items: flex-start">
+      <div>
+        <h2 id="ed-t" style="margin: 0; font-size: 20px; font-weight: 800">New version · from v4</h2>
+        <p style="margin: 4px 0 0; font-size: 13px; color: #5f6684">Saving creates v5. v4 keeps running unchanged.</p>
+      </div>
+      <a href="bot-versions.html" aria-label="Close" style="width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #f5f7fd; color: #141a33; text-decoration: none; font-weight: 800">×</a>
+    </div>
+
+    <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">Name
+      <input type="text" value="High only" style="min-height: 44px; padding: 0 12px; border: 1px solid #d5dcf2; border-radius: 10px; font-size: 14px; font-weight: 500">
+    </label>
+
+    <fieldset style="border: 1px solid #e3e7f5; border-radius: 14px; padding: 14px 16px; margin: 0; display: flex; flex-direction: column; gap: 8px">
+      <legend style="padding: 0 6px; font-size: 14px; font-weight: 800">News types</legend>
+      <div style="overflow-x: auto">
+        <table style="width: 100%; min-width: 560px; border-collapse: collapse; font-size: 13px">
+          <thead><tr style="color: #5f6684; text-align: left"><th scope="col" style="padding: 6px 8px">Trade it</th><th scope="col" style="padding: 6px 8px">News type</th><th scope="col" style="padding: 6px 8px">Direction</th><th scope="col" style="padding: 6px 8px">Max hold</th></tr></thead>
+          <tbody>
+            <tr style="border-top: 1px solid #eef1fa"><td style="padding: 6px 8px"><input type="checkbox" checked aria-label="Trade Hack or exploit" style="width: 20px; height: 20px"></td><td style="padding: 6px 8px">Hack or exploit</td><td style="padding: 6px 8px">Short</td><td style="padding: 6px 8px"><select aria-label="Max hold, Hack or exploit" style="min-height: 36px; border: 1px solid #d5dcf2; border-radius: 8px; padding: 0 8px"><option>1 d</option></select></td></tr>
+            <tr style="border-top: 1px solid #eef1fa"><td style="padding: 6px 8px"><input type="checkbox" checked aria-label="Trade Listing" style="width: 20px; height: 20px"></td><td style="padding: 6px 8px">Listing on a major exchange</td><td style="padding: 6px 8px">Long</td><td style="padding: 6px 8px"><select aria-label="Max hold, Listing" style="min-height: 36px; border: 1px solid #d5dcf2; border-radius: 8px; padding: 0 8px"><option>1 d</option></select></td></tr>
+            <tr style="border-top: 1px solid #eef1fa"><td style="padding: 6px 8px"><input type="checkbox" checked aria-label="Trade ETF" style="width: 20px; height: 20px"></td><td style="padding: 6px 8px">ETF approved / delayed or denied</td><td style="padding: 6px 8px">Long / Short</td><td style="padding: 6px 8px"><select aria-label="Max hold, ETF" style="min-height: 36px; border: 1px solid #d5dcf2; border-radius: 8px; padding: 0 8px"><option>3 d / 2 d</option></select></td></tr>
+            <tr style="border-top: 1px solid #eef1fa"><td style="padding: 6px 8px"><input type="checkbox" aria-label="Trade Treasury" style="width: 20px; height: 20px"></td><td style="padding: 6px 8px">Company buys / sells the token for its treasury<br><span style="font-size: 12px; color: #5f6684">Never on BTC or ETH in rules v3</span></td><td style="padding: 6px 8px">Long / Short</td><td style="padding: 6px 8px"><select aria-label="Max hold, Treasury" style="min-height: 36px; border: 1px solid #d5dcf2; border-radius: 8px; padding: 0 8px"><option>2 d</option></select></td></tr>
+            <tr style="border-top: 1px solid #eef1fa"><td colspan="4" style="padding: 8px; font-size: 12px; color: #5f6684">+ 8 more types · direction comes from the type and cannot be flipped here</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </fieldset>
+
+    <fieldset style="border: 1px solid #e3e7f5; border-radius: 14px; padding: 14px 16px; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+      <legend style="padding: 0 6px; font-size: 14px; font-weight: 800">Quality</legend>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">Lowest level to trade
+        <select style="min-height: 44px; border: 1px solid #d5dcf2; border-radius: 10px; padding: 0 10px; font-weight: 500"><option>High only</option><option>Medium and up</option><option>Low and up</option></select>
+      </label>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">Skip news seen more than
+        <span style="display: flex; align-items: center; gap: 8px"><input type="text" inputmode="decimal" value="30" style="width: 100px; min-height: 44px; padding: 0 10px; border: 1px solid #d5dcf2; border-radius: 10px; font-weight: 500"><span style="font-weight: 500">min after release</span></span>
+      </label>
+    </fieldset>
+
+    <fieldset style="border: 1px solid #e3e7f5; border-radius: 14px; padding: 14px 16px; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+      <legend style="padding: 0 6px; font-size: 14px; font-weight: 800">Orders</legend>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">Size per trade (USDC, fake money)<input type="text" inputmode="decimal" value="500" style="min-height: 44px; padding: 0 10px; border: 1px solid #d5dcf2; border-radius: 10px; font-weight: 500"></label>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">Skip if take profit is under<span style="display: flex; align-items: center; gap: 8px"><input type="text" inputmode="decimal" value="2" aria-describedby="tp-min" style="width: 100px; min-height: 44px; padding: 0 10px; border: 1px solid #d5dcf2; border-radius: 10px; font-weight: 500"><span style="font-weight: 500">× the cost of a trade</span></span><span id="tp-min" style="font-size: 12px; font-weight: 500; color: #5f6684">At least 1. Below 1 the fees are bigger than the take profit.</span></label>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">Take profit<span style="display: flex; align-items: center; gap: 8px"><input type="text" inputmode="decimal" value="1.5" style="width: 100px; min-height: 44px; padding: 0 10px; border: 1px solid #d5dcf2; border-radius: 10px; font-weight: 500"><span style="font-weight: 500">× typical move over the max hold</span></span></label>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">Stop loss<span style="display: flex; align-items: center; gap: 8px"><input type="text" inputmode="decimal" value="0.75" style="width: 100px; min-height: 44px; padding: 0 10px; border: 1px solid #d5dcf2; border-radius: 10px; font-weight: 500"><span style="font-weight: 500">× typical move over the max hold</span></span></label>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">Max open trades<span style="display: flex; align-items: center; gap: 8px"><input type="text" inputmode="numeric" value="20" aria-describedby="mo-h" style="width: 100px; min-height: 44px; padding: 0 10px; border: 1px solid #d5dcf2; border-radius: 10px; font-weight: 500"><span style="font-weight: 500">at the same time</span></span><span id="mo-h" style="font-size: 12px; font-weight: 500; color: #5f6684">Default 20 = balance 10,000 ÷ size 500. One open trade per asset at most.</span></label>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">Max new trades per day
+        <div role="group" aria-label="Max new trades per day" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+          <div style="display: flex; gap: 4px; background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 10px; padding: 3px">
+            <button type="button" aria-pressed="true" style="min-height: 38px; padding: 0 14px; border: 0; border-radius: 8px; background: #fff; font: inherit; font-size: 13px; font-weight: 800; box-shadow: 0 1px 3px rgba(20,26,51,.15)">Off</button>
+            <button type="button" aria-pressed="false" style="min-height: 38px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; font-weight: 800; color: #5f6684">Limit</button>
+          </div>
+          <span style="font-size: 12px; font-weight: 500; color: #5f6684">Off by default · UTC day</span>
+        </div>
+      </div>
+      <div style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">When opposite news arrives on an open trade
+        <div role="group" aria-label="When opposite news arrives on an open trade" style="display: flex; gap: 4px; background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 10px; padding: 3px; align-self: flex-start">
+          <button type="button" aria-pressed="true" style="min-height: 38px; padding: 0 14px; border: 0; border-radius: 8px; background: #fff; font: inherit; font-size: 13px; font-weight: 800; box-shadow: 0 1px 3px rgba(20,26,51,.15)">Keep the trade</button>
+          <button type="button" aria-pressed="false" style="min-height: 38px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; font-weight: 800; color: #5f6684">Close at market</button>
+        </div>
+        <span style="font-size: 12px; font-weight: 500; color: #5f6684">Opposite news = a new story on the same asset, the other direction, at or above "Lowest level to trade". Every version also records what closing at that moment would have made, so Keep and Close can be compared.</span>
+      </div>
+      <p style="grid-column: 1 / -1; margin: 0; padding: 10px 12px; border-radius: 10px; background: #f5f7fd; font-size: 12px; font-weight: 500; color: #3b4262; line-height: 1.5">A signal stopped by a limit, or by too little fake balance, is not traded. It is still followed as a "would have" trade (reason "Limit: 20 open" or "Limit: N per day"), outside the balance, so no data is lost.</p>
+    </fieldset>
+
+    <fieldset style="border: 1px solid #e3e7f5; border-radius: 14px; padding: 14px 16px; margin: 0; display: flex; flex-direction: column; gap: 12px">
+      <legend style="padding: 0 6px; font-size: 14px; font-weight: 800">Assets</legend>
+      <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px">
+        <label style="display: flex; align-items: center; gap: 8px; min-height: 44px"><input type="checkbox" checked style="width: 20px; height: 20px">Crypto</label>
+        <label style="display: flex; align-items: center; gap: 8px; min-height: 44px"><input type="checkbox" checked style="width: 20px; height: 20px">Stocks on SoDEX</label>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">Which assets
+        <div role="group" aria-label="Which assets" style="display: flex; gap: 4px; background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 10px; padding: 3px; align-self: flex-start">
+          <button type="button" aria-pressed="false" style="min-height: 38px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; font-weight: 800; color: #5f6684">All</button>
+          <button type="button" aria-pressed="true" style="min-height: 38px; padding: 0 14px; border: 0; border-radius: 8px; background: #fff; font: inherit; font-size: 13px; font-weight: 800; box-shadow: 0 1px 3px rgba(20,26,51,.15)">Only these</button>
+          <button type="button" aria-pressed="false" style="min-height: 38px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; font-weight: 800; color: #5f6684">All except</button>
+        </div>
+        <span style="font-size: 12px; font-weight: 500; color: #5f6684">One list at a time. Switching mode keeps the picked assets for the new list.</span>
+      </div>
+      <div style="position: relative; display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 44px; padding: 6px 8px; border: 2px solid #2e62e8; border-radius: 10px">
+          <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px; border-radius: 999px; background: #e6ecfe; font-size: 13px; font-weight: 700">BTC-USD<button type="button" aria-label="Remove BTC-USD" style="width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; font: inherit; font-weight: 800; color: #1d47b8">×</button></span>
+          <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px; border-radius: 999px; background: #e6ecfe; font-size: 13px; font-weight: 700">ETH-USD<button type="button" aria-label="Remove ETH-USD" style="width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; font: inherit; font-weight: 800; color: #1d47b8">×</button></span>
+          <input type="search" value="sol" aria-label="Search SoDEX markets" style="flex: 1; min-width: 120px; min-height: 32px; border: 0; outline: none; font-size: 14px">
+          <button type="button" style="min-height: 32px; padding: 0 8px; border: 0; background: transparent; font: inherit; font-size: 12px; font-weight: 700; color: #1d47b8; text-decoration: underline">Clear all</button>
+        </div>
+        <div role="listbox" aria-label="SoDEX markets" aria-multiselectable="true" style="border: 1px solid #d5dcf2; border-radius: 12px; box-shadow: 0 10px 30px rgba(20,26,51,.12); padding: 6px; background: #fff">
+          <div style="padding: 6px 10px; font-size: 11px; font-weight: 800; color: #5f6684; letter-spacing: .04em">CRYPTO</div>
+          <div role="option" aria-selected="false" style="display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 10px; border-radius: 8px; background: #eef1fa; font-size: 14px"><span><strong>SOL</strong>-USD · Solana</span><span style="font-size: 12px; color: #5f6684">Perps</span></div>
+          <div role="option" aria-selected="false" style="display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 10px; border-radius: 8px; font-size: 14px"><span><strong>SOL</strong>V-USD · Solv Protocol</span><span style="font-size: 12px; color: #5f6684">Perps</span></div>
+          <div style="padding: 6px 10px; font-size: 11px; font-weight: 800; color: #5f6684; letter-spacing: .04em">STOCKS</div>
+          <div style="padding: 6px 10px 10px; font-size: 13px; color: #5f6684">No stock matches "sol"</div>
+        </div>
+        <span style="font-size: 12px; color: #5f6684">Markets listed on SoDEX now · ↑ ↓ to move · Enter to pick · Esc to close</span>
+      </div>
+    </fieldset>
+
+    <div style="padding: 12px 16px; border-radius: 12px; background: #e6ecfe; color: #1d47b8; font-size: 13px; line-height: 1.5">
+      Changed from v4: <strong>Lowest level Medium → High</strong> · <strong>Only BTC-USD, ETH-USD, SOL-USD</strong>.<br>
+      Only trades opened after you save count for v5. The classifier prompt is the same for every version and is changed in code, not here.
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: center">
+      <span style="font-size: 12px; color: #5f6684">Running 2 of 3 · saving starts v5 now · written to the audit log<br>At 3 of 3 the button is off: "Pause or stop a version first."</span>
+      <div style="display: flex; gap: 8px">
+        <a href="bot-versions.html" style="min-height: 44px; padding: 0 16px; display: inline-flex; align-items: center; border-radius: 10px; border: 1px solid #d5dcf2; color: #141a33; font-size: 14px; font-weight: 800; text-decoration: none">Cancel</a>
+        <a href="bot-versions.html" style="min-height: 44px; padding: 0 16px; display: inline-flex; align-items: center; border-radius: 10px; background: #2e62e8; color: #fff; font-size: 14px; font-weight: 800; text-decoration: none">Save and start v5</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+</body>
+</html>
