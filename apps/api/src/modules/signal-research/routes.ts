@@ -1,5 +1,7 @@
 import {
+  createSignalBotVersion,
   loadNextLabelArticle,
+  loadSignalBotVersions,
   loadSignalClassifiers,
   loadSignalResearchArticles,
   loadSignalResearchArticleTrace,
@@ -8,6 +10,8 @@ import {
   loadSignalResearchTrades,
   readOnlyTx,
   saveSignalClassificationLabel,
+  setSignalBotVersionStatus,
+  signalBotVersions,
   type Db,
   type LastPrices,
 } from "@drift/db";
@@ -27,6 +31,18 @@ import {
   researchTradeDetailSchema,
   researchTradesPageSchema,
   researchTradesQuerySchema,
+  researchTraceQuerySchema,
+  researchMarketsSchema,
+  researchVersionCreateBodySchema,
+  researchVersionParamsSchema,
+  researchVersionSchema,
+  researchVersionsSchema,
+  researchVersionStatusBodySchema,
+  STOCK_MARKET_SET,
+  type ResearchMarket,
+  type ResearchMarkets,
+  type ResearchVersion,
+  type ResearchVersions,
   type ResearchArticlesPage,
   type ResearchArticleTrace,
   type ResearchClassifiers,
@@ -36,6 +52,8 @@ import {
   type ResearchTradeDetail,
   type ResearchTradesPage,
 } from "@drift/shared";
+import type { SodexRestClient } from "@drift/sodex";
+import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
@@ -46,8 +64,11 @@ import { requireTeam } from "../account/team";
 
 // Signal research, lane tin tức (#271): chỉ role team (401 chưa đăng nhập, 403 người ngoài team, kiểm trước khi parse
 // tham số), chỉ đọc (transaction READ ONLY, statement timeout). Không bao giờ chạm SoDEX (giá của lệnh đang mở chỉ đọc
-// cache `md:last:*`). no-store. Ngoại lệ ghi duy nhất (#304): `PUT /articles/:id/label` lưu nhãn phân loại của người gọi,
-// bắt buộc Idempotency-Key, ghi audit.
+// cache `md:last:*`). no-store. Ngoại lệ ghi (#304): `PUT /articles/:id/label` lưu nhãn phân loại của người gọi,
+// bắt buộc Idempotency-Key, ghi audit. #305: `POST /versions` (lưu News bot version bất biến) và
+// `POST /versions/:id/status` (Pause / Resume / Stop / Retire), bắt buộc Idempotency-Key, audit trong service DB. Danh sách
+// market SoDEX (`/markets`, kiểm tài sản khi lưu) đọc qua cache TTL của client REST (như scheduler), không gọi SoDEX mỗi
+// request.
 
 export interface SignalResearchDeps {
   db: Db;
@@ -59,6 +80,8 @@ export interface SignalResearchDeps {
    * SoDEX. Không truyền → không có lãi / lỗ chưa chốt.
    */
   prices?: LastPrices;
+  /** #305: danh sách perps SoDEX (cache TTL `MARKET_INFO_TTL_MS` trong client, cùng nguồn với scheduler). */
+  rest: Pick<SodexRestClient, "getPerpsSymbols">;
 }
 
 const FORBIDDEN = "Signal research is for the DeskLabs team only.";
@@ -84,7 +107,7 @@ export async function signalResearchSummary(
   query: unknown,
 ): Promise<ResearchSummary> {
   await requireTeam(deps.db, userId, FORBIDDEN);
-  const { range } = parseOrThrow(researchSummaryQuerySchema, query);
+  const { range, versionId } = parseOrThrow(researchSummaryQuerySchema, query);
   const out = await tx(deps, (q, check) =>
     loadSignalResearchSummary(
       q,
@@ -96,6 +119,7 @@ export async function signalResearchSummary(
       check,
       range,
       deps.prices,
+      versionId,
     ),
   );
   return researchSummarySchema.parse(out);
@@ -145,8 +169,10 @@ export async function signalResearchArticleTrace(
   query: unknown,
 ): Promise<ResearchArticleTrace> {
   await requireTeam(deps.db, userId, FORBIDDEN);
-  parseOrThrow(tzQuery, query);
-  const out = await tx(deps, (t, check) => loadSignalResearchArticleTrace(t, id, check, userId));
+  const { versionId } = parseOrThrow(researchTraceQuerySchema, query);
+  const out = await tx(deps, (t, check) =>
+    loadSignalResearchArticleTrace(t, id, check, userId, versionId),
+  );
   if (out === null) throw new AppError(ErrorCode.notFound, "Article not found.");
   return researchArticleTraceSchema.parse(out);
 }
@@ -200,6 +226,116 @@ export async function signalResearchClassifiers(
   return researchClassifiersSchema.parse(out);
 }
 
+// ── News bot versions (#305) ─────────────────────────────────────────────────────────────────────────────────────
+
+/** Mọi version, mới nhất trước, kèm số dư, giới hạn, lệnh bị chặn, cổng; số version đang chạy / đã thử; classifier. */
+export async function signalResearchVersions(
+  deps: SignalResearchDeps,
+  userId: string,
+  query: unknown,
+): Promise<ResearchVersions> {
+  await requireTeam(deps.db, userId, FORBIDDEN);
+  parseOrThrow(tzQuery, query);
+  const out = await tx(deps, (t, check) => loadSignalBotVersions(t, deps.now(), check));
+  return researchVersionsSchema.parse(out);
+}
+
+async function versionItem(deps: SignalResearchDeps, id: string): Promise<ResearchVersion> {
+  const all = await tx(deps, (t, check) => loadSignalBotVersions(t, deps.now(), check));
+  const v = all.items.find((x) => x.id === id);
+  if (v === undefined) throw new AppError(ErrorCode.notFound, "Version not found.");
+  return researchVersionSchema.parse(v);
+}
+
+const KIND_ORDER = { crypto: 0, stock: 1 } as const;
+
+/** Perps SoDEX đang listed (mọi trạng thái), crypto trước rồi cổ phiếu (`STOCK_MARKET_SET`), mỗi nhóm theo tên. */
+async function listedMarkets(deps: SignalResearchDeps): Promise<ResearchMarket[]> {
+  const symbols = await deps.rest.getPerpsSymbols();
+  return symbols
+    .map((m): ResearchMarket => {
+      const kind = STOCK_MARKET_SET.has(m.name) ? "stock" : "crypto";
+      const base = m.baseCoin ?? m.name.replace(/-USD$/, "");
+      return {
+        market: m.name,
+        base,
+        displayName: m.displayName ?? null,
+        kind,
+        status: m.status,
+      };
+    })
+    .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.market.localeCompare(b.market));
+}
+
+export async function signalResearchMarkets(
+  deps: SignalResearchDeps,
+  userId: string,
+  query: unknown,
+): Promise<ResearchMarkets> {
+  await requireTeam(deps.db, userId, FORBIDDEN);
+  parseOrThrow(tzQuery, query);
+  return researchMarketsSchema.parse({ items: await listedMarkets(deps) });
+}
+
+/**
+ * Lưu một version mới (bất biến; không có route sửa). Kiểm: config (zod, TP tối thiểu ≥ 1× chi phí…), version gốc có
+ * thật, mọi tài sản trong danh sách đang listed trên SoDEX (chỉ gọi danh sách market khi danh sách không rỗng), tối đa 3
+ * version chạy (409 `MAX_RUNNING_VERSIONS`, trong service DB).
+ */
+export async function signalResearchCreateVersion(
+  deps: SignalResearchDeps,
+  userId: string,
+  body: unknown,
+  ip: string | null,
+): Promise<ResearchVersion> {
+  const b = parseOrThrow(researchVersionCreateBodySchema, body);
+  const from = b.savedFromVersionId ?? null;
+  if (from !== null) {
+    const [row] = await deps.db
+      .select({ id: signalBotVersions.id })
+      .from(signalBotVersions)
+      .where(eq(signalBotVersions.id, from));
+    if (row === undefined)
+      throw new AppError(ErrorCode.validationFailed, "Invalid input.", {
+        fieldErrors: { savedFromVersionId: ["not_found"] },
+      });
+  }
+  const wanted = [...new Set(b.config.assets.markets)];
+  if (wanted.length > 0) {
+    const listed = new Set((await listedMarkets(deps)).map((m) => m.market));
+    const unknown = wanted.filter((m) => !listed.has(m)).sort();
+    if (unknown.length > 0)
+      throw new AppError(ErrorCode.validationFailed, "Invalid input.", {
+        fieldErrors: { "config.assets.markets": ["not_listed"] },
+        markets: unknown,
+      });
+  }
+  const v = await createSignalBotVersion(deps.db, {
+    name: b.name,
+    config: b.config,
+    createdBy: userId,
+    savedFromVersionId: from,
+    start: b.start,
+    ip,
+    now: deps.now(),
+  });
+  return versionItem(deps, v.id);
+}
+
+/** Pause / Resume / Stop / Retire (running ↔ paused; running / paused → stopped; stopped → retired). */
+export async function signalResearchSetVersionStatus(
+  deps: SignalResearchDeps,
+  userId: string,
+  params: unknown,
+  body: unknown,
+  ip: string | null,
+): Promise<ResearchVersion> {
+  const { id } = parseOrThrow(researchVersionParamsSchema, params);
+  const b = parseOrThrow(researchVersionStatusBodySchema, body);
+  await setSignalBotVersionStatus(deps.db, { id, status: b.status, userId, ip, now: deps.now() });
+  return versionItem(deps, id);
+}
+
 export function registerSignalResearchRoutes(app: FastifyInstance, deps: SignalResearchDeps): void {
   const base = "/api/v1/admin/signal-research";
   app.get(`${base}/summary`, async (request, reply) => {
@@ -250,5 +386,38 @@ export function registerSignalResearchRoutes(app: FastifyInstance, deps: SignalR
   app.get(`${base}/classifiers`, async (request, reply) => {
     void reply.header("cache-control", "no-store");
     return signalResearchClassifiers(deps, requireAuth(request).userId, request.query);
+  });
+  app.get(`${base}/versions`, async (request, reply) => {
+    void reply.header("cache-control", "no-store");
+    return signalResearchVersions(deps, requireAuth(request).userId, request.query);
+  });
+  app.get(`${base}/markets`, async (request, reply) => {
+    void reply.header("cache-control", "no-store");
+    return signalResearchMarkets(deps, requireAuth(request).userId, request.query);
+  });
+  // Team kiểm TRƯỚC Idempotency-Key và trước khi parse tham số / body.
+  app.post(`${base}/versions`, async (request, reply) => {
+    const auth = requireAuth(request);
+    await requireTeam(deps.db, auth.userId, FORBIDDEN);
+    void reply.header("cache-control", "no-store");
+    return idempotent(deps.db, request, reply, auth.userId, deps.now(), async () => ({
+      status: 201,
+      body: await signalResearchCreateVersion(deps, auth.userId, request.body, request.ip),
+    }));
+  });
+  app.post(`${base}/versions/:id/status`, async (request, reply) => {
+    const auth = requireAuth(request);
+    await requireTeam(deps.db, auth.userId, FORBIDDEN);
+    void reply.header("cache-control", "no-store");
+    return idempotent(deps.db, request, reply, auth.userId, deps.now(), async () => ({
+      status: 200,
+      body: await signalResearchSetVersionStatus(
+        deps,
+        auth.userId,
+        request.params,
+        request.body,
+        request.ip,
+      ),
+    }));
   });
 }

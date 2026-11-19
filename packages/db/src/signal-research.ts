@@ -30,6 +30,8 @@ import {
   type ResearchTradesQuery,
   type SignalSourceKey,
   type TradeDirection,
+  botVersionConfigSchema,
+  type BotVersionConfig,
   unrealizedUsdc,
 } from "@drift/shared";
 import {
@@ -53,6 +55,7 @@ import type { Db } from "./client";
 import type { DbTx } from "./read-only";
 import {
   signalArticles,
+  signalBotVersions,
   signalEvents,
   signalPaperTrades,
   signalResearchUsage,
@@ -60,8 +63,15 @@ import {
   signalStories,
 } from "./schema";
 import { loadArticleStops, rangeSince } from "./signal-research-articles";
-import { DROP, newsTypeOf, reasonLimitOf } from "./signal-research-keys";
+import { DROP, newsTypeOf, oppositeOf, reasonLimitOf } from "./signal-research-keys";
 import { classifierStatusOf, loadClassifierGates } from "./signal-research-labels";
+import {
+  resolveSignalVersion,
+  versionEventWhere,
+  versionStoryWhere,
+  versionTradeWhere,
+  type SignalVersionScope,
+} from "./signal-research-versions";
 
 // Báo cáo Signal research (#271; hợp đồng: packages/shared/src/api/signal-research.ts, UI #273), dùng chung cho CLI của
 // scheduler và endpoint team của api. Chỉ đọc; nơi gọi bọc trong transaction chỉ đọc. Chỉ tính version quy tắc hiện tại
@@ -70,6 +80,9 @@ import { classifierStatusOf, loadClassifierGates } from "./signal-research-label
 // cổng chỉ đếm version hiện tại.
 // #304 (DEC-328 mục 2): số thống kê dùng cho cổng (dòng tổng kết, bảng mức, Long / Short) chỉ tính lệnh đã đóng có
 // classifier đã qua cổng precision (≥ 50 nhãn, ≥ 80%); số dư, lệnh mở, phễu và kết quả theo loại vẫn tính mọi lệnh.
+// #305: tổng kết, danh sách lệnh, feed và trace lọc theo một News bot version (`versionId`, mặc định Baseline; Baseline gồm
+// cả dòng `version_id` null ghi trước khi có version). Bước dùng chung (Collect / Normalize / Understand) không đổi theo
+// version; Filter / Decide / Watch, story và lệnh là của riêng version.
 
 type Q = Db | DbTx;
 type TradeRow = typeof signalPaperTrades.$inferSelect;
@@ -121,15 +134,22 @@ async function pricesOf(prices: LastPrices | undefined, rows: readonly TradeRow[
 }
 
 const costOf = (t: TradeRow) => dec(t.feePct).mul(2).add(dec(t.spreadAtEntryPct));
-const liveNews = () =>
+const liveNews = (scope: SignalVersionScope | null) =>
   and(
     eq(signalPaperTrades.ruleVersion, NEWS_RULES.version),
     eq(signalPaperTrades.lane, NEWS_RULES.lane),
     eq(signalPaperTrades.label, "live"),
+    versionTradeWhere(scope),
   );
-/** Lệnh News · live của MỌI version (#298): chỉ cho danh sách / chi tiết lệnh, không bao giờ cho tổng kết hay cổng. */
+/** Lệnh News · live của MỌI version quy tắc (#298): chỉ cho danh sách / chi tiết lệnh, không bao giờ cho tổng kết hay cổng. */
 const liveNewsHistory = () =>
   and(eq(signalPaperTrades.lane, NEWS_RULES.lane), eq(signalPaperTrades.label, "live"));
+/** #305: chi tiết một lệnh mở được cả lệnh shadow (theo dõi giả định), để web hiện kết quả "would have". */
+const newsTradeOrShadow = () =>
+  and(
+    eq(signalPaperTrades.lane, NEWS_RULES.lane),
+    inArray(signalPaperTrades.label, ["live", "shadow"]),
+  );
 /** "news-v2" → 2; dạng lạ → version hiện tại. */
 const versionNumberOf = (v: string): number => {
   const m = /^news-v(\d+)$/.exec(v);
@@ -276,8 +296,11 @@ export async function loadSignalResearchSummary(
   check: () => void = () => undefined,
   range?: ResearchRange,
   prices?: LastPrices,
+  versionId?: string,
 ): Promise<ResearchSummary> {
   const v = NEWS_RULES.version;
+  const scope = await resolveSignalVersion(q, versionId);
+  check();
   const nowMs = now.getTime();
   const today = utcDay(nowMs);
   // #291: `range` chỉ đổi phễu (`funnel`); bảng mức, cổng, Long / Short luôn tính mọi lệnh của version hiện tại.
@@ -336,6 +359,7 @@ export async function loadSignalResearchSummary(
       and(
         eq(signalEvents.ruleVersion, v),
         since === null ? undefined : gte(signalEvents.at, since),
+        versionEventWhere(scope),
       ),
     )
     .groupBy(signalEvents.stage, signalEvents.outcome, signalEvents.reason);
@@ -349,18 +373,18 @@ export async function loadSignalResearchSummary(
       locked: signalStories.locked,
     })
     .from(signalStories)
-    .where(eq(signalStories.ruleVersion, v))
+    .where(and(eq(signalStories.ruleVersion, v), versionStoryWhere(scope)))
     .orderBy(asc(signalStories.storyKey), asc(signalStories.firstSeenAt));
   const stories = logicalStories(storyRows);
   const funnelStories =
     since === null ? stories : logicalStories(storyRows.filter((r) => r.at >= since));
   check();
-  const articleStops = await loadArticleStops(q, since);
+  const articleStops = await loadArticleStops(q, since, scope);
   check();
   const all = await q
     .select()
     .from(signalPaperTrades)
-    .where(liveNews())
+    .where(liveNews(scope))
     .orderBy(asc(signalPaperTrades.openedAt));
   const closed = all.filter((t) => t.status === "closed" && t.resultPct !== null);
   check();
@@ -500,6 +524,10 @@ export async function loadSignalResearchSummary(
 
   return {
     computedAt: iso(now),
+    version:
+      scope === null
+        ? null
+        : { id: scope.id, number: scope.number, name: scope.name, isBaseline: scope.isBaseline },
     sources,
     bots: on
       ? [
@@ -553,7 +581,7 @@ export async function loadSignalResearchSummary(
           passed: steps[3]?.passed ?? 0,
           long: inRange.filter((t) => t.direction === "long").length,
           short: inRange.filter((t) => t.direction === "short").length,
-          sizeUsdc: NEWS_RULES.sizeUsdc,
+          sizeUsdc: dec(scope?.config?.sizeUsdc ?? NEWS_RULES.sizeUsdc).toFixed(),
           drops: { score: drops(["normalize", "understand"]), filter: drops(["filter"]) },
           articleStops,
           outcomes: {
@@ -661,7 +689,8 @@ export async function loadSignalResearchDiagnostics(q: Q, now: Date) {
     await q
       .select()
       .from(signalPaperTrades)
-      .where(liveNews())
+      // #305: baseline của CLI chỉ tính lệnh Baseline, như tổng kết mặc định.
+      .where(liveNews(await resolveSignalVersion(q, undefined)))
       .orderBy(asc(signalPaperTrades.openedAt))
   ).filter((t) => t.status === "closed");
   const withRandom = closed.filter((t) => t.randomPct !== null && t.resultPct !== null);
@@ -724,12 +753,17 @@ interface Ctx {
   stories: Map<string, StoryRow>;
   /** #304: cổng precision theo classifier. */
   gates: ReadonlyMap<string, ClassifierGate>;
+  /** #305: config (bất biến) của mọi version, để lấy giới hạn / bội số chi phí của đúng version. */
+  configs: ReadonlyMap<string, BotVersionConfig>;
+  /** #305: lệnh shadow theo id (tín hiệu bị giới hạn chặn). */
+  shadows: ReadonlyMap<string, TradeRow>;
 }
 
 async function contextOf(
   q: Q,
   articleIds: readonly string[],
   storyIds: readonly string[],
+  shadowIds: readonly string[] = [],
 ): Promise<Ctx> {
   const a =
     articleIds.length === 0
@@ -745,11 +779,53 @@ async function contextOf(
           .select()
           .from(signalStories)
           .where(inArray(signalStories.id, [...new Set(storyIds)]));
+  const sh =
+    shadowIds.length === 0
+      ? []
+      : await q
+          .select()
+          .from(signalPaperTrades)
+          .where(
+            and(
+              inArray(signalPaperTrades.id, [...new Set(shadowIds)]),
+              eq(signalPaperTrades.label, "shadow"),
+            ),
+          );
+  const configs = new Map<string, BotVersionConfig>();
+  for (const r of await q
+    .select({ id: signalBotVersions.id, config: signalBotVersions.config })
+    .from(signalBotVersions)) {
+    const p = botVersionConfigSchema.safeParse(r.config);
+    if (p.success) configs.set(r.id, p.data);
+  }
   return {
     articles: new Map(a.map((x) => [x.id, x])),
     stories: new Map(s.map((x) => [x.id, x])),
     gates: await loadClassifierGates(q),
+    configs,
+    shadows: new Map(sh.map((x) => [x.id, x])),
   };
+}
+
+const SHADOW_REASON: ReadonlyMap<string, "limitOpen" | "limitDay" | "noBalance"> = new Map([
+  ["LIMIT_OPEN", "limitOpen"],
+  ["LIMIT_DAY", "limitDay"],
+  ["NO_BALANCE", "noBalance"],
+] as const);
+
+/** Lý do + N của "Limit: N open" / "Limit: N per day" của một lệnh shadow, từ config bất biến của version. */
+function shadowOf(t: TradeRow, ctx: Ctx): ResearchTrade["shadow"] {
+  if (t.label !== "shadow") return null;
+  const reason = t.shadowReason === null ? undefined : SHADOW_REASON.get(t.shadowReason);
+  if (reason === undefined) return null;
+  const cfg = t.versionId === null ? undefined : ctx.configs.get(t.versionId);
+  const limit =
+    reason === "limitOpen"
+      ? (cfg?.maxOpenTrades ?? null)
+      : reason === "limitDay"
+        ? (cfg?.maxNewTradesPerDay ?? null)
+        : null;
+  return { reason, limit };
 }
 
 function headlineOf(a: ArticleRow | undefined): string {
@@ -799,6 +875,7 @@ function tradeItem(
   const done = t.status === "closed";
   return {
     id: t.id,
+    versionId: t.versionId,
     articleId: t.articleId,
     type: "news",
     label: "live",
@@ -827,6 +904,8 @@ function tradeItem(
       outcome: outcomeOf(t.exitReason),
       leftSecs: done ? null : Math.max(0, Math.round((t.maxHoldUntil.getTime() - now) / 1000)),
     },
+    shadow: shadowOf(t, ctx),
+    opposite: oppositeOf(t),
   };
 }
 
@@ -838,8 +917,16 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
   const d = filterDetail.safeParse(e.detail ?? {});
   const tp = d.success && d.data.tpPct !== undefined ? numOf(d.data.tpPct) : null;
   const cost = d.success && d.data.costPct !== undefined ? dec(d.data.costPct) : null;
+  const multiple =
+    (e.versionId === null ? undefined : ctx.configs.get(e.versionId))?.minTpCostMultiple ??
+    NEWS_RULES.minTpCostMultiple;
+  const sh =
+    e.tradeId !== null && e.reason !== null && SHADOW_REASON.has(e.reason)
+      ? ctx.shadows.get(e.tradeId)
+      : undefined;
   return {
     id: e.id,
+    versionId: e.versionId,
     articleId: e.articleId,
     type: "news",
     label: "live",
@@ -852,8 +939,19 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
     skipped: {
       reason,
       tpPct: tp,
-      neededPct: cost === null ? null : num(cost.mul(NEWS_RULES.minTpCostMultiple)),
+      neededPct: cost === null ? null : num(cost.mul(multiple)),
       limit: reasonLimitOf(e.reason, e.detail),
+      shadow:
+        sh === undefined
+          ? null
+          : {
+              tradeId: sh.id,
+              outcome: outcomeOf(sh.exitReason),
+              pnl:
+                sh.status === "closed" && sh.resultUsdc !== null
+                  ? dec(sh.resultUsdc).toDecimalPlaces(6).toFixed()
+                  : null,
+            },
     },
     retry: false,
     movedBeforePct: null,
@@ -865,6 +963,8 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
     maxHoldHours: null,
     classifier: null,
     result: null,
+    shadow: null,
+    opposite: null,
   };
 }
 
@@ -899,6 +999,8 @@ export async function loadSignalResearchTrades(
   now: Date,
   prices?: LastPrices,
 ): Promise<ResearchTradesPage> {
+  // Version không tồn tại → 404 kể cả khi loại / nhãn không có dữ liệu.
+  const scope = await resolveSignalVersion(q, query.versionId);
   if ((query.type !== undefined && query.type !== "news") || query.label === "replay")
     return { items: [], nextCursor: null };
   const cur = query.cursor === undefined ? null : decodeCursor(query.cursor);
@@ -911,7 +1013,7 @@ export async function loadSignalResearchTrades(
   }
   const rows: Row[] = [];
   if (query.show !== "skipped") {
-    const where: (SQL | undefined)[] = [liveNewsHistory()];
+    const where: (SQL | undefined)[] = [liveNewsHistory(), versionTradeWhere(scope)];
     if (query.asset !== undefined) where.push(eq(signalPaperTrades.market, query.asset));
     if (cur !== null)
       where.push(
@@ -932,6 +1034,7 @@ export async function loadSignalResearchTrades(
     const where: (SQL | undefined)[] = [
       eq(signalEvents.stage, "filter"),
       eq(signalEvents.outcome, "drop"),
+      versionEventWhere(scope),
     ];
     if (query.asset !== undefined)
       where.push(
@@ -960,6 +1063,7 @@ export async function loadSignalResearchTrades(
     q,
     ids((r) => r.trade?.articleId ?? r.event?.articleId),
     ids((r) => r.trade?.storyId ?? r.event?.storyId),
+    ids((r) => r.event?.tradeId),
   );
   const nowMs = now.getTime();
   const px = await pricesOf(
@@ -1134,7 +1238,7 @@ export async function loadSignalResearchTrade(
   const [trade] = await q
     .select()
     .from(signalPaperTrades)
-    .where(and(eq(signalPaperTrades.id, id), liveNewsHistory()));
+    .where(and(eq(signalPaperTrades.id, id), newsTradeOrShadow()));
   let skip: EventRow | null = null;
   if (trade === undefined) {
     const [e] = await q
@@ -1153,7 +1257,12 @@ export async function loadSignalResearchTrade(
   const articleId = trade?.articleId ?? skip?.articleId ?? null;
   const storyId = trade?.storyId ?? skip?.storyId ?? null;
   if (articleId === null || storyId === null) return null;
-  const ctx = await contextOf(q, [articleId], [storyId]);
+  const ctx = await contextOf(
+    q,
+    [articleId],
+    [storyId],
+    skip?.tradeId == null ? [] : [skip.tradeId],
+  );
   const a = ctx.articles.get(articleId);
   const story = ctx.stories.get(storyId);
   if (a === undefined || story === undefined) return null;

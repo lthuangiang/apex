@@ -1,4 +1,11 @@
-import type { ResearchDropReason, ResearchNewsType } from "@drift/shared";
+import {
+  dec,
+  type ResearchDropReason,
+  type ResearchNewsType,
+  type ResearchTradeOpposite,
+} from "@drift/shared";
+
+import type { signalPaperTrades } from "./schema";
 
 // Bảng đổi khoá nội bộ của lane tin tức → khoá API (#271, #291). Dùng chung cho tổng kết, danh sách lệnh và feed bài;
 // không export ra ngoài package (index.ts không re-export file này).
@@ -80,3 +87,22 @@ export const PRE_CLAUDE_REASONS = [
   "CLASSIFIER_LATE",
   "CLAUDE_BUDGET_REACHED",
 ] as const;
+
+/** Tin ngược chiều đầu tiên trên lệnh (#303): kết quả giả định nếu đóng lúc đó, và lệnh đã đóng vì nó hay vẫn giữ. */
+export function oppositeOf(t: typeof signalPaperTrades.$inferSelect): ResearchTradeOpposite | null {
+  if (
+    t.oppositeAt === null ||
+    t.oppositeExitPrice === null ||
+    t.oppositeResultUsdc === null ||
+    t.oppositeResultPct === null
+  )
+    return null;
+  return {
+    at: t.oppositeAt.toISOString(),
+    storyId: t.oppositeStoryId,
+    action: t.exitReason === "opposite_news" ? "closed" : "kept",
+    exitPrice: dec(t.oppositeExitPrice).toFixed(),
+    resultUsdc: dec(t.oppositeResultUsdc).toDecimalPlaces(6).toFixed(),
+    resultPct: dec(t.oppositeResultPct).toDecimalPlaces(4).toNumber(),
+  };
+}

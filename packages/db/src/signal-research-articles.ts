@@ -29,10 +29,17 @@ import {
   DROP,
   newsTypeOf,
   newsTypeOrNull,
+  oppositeOf,
   PRE_CLAUDE_REASONS,
   reasonLimitOf,
 } from "./signal-research-keys";
 import { loadMyLabel, signalClassifierOf } from "./signal-research-labels";
+import {
+  resolveSignalVersion,
+  versionEventSql,
+  versionEventWhere,
+  type SignalVersionScope,
+} from "./signal-research-versions";
 
 // Feed bài và trace từng bài của Signal research (#291; hợp đồng packages/shared/src/api/signal-research.ts, thiết kế
 // docs/mockups/signal-research/news-trace.html). Chỉ đọc; nơi gọi bọc trong transaction chỉ đọc. Chỉ bài của version quy
@@ -44,6 +51,8 @@ import { loadMyLabel, signalClassifierOf } from "./signal-research-labels";
 //   → `score`; có event normalize → `normalize`, TRỪ `NO_SODEX_MARKET` khi SoSoValue không gắn coin nào → `collect` với lý
 //   do `noTaggedCurrency` (thiết kế: "Dropped at Collect · no coin tagged"; mã lưu vẫn là `NO_SODEX_MARKET`); còn lại
 //   `collect`. Không có event drop / merge / open ở bước cuối → `waiting` (còn chờ Normalize / Claude).
+// #305: bước Filter / Decide chạy riêng cho từng News bot version, nên bước dừng / kết quả của một bài là theo một version
+// (`versionId`, mặc định Baseline): chỉ đọc event dùng chung (Collect / Normalize / Understand) + event của version đó.
 
 type Q = Db | DbTx;
 type ArticleRow = typeof signalArticles.$inferSelect;
@@ -79,7 +88,11 @@ const preClaude = sql.raw(PRE_CLAUDE_REASONS.map(literal).join(", "));
  * Bảng tạm `st`: mỗi bài một dòng với bước dừng, kết quả, lý do API, mã nội bộ, trade, đã gửi Claude chưa. `since` null
  * = mọi bài của version hiện tại.
  */
-function stateCte(since: Date | null, onlyId: string | null = null): SQL {
+function stateCte(
+  since: Date | null,
+  onlyId: string | null = null,
+  scope: SignalVersionScope | null = null,
+): SQL {
   const v = NEWS_RULES.version;
   return sql`
     with ev as (
@@ -93,13 +106,14 @@ function stateCte(since: Date | null, onlyId: string | null = null): SQL {
           (array_agg(e.outcome order by e.at desc, e.id) filter (where e.stage = 'filter'))[1] as f_out,
           (array_agg(e.reason order by e.at desc, e.id) filter (where e.stage = 'filter'))[1] as f_reason,
           (array_agg(e.detail order by e.at desc, e.id) filter (where e.stage = 'filter'))[1] as f_detail,
+          (array_agg(e.trade_id order by e.at desc, e.id) filter (where e.stage = 'filter'))[1] as f_trade_id,
           (array_agg(e.outcome order by e.at desc, e.id) filter (where e.stage = 'understand'))[1] as u_out,
           (array_agg(e.reason order by e.at desc, e.id) filter (where e.stage = 'understand'))[1] as u_reason,
           (array_agg(e.detail order by e.at desc, e.id) filter (where e.stage = 'understand' and e.outcome = 'pass'))[1] as u_detail,
           (array_agg(e.outcome order by e.at desc, e.id) filter (where e.stage = 'normalize'))[1] as n_out,
           (array_agg(e.reason order by e.at desc, e.id) filter (where e.stage = 'normalize'))[1] as n_reason
         from signal_events e
-        where e.article_id = a.id and e.rule_version = a.rule_version
+        where e.article_id = a.id and e.rule_version = a.rule_version and ${versionEventSql(scope, "e")}
       ) x
       where a.rule_version = ${v} and a.status <> 'backlog'
         ${since === null ? sql`` : sql`and a.collected_at >= ${since}`}
@@ -155,18 +169,23 @@ interface StateRow extends Record<string, unknown> {
   trade_id: string | null;
   u_detail: unknown;
   f_detail: unknown;
+  f_trade_id: string | null;
   sent_to_claude: boolean;
 }
 
 /** Số bài theo bước dừng + kết quả + lý do (cho `funnel.articleStops` của tổng kết). */
-export async function loadArticleStops(q: Q, since: Date | null) {
+export async function loadArticleStops(
+  q: Q,
+  since: Date | null,
+  scope: SignalVersionScope | null = null,
+) {
   const r = await q.execute<{
     stage: ResearchStage;
     outcome: ResearchArticle["outcome"];
     reason: ResearchDropReason | null;
     merge_reason: "sameStory" | "storyTooOld" | null;
     n: string | number;
-  }>(sql`${stateCte(since)}
+  }>(sql`${stateCte(since, null, scope)}
     select stage, outcome, reason, merge_reason, count(*) as n from st
     group by stage, outcome, reason, merge_reason
     order by count(*) desc, stage, outcome, reason, merge_reason`);
@@ -224,9 +243,44 @@ function usageOf(a: ArticleRow): ResearchClaudeUsage | null {
       };
 }
 
-function articleItem(a: ArticleRow, s: StateRow): ResearchArticle {
+const SHADOW_CODES: ReadonlySet<string> = new Set(["LIMIT_OPEN", "LIMIT_DAY", "NO_BALANCE"]);
+const oppositeDetail = z.looseObject({
+  closed: z.boolean().optional(),
+  closedTradeId: z.uuid().optional(),
+  oppositeNews: z.boolean().optional(),
+  openTradeId: z.uuid().optional(),
+});
+
+/** Lệnh shadow của bài khi bị giới hạn chặn (event Filter `drop` LIMIT_* / NO_BALANCE mang id lệnh shadow). */
+function shadowTradeOf(code: string | null, out: string | null, tradeId: string | null) {
+  return out === "drop" && code !== null && SHADOW_CODES.has(code) ? tradeId : null;
+}
+
+/**
+ * Bài là tin ngược chiều trên lệnh đang mở của version (#303): Close → Filter `drop` `OPPOSITE_NEWS` (`closed`,
+ * `closedTradeId`); Keep → `NEWS_TRADE_ALREADY_OPEN` với `oppositeNews` (`openTradeId`).
+ */
+function oppositeAt(
+  code: string | null,
+  out: string | null,
+  detail: unknown,
+): ResearchArticle["opposite"] {
+  if (out !== "drop") return null;
+  const d = parseOr(oppositeDetail, detail, {});
+  if (code === "OPPOSITE_NEWS") return { action: "closed", tradeId: d.closedTradeId ?? null };
+  if (code === "NEWS_TRADE_ALREADY_OPEN" && d.oppositeNews === true)
+    return { action: "kept", tradeId: d.openTradeId ?? null };
+  return null;
+}
+
+function articleItem(
+  a: ArticleRow,
+  s: StateRow,
+  scope: SignalVersionScope | null,
+): ResearchArticle {
   const cls = parseOr(classificationSchema, a.classification, {});
   const ud = parseOr(understandDetail, s.u_detail, {});
+  const dropped = s.stage === "filter" && s.outcome === "dropped";
   return {
     id: a.id,
     title: (a.title ?? "").trim() === "" ? null : a.title,
@@ -249,6 +303,9 @@ function articleItem(a: ArticleRow, s: StateRow): ResearchArticle {
     sentToClaude: s.sent_to_claude,
     claude: usageOf(a),
     tradeId: s.trade_id,
+    versionId: scope?.id ?? null,
+    shadowTradeId: dropped ? shadowTradeOf(s.code, "drop", s.f_trade_id) : null,
+    opposite: dropped ? oppositeAt(s.code, "drop", s.f_detail) : null,
   };
 }
 
@@ -284,6 +341,8 @@ export async function loadSignalResearchArticles(
   now: Date,
   check: () => void = () => undefined,
 ): Promise<ResearchArticlesPage> {
+  const scope = await resolveSignalVersion(q, query.versionId);
+  check();
   const cur = query.cursor === undefined ? null : decodeCursor(query.cursor);
   const since = rangeSince(now, query.range);
   const filters: SQL[] = [];
@@ -295,10 +354,10 @@ export async function loadSignalResearchArticles(
   const where = filters.length === 0 ? sql`true` : sql.join(filters, sql` and `);
 
   const counts = await q.execute<{ total: string | number; n_all: string | number }>(
-    sql`${stateCte(since)} select count(*) filter (where ${where}) as total, count(*) as n_all from st`,
+    sql`${stateCte(since, null, scope)} select count(*) filter (where ${where}) as total, count(*) as n_all from st`,
   );
   check();
-  const page = await q.execute<StateRow>(sql`${stateCte(since)}
+  const page = await q.execute<StateRow>(sql`${stateCte(since, null, scope)}
     select * from st
     where ${where}
       ${cur === null ? sql`` : sql`and (published_at, id) < (${cur.t}::timestamptz, ${cur.id}::text)`}
@@ -317,7 +376,7 @@ export async function loadSignalResearchArticles(
         );
   const items = rows.flatMap((r) => {
     const a = articles.get(r.id);
-    return a === undefined ? [] : [articleItem(a, r)];
+    return a === undefined ? [] : [articleItem(a, r, scope)];
   });
   const last = rows.at(-1);
   const c = counts.rows[0];
@@ -368,7 +427,11 @@ const FAILED_CHECK: ReadonlyMap<string, CheckKey> = new Map<string, CheckKey>([
 const levelOf = (v: string | null | undefined): "high" | "medium" | "low" | null =>
   v === "high" || v === "medium" || v === "low" ? v : null;
 
-function checksOf(a: ArticleRow, e: EventRow): ResearchTraceCheck[] {
+function checksOf(
+  a: ArticleRow,
+  e: EventRow,
+  cfg: SignalVersionScope["config"] | undefined,
+): ResearchTraceCheck[] {
   const d = parseOr(filterDetail, e.detail, {});
   const failed = e.outcome === "drop" && e.reason !== null ? FAILED_CHECK.get(e.reason) : undefined;
   if (e.outcome === "drop" && failed === undefined) return [];
@@ -391,7 +454,7 @@ function checksOf(a: ArticleRow, e: EventRow): ResearchTraceCheck[] {
       out.push({
         ...base,
         value: d.delayMinutes ?? Math.round(secsBetween(a.publishedAt, a.collectedAt) / 60),
-        limit: NEWS_RULES.maxSourceDelayMinutes,
+        limit: cfg?.maxSourceDelayMinutes ?? NEWS_RULES.maxSourceDelayMinutes,
       });
     else if (key === "tpVsCost")
       out.push({
@@ -400,7 +463,10 @@ function checksOf(a: ArticleRow, e: EventRow): ResearchTraceCheck[] {
         limit:
           d.costPct === undefined
             ? null
-            : dec(d.costPct).mul(NEWS_RULES.minTpCostMultiple).toDecimalPlaces(4).toNumber(),
+            : dec(d.costPct)
+                .mul(cfg?.minTpCostMultiple ?? NEWS_RULES.minTpCostMultiple)
+                .toDecimalPlaces(4)
+                .toNumber(),
         costPct: cost,
         spreadPct: numOf(d.spreadPct),
       });
@@ -441,6 +507,7 @@ function stepsOf(input: {
   dupOf: ArticleRow | null;
   labelable: boolean;
   label: ResearchMyLabel | null;
+  scope: SignalVersionScope | null;
 }): ResearchTraceStep[] {
   const { a, s, events, story, trade, dupOf } = input;
   const stop = STAGES.indexOf(s.stage);
@@ -572,9 +639,11 @@ function stepsOf(input: {
         ? null
         : {
             level: merged ? null : levelOf(fd.level),
-            checks: merged ? [] : checksOf(a, fEv),
+            checks: merged ? [] : checksOf(a, fEv, input.scope?.config),
             laterLevel: merged ? levelOf(fd.laterLevel) : null,
             reasonLimit: fEv.outcome === "drop" ? reasonLimitOf(fEv.reason, fEv.detail) : null,
+            shadowTradeId: shadowTradeOf(fEv.reason, fEv.outcome, fEv.tradeId),
+            opposite: oppositeAt(fEv.reason, fEv.outcome, fEv.detail),
             storyStartedAt:
               merged &&
               fd.storyStartedAt !== undefined &&
@@ -624,6 +693,7 @@ function stepsOf(input: {
                     pct: numOf(trade.randomPct),
                     longShare: numOf(trade.randomLongShare),
                   },
+            opposite: oppositeOf(trade),
           },
   });
   return steps;
@@ -638,9 +708,11 @@ export async function loadSignalResearchArticleTrace(
   id: string,
   check: () => void = () => undefined,
   viewerId: string | null = null,
+  versionId?: string,
 ): Promise<ResearchArticleTrace | null> {
   if (id.length === 0 || id.length > 200) return null;
-  const st = await q.execute<StateRow>(sql`${stateCte(null, id)} select * from st`);
+  const scope = await resolveSignalVersion(q, versionId);
+  const st = await q.execute<StateRow>(sql`${stateCte(null, id, scope)} select * from st`);
   const s = st.rows[0];
   if (s === undefined) return null;
   check();
@@ -649,7 +721,13 @@ export async function loadSignalResearchArticleTrace(
   const events = await q
     .select()
     .from(signalEvents)
-    .where(and(eq(signalEvents.articleId, id), eq(signalEvents.ruleVersion, a.ruleVersion)))
+    .where(
+      and(
+        eq(signalEvents.articleId, id),
+        eq(signalEvents.ruleVersion, a.ruleVersion),
+        versionEventWhere(scope),
+      ),
+    )
     .orderBy(asc(signalEvents.at), asc(signalEvents.id));
   check();
   const storyId =
@@ -670,7 +748,7 @@ export async function loadSignalResearchArticleTrace(
   const label = viewerId === null ? null : await loadMyLabel(q, id, viewerId);
   check();
   return {
-    article: articleItem(a, s),
+    article: articleItem(a, s, scope),
     steps: stepsOf({
       a,
       s,
@@ -680,6 +758,7 @@ export async function loadSignalResearchArticleTrace(
       dupOf: dupOf ?? null,
       labelable,
       label,
+      scope,
     }),
   };
 }

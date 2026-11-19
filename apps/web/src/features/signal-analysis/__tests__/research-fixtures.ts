@@ -5,6 +5,7 @@ import type { ResearchSummary, ResearchTradeDetail, ResearchTradesPage } from "@
 
 export const RESEARCH_SUMMARY: ResearchSummary = {
   computedAt: "2026-11-18T15:37:00.000Z",
+  version: null,
   sources: [
     {
       key: "sosoNews",
@@ -290,6 +291,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
   items: [
     {
       id: TRADE_SOL,
+      versionId: null,
       articleId: "art-sol",
       type: "news",
       label: "live",
@@ -318,9 +320,12 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       maxHoldHours: 48,
       classifier: { version: "news-classifier-v2", status: "passed" },
       result: { pnl: "9.50", unrealized: null, outcome: "tp", leftSecs: null },
+      shadow: null,
+      opposite: null,
     },
     {
       id: TRADE_ETH,
+      versionId: null,
       articleId: null,
       type: "whales",
       label: "replay",
@@ -347,9 +352,12 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       maxHoldHours: 4,
       classifier: null,
       result: { pnl: "-3.01", unrealized: null, outcome: "sl", leftSecs: null },
+      shadow: null,
+      opposite: null,
     },
     {
       id: "sr-0003",
+      versionId: null,
       articleId: null,
       type: "price",
       label: "replay",
@@ -360,7 +368,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       delayKind: "atCandleClose",
       delaySecs: null,
       what: { type: "price", direction: "up", rangeMins: 60, volumeVsUsual: 2.4 },
-      skipped: { reason: "tpUnderCost", tpPct: 0.15, neededPct: 0.2, limit: null },
+      skipped: { reason: "tpUnderCost", tpPct: 0.15, neededPct: 0.2, limit: null, shadow: null },
       movedBeforePct: null,
       entry: null,
       tp: null,
@@ -370,9 +378,12 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       maxHoldHours: null,
       classifier: null,
       result: null,
+      shadow: null,
+      opposite: null,
     },
     {
       id: "sr-0004",
+      versionId: null,
       articleId: "art-0004",
       type: "news",
       label: "live",
@@ -401,9 +412,12 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       maxHoldHours: 72,
       classifier: { version: "news-classifier-v2", status: "passed" },
       result: { pnl: null, unrealized: "2.17", outcome: "open", leftSecs: 187_200 },
+      shadow: null,
+      opposite: null,
     },
     {
       id: "sr-0005",
+      versionId: null,
       articleId: null,
       type: "funding",
       label: "replay",
@@ -414,7 +428,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       delayKind: "atFundingTime",
       delaySecs: null,
       what: { type: "funding", ratePct: 0.09, perHours: 8, topPct: 1, days: 90 },
-      skipped: { reason: "alreadyOpen", tpPct: null, neededPct: null, limit: null },
+      skipped: { reason: "alreadyOpen", tpPct: null, neededPct: null, limit: null, shadow: null },
       movedBeforePct: null,
       entry: null,
       tp: null,
@@ -424,6 +438,8 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       maxHoldHours: null,
       classifier: null,
       result: null,
+      shadow: null,
+      opposite: null,
     },
   ],
   nextCursor: "c2",
@@ -651,10 +667,17 @@ export const SKIPPED_ID = "evt-0007";
 export const SKIPPED_TRADE = {
   ...SOL_TRADE,
   id: SKIPPED_ID,
+  versionId: null,
   asset: "BTC",
   side: "long" as const,
   what: { ...SOL_TRADE.what, headline: "Exchange lists BTC perpetuals" },
-  skipped: { reason: "tpUnderCost" as const, tpPct: 0.15, neededPct: 0.2, limit: null },
+  skipped: {
+    reason: "tpUnderCost" as const,
+    tpPct: 0.15,
+    neededPct: 0.2,
+    limit: null,
+    shadow: null,
+  },
   movedBeforePct: null,
   entry: null,
   tp: null,
@@ -664,6 +687,8 @@ export const SKIPPED_TRADE = {
   maxHoldHours: null,
   classifier: null,
   result: null,
+  shadow: null,
+  opposite: null,
 };
 
 export const SKIPPED_DETAIL: ResearchTradeDetail = {
