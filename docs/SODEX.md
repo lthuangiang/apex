@@ -17,11 +17,11 @@ Tài liệu: https://sodex.com/documentation/for-developers/developers/trading/b
 | Khi nào | Action | Người ký | Field chính |
 |---|---|---|---|
 | Onboarding bước 2, chữ ký 1 (DEC-25) | `UserSignedAddPermissionedAPIKeyAction`, gửi `POST /api/v1/user/{userAddress}/api-keys` kèm `permissions`, **không** kèm `builder` | master wallet | `chainID, nonce, accountID, name="DeskLabs" (key tạo trước DEC-168 tên `DRIFT`), keyType=1, publicKey, expiresAt, permissions` |
-| Onboarding bước 2, chữ ký 2 (DEC-25) | `ApproveBuilderFeeAction`, gửi `POST /api/v1/user/{userAddress}/builders` | master wallet | `chainID, nonce, accountID, builderID=DRIFT_BUILDER_ID, maxFeeRate=50` |
+| Onboarding bước 2, chữ ký 2 (DEC-25) | `ApproveBuilderFeeAction`, gửi `POST /api/v1/user/{userAddress}/builders` | master wallet | `chainID, nonce, accountID, builderID=DRIFT_BUILDER_ID, maxFeeRate=10` (DEC-46) |
 | Gia hạn key | `UserSignedAddPermissionedAPIKeyAction` với cùng `permissions` | master wallet | như chữ ký 1 |
 | Trước lệnh Perps đầu tiên của mỗi version bot (DEC-51) | `updateLeverage`, `POST /api/v1/perps/trade/leverage` | key của DRIFT | `accountID, symbolID, leverage, marginMode` |
 | Revoke phí | `ApproveBuilderFeeAction` | master wallet | `builderID, maxFeeRate=0` |
-| Approve lại | `ApproveBuilderFeeAction` | master wallet | `builderID, maxFeeRate=50` |
+| Approve lại | `ApproveBuilderFeeAction` | master wallet | `builderID, maxFeeRate=10` (DEC-46) |
 
 - Trong request tạo key, `builder` và `permissions` không được dùng cùng lúc. Vì vậy DRIFT tạo key có giới hạn quyền rồi approve phí bằng chữ ký riêng (DEC-25).
 - `permissions` là mặt nạ **tắt** quyền: TRADE=1, CANCEL=2, WITHDRAW=4, TRANSFER=8; bỏ trống nghĩa là có mọi quyền. SoDEX không cho bật cùng lúc TRADE và CANCEL, nên phải tắt một trong hai. Giá trị đề xuất là `14` (tắt CANCEL, WITHDRAW, TRANSFER, chỉ giữ TRADE), dựa trên ghi chú trong Python SDK rằng "TRADE itself includes order cancellation". Bảng `APIKeyPermissionEnum` trong tài liệu chính thức (tra ngày 2026-10-27) cũng ghi TRADE = "Place, replace, modify, and cancel orders". **[confirm]** Bằng một key thử trên mainnet (người dùng chạy tay, DEC-23), phải kiểm chứng rằng key mask 14 đặt **và huỷ** được lệnh, còn `transferAsset` thì bị từ chối. Chưa kiểm chứng thì không được bật luồng kết nối.
