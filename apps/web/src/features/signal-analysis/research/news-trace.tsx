@@ -119,11 +119,18 @@ interface Totals {
   counts: (string | null)[];
   notes: (string | null)[];
   reasons: { reason: ResearchDropReason; n: number }[];
+  /** #358: tầng 4 · Context ("Whales agree N · …"); null khi API chưa có snapshot live trong khoảng ("records only"). */
+  context: string | null;
 }
 
 function totals(f: ResearchFunnel | null, t: Tr): Totals {
   if (f === null)
-    return { counts: STAGES.map(() => null), notes: STAGES.map(() => null), reasons: [] };
+    return {
+      counts: STAGES.map(() => null),
+      notes: STAGES.map(() => null),
+      reasons: [],
+      context: null,
+    };
   const dropped = f.articleStops.filter((s) => s.outcome === "dropped" && s.reason !== null);
   const byReason = new Map<ResearchDropReason, { n: number; stage: number }>();
   for (const s of dropped) {
@@ -179,12 +186,23 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
       t("trace.notes.decide", { size: count(Number(f.sizeUsdc)) }),
     ],
     reasons,
+    context:
+      f.context === null
+        ? null
+        : t("context.funnelCounts", {
+            h1: count(f.context.h1Yes),
+            h2: count(f.context.h2Yes),
+            h3: count(f.context.h3Yes),
+          }),
   };
 }
 
 /* ---------------------------------------------------------------- Bands */
 
-/** Tầng ở chế độ tổng: số bài trong tầng, chú thích (rê chuột), bấm để lọc feed. Tầng Context: "records only". */
+/**
+ * Tầng ở chế độ tổng: số bài trong tầng, chú thích (rê chuột), bấm để lọc feed. Tầng Context: số tín hiệu có H1 / H2 / H3
+ * = yes (#358), chưa có thì "records only".
+ */
 function totalBands(
   tot: Totals,
   t: Tr,
@@ -195,7 +213,12 @@ function totalBands(
   return BANDS.map((key, n) => {
     const label = t("trace.band", { n: n + 1, name: t(`trace.stages.${key}`) });
     if (key === "context")
-      return { key, label, note: t("context.recordsOnly"), state: "total" as const };
+      return {
+        key,
+        label,
+        note: tot.context ?? t("context.recordsOnly"),
+        state: "total" as const,
+      };
     const i = STAGES.indexOf(key);
     const name = t(`trace.stages.${key}`);
     return {

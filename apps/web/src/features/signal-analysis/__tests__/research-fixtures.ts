@@ -157,6 +157,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
       { stage: "decide", outcome: "traded", reason: null, mergeReason: null, n: 41 },
     ],
     outcomes: { closed: 30, tp: 12, sl: 11, maxHold: 7, opposite: 0, open: 11 },
+    context: null,
   },
   newsRulesVersion: 2,
   levels: [

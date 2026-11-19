@@ -221,10 +221,11 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
       "2 out · 1 TP under cost, 1 merged into a story",
     );
     expect(band("Decide")).toHaveAttribute("title", "500 USDC each · TP / SL from volatility");
-    // Tầng 4 · Context: viền đứt, chỉ ghi nhận (không có số theo khoảng thời gian, không bấm được).
+    // Tầng 4 · Context: viền đứt, chỉ ghi nhận, không bấm được; #358: số tín hiệu có H1 / H2 / H3 = yes trong khoảng.
     const ctxBand = within(f).getByTestId("sr-funnel-bands").querySelector("[data-band='context']");
     expect(ctxBand).toHaveTextContent("4 · Context");
-    expect(ctxBand).toHaveTextContent("records only");
+    expect(ctxBand).toHaveTextContent("Whales agree 2 · Funding vs crowd 1 · Ran early 1");
+    expect(ctxBand).not.toHaveTextContent("records only");
     expect(ctxBand?.tagName).toBe("DIV");
     expect(ctxBand).toHaveClass("border-dashed");
     expect(
@@ -300,6 +301,12 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(
       within(funnel()).getByRole("button", { name: "List articles that stopped at Normalize" }),
     ).toHaveAttribute("title", "900 out · 808 duplicate, 52 not on SoDEX");
+    // 7 ngày: API chưa có snapshot live trong khoảng (context null) → giữ "records only", không bao giờ 0.
+    const ctx7 = within(funnel())
+      .getByTestId("sr-funnel-bands")
+      .querySelector("[data-band='context']");
+    expect(ctx7).toHaveTextContent("records only");
+    expect(ctx7).not.toHaveTextContent(/Whales agree/);
     expect(intlErrors).toEqual([]);
   });
 
