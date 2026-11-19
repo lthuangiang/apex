@@ -32,6 +32,8 @@ export interface EventInput {
   articleId?: string | null;
   storyId?: string | null;
   tradeId?: string | null;
+  /** News bot version (#303): chỉ event Filter / Decide / Watch. */
+  versionId?: string | null;
   stage: SignalStage;
   outcome: SignalOutcome;
   reason?: SignalReason | null;
@@ -46,6 +48,7 @@ export async function recordEvents(db: Exec, events: readonly EventInput[]): Pro
       articleId: e.articleId ?? null,
       storyId: e.storyId ?? null,
       tradeId: e.tradeId ?? null,
+      versionId: e.versionId ?? null,
       stage: e.stage,
       outcome: e.outcome,
       reason: e.reason ?? null,

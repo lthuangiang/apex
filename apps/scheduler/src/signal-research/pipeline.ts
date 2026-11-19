@@ -1,19 +1,36 @@
 import { createHash } from "node:crypto";
 
-import { signalArticles, signalPaperTrades, signalStories, type Db } from "@drift/db";
+import {
+  noteClassifierVersion,
+  runningSignalBotVersions,
+  signalArticles,
+  signalPaperTrades,
+  signalStories,
+  type Db,
+  type SignalBotVersion,
+} from "@drift/db";
 import {
   AssetKind,
+  assetAllowed,
   assetInText,
+  availableBalance,
   candidatesOf,
   catalystRule,
+  closeResult,
   costCheck,
+  dec,
   eventTooOld,
   isUsMarketOpen,
+  levelAtLeast,
   levelOf,
+  limitBlock,
   movedPct,
+  NEWS_CLASSIFIER,
   NEWS_RULES,
   normalizedText,
   oneWayFeePct,
+  OppositeNewsPolicy,
+  PaperExitReason,
   planTrade,
   roundToTick,
   roundTripCost,
@@ -27,13 +44,16 @@ import {
   STOCK_MARKET_SET,
   storyKey,
   stripHtml,
+  TradeDirection,
   treasuryOnMajorAsset,
+  versionHoldHours,
   type Candidate,
+  type Decimal,
   type Quote,
   type SignalCatalyst,
   type SourceTier,
 } from "@drift/shared";
-import { and, asc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { fillRandomBaselines } from "./baseline";
@@ -116,7 +136,12 @@ export interface CycleReport {
   classified: number;
   claudeCalls: number;
   signals: number;
+  /** Lệnh thật đã mở, cộng mọi version. */
   opened: number;
+  /** Tín hiệu bị giới hạn / số dư chặn, chỉ theo dõi giả định (shadow). */
+  shadows: number;
+  /** Lệnh đóng vì tin ngược chiều (version chọn Close at market). */
+  oppositeClosed: number;
   baselines: number;
   /** `MARKETS_UNKNOWN` khi chu kỳ chỉ Collect. */
   collectOnly: string | null;
@@ -177,6 +202,8 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     claudeCalls: 0,
     signals: 0,
     opened: 0,
+    shadows: 0,
+    oppositeClosed: 0,
     baselines: 0,
     collectOnly: null,
     skipped,
@@ -447,18 +474,37 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
   }
   report.signals = signals.length;
 
-  // ── 4–5. Filter + Decide, theo story key ──────────────────────────────────────────────────────────────────────
+  if (report.classified > 0)
+    await noteClassifierVersion(db, {
+      promptVersion: NEWS_CLASSIFIER.promptVersion,
+      model: NEWS_CLASSIFIER.model,
+      at: new Date(now),
+    });
+
+  // ── 4–5. Filter + Decide, riêng cho từng News bot version đang chạy (#303, DEC-328), theo story key ─────────────
   const groups = new Map<string, Signal[]>();
   for (const s of signals) {
     const k = storyKey(s.candidate.market, s.catalyst);
     groups.set(k, [...(groups.get(k) ?? []), s]);
   }
-  for (const [key, group] of groups) {
-    const r = await decideStory(deps, key, group, info, now);
-    for (const x of r.skipped) skip(x);
-    report.opened += r.opened ? 1 : 0;
+  if (groups.size > 0) {
+    const { versions, invalid } = await runningSignalBotVersions(db);
+    if (invalid.length > 0)
+      deps.log.warn(
+        { versionIds: invalid },
+        "signal research: bot version config invalid, skipped",
+      );
+    const ctx = cycleContext(deps, info, now);
+    for (const v of versions)
+      for (const [key, group] of groups) {
+        const r = await decideStory(deps, ctx, v, key, group);
+        for (const x of r.skipped) skip(x);
+        report.opened += r.opened ? 1 : 0;
+        report.shadows += r.shadow ? 1 : 0;
+        report.oppositeClosed += r.oppositeClosed;
+      }
   }
-  if (report.opened > 0) deps.onTradeOpened?.();
+  if (report.opened + report.shadows + report.oppositeClosed > 0) deps.onTradeOpened?.();
   await logCycle(deps, report, now, used);
   return report;
 }
@@ -596,13 +642,14 @@ const sourcesOf = (xs: readonly Signal[]): StorySourceRef[] =>
 
 const windowStart = (now: number) => new Date(now - NEWS_RULES.storyWindowDays * 24 * HOUR_MS);
 
-/** Story đang khoá key trong 7 ngày (đã vào lệnh, hoặc bị loại vì lý do không tạm thời). */
-async function lockedStory(db: Db, key: string, now: number) {
+/** Story đang khoá key trong 7 ngày của version này (đã vào lệnh thật hoặc lệnh shadow). */
+async function lockedStory(db: Db, versionId: string, key: string, now: number) {
   const [s] = await db
     .select()
     .from(signalStories)
     .where(
       and(
+        eq(signalStories.versionId, versionId),
         eq(signalStories.storyKey, key),
         eq(signalStories.ruleVersion, NEWS_RULES.version),
         eq(signalStories.locked, true),
@@ -614,13 +661,14 @@ async function lockedStory(db: Db, key: string, now: number) {
   return s;
 }
 
-/** Các lần thử trước (không khoá, chưa vào lệnh) cùng key trong 7 ngày, cũ nhất trước. */
-async function earlierAttempts(db: Db, key: string, now: number) {
+/** Các lần thử trước (không khoá, chưa vào lệnh) cùng key của version này trong 7 ngày, cũ nhất trước. */
+async function earlierAttempts(db: Db, versionId: string, key: string, now: number) {
   const rows = await db
     .select({ id: signalStories.id, sources: signalStories.sources })
     .from(signalStories)
     .where(
       and(
+        eq(signalStories.versionId, versionId),
         eq(signalStories.storyKey, key),
         eq(signalStories.ruleVersion, NEWS_RULES.version),
         eq(signalStories.locked, false),
@@ -637,6 +685,7 @@ async function earlierAttempts(db: Db, key: string, now: number) {
 /** Gộp bài vào story đang khoá: thêm nguồn, tính lại "later level", gắn later High cho lệnh của story. */
 async function mergeInto(
   db: Db,
+  versionId: string,
   story: typeof signalStories.$inferSelect,
   group: readonly Signal[],
   now: number,
@@ -659,6 +708,7 @@ async function mergeInto(
       group.map((s) => ({
         articleId: s.articleId,
         storyId: story.id,
+        versionId,
         stage: SignalStage.filter,
         outcome: SignalOutcome.merge,
         reason: SignalReason.sameStory,
@@ -670,38 +720,231 @@ async function mergeInto(
   return later;
 }
 
+/** Bộ nhớ đệm trong một chu kỳ: giá và biến động thường gặp dùng chung cho mọi version. */
+interface CycleContext {
+  deps: PipelineDeps;
+  info: ReadonlyMap<string, MarketInfo>;
+  now: number;
+  quote: (market: string) => Promise<Quote | SignalReason>;
+  typical: (market: string, holdHours: number) => Promise<Decimal | null>;
+}
+
+function cycleContext(
+  deps: PipelineDeps,
+  info: ReadonlyMap<string, MarketInfo>,
+  now: number,
+): CycleContext {
+  const quotes = new Map<string, Promise<Quote | SignalReason>>();
+  const typicals = new Map<string, Promise<Decimal | null>>();
+  return {
+    deps,
+    info,
+    now,
+    quote: (market) => {
+      let q = quotes.get(market);
+      if (q === undefined) {
+        q = deps.quotes.quotes([market]).then((m) => m.get(market) ?? SignalReason.noPrice);
+        quotes.set(market, q);
+      }
+      return q;
+    },
+    typical: (market, holdHours) => {
+      const k = `${market}|${String(holdHours)}`;
+      let t = typicals.get(k);
+      if (t === undefined) {
+        t = typicalMove(deps.db, market, holdHours, now);
+        typicals.set(k, t);
+      }
+      return t;
+    },
+  };
+}
+
+type TradeRow = typeof signalPaperTrades.$inferSelect;
+
+const directionOf = (d: string) => (d === "short" ? TradeDirection.short : TradeDirection.long);
+
 /**
- * Một nhóm tín hiệu cùng story key trong chu kỳ này.
- * - Story đã vào lệnh trong 7 ngày (khoá) → gộp, không bao giờ mở lại.
+ * Tin ngược chiều trên lệnh đang mở của version (#303, DEC-328 mục 5): luôn ghi kết quả giả định nếu đóng lúc này (giá thị
+ * trường như watcher: long theo bid, short theo ask, sau phí; chỉ lần đầu tiên); version chọn Close thì đóng thật với lý do
+ * `opposite_news`. Trả true khi đã đóng.
+ */
+async function onOppositeNews(
+  db: Db,
+  input: {
+    trade: TradeRow;
+    quote: Quote;
+    storyId: string | null;
+    articleId: string;
+    versionId: string;
+    close: boolean;
+    now: number;
+  },
+): Promise<boolean> {
+  const { trade: t, quote, now } = input;
+  const direction = directionOf(t.direction);
+  const px = direction === TradeDirection.long ? quote.bid : quote.ask;
+  const r = closeResult({
+    direction,
+    entryPrice: t.entryPrice,
+    exitPrice: px,
+    qty: t.qty,
+    sizeUsdc: t.sizeUsdc,
+    entryFee: t.entryFee,
+    feePct: t.feePct,
+  });
+  const shadowClose =
+    t.oppositeAt === null
+      ? {
+          oppositeStoryId: input.storyId,
+          oppositeAt: new Date(now),
+          oppositeExitPrice: px.toFixed(),
+          oppositeResultUsdc: r.resultUsdc.toFixed(18),
+          oppositeResultPct: r.resultPct.toFixed(18),
+        }
+      : {};
+  if (!input.close) {
+    if (t.oppositeAt === null)
+      await db
+        .update(signalPaperTrades)
+        .set({ ...shadowClose, updatedAt: new Date(now) })
+        .where(eq(signalPaperTrades.id, t.id));
+    return false;
+  }
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .update(signalPaperTrades)
+      .set({
+        ...shadowClose,
+        status: "closed",
+        exitPrice: px.toFixed(),
+        exitReason: PaperExitReason.oppositeNews,
+        exitedAt: new Date(now),
+        exitFee: r.exitFee.toFixed(18),
+        resultUsdc: r.resultUsdc.toFixed(18),
+        resultPct: r.resultPct.toFixed(18),
+        updatedAt: new Date(now),
+      })
+      .where(and(eq(signalPaperTrades.id, t.id), eq(signalPaperTrades.status, "open")))
+      .returning({ id: signalPaperTrades.id });
+    if (rows.length === 0) return false;
+    await recordEvents(tx, [
+      {
+        articleId: t.articleId,
+        storyId: t.storyId,
+        tradeId: t.id,
+        versionId: input.versionId,
+        stage: SignalStage.watch,
+        outcome: SignalOutcome.close,
+        reason: SignalReason.oppositeNews,
+        detail: {
+          exitPrice: px.toFixed(),
+          resultUsdc: r.resultUsdc.toDecimalPlaces(6).toFixed(),
+          priceSource: quote.source,
+          oppositeStoryId: input.storyId,
+          oppositeArticleId: input.articleId,
+          ...(t.label === "shadow" ? { shadow: true } : {}),
+        },
+        at: now,
+      },
+    ]);
+    return true;
+  });
+}
+
+/** Lệnh thật đang mở, lệnh mở trong ngày UTC và số dư giả còn dùng được của version (lệnh shadow không tính). */
+async function versionBook(db: Db, versionId: string, now: number) {
+  const dayStart = new Date(Math.floor(now / (24 * HOUR_MS)) * 24 * HOUR_MS);
+  const [r] = await db
+    .select({
+      open: sql<number>`count(*) filter (where ${signalPaperTrades.status} = 'open')::int`,
+      today: sql<number>`count(*) filter (where ${signalPaperTrades.openedAt} >= ${dayStart})::int`,
+      openSize: sql<string>`coalesce(sum(${signalPaperTrades.sizeUsdc}) filter (where ${signalPaperTrades.status} = 'open'), 0)::text`,
+      closedResult: sql<string>`coalesce(sum(${signalPaperTrades.resultUsdc}) filter (where ${signalPaperTrades.status} = 'closed'), 0)::text`,
+    })
+    .from(signalPaperTrades)
+    .where(
+      and(
+        eq(signalPaperTrades.versionId, versionId),
+        eq(signalPaperTrades.lane, NEWS_RULES.lane),
+        eq(signalPaperTrades.label, "live"),
+      ),
+    );
+  return {
+    openTrades: r?.open ?? 0,
+    openedToday: r?.today ?? 0,
+    available: availableBalance({
+      closedResultUsdc: dec(r?.closedResult ?? "0"),
+      openSizeUsdc: dec(r?.openSize ?? "0"),
+    }),
+  };
+}
+
+interface StoryResult {
+  opened: boolean;
+  shadow: boolean;
+  oppositeClosed: number;
+  skipped: SignalReason[];
+}
+
+/**
+ * Một nhóm tín hiệu cùng story key trong chu kỳ này, cho MỘT News bot version (#303). Story, khoá key, lần thử lại và
+ * lệnh đều riêng từng version.
+ * - Loại tin tắt / tài sản không thuộc version → chỉ ghi event, không tạo story.
+ * - Story đã vào lệnh (thật hoặc shadow) trong 7 ngày (khoá) → gộp, không bao giờ mở lại.
  * - Có lần thử trước chưa vào lệnh (bị bỏ ở Filter) → chỉ thử lại nếu bài đầu tiên được tính của câu chuyện còn trong
  *   `retryWindowMinutes` (2 giờ); quá thì gộp với lý do `STORY_TOO_OLD`. Lần thử lại: mức tính cả nguồn của lần trước,
  *   `eventAt` và `moved_before_entry` đo từ bài ĐẦU TIÊN của câu chuyện, lệnh gắn `retry`.
- * - Mở lệnh → story `entered`, khoá key. Bị bỏ ở Filter → story `skipped`, không khoá.
+ * - Level dưới mức của version → `LEVEL_TOO_LOW` (story không khoá, bài sau nâng level vẫn thử lại được trong 2 giờ).
+ * - Tin ngược chiều trên lệnh đang mở → ghi kết quả đóng giả định; Close → đóng rồi xét tiếp tín hiệu mới; Keep → bỏ
+ *   `NEWS_TRADE_ALREADY_OPEN`.
+ * - Qua Filter nhưng bị Max open trades / Max new trades per day / số dư giả chặn → lệnh shadow (ngoài balance), story khoá.
  */
 async function decideStory(
   deps: PipelineDeps,
+  ctx: CycleContext,
+  v: SignalBotVersion,
   key: string,
   group: readonly Signal[],
-  info: ReadonlyMap<string, MarketInfo>,
-  now: number,
-): Promise<{ opened: boolean; skipped: SignalReason[] }> {
+): Promise<StoryResult> {
   const { db } = deps;
+  const { now, info } = ctx;
+  const cfg = v.config;
+  const none: StoryResult = { opened: false, shadow: false, oppositeClosed: 0, skipped: [] };
   const first = group[0];
-  if (first === undefined) return { opened: false, skipped: [] };
+  if (first === undefined) return none;
   const ev = (
     s: Signal,
     stage: SignalStage,
     outcome: SignalOutcome,
     extra: Partial<EventInput> = {},
-  ): EventInput => ({ articleId: s.articleId, stage, outcome, at: now, ...extra });
+  ): EventInput => ({ articleId: s.articleId, stage, outcome, at: now, versionId: v.id, ...extra });
 
-  const existing = await lockedStory(db, key, now);
-  if (existing !== undefined) {
-    await mergeInto(db, existing, group, now);
-    return { opened: false, skipped: group.map(() => SignalReason.sameStory) };
+  // Bộ lọc của version, trước story (giống lỗi của bài đối với version này: không tạo story, không khoá).
+  const holdHours = versionHoldHours(cfg, first.catalyst);
+  const market = first.candidate.market;
+  const versionDrop =
+    holdHours === null
+      ? SignalReason.newsTypeOff
+      : !assetAllowed(cfg.assets, market, first.candidate.kind)
+        ? SignalReason.assetNotInVersion
+        : null;
+  if (versionDrop !== null || holdHours === null) {
+    const reason = versionDrop ?? SignalReason.newsTypeOff;
+    await recordEvents(
+      db,
+      group.map((s) => ev(s, SignalStage.filter, SignalOutcome.drop, { reason })),
+    );
+    return { ...none, skipped: group.map(() => reason) };
   }
 
-  const earlier = await earlierAttempts(db, key, now);
+  const existing = await lockedStory(db, v.id, key, now);
+  if (existing !== undefined) {
+    await mergeInto(db, v.id, existing, group, now);
+    return { ...none, skipped: group.map(() => SignalReason.sameStory) };
+  }
+
+  const earlier = await earlierAttempts(db, v.id, key, now);
   const firstSource = earlier
     .flatMap((e) => e.sources)
     .reduce<StorySourceRef | null>((m, x) => (m === null || x.at < m.at ? x : m), null);
@@ -730,20 +973,19 @@ async function decideStory(
         ),
       );
     });
-    return { opened: false, skipped: group.map(() => SignalReason.storyTooOld) };
+    return { ...none, skipped: group.map(() => SignalReason.storyTooOld) };
   }
 
-  const rule = catalystRule(first.catalyst);
+  const direction = catalystRule(first.catalyst).direction;
   const sources = [...earlier.flatMap((e) => e.sources), ...sourcesOf(group)];
   const levelAtEntry = levelOf(sources);
-  const market = first.candidate.market;
   const [story] = await db
     .insert(signalStories)
     .values({
       storyKey: key,
       market,
       catalyst: first.catalyst,
-      direction: rule.direction,
+      direction,
       firstArticleId: first.articleId,
       firstSeenAt: new Date(now),
       sources,
@@ -752,6 +994,7 @@ async function decideStory(
       outcome: "skipped",
       locked: false,
       ruleVersion: NEWS_RULES.version,
+      versionId: v.id,
     })
     .returning({ id: signalStories.id });
   const storyId = story?.id ?? null;
@@ -760,6 +1003,7 @@ async function decideStory(
     .map((s) =>
       ev(s, SignalStage.filter, SignalOutcome.merge, { storyId, reason: SignalReason.sameStory }),
     );
+  let oppositeClosed = 0;
   const fail = async (reason: SignalReason, detail: Record<string, unknown> = {}) => {
     await recordEvents(db, [
       ...merged,
@@ -769,47 +1013,84 @@ async function decideStory(
         detail: { level: levelAtEntry, ...detail },
       }),
     ]);
-    return { opened: false, skipped: [reason, ...merged.map(() => SignalReason.sameStory)] };
+    return {
+      ...none,
+      oppositeClosed,
+      skipped: [reason, ...merged.map(() => SignalReason.sameStory)],
+    };
   };
 
-  // Nguồn đúng giờ (thường đã bị chặn trước ở Collect / Understand; giữ làm lưới an toàn).
+  // Level tối thiểu của version.
+  if (!levelAtLeast(levelAtEntry, cfg.minLevel))
+    return fail(SignalReason.levelTooLow, { minLevel: cfg.minLevel });
+  // Nguồn đúng giờ theo version (classifier đã bỏ bài trễ hơn mức chung `NEWS_RULES.maxSourceDelayMinutes`).
   const delayMin = (first.collectedAt - first.publishedAt) / MIN_MS;
-  if (delayMin > NEWS_RULES.maxSourceDelayMinutes)
+  if (delayMin > cfg.maxSourceDelayMinutes)
     return fail(SignalReason.sourceLate, { delayMinutes: Math.round(delayMin) });
   // SoDEX có giá (chỉ từ marketdata).
-  const quote = (await deps.quotes.quotes([market])).get(market);
-  if (quote === undefined || typeof quote === "string") return fail(quote ?? SignalReason.noPrice);
-  // Không có lệnh tin tức đang mở trên token này.
-  const [open] = await db
-    .select({ id: signalPaperTrades.id })
+  const quote = await ctx.quote(market);
+  if (typeof quote === "string") return fail(quote);
+
+  // Lệnh đang mở của version trên token này (thật và shadow). Tin ngược chiều → kết quả đóng giả định, Close → đóng.
+  const openRows = await db
+    .select()
     .from(signalPaperTrades)
     .where(
       and(
+        eq(signalPaperTrades.versionId, v.id),
         eq(signalPaperTrades.lane, NEWS_RULES.lane),
-        eq(signalPaperTrades.label, "live"),
+        inArray(signalPaperTrades.label, ["live", "shadow"]),
         eq(signalPaperTrades.market, market),
         eq(signalPaperTrades.status, "open"),
       ),
-    )
-    .limit(1);
-  if (open !== undefined) return fail(SignalReason.tradeOpen, { openTradeId: open.id });
-  // TP ≥ 2 × chi phí khứ hồi (spread đo lúc này).
-  const typical = await typicalMove(db, market, rule.maxHoldHours, now);
+    );
+  let openLive: TradeRow | undefined;
+  let openShadow: TradeRow | undefined;
+  for (const t of openRows) {
+    if (t.direction !== direction) {
+      const closed = await onOppositeNews(db, {
+        trade: t,
+        quote,
+        storyId,
+        articleId: first.articleId,
+        versionId: v.id,
+        close: cfg.onOppositeNews === OppositeNewsPolicy.close,
+        now,
+      });
+      if (closed) {
+        oppositeClosed += 1;
+        continue;
+      }
+    }
+    if (t.label === "shadow") openShadow = t;
+    else openLive = t;
+  }
+  if (openLive !== undefined)
+    return fail(SignalReason.tradeOpen, {
+      openTradeId: openLive.id,
+      ...(openLive.direction !== direction ? { oppositeNews: true } : {}),
+    });
+
+  // TP ≥ bội số × chi phí khứ hồi (spread đo lúc này), theo tham số của version.
+  const typical = await ctx.typical(market, holdHours);
   if (typical === null) return fail(SignalReason.notEnoughHistory);
   const fee = oneWayFeePct(info.get(market)?.takerFee ?? null, NEWS_RULES.builderFeeRate);
   const spread = spreadPctOf(quote);
   const cost = roundTripCost(fee, spread);
   const plan = planTrade({
-    direction: rule.direction,
+    direction,
     quote,
     typicalMovePct: typical,
     oneWayFeePct: fee,
+    sizeUsdc: cfg.sizeUsdc,
+    tpMultiple: cfg.tpMultiple,
+    slMultiple: cfg.slMultiple,
   });
   // #297: TP / SL lưu theo tick của market (giá đặt được trên SoDEX); tick không biết thì giữ nguyên.
   const tick = info.get(market)?.tickSize ?? null;
   const tpPrice = roundToTick(plan.tpPrice, tick);
   const slPrice = roundToTick(plan.slPrice, tick);
-  const costFail = costCheck(plan.tpPct, cost);
+  const costFail = costCheck(plan.tpPct, cost, cfg.minTpCostMultiple);
   const costDetail = {
     tpPct: plan.tpPct.toFixed(4),
     costPct: cost.totalPct.toFixed(4),
@@ -817,20 +1098,31 @@ async function decideStory(
   };
   if (costFail !== null) return fail(costFail, costDetail);
 
-  // ── Decide: mở lệnh giấy ──────────────────────────────────────────────────────────────────────────────────
+  // Giới hạn của version: chặn thì chỉ theo dõi giả định (shadow), ngoài balance.
+  const book = await versionBook(db, v.id, now);
+  const blocked = limitBlock({ cfg, ...book });
+  if (blocked !== null && openShadow !== undefined)
+    // Đã có lệnh shadow đang mở trên token này: không mở thêm (một lệnh mỗi version × token, kể cả shadow).
+    return fail(blocked, { openShadowTradeId: openShadow.id, ...costDetail });
+
+  // ── Decide: mở lệnh giấy (thật hoặc shadow) ──────────────────────────────────────────────────────────────────
   const before = await priceBefore(db, market, storyStart);
   const moved = before === null ? null : movedPct(before, plan.entryMid);
   const outside =
     STOCK_MARKET_SET.has(market) &&
     first.candidate.kind === AssetKind.stock &&
     !isUsMarketOpen(now);
+  const shadow = blocked !== null;
   try {
     await db.transaction(async (tx) => {
       const [t] = await tx
         .insert(signalPaperTrades)
         .values({
           lane: NEWS_RULES.lane,
-          label: "live",
+          label: shadow ? "shadow" : "live",
+          shadowReason: blocked,
+          versionId: v.id,
+          classifierVersion: NEWS_CLASSIFIER.promptVersion,
           storyId,
           eventAt: new Date(storyStart),
           retry,
@@ -839,7 +1131,7 @@ async function decideStory(
           market,
           token: first.candidate.symbol,
           catalyst: first.catalyst,
-          direction: rule.direction,
+          direction,
           sizeUsdc: plan.sizeUsdc.toFixed(),
           qty: plan.qty.toFixed(18),
           entryPrice: plan.entryPrice.toFixed(),
@@ -852,7 +1144,7 @@ async function decideStory(
           slPct: plan.slPct.toFixed(18),
           tpPrice: tpPrice.toFixed(),
           slPrice: slPrice.toFixed(),
-          maxHoldUntil: new Date(now + rule.maxHoldHours * HOUR_MS),
+          maxHoldUntil: new Date(now + holdHours * HOUR_MS),
           openedAt: new Date(now),
           movedBeforeEntryPct: moved === null ? null : moved.toFixed(18),
           levelAtEntry,
@@ -863,52 +1155,85 @@ async function decideStory(
           ruleVersion: NEWS_RULES.version,
         })
         .returning({ id: signalPaperTrades.id });
+      const tradeId = t?.id ?? null;
       if (storyId !== null)
         await tx
           .update(signalStories)
           .set({
-            outcome: "entered",
+            outcome: shadow ? "shadow" : "entered",
             locked: true,
-            tradeId: t?.id ?? null,
+            tradeId,
             updatedAt: new Date(now),
           })
           .where(eq(signalStories.id, storyId));
-      await recordEvents(tx, [
-        ...merged,
-        ev(first, SignalStage.filter, SignalOutcome.pass, {
-          storyId,
-          detail: { level: levelAtEntry, ...costDetail },
-        }),
-        ev(first, SignalStage.decide, SignalOutcome.open, {
-          storyId,
-          tradeId: t?.id ?? null,
-          detail: {
-            direction: rule.direction,
-            entryPrice: plan.entryPrice.toFixed(),
-            tpPrice: tpPrice.toFixed(),
-            slPrice: slPrice.toFixed(),
-            priceSource: quote.source,
-            retry,
-          },
-        }),
-      ]);
+      const tradeDetail = {
+        direction,
+        entryPrice: plan.entryPrice.toFixed(),
+        tpPrice: tpPrice.toFixed(),
+        slPrice: slPrice.toFixed(),
+        priceSource: quote.source,
+        retry,
+      };
+      await recordEvents(
+        tx,
+        shadow
+          ? [
+              ...merged,
+              // Bị chặn: không vào lệnh (Filter drop với lý do giới hạn), lệnh shadow theo dõi giả định.
+              ev(first, SignalStage.filter, SignalOutcome.drop, {
+                storyId,
+                tradeId,
+                reason: blocked,
+                detail: {
+                  level: levelAtEntry,
+                  ...costDetail,
+                  shadowTradeId: tradeId,
+                  openTrades: book.openTrades,
+                  maxOpenTrades: cfg.maxOpenTrades,
+                  openedToday: book.openedToday,
+                  maxNewTradesPerDay: cfg.maxNewTradesPerDay,
+                  available: book.available.toFixed(),
+                  ...tradeDetail,
+                },
+              }),
+            ]
+          : [
+              ...merged,
+              ev(first, SignalStage.filter, SignalOutcome.pass, {
+                storyId,
+                detail: { level: levelAtEntry, ...costDetail },
+              }),
+              ev(first, SignalStage.decide, SignalOutcome.open, {
+                storyId,
+                tradeId,
+                detail: tradeDetail,
+              }),
+            ],
+      );
     });
   } catch (e) {
-    // Chỉ mục duy nhất "một lệnh mở mỗi token" (đua với chu kỳ khác) → coi như đã có lệnh mở.
+    // Chỉ mục duy nhất "một lệnh mở mỗi version × token" (đua với chu kỳ khác) → coi như đã có lệnh mở.
     if (isUniqueViolation(e)) return fail(SignalReason.tradeOpen);
     throw e;
   }
   deps.log.info(
     {
+      version: v.number,
       market,
       catalyst: first.catalyst,
-      direction: rule.direction,
+      direction,
       level: levelAtEntry,
       priceSource: quote.source,
+      ...(shadow ? { shadow: blocked } : {}),
     },
-    "signal research paper trade opened",
+    shadow ? "signal research shadow trade opened" : "signal research paper trade opened",
   );
-  return { opened: true, skipped: merged.map(() => SignalReason.sameStory) };
+  return {
+    opened: !shadow,
+    shadow,
+    oppositeClosed,
+    skipped: [...(blocked !== null ? [blocked] : []), ...merged.map(() => SignalReason.sameStory)],
+  };
 }
 
 function isUniqueViolation(e: unknown): boolean {

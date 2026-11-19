@@ -14,13 +14,14 @@ import {
   type PaperExitReason,
   type Quote,
 } from "@drift/shared";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { isQuote } from "./prices";
 import { markSource, recordEvents } from "./store";
 
 // Bước 6 (#271): mỗi 1–2 s kiểm lệnh giấy đang mở theo bid / ask SoDEX (chỉ dữ liệu marketdata). Long đóng theo bid,
-// short theo ask; chạm TP / SL hoặc hết giữ tối đa thì đóng. Không có giá → chờ, kiểm lại khi có giá.
+// short theo ask; chạm TP / SL hoặc hết giữ tối đa thì đóng. Không có giá → chờ, kiểm lại khi có giá. Lệnh của mọi News bot
+// version, kể cả lệnh shadow (#303); đóng vì tin ngược chiều do pipeline làm (cập nhật có điều kiện `status = 'open'`).
 
 type TradeRow = typeof signalPaperTrades.$inferSelect;
 
@@ -39,6 +40,7 @@ const REASON: Record<PaperExitReason, SignalReason> = {
   take_profit: SignalReason.takeProfit,
   stop_loss: SignalReason.stopLoss,
   max_hold: SignalReason.maxHold,
+  opposite_news: SignalReason.oppositeNews,
 };
 
 export class PaperWatcher {
@@ -85,7 +87,8 @@ export class PaperWatcher {
           and(
             eq(signalPaperTrades.status, "open"),
             eq(signalPaperTrades.lane, NEWS_RULES.lane),
-            eq(signalPaperTrades.label, "live"),
+            // Lệnh thật và lệnh shadow (#303) của mọi version đều theo dõi tới TP / SL / giữ tối đa.
+            inArray(signalPaperTrades.label, ["live", "shadow"]),
           ),
         );
       this.#loadedAt = now;
@@ -174,6 +177,7 @@ export class PaperWatcher {
             articleId: t.articleId,
             storyId: t.storyId,
             tradeId: t.id,
+            versionId: t.versionId,
             stage: SignalStage.watch,
             outcome: SignalOutcome.close,
             reason: REASON[exit.reason],
@@ -181,6 +185,7 @@ export class PaperWatcher {
               exitPrice: exit.price.toFixed(),
               resultUsdc: r.resultUsdc.toDecimalPlaces(6).toFixed(),
               priceSource: isQuote(q) ? q.source : null,
+              ...(t.label === "shadow" ? { shadow: true } : {}),
             },
             at: now,
           },

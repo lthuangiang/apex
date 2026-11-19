@@ -302,8 +302,13 @@ export function roundTripCost(oneWayFee: Decimal, spreadPct: Decimal): RoundTrip
  * TP phải ≥ 2 × chi phí khứ hồi. Không đạt: "Too thin to trade" khi spread chiếm phần lớn chi phí (spread ≥ phí), không
  * thì "move too small for cost".
  */
-export function costCheck(tpPct: Decimal, cost: RoundTripCost): SignalReason | null {
-  if (tpPct.gte(cost.totalPct.mul(NEWS_RULES.minTpCostMultiple))) return null;
+export function costCheck(
+  tpPct: Decimal,
+  cost: RoundTripCost,
+  /** Bội số của News bot version (#303); mặc định `NEWS_RULES.minTpCostMultiple`. */
+  minMultiple: DecimalInput = NEWS_RULES.minTpCostMultiple,
+): SignalReason | null {
+  if (tpPct.gte(cost.totalPct.mul(dec(minMultiple)))) return null;
   return cost.spreadPct.gte(cost.feePct) ? SignalReason.tooThin : SignalReason.moveTooSmall;
 }
 
@@ -358,12 +363,15 @@ export function planTrade(input: {
   typicalMovePct: Decimal;
   oneWayFeePct: Decimal;
   sizeUsdc?: DecimalInput;
+  /** Bội số TP / SL của News bot version (#303); mặc định của `NEWS_RULES`. */
+  tpMultiple?: DecimalInput;
+  slMultiple?: DecimalInput;
 }): TradePlan {
   const long = input.direction === TradeDirection.long;
   const entryPrice = long ? input.quote.ask : input.quote.bid;
   const sizeUsdc = dec(input.sizeUsdc ?? NEWS_RULES.sizeUsdc);
-  const tpPct = input.typicalMovePct.mul(NEWS_RULES.tpMultiple);
-  const slPct = input.typicalMovePct.mul(NEWS_RULES.slMultiple);
+  const tpPct = input.typicalMovePct.mul(dec(input.tpMultiple ?? NEWS_RULES.tpMultiple));
+  const slPct = input.typicalMovePct.mul(dec(input.slMultiple ?? NEWS_RULES.slMultiple));
   const up = (p: Decimal) => entryPrice.mul(HUNDRED.add(p)).div(HUNDRED);
   const down = (p: Decimal) => entryPrice.mul(HUNDRED.sub(p)).div(HUNDRED);
   return {
