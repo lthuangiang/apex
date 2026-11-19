@@ -47,7 +47,7 @@ import { newsTypeOrNull } from "./signal-research-keys";
 // nhiều người gắn nhãn khác nhau thì theo đa số, hoà tính Wrong (`articleVerdict`). Cổng: ≥ 50 bài có nhãn và ≥ 80%
 // (`classifierGate`). Lệnh chỉ tính cổng khi classifier tạo ra nó (`signal_paper_trades.classifier_version`) đã qua.
 //
-// Nguồn nhãn (#348, DEC-TBD-sr-label-source): precision, khoảng Wilson và cổng CHỈ tính nhãn `random`. Nhãn là `random`
+// Nguồn nhãn (#348, DEC-340): precision, khoảng Wilson và cổng CHỈ tính nhãn `random`. Nhãn là `random`
 // khi PUT kèm token do `GET /labels/next` cấp cho đúng người và đúng bài (bài server chọn ngẫu nhiên, chưa thấy kết quả
 // lệnh): token 32 byte ngẫu nhiên, chỉ lưu sha256 trong `signal_label_tokens`, hết hạn sau LABEL_TOKEN_TTL_MIN phút, dùng
 // một lần, và chỉ nhận khi người gọi CHƯA có nhãn cho bài. Sửa một nhãn `random` mà giữ nguyên Right / Wrong (đổi lý do,

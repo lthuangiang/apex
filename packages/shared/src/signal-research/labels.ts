@@ -27,7 +27,7 @@ export const CLASSIFICATION_WRONG_REASONS = Object.values(ClassificationWrongRea
 ];
 
 /**
- * Nguồn của nhãn (#348, DEC-TBD-sr-label-source): `random` = lưu từ luồng "Label a random signal" với token server cấp
+ * Nguồn của nhãn (#348, DEC-340): `random` = lưu từ luồng "Label a random signal" với token server cấp
  * trong `GET /labels/next` (bài do server chọn ngẫu nhiên, người gắn chưa thấy kết quả lệnh); `trace` = mọi cách khác
  * (thẻ Score của trace, token sai / hết hạn / đã dùng, nhãn cũ trước migration 0050). Cổng precision chỉ tính `random`.
  */

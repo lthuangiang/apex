@@ -111,3 +111,22 @@ describe("team incidents (#241)", () => {
     ).toBe(false);
   });
 });
+
+describe("Signal research new market alert (#311)", () => {
+  const ok = { type: "team_sr_new_market", assetMapVersion: "assets-2026-11-19a" };
+  it("is a teamOps type with at most 10 names and a total at least the names shown", () => {
+    expect(groupOf("team_sr_new_market")).toBe("teamOps");
+    expect(teamOpsEventSchema.safeParse({ ...ok, markets: ["XYZ-USD"], total: 1 }).success).toBe(
+      true,
+    );
+    const ten = Array.from({ length: 10 }, (_, i) => `M${String(i)}-USD`);
+    expect(teamOpsEventSchema.safeParse({ ...ok, markets: ten, total: 14 }).success).toBe(true);
+    expect(
+      teamOpsEventSchema.safeParse({ ...ok, markets: [...ten, "M10-USD"], total: 11 }).success,
+    ).toBe(false);
+    expect(teamOpsEventSchema.safeParse({ ...ok, markets: [], total: 0 }).success).toBe(false);
+    expect(
+      teamOpsEventSchema.safeParse({ ...ok, markets: ["A-USD", "B-USD"], total: 1 }).success,
+    ).toBe(false);
+  });
+});

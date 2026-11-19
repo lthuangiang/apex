@@ -1,4 +1,4 @@
--- Signal research: nguồn nhãn phân loại (#348, DEC-TBD-sr-label-source, bổ sung DEC-333). Cổng precision chỉ tính nhãn
+-- Signal research: nguồn nhãn phân loại (#348, DEC-340, bổ sung DEC-333). Cổng precision chỉ tính nhãn
 -- `random` (gắn từ luồng labels/next với token server cấp); nhãn gắn từ trace bị lệch (người gắn tự chọn bài, đã thấy kết
 -- quả lệnh) nên là `trace`. Nhãn đã có trước migration này nhận `trace` qua DEFAULT: không chứng minh được bài nào được
 -- chọn ngẫu nhiên. signal_label_tokens: token dùng một lần của labels/next, chỉ lưu sha256.

@@ -152,6 +152,8 @@ function targetOf(row: RenderRow): { path: string; label: string } {
       return incidentTarget(row.data);
     case "team_incident_digest":
       return { path: "/admin/bot-monitor", label: M.buttons.botMonitor };
+    case "team_sr_new_market":
+      return { path: "/admin/signal-analysis", label: M.buttons.signalAnalysis };
   }
 }
 
@@ -265,6 +267,24 @@ function invariantTitle(row: RenderRow): string {
         detail: vars.detail === "" ? "" : ` · ${vars.detail}`,
       })
     : fill(M.titles.team_invariant, vars);
+}
+
+/**
+ * Market SoDEX mới chưa có trong asset map Signal research (#311). Tên market đến từ SoDEX nên escape. `total` lớn hơn
+ * số tên = tin tổng hợp (scheduler chỉ gửi tối đa 10 tên).
+ */
+function newMarketTitle(data: Record<string, unknown>): string {
+  const markets = escapeTelegramHtml(str(data.markets) ?? "");
+  const version = escapeTelegramHtml(str(data.version) ?? "");
+  const shown = markets === "" ? 0 : markets.split(", ").length;
+  const total = typeof data.total === "number" && data.total > shown ? data.total : shown;
+  if (total <= 1) return fill(M.titles.team_sr_new_market, { market: markets, version });
+  return fill(M.titles.team_sr_new_markets, {
+    n: total,
+    version,
+    markets,
+    more: total > shown ? fill(M.titles.team_sr_new_markets_more, { n: total - shown }) : "",
+  });
 }
 
 /** Tin theo dõi MCP (DEC-225): câu PM duyệt nguyên văn; email đã che lúc fan-out. */
@@ -394,6 +414,8 @@ function title(row: RenderRow): string {
       return incidentTitle(row.data);
     case "team_incident_digest":
       return INC.digestTitle;
+    case "team_sr_new_market":
+      return newMarketTitle(row.data);
   }
 }
 
@@ -462,6 +484,7 @@ function body(row: RenderRow): string | null {
     case "team_invariant":
     case "team_incident":
     case "team_incident_digest":
+    case "team_sr_new_market":
       return null;
   }
 }
@@ -539,6 +562,13 @@ export function renderTelegram(rows: readonly RenderRow[], appUrl: string): Rend
     return {
       text: `${fill(INC.merged, { n: rows.length })}\n${lines.join("\n")}`,
       button: { text: M.buttons.botMonitor, url: `${base}/admin/bot-monitor` },
+    };
+  }
+  // Market SoDEX mới (#311): mỗi tin đã đủ ý, gộp thì liệt kê từng tin.
+  if (first.type === "team_sr_new_market") {
+    return {
+      text: rows.map((r) => title(r)).join("\n"),
+      button: { text: M.buttons.signalAnalysis, url: `${base}/admin/signal-analysis` },
     };
   }
   if (first.type.startsWith("team_mcp_")) {

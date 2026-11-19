@@ -31,6 +31,7 @@
     "@drift/sodex-mock": "workspace:*",
     "@testcontainers/postgresql": "11.14.0",
     "@types/node": "22.20.5",
+    "testcontainers": "11.14.0",
     "vitest": "5.0.5"
   }
 }

@@ -105,6 +105,11 @@ async function subjectOf(db: Db, e: TeamOpsEvent): Promise<Subject | null> {
     };
   }
   if (e.type === "team_incident_digest") return { data: e.counts };
+  // Signal research (#311): chỉ tên market SoDEX và version asset map, không có dữ liệu người dùng.
+  if (e.type === "team_sr_new_market")
+    return {
+      data: { markets: e.markets.join(", "), total: e.total, version: e.assetMapVersion },
+    };
   // Bất biến tiền thật (DEC-274): báo cả bot paper (ghi rõ mode); không ví / key / email.
   if (e.type === "team_invariant") {
     const [b] = await db

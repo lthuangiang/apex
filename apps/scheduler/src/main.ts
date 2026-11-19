@@ -38,6 +38,7 @@ import {
   type PerpsSymbolInfo,
 } from "./signal-research";
 import { runSnapshotRetention } from "./snapshot-retention";
+import { checkNewMarkets, outboxEmitter, redisSeenStore } from "./sr-new-markets";
 import { redisIncidentReadStore, teamIncidentRunner } from "./team-incidents";
 
 // scheduler: một bản active (leader lease). Hiện có job market stats hằng ngày; các job lịch khác
@@ -79,6 +80,7 @@ const { db, pool } = createDb(env.DATABASE_URL);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const mcpAlertStore = redisAlertStore(redis);
 const invariantStore = redisInvariantStore(redis);
+const newMarkets = { store: redisSeenStore(redis), emit: outboxEmitter(db) };
 const teamIncidents = teamIncidentRunner(db, redisIncidentReadStore(redis), (msg, data) => {
   log.warn(data, msg);
 });
@@ -211,6 +213,8 @@ async function leaderboardTick() {
  * `rest` (`MARKET_INFO_TTL_MS`), nên lần đọc khi nhận lease và `mmModelTick` ngay sau đó là một lời gọi REST.
  * #305: mỗi lần đọc được thì ghi bản chụp vào Redis `sr:markets` cho picker / kiểm tài sản của API Signal research (API
  * không chạm SoDEX, DEC-322 / DEC-327). Ghi lỗi chỉ log: API thấy bản chụp cũ (`stale`) hoặc thiếu.
+ * #311: cùng danh sách đó, market mới chưa có trong asset map → báo team một lần (không thêm lời gọi SoDEX). Chỉ chạy
+ * trên tiến trình giữ lease (loadPerps chỉ được gọi từ onLead / timer của leader); lỗi chỉ log, không chặn caller.
  */
 let perpsCache: PerpsSymbolInfo[] | null = null;
 async function loadPerps() {
@@ -226,6 +230,18 @@ async function loadPerps() {
   } catch (error: unknown) {
     log.warn({ err: error }, "signal research: could not write the SoDEX market list to Redis");
   }
+  void checkNewMarkets(
+    newMarkets,
+    symbols.map((m) => m.name),
+  )
+    .then((r) => {
+      if (r.status === "seeded") log.info(r, "signal research: SoDEX market baseline recorded");
+      else if (r.status === "checked" && r.alerted.length > 0)
+        log.info(r, "signal research: new SoDEX markets queued for the team");
+    })
+    .catch((error: unknown) => {
+      log.warn({ err: error }, "signal research: new market check failed");
+    });
   return symbols;
 }
 
