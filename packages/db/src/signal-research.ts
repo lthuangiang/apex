@@ -15,6 +15,8 @@ import {
   type ResearchFact,
   type ResearchLevelRow,
   type ResearchNeeds,
+  type ResearchDropReason,
+  type ResearchRange,
   type ResearchStep,
   type ResearchSummary,
   type ResearchTrade,
@@ -51,6 +53,8 @@ import {
   signalSourceHealth,
   signalStories,
 } from "./schema";
+import { loadArticleStops, rangeSince } from "./signal-research-articles";
+import { DROP, newsTypeOf } from "./signal-research-keys";
 
 // Báo cáo Signal research (#271; hợp đồng: packages/shared/src/api/signal-research.ts, UI #273), dùng chung cho CLI của
 // scheduler và endpoint team của api. Chỉ đọc; nơi gọi bọc trong transaction chỉ đọc. Chỉ tính version quy tắc hiện tại
@@ -78,59 +82,6 @@ const liveNews = () =>
     eq(signalPaperTrades.lane, NEWS_RULES.lane),
     eq(signalPaperTrades.label, "live"),
   );
-
-// ── Bảng đổi khoá nội bộ → khoá API ───────────────────────────────────────────────────────────────────────────────
-
-const NEWS_TYPE = {
-  hack_exploit: "hack",
-  listing: "listing",
-  delisting: "delisting",
-  etf_approved: "etfApproved",
-  etf_delayed_or_rejected: "etfDelayed",
-  regulatory_action: "regulatorAgainst",
-  favorable_ruling: "regulatorFavour",
-  treasury_buy: "treasuryBuy",
-  treasury_sell: "treasurySell",
-  earnings_beat: "earningsBeat",
-  earnings_miss: "earningsMiss",
-  token_unlock: "unlock",
-} as const;
-type NewsType = (typeof NEWS_TYPE)[keyof typeof NEWS_TYPE];
-const NEWS_TYPE_MAP: ReadonlyMap<string, NewsType> = new Map(Object.entries(NEWS_TYPE));
-const newsTypeOf = (c: string): NewsType => NEWS_TYPE_MAP.get(c) ?? "hack";
-
-type DropReason =
-  | "notCatalyst"
-  | "notOnSodex"
-  | "promotional"
-  | "notUnderstood"
-  | "eventTooOld"
-  | "tpUnderCost"
-  | "alreadyOpen"
-  | "sourceLate"
-  | "noPrice"
-  | "tooThin";
-
-/** Mã lý do nội bộ → lý do API; không có = không phải "bị loại" (trùng y hệt, backlog, gộp câu chuyện). */
-const DROP: ReadonlyMap<string, DropReason> = new Map<string, DropReason>([
-  ["NO_SODEX_MARKET", "notOnSodex"],
-  ["NOT_A_SIGNAL_TYPE", "notCatalyst"],
-  ["PASSING_MENTION", "notCatalyst"],
-  ["CATALYST_ASSET_MISMATCH", "notCatalyst"],
-  ["PROMOTIONAL", "promotional"],
-  ["NOT_UNDERSTOOD", "notUnderstood"],
-  ["CLAUDE_BUDGET_REACHED", "notUnderstood"],
-  ["EVENT_TOO_OLD", "eventTooOld"],
-  ["STALE_NEWS", "eventTooOld"],
-  ["CLASSIFIER_LATE", "sourceLate"],
-  ["SOURCE_LATE", "sourceLate"],
-  ["NO_SODEX_PRICE", "noPrice"],
-  ["NO_BOOK_DATA", "noPrice"],
-  ["NOT_ENOUGH_HISTORY", "noPrice"],
-  ["TOO_THIN_TO_TRADE", "tooThin"],
-  ["MOVE_TOO_SMALL_FOR_COST", "tpUnderCost"],
-  ["NEWS_TRADE_ALREADY_OPEN", "alreadyOpen"],
-]);
 
 const level = (v: string | null): "high" | "medium" | "low" =>
   v === "high" ? "high" : v === "medium" ? "medium" : "low";
@@ -270,10 +221,13 @@ export async function loadSignalResearchSummary(
   now: Date,
   limits: SummaryLimits,
   check: () => void = () => undefined,
+  range?: ResearchRange,
 ): Promise<ResearchSummary> {
   const v = NEWS_RULES.version;
   const nowMs = now.getTime();
   const today = utcDay(nowMs);
+  // #291: `range` chỉ đổi phễu (`funnel`); bảng mức, cổng, Long / Short luôn tính mọi lệnh của version hiện tại.
+  const since = range === undefined ? null : rangeSince(now, range);
 
   const usage = await q
     .select()
@@ -293,6 +247,14 @@ export async function loadSignalResearchSummary(
     .where(eq(signalArticles.ruleVersion, v));
   const enabledSince = articles?.since ?? null;
   check();
+  const [articlesInRange] =
+    since === null
+      ? [articles]
+      : await q
+          .select({ n: count() })
+          .from(signalArticles)
+          .where(and(eq(signalArticles.ruleVersion, v), gte(signalArticles.collectedAt, since)));
+  check();
   const [delay] = await q
     .select({
       secs: sql<
@@ -300,7 +262,13 @@ export async function loadSignalResearchSummary(
       >`percentile_cont(0.5) within group (order by extract(epoch from ${signalArticles.collectedAt} - ${signalArticles.publishedAt}))`,
     })
     .from(signalArticles)
-    .where(and(eq(signalArticles.ruleVersion, v), sql`${signalArticles.status} <> 'backlog'`));
+    .where(
+      and(
+        eq(signalArticles.ruleVersion, v),
+        sql`${signalArticles.status} <> 'backlog'`,
+        since === null ? undefined : gte(signalArticles.collectedAt, since),
+      ),
+    );
   check();
   const grouped = await q
     .select({
@@ -310,22 +278,30 @@ export async function loadSignalResearchSummary(
       n: count(),
     })
     .from(signalEvents)
-    .where(eq(signalEvents.ruleVersion, v))
+    .where(
+      and(
+        eq(signalEvents.ruleVersion, v),
+        since === null ? undefined : gte(signalEvents.at, since),
+      ),
+    )
     .groupBy(signalEvents.stage, signalEvents.outcome, signalEvents.reason);
   check();
-  const stories = logicalStories(
-    await q
-      .select({
-        key: signalStories.storyKey,
-        at: signalStories.firstSeenAt,
-        entry: signalStories.levelAtEntry,
-        later: signalStories.laterLevel,
-        locked: signalStories.locked,
-      })
-      .from(signalStories)
-      .where(eq(signalStories.ruleVersion, v))
-      .orderBy(asc(signalStories.storyKey), asc(signalStories.firstSeenAt)),
-  );
+  const storyRows = await q
+    .select({
+      key: signalStories.storyKey,
+      at: signalStories.firstSeenAt,
+      entry: signalStories.levelAtEntry,
+      later: signalStories.laterLevel,
+      locked: signalStories.locked,
+    })
+    .from(signalStories)
+    .where(eq(signalStories.ruleVersion, v))
+    .orderBy(asc(signalStories.storyKey), asc(signalStories.firstSeenAt));
+  const stories = logicalStories(storyRows);
+  const funnelStories =
+    since === null ? stories : logicalStories(storyRows.filter((r) => r.at >= since));
+  check();
+  const articleStops = await loadArticleStops(q, since);
   check();
   const all = await q
     .select()
@@ -334,15 +310,19 @@ export async function loadSignalResearchSummary(
     .orderBy(asc(signalPaperTrades.openedAt));
   const closed = all.filter((t) => t.status === "closed" && t.resultPct !== null);
   const open = all.filter((t) => t.status !== "closed").length;
+  // Phễu theo khoảng: lệnh MỞ trong khoảng (cùng nhóm với bài / event của khoảng).
+  const inRange = since === null ? all : all.filter((t) => t.openedAt >= since);
+  const closedInRange = inRange.filter((t) => t.status === "closed" && t.resultPct !== null);
 
   const events = (stage: string, outcome: string) =>
     grouped.filter((g) => g.stage === stage && g.outcome === outcome).reduce((s, g) => s + g.n, 0);
   const drops = (stages: readonly string[]) => {
-    const by = new Map<DropReason, number>();
+    const by = new Map<ResearchDropReason, number>();
     for (const g of grouped) {
       if (!stages.includes(g.stage) || g.outcome !== "drop" || g.reason === null) continue;
       const r = DROP.get(g.reason);
-      if (r !== undefined) by.set(r, (by.get(r) ?? 0) + g.n);
+      // Trùng y hệt không phải "bị loại" ở tổng kết cũ (#271); feed bài đếm nó riêng trong `articleStops` (#291).
+      if (r !== undefined && r !== "duplicate") by.set(r, (by.get(r) ?? 0) + g.n);
     }
     const reasons = [...by].map(([reason, n]) => ({ reason, n })).sort((a, b) => b.n - a.n);
     return { n: reasons.reduce((s, r) => s + r.n, 0), reasons };
@@ -389,6 +369,7 @@ export async function loadSignalResearchSummary(
     enabledSince === null ? null : Math.max((nowMs - enabledSince.getTime()) / (7 * DAY_MS), 1 / 7);
 
   const storiesAt = (lv: string) => stories.filter((s) => s.entry === lv).length;
+  const funnelStoriesAt = (lv: string) => funnelStories.filter((s) => s.entry === lv).length;
   const levels: ResearchLevelRow[] = (["high", "medium", "low"] as const).map((lv) => {
     const trades = all.filter((t) => t.levelAtEntry === lv);
     const done = closed.filter((t) => t.levelAtEntry === lv);
@@ -432,7 +413,10 @@ export async function loadSignalResearchSummary(
     });
   }
   const soso = health.get("sosovalue");
-  const costs = usage.filter((u) => u.claudeCalls > 0).map(dailyClaudeCostUsd);
+  // `1d`: chi phí của ngày UTC hiện tại (bảng ngày không chia được theo giờ); còn lại: trung bình 7 ngày có gọi Claude.
+  const costs = usage
+    .filter((u) => u.claudeCalls > 0 && (range !== "1d" || u.day === today))
+    .map(dailyClaudeCostUsd);
   const avgEntryCost =
     all.length === 0
       ? null
@@ -461,7 +445,12 @@ export async function loadSignalResearchSummary(
       : [],
     funnel: on
       ? {
-          days: Math.max(1, Math.ceil((nowMs - enabledSince.getTime()) / DAY_MS)),
+          days:
+            range === "1d"
+              ? 1
+              : range === "7d"
+                ? 7
+                : Math.max(1, Math.ceil((nowMs - enabledSince.getTime()) / DAY_MS)),
           delayMedianSecs: delay?.secs == null ? null : Math.round(Number(delay.secs)),
           pollSecs: POLL_SECS,
           claudeCostPerDay:
@@ -472,24 +461,29 @@ export async function loadSignalResearchSummary(
                   .div(costs.length)
                   .toDecimalPlaces(4)
                   .toFixed(),
-          articlesRead: articles?.n ?? null,
+          articlesRead: articlesInRange?.n ?? null,
           soso: { used: Number(month?.n ?? 0), limit: limits.sosoMonthlyLimit },
           collected: events("collect", "pass"),
-          stories: stories.length,
+          stories: funnelStories.length,
           merged: events("filter", "merge"),
           signals: events("understand", "pass"),
-          levels: { high: storiesAt("high"), medium: storiesAt("medium"), low: storiesAt("low") },
+          levels: {
+            high: funnelStoriesAt("high"),
+            medium: funnelStoriesAt("medium"),
+            low: funnelStoriesAt("low"),
+          },
           passed: events("filter", "pass"),
-          long: all.filter((t) => t.direction === "long").length,
-          short: all.filter((t) => t.direction === "short").length,
+          long: inRange.filter((t) => t.direction === "long").length,
+          short: inRange.filter((t) => t.direction === "short").length,
           sizeUsdc: NEWS_RULES.sizeUsdc,
           drops: { score: drops(["normalize", "understand"]), filter: drops(["filter"]) },
+          articleStops,
           outcomes: {
-            closed: closed.length,
-            tp: closed.filter((t) => t.exitReason === "take_profit").length,
-            sl: closed.filter((t) => t.exitReason === "stop_loss").length,
-            maxHold: closed.filter((t) => t.exitReason === "max_hold").length,
-            open,
+            closed: closedInRange.length,
+            tp: closedInRange.filter((t) => t.exitReason === "take_profit").length,
+            sl: closedInRange.filter((t) => t.exitReason === "stop_loss").length,
+            maxHold: closedInRange.filter((t) => t.exitReason === "max_hold").length,
+            open: inRange.filter((t) => t.status !== "closed").length,
           },
         }
       : null,
@@ -696,6 +690,7 @@ function tradeItem(t: TradeRow, ctx: Ctx, now: number): ResearchTrade {
   const done = t.status === "closed";
   return {
     id: t.id,
+    articleId: t.articleId,
     type: "news",
     label: "live",
     asset: t.market,
@@ -731,6 +726,7 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
   const cost = d.success && d.data.costPct !== undefined ? dec(d.data.costPct) : null;
   return {
     id: e.id,
+    articleId: e.articleId,
     type: "news",
     label: "live",
     asset: story.market,
