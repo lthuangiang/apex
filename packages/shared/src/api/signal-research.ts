@@ -44,6 +44,10 @@ export const RESEARCH_DROP_REASONS = [
   "noTaggedCurrency",
   /** #291: trùng nội dung y hệt một bài đã lưu (`DUPLICATE`); dừng ở Normalize. */
   "duplicate",
+  /** #298 (news-v3): tài sản Claude chọn không có trong tiêu đề / nội dung bài (`ASSET_NOT_IN_TEXT`). */
+  "assetNotInText",
+  /** #298 (news-v3): tin treasury trên BTC / ETH không giao dịch (`TREASURY_MAJOR_ASSET`). */
+  "treasuryMajorAsset",
 ] as const;
 export const RESEARCH_NEWS_TYPES = [
   "hack",

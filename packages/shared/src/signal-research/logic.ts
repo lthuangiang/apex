@@ -95,6 +95,111 @@ export function stripHtml(html: string): string {
 
 // ── Understand ────────────────────────────────────────────────────────────────────────────────────────────────────
 
+/** Một cách viết của tài sản trong bài; ký hiệu 1–2 ký tự chỉ khớp đúng chữ HOA (không thì "s", "op" khớp mọi bài). */
+export interface AssetAlias {
+  text: string;
+  caseSensitive: boolean;
+}
+
+/** Đuôi pháp lý / loại cổ phiếu bỏ khỏi tên công ty ("NVIDIA CORPORATION" → "NVIDIA"). */
+const NAME_SUFFIX =
+  /[\s,]+(inc|incorporated|corp|corporation|co|company|ltd|limited|plc|holdings?|group|sa|nv|ag|se|adr|xstock|class\s+[a-c]|common\s+stock|ordinary\s+shares)\.?$/i;
+
+const tidy = (s: string) => s.replace(/[‘’ʼ]/g, "'").replace(/\s+/g, " ").trim();
+
+function plainName(name: string | null): string | null {
+  if (name === null) return null;
+  if (isStockName(name)) return /"EN"\s*:\s*"([^"]*)"/i.exec(name)?.[1] ?? null;
+  return name;
+}
+
+function stripSuffixes(name: string): string {
+  let out = name.replace(/[.,]+$/, "");
+  for (let prev = ""; prev !== out;) {
+    prev = out;
+    out = out.replace(NAME_SUFFIX, "").replace(/[.,]+$/, "");
+  }
+  return out;
+}
+
+/**
+ * Các cách viết của một ứng viên để kiểm "tài sản có trong bài" (news-v3, #298): ký hiệu SoSoValue, gốc của market SoDEX
+ * ("1000PEPE-USD" → "1000PEPE", "PEPE"), tên SoSoValue gắn với ký hiệu đó và tên đã bỏ đuôi pháp lý; cổ phiếu thêm chữ
+ * đầu của tên ("META PLATFORMS" → "META"). Không có danh sách tên thương hiệu tự bịa.
+ */
+export function assetAliases(
+  candidate: Candidate,
+  matched: readonly MatchedCurrency[],
+): AssetAlias[] {
+  const out = new Map<string, AssetAlias>();
+  const add = (raw: string, symbol: boolean) => {
+    const text = tidy(raw);
+    if (text.length === 0) return;
+    const caseSensitive = symbol && text.length <= 2;
+    const key = caseSensitive ? text : text.toLowerCase();
+    if (!out.has(key)) out.set(key, { text, caseSensitive });
+  };
+  const base = candidate.market.replace(/-USD$/i, "");
+  add(candidate.symbol, true);
+  add(base, true);
+  if (/^1000./.test(base)) add(base.slice(4), true);
+  for (const m of matched) {
+    if (m.symbol.trim().toUpperCase() !== candidate.symbol.toUpperCase()) continue;
+    const name = plainName(m.name);
+    if (name === null || tidy(name).length < 2) continue;
+    add(name, false);
+    const short = stripSuffixes(tidy(name));
+    if (short.length >= 2) add(short, false);
+    const first = short.split(" ")[0] ?? "";
+    if (candidate.kind === AssetKind.stock && first.length >= 3) add(first, false);
+  }
+  return [...out.values()];
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Có cách viết nào của tài sản trong văn bản, đứng riêng một từ ("ETH" không khớp "ETHENA"). */
+export function mentionsAsset(text: string, aliases: readonly AssetAlias[]): boolean {
+  const t = tidy(text);
+  return aliases.some((a) =>
+    new RegExp(
+      `(?<![\\p{L}\\p{N}])${escapeRe(a.text)}(?![\\p{L}\\p{N}])`,
+      a.caseSensitive ? "u" : "iu",
+    ).test(t),
+  );
+}
+
+/** Tài sản Claude chọn phải có trong tiêu đề hoặc nội dung bài (news-v3, #298); không thì `ASSET_NOT_IN_TEXT`. */
+export function assetInText(
+  title: string | null,
+  content: string | null,
+  candidate: Candidate,
+  matched: readonly MatchedCurrency[],
+): boolean {
+  return mentionsAsset(`${title ?? ""}\n${content ?? ""}`, assetAliases(candidate, matched));
+}
+
+const isTreasury = (c: SignalCatalyst) => c === "treasury_buy" || c === "treasury_sell";
+const TREASURY_EXCLUDED: ReadonlySet<string> = new Set(NEWS_RULES.treasuryExcludedMarkets);
+
+/** news-v3 (#298): treasury buy / sell trên BTC / ETH không bao giờ giao dịch (`TREASURY_MAJOR_ASSET`). */
+export function treasuryOnMajorAsset(catalyst: SignalCatalyst, market: string): boolean {
+  return isTreasury(catalyst) && TREASURY_EXCLUDED.has(market);
+}
+
+/**
+ * Cờ "small treasury?" (#298): tin treasury mà Claude không trích được số tiền (thiếu, rỗng hoặc "unknown"). Chỉ để phân
+ * tích sau, không chặn lệnh; không bao giờ tự đoán số tiền.
+ */
+export function smallTreasury(
+  catalyst: SignalCatalyst,
+  amount: string | null | undefined,
+): boolean {
+  if (!isTreasury(catalyst)) return false;
+  const a = (amount ?? "").trim().toLowerCase();
+  return a === "" || a === "unknown";
+}
+
 export function sourceTierOf(author: string, category: number | null): SourceTier {
   const known = SOURCE_TIERS[author.trim().toLowerCase()];
   if (known !== undefined) return known;

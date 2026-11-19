@@ -7847,7 +7847,9 @@
         "tooThin": "Too thin to trade",
         "riskWindow": "Big-news window",
         "noTaggedCurrency": "No coin tagged",
-        "duplicate": "Duplicate"
+        "duplicate": "Duplicate",
+        "assetNotInText": "Asset not in the article",
+        "treasuryMajorAsset": "Treasury news on BTC or ETH"
       },
       "rules": {
         "title": "What counts as a news signal",
