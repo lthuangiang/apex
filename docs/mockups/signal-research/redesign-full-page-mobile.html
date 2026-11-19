@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal research tab, mobile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}
+</style>
+<script>window.DC_PROPS = {"$preview":{"width":390,"height":2000}};</script>
+<script src="./dc-shim.js"></script>
+<script>
+window.Component = class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+
+</script>
+</head>
+<body>
+<template id="dc-tpl">
+
+<div style="width: 390px; box-sizing: border-box; padding: 16px 16px 32px; font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; background: #f5f7fd; display: flex; flex-direction: column; gap: 12px">
+  <h1 style="margin: 0; font-size: 24px; font-weight: 800">Signal Analysis</h1>
+  <nav aria-label="Signal Analysis tabs" style="display: flex; gap: 4px; overflow-x: auto; mask-image: linear-gradient(90deg, #000 85%, transparent); background: #fff; border: 1px solid #e3e7f5; border-radius: 14px; padding: 6px">
+    <a href="#" style="flex: none; padding: 10px 12px; border-radius: 10px; font-size: 14px; font-weight: 700; color: #141a33; text-decoration: none">All</a>
+    <a href="#" style="flex: none; padding: 10px 12px; border-radius: 10px; font-size: 14px; font-weight: 700; color: #141a33; text-decoration: none">Volume Builder</a>
+    <a href="#" style="flex: none; padding: 10px 12px; border-radius: 10px; font-size: 14px; font-weight: 700; color: #141a33; text-decoration: none">Market Making</a>
+    <a href="#" aria-current="page" style="flex: none; padding: 10px 12px; border-radius: 10px; font-size: 14px; font-weight: 700; color: #fff; background: #2e62e8; text-decoration: none">Signal research</a>
+  </nav>
+  <div style="padding: 10px 12px; border-radius: 12px; background: #fdebd3; border: 1px solid #f3c98f; color: #7a3e00; font-size: 13px"><strong>Research only · fake money.</strong> Nothing here is sent to SoDEX.</div>
+  <div style="display: flex; gap: 8px">
+    <label style="flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 800">Version
+      <select style="min-height: 44px; border: 2px solid #2e62e8; border-radius: 10px; padding: 0 10px; font: inherit; font-size: 14px; font-weight: 800"><option>Baseline (v3)</option></select>
+    </label>
+    <button type="button" style="align-self: flex-end; min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #2e62e8; background: #fff; color: #1d47b8; font: inherit; font-size: 13px; font-weight: 800">How it works</button>
+  </div>
+  <nav aria-label="Progress" style="background: #fff; border: 1px solid #e3e7f5; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 13px">
+    <strong>Progress</strong>
+    <a href="#">12 of ~100 closed trades</a>
+    <a href="#">Classifier v3: 37 of 50 labels · 84% right</a>
+    <a href="#">Context: collecting · 3 open trades</a>
+  </nav>
+
+  <section style="background: #fff; border: 1px solid #e3e7f5; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; justify-content: space-between; align-items: center"><h2 style="margin: 0; font-size: 17px; font-weight: 800">Paper bots</h2><span style="font-size: 12px; color: #5f6684">2 of 3 running</span></div>
+    <div style="border: 2px solid #2e62e8; border-radius: 12px; padding: 10px 12px; font-size: 13px"><strong>Baseline (v3)</strong> · Running<br><span style="color: #3b4262">Balance 10,000.0 · Open 2 / 20</span></div>
+    <div style="border: 1px solid #e3e7f5; border-radius: 12px; padding: 10px 12px; font-size: 13px"><strong>v4 · Strict subject</strong> · Running<br><span style="color: #3b4262">Balance 10,000.0 · Open 0 / 20</span></div>
+  </section>
+
+  <section style="background: #fff; border: 1px solid #e3e7f5; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-size: 17px; font-weight: 800">From headline to trade</h2>
+    <p style="margin: 0; font-size: 12px; color: #5f6684">Every article, what happened to it, and why.</p>
+    <div style="background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 3px; align-items: center">
+      <div style="width: 100%; height: 30px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; padding: 0 16px; clip-path: polygon(0 0,100% 0,97% 100%,3% 100%); background: #1d47b8; color: #fff; font-size: 12px; font-weight: 800"><span>1 · Collect</span><span>136</span></div>
+      <div style="width: 92%; height: 30px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; padding: 0 16px; clip-path: polygon(0 0,100% 0,97% 100%,3% 100%); background: #2e62e8; color: #fff; font-size: 12px; font-weight: 800"><span>2 · Normalize</span><span>21</span></div>
+      <div style="width: 84%; height: 30px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; padding: 0 16px; clip-path: polygon(0 0,100% 0,97% 100%,3% 100%); background: #7fa2ff; color: #141a33; font-size: 12px; font-weight: 800"><span>3 · Score</span><span>5</span></div>
+      <div style="width: 80%; height: 32px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; padding: 0 10px; border: 2px dashed #2e62e8; border-radius: 6px; background: #fff; font-size: 11px; font-weight: 800"><span>4 · Context</span><span>Whales 2 · Funding 1 · Ran 1</span></div>
+      <div style="width: 72%; height: 30px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; padding: 0 16px; clip-path: polygon(0 0,100% 0,97% 100%,3% 100%); background: #c9d4ff; color: #141a33; font-size: 12px; font-weight: 800"><span>5 · Filter</span><span>2</span></div>
+      <div style="width: 64%; height: 30px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; padding: 0 14px; clip-path: polygon(0 0,100% 0,97% 100%,3% 100%); background: #16a05a; color: #fff; font-size: 12px; font-weight: 800"><span>6 · Decide</span><span>Long 2 · Short 0</span></div>
+    </div>
+    <p style="margin: 0; font-size: 12px; color: #3b4262; line-height: 1.5"><strong>Step 4 · Context</strong> records whales, funding and early price run for each signal. It does not block anything yet.</p>
+    <div style="display: flex; justify-content: space-between; font-size: 13px"><strong>News feed</strong><span style="color: #5f6684">20 of 136</span></div>
+    <div style="border: 1px solid #e3e7f5; border-radius: 12px; padding: 8px 10px"><div style="font-size: 12px; color: #5f6684">14:20 · 3 min after release</div><div style="font-size: 14px; font-weight: 700">SEC approves in-kind creations for spot ETH ETFs</div><span style="display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #ddf4e7; color: #0f7a43">Long ETH · paper trade</span></div>
+    <div style="border: 1px solid #e3e7f5; border-radius: 12px; padding: 8px 10px"><div style="font-size: 12px; color: #5f6684">14:01 · 9 min after release</div><div style="font-size: 14px; font-weight: 700">12,000 ETH stolen from Protocol X</div><span style="display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #eef1fa; color: #3b4262">Dropped at Score</span></div>
+  </section>
+
+  <section style="background: #fff; border: 1px solid #e3e7f5; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-size: 17px; font-weight: 800">Is it working?</h2>
+    <div role="tablist" aria-label="Results" style="display: flex; gap: 4px; overflow-x: auto">
+      <button type="button" role="tab" aria-selected="true" style="flex: none; min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #2e62e8; background: #2e62e8; color: #fff; font: inherit; font-size: 13px; font-weight: 800">Overall</button>
+      <button type="button" role="tab" aria-selected="false" style="flex: none; min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 13px; font-weight: 700">By level</button>
+      <button type="button" role="tab" aria-selected="false" style="flex: none; min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 13px; font-weight: 700">Does context help?</button>
+    </div>
+    <div style="font-size: 13px"><strong>Closed trades for the gate</strong></div>
+    <div role="progressbar" aria-label="Closed trades" aria-valuenow="12" aria-valuemin="0" aria-valuemax="100" style="height: 10px; border-radius: 999px; background: #eef1fa; overflow: hidden"><div style="width: 12%; height: 100%; background: #2e62e8"></div></div>
+    <div style="font-size: 12px; color: #3b4262">12 / 100 · needs 88 more · ~3 weeks</div>
+    <div style="font-size: 13px"><strong>Classifier v3 labels</strong></div>
+    <div role="progressbar" aria-label="Labels" aria-valuenow="37" aria-valuemin="0" aria-valuemax="50" style="height: 10px; border-radius: 999px; background: #eef1fa; overflow: hidden"><div style="width: 74%; height: 100%; background: #2e62e8"></div></div>
+    <div style="font-size: 12px; color: #3b4262">37 / 50 · 84% right · <a href="#">Label a random signal</a></div>
+  </section>
+
+  <section style="background: #fff; border: 1px solid #e3e7f5; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; justify-content: space-between; align-items: center"><h2 style="margin: 0; font-size: 17px; font-weight: 800">Paper trades</h2><label style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; min-height: 44px"><input type="checkbox" style="width: 20px; height: 20px">Older rules</label></div>
+    <div style="border: 1px solid #e3e7f5; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 13px">
+      <div style="display: flex; justify-content: space-between"><strong>ETH-USD · Long</strong><strong style="color: #0f7a43">+$0.82</strong></div>
+      <div style="color: #3b4262">SEC approves in-kind creations… · Medium</div>
+      <div style="font-size: 12px; color: #5f6684">Entry 3,412.5 · TP 3,467.1 · SL 3,385.2 · 3 d · unrealized</div>
+    </div>
+  </section>
+</div>
+</template>
+<div id="dc-root"></div>
+</body>
+</html>
