@@ -340,7 +340,8 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
         .catch((error: unknown) => {
           log.warn({ err: error }, "signal research: SoDEX market list unavailable, collect only");
         })
-        .then(() => signals.runCycle());
+        .then(() => signals.runCycle())
+        .then(() => signals.runContextBackfill());
       signalTimer = setInterval(() => void signals.runCycle(), 5 * 60_000);
       watchTimer = setInterval(() => {
         void signals.watcher.tick().catch((error: unknown) => {
@@ -386,6 +387,8 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
         });
     }, 60_000);
     timer = setInterval(() => {
+      // Backfill ngữ cảnh tín hiệu cũ (#333): tự giới hạn một lượt mỗi ngày UTC.
+      if (signals !== null) void signals.runContextBackfill();
       void tick().catch((error: unknown) => {
         log.error({ err: error }, "tick failed");
       });

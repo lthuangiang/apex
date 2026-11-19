@@ -11,6 +11,7 @@ import {
 import { z } from "zod";
 
 import { anthropicClassifier, type NewsClassifier } from "./classifier";
+import { runContextBackfill } from "./context-backfill";
 import { runNewsCycle, type MarketInfo, type PipelineConfig } from "./pipeline";
 import { LiveBooks, QuoteSource } from "./prices";
 import { sosoClient, type SosoClient } from "./soso";
@@ -207,6 +208,8 @@ export function createSignalResearch(input: {
   const soso = input.soso ?? sosoClient(input.env.SOSO_API_KEY);
   const classifier = input.classifier ?? anthropicClassifier(input.env.DESK_AI_API_KEY, input.log);
   let cycleBusy = false;
+  let backfillBusy = false;
+  let backfillDay: string | null = null;
 
   return {
     books,
@@ -237,6 +240,27 @@ export function createSignalResearch(input: {
         );
       } finally {
         cycleBusy = false;
+      }
+    },
+    /**
+     * Backfill ngữ cảnh cho tín hiệu cũ (#333): một lượt mỗi ngày UTC (lượt đầu khi nhận lease); lượt trước chưa xong thì bỏ
+     * qua. Lượt chạm giới hạn bài thì lần gọi sau trong cùng ngày chạy tiếp. Chỉ đọc DB, ghi `signal_contexts` backfilled.
+     */
+    async runContextBackfill(): Promise<void> {
+      const day = new Date(now()).toISOString().slice(0, 10);
+      if (backfillBusy || backfillDay === day) return;
+      backfillBusy = true;
+      const log = input.log.child({ traceId: randomUUID(), job: "signal-context-backfill" });
+      try {
+        const r = await runContextBackfill({ db: input.db, log, now });
+        if (!r.more && r.failed === 0) backfillDay = day;
+      } catch (e) {
+        log.error(
+          { err: e instanceof Error ? { name: e.name, message: e.message } : String(e) },
+          "signal context backfill failed",
+        );
+      } finally {
+        backfillBusy = false;
       }
     },
   };
