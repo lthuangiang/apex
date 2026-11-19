@@ -12,6 +12,7 @@ import {
   typicalMovePct,
   volumeVs24h,
   type Decimal,
+  type DecimalInput,
   type Quote,
   type TradeDirection,
 } from "@drift/shared";
@@ -181,6 +182,97 @@ async function exploratory(db: Exec, market: string, t: number) {
   };
 }
 
+type ContextValues = Omit<typeof signalContexts.$inferInsert, "id" | "createdAt">;
+
+/**
+ * Tính giá trị ngữ cảnh của một tín hiệu tại `decidedAt` (chưa ghi). `decisionPrice` = giá lúc quyết định để đo H3 (live: giá
+ * giữa của báo giá chu kỳ; backfill: giá đóng nến 1 phút đã đóng trước quyết định); null → H3 `na`. `whales = false` (backfill
+ * #333): không tái dựng được tập ví theo dõi / lần poll trong quá khứ một cách trung thực, nên H1 `na` và mọi số H1 null
+ * (không phải 0).
+ */
+export async function computeSignalContext(
+  db: Exec,
+  s: ContextSignal,
+  decidedAt: number,
+  decisionPrice: DecimalInput | null,
+  opts: { source: ContextSource; ruleVersion: string; whales: boolean },
+): Promise<ContextValues> {
+  const fx = (d: Decimal | null) => (d === null ? null : d.toFixed(18));
+  const h1Values = opts.whales
+    ? await (async () => {
+        const h1 = h1Of({
+          direction: s.direction,
+          ...(await whaleInputs(db, s.market, decidedAt)),
+        });
+        return {
+          h1Status: h1.status,
+          h1WalletsChecked: h1.walletsChecked,
+          h1AssetOnHyperliquid: h1.assetOnHyperliquid,
+          h1AgreeingWallets: h1.agreeingWallets,
+          h1OpposingWallets: h1.opposingWallets,
+          h1AgreeingUsdc: fx(h1.agreeingUsdc),
+          h1FirstAt: h1.firstAt === null ? null : new Date(h1.firstAt),
+        };
+      })()
+    : {
+        h1Status: "na" as const,
+        h1WalletsChecked: null,
+        h1AssetOnHyperliquid: null,
+        h1AgreeingWallets: null,
+        h1OpposingWallets: null,
+        h1AgreeingUsdc: null,
+        h1FirstAt: null,
+      };
+  const h2 = h2Of({
+    direction: s.direction,
+    decidedAt,
+    points: await fundingPoints(db, s.market, decidedAt),
+  });
+  // Cùng hàm, cùng mốc (bài đầu story) với `moved_before_entry` của lệnh.
+  const moved =
+    decisionPrice === null || s.storyStartAt > decidedAt
+      ? null
+      : await movedBeforeEntry(db, s.market, s.storyStartAt, decisionPrice);
+  const h3 = h3Of({
+    direction: s.direction,
+    movedPct: moved,
+    typicalMovePct: await typicalMoveBefore(db, s.market, decidedAt),
+  });
+  const ex = await exploratory(db, s.market, decidedAt);
+  return {
+    articleId: s.articleId,
+    market: s.market,
+    direction: s.direction,
+    decidedAt: new Date(decidedAt),
+    source: opts.source,
+    contextVersion: SIGNAL_CONTEXT_VERSION,
+    ruleVersion: opts.ruleVersion,
+    ...h1Values,
+    h2Status: h2.status,
+    h2FundingRate: fx(h2.rate),
+    h2FundingTime: h2.rateAt === null ? null : new Date(h2.rateAt),
+    h2Percentile: h2.percentile === null ? null : h2.percentile.toFixed(4),
+    h2Samples: h2.samples,
+    h2Payer: h2.payer,
+    h2IntervalHours: h2.intervalHours === null ? null : h2.intervalHours.toFixed(2),
+    h3Status: h3.status,
+    h3MovedPct: fx(h3.movedPct),
+    h3TypicalMovePct: fx(h3.typicalMovePct),
+    volumeVs24h: fx(ex.volume),
+    rangeBreakout: ex.breakout,
+  };
+}
+
+/** Ghi snapshot; bài đã có snapshot (live hay backfilled) thì giữ nguyên dòng cũ. Trả true khi đã ghi dòng mới. */
+export async function insertSignalContext(db: Exec, values: ContextValues): Promise<boolean> {
+  const rows = await db
+    .insert(signalContexts)
+    .values(values)
+    .onConflictDoNothing({ target: signalContexts.articleId })
+    .returning({ id: signalContexts.id });
+  return rows.length > 0;
+}
+
 /**
  * Tính ngữ cảnh của một tín hiệu tại `decidedAt` và ghi (nếu bài đã có snapshot thì giữ nguyên dòng cũ). `quote` = báo giá
  * của chu kỳ (giá vào lệnh dùng cùng báo giá này); null khi market không có giá → H3 `na`.
@@ -191,54 +283,12 @@ export async function captureSignalContext(
   decidedAt: number,
   quote: Quote | null,
 ): Promise<void> {
-  const whales = await whaleInputs(db, s.market, decidedAt);
-  const h1 = h1Of({ direction: s.direction, ...whales });
-  const h2 = h2Of({
-    direction: s.direction,
+  const values = await computeSignalContext(
+    db,
+    s,
     decidedAt,
-    points: await fundingPoints(db, s.market, decidedAt),
-  });
-  // Cùng hàm, cùng mốc (bài đầu story), cùng giá giữa của báo giá chu kỳ với `moved_before_entry` của lệnh.
-  const moved =
-    quote === null || s.storyStartAt > decidedAt
-      ? null
-      : await movedBeforeEntry(db, s.market, s.storyStartAt, midOf(quote));
-  const h3 = h3Of({
-    direction: s.direction,
-    movedPct: moved,
-    typicalMovePct: await typicalMoveBefore(db, s.market, decidedAt),
-  });
-  const ex = await exploratory(db, s.market, decidedAt);
-  const fx = (d: Decimal | null) => (d === null ? null : d.toFixed(18));
-  await db
-    .insert(signalContexts)
-    .values({
-      articleId: s.articleId,
-      market: s.market,
-      direction: s.direction,
-      decidedAt: new Date(decidedAt),
-      source: ContextSource.live,
-      contextVersion: SIGNAL_CONTEXT_VERSION,
-      ruleVersion: NEWS_RULES.version,
-      h1Status: h1.status,
-      h1WalletsChecked: h1.walletsChecked,
-      h1AssetOnHyperliquid: h1.assetOnHyperliquid,
-      h1AgreeingWallets: h1.agreeingWallets,
-      h1OpposingWallets: h1.opposingWallets,
-      h1AgreeingUsdc: fx(h1.agreeingUsdc),
-      h1FirstAt: h1.firstAt === null ? null : new Date(h1.firstAt),
-      h2Status: h2.status,
-      h2FundingRate: fx(h2.rate),
-      h2FundingTime: h2.rateAt === null ? null : new Date(h2.rateAt),
-      h2Percentile: h2.percentile === null ? null : h2.percentile.toFixed(4),
-      h2Samples: h2.samples,
-      h2Payer: h2.payer,
-      h2IntervalHours: h2.intervalHours === null ? null : h2.intervalHours.toFixed(2),
-      h3Status: h3.status,
-      h3MovedPct: fx(h3.movedPct),
-      h3TypicalMovePct: fx(h3.typicalMovePct),
-      volumeVs24h: fx(ex.volume),
-      rangeBreakout: ex.breakout,
-    })
-    .onConflictDoNothing({ target: signalContexts.articleId });
+    quote === null ? null : midOf(quote),
+    { source: ContextSource.live, ruleVersion: NEWS_RULES.version, whales: true },
+  );
+  await insertSignalContext(db, values);
 }
