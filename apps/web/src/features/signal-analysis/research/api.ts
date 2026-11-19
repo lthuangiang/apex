@@ -1,5 +1,10 @@
 import {
   researchArticlesPageSchema,
+  researchClassifiersSchema,
+  researchMarketsSchema,
+  researchVersionCreatedSchema,
+  researchVersionSchema,
+  researchVersionsSchema,
   researchArticleTraceSchema,
   researchSummarySchema,
   researchTradeDetailSchema,
@@ -11,10 +16,20 @@ import {
   type ResearchShow,
   type ResearchStage,
   type ResearchType,
+  type ResearchVersionCreateBody,
+  type ResearchVersionStatusBody,
 } from "@drift/shared";
-import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
+import type { z } from "zod";
 
 import { api, ApiError } from "@/lib/api";
+import { useFinancialMutation } from "@/lib/financial-action";
 
 import { SIGNAL_KEY } from "../api";
 
@@ -29,6 +44,10 @@ export const RESEARCH_PATHS = {
   trade: (id: string) => `${RESEARCH_BASE}/trades/${encodeURIComponent(id)}`,
   articles: `${RESEARCH_BASE}/articles`,
   trace: (id: string) => `${RESEARCH_BASE}/articles/${encodeURIComponent(id)}/trace`,
+  versions: `${RESEARCH_BASE}/versions`,
+  versionStatus: (id: string) => `${RESEARCH_BASE}/versions/${encodeURIComponent(id)}/status`,
+  markets: `${RESEARCH_BASE}/markets`,
+  classifiers: `${RESEARCH_BASE}/classifiers`,
 } as const;
 
 export interface ResearchFilters {
@@ -58,24 +77,40 @@ function query(f: object, extra: Record<string, string> = {}) {
 
 const KEY = [...SIGNAL_KEY, "research"] as const;
 
+/** #306: News bot version của tổng kết / feed / trace / lệnh; null = mặc định của API (Baseline). */
+export type VersionId = string | null;
+const ver = (versionId: VersionId): Record<string, string> =>
+  versionId === null ? {} : { versionId };
+
 /** Phễu tính theo khoảng `range` (#291): 1 ngày / 7 ngày, nút "1 day" / "7 days" của News feed (#292). */
-export function useResearchSummary(range: ResearchRange) {
+export function useResearchSummary(range: ResearchRange, versionId: VersionId = null) {
   return useQuery({
-    queryKey: [...KEY, "summary", range],
+    queryKey: [...KEY, "summary", range, versionId],
     queryFn: () =>
-      api("GET", `${RESEARCH_PATHS.summary}?${query({}, { range })}`, researchSummarySchema),
+      api(
+        "GET",
+        `${RESEARCH_PATHS.summary}?${query({}, { range, ...ver(versionId) })}`,
+        researchSummarySchema,
+      ),
     placeholderData: keepPreviousData,
     retry,
   });
 }
 
-export function useResearchTrades(f: ResearchFilters, enabled: boolean) {
+export function useResearchTrades(
+  f: ResearchFilters,
+  enabled: boolean,
+  versionId: VersionId = null,
+) {
   return useInfiniteQuery({
-    queryKey: [...KEY, "trades", f],
+    queryKey: [...KEY, "trades", f, versionId],
     queryFn: ({ pageParam }) =>
       api(
         "GET",
-        `${RESEARCH_PATHS.trades}?${query(f, pageParam === null ? {} : { cursor: pageParam })}`,
+        `${RESEARCH_PATHS.trades}?${query(f, {
+          ...ver(versionId),
+          ...(pageParam === null ? {} : { cursor: pageParam }),
+        })}`,
         researchTradesPageSchema,
       ),
     initialPageParam: null as string | null,
@@ -107,14 +142,15 @@ export interface ArticleFilters {
 /** Số bài mỗi trang của News feed (#297): feed cuộn trong khung cố định, "Load more" theo cursor. */
 export const FEED_PAGE = 20;
 
-export function useResearchArticles(f: ArticleFilters) {
+export function useResearchArticles(f: ArticleFilters, versionId: VersionId = null) {
   return useInfiniteQuery({
-    queryKey: [...KEY, "articles", f],
+    queryKey: [...KEY, "articles", f, versionId],
     queryFn: ({ pageParam }) =>
       api(
         "GET",
         `${RESEARCH_PATHS.articles}?${query(f, {
           limit: String(FEED_PAGE),
+          ...ver(versionId),
           ...(pageParam === null ? {} : { cursor: pageParam }),
         })}`,
         researchArticlesPageSchema,
@@ -126,11 +162,91 @@ export function useResearchArticles(f: ArticleFilters) {
   });
 }
 
-export function useResearchTrace(id: string | null) {
+export function useResearchTrace(id: string | null, versionId: VersionId = null) {
   return useQuery({
-    queryKey: [...KEY, "trace", id],
-    queryFn: () => api("GET", RESEARCH_PATHS.trace(id ?? ""), researchArticleTraceSchema),
+    queryKey: [...KEY, "trace", id, versionId],
+    queryFn: () =>
+      api(
+        "GET",
+        `${RESEARCH_PATHS.trace(id ?? "")}${versionId === null ? "" : `?${query({}, ver(versionId))}`}`,
+        researchArticleTraceSchema,
+      ),
     enabled: id !== null,
     retry,
+  });
+}
+
+// ── News bot versions (#306, API #305; thiết kế docs/mockups/signal-research/bot-versions*.html) ─────────────────────
+
+export const VERSIONS_KEY = [...KEY, "versions"] as const;
+export const MARKETS_KEY = [...KEY, "markets"] as const;
+export const CLASSIFIERS_KEY = [...KEY, "classifiers"] as const;
+
+export function useResearchVersions() {
+  return useQuery({
+    queryKey: VERSIONS_KEY,
+    queryFn: () => api("GET", RESEARCH_PATHS.versions, researchVersionsSchema),
+    retry,
+  });
+}
+
+/** Market SoDEX đang listed cho picker tài sản (bản chụp của scheduler; `items: null` = chưa có). */
+export function useResearchMarkets(enabled: boolean) {
+  return useQuery({
+    queryKey: MARKETS_KEY,
+    queryFn: () => api("GET", RESEARCH_PATHS.markets, researchMarketsSchema),
+    enabled,
+    retry,
+  });
+}
+
+export function useResearchClassifiers() {
+  return useQuery({
+    queryKey: CLASSIFIERS_KEY,
+    queryFn: () => api("GET", RESEARCH_PATHS.classifiers, researchClassifiersSchema),
+    retry,
+  });
+}
+
+/** Sau một lần ghi version: danh sách version và mọi số theo version (tổng kết, feed, lệnh) đọc lại. */
+const versionReads: QueryKey[] = [VERSIONS_KEY];
+
+/**
+ * Lưu version mới (DEC-336): cùng Idempotency-Key cho lần gửi lại tự động; kết quả không rõ thì đọc lại danh sách
+ * version trước khi mở lại nút.
+ */
+export function useCreateVersion(
+  onSaved: (v: z.output<typeof researchVersionCreatedSchema>) => void,
+) {
+  const qc = useQueryClient();
+  return useFinancialMutation({
+    mutationFn: (body: ResearchVersionCreateBody, idempotencyKey: string) =>
+      api("POST", RESEARCH_PATHS.versions, researchVersionCreatedSchema, { body, idempotencyKey }),
+    refetch: versionReads,
+    onSuccess: async (v) => {
+      onSaved(v);
+      await qc.invalidateQueries({ queryKey: KEY });
+    },
+  });
+}
+
+export interface VersionStatusVars {
+  id: string;
+  status: ResearchVersionStatusBody["status"];
+}
+
+/** Pause / Resume / Stop một version (trạng thái từ backend, quy tắc 1.6). */
+export function useVersionStatus() {
+  const qc = useQueryClient();
+  return useFinancialMutation({
+    mutationFn: (v: VersionStatusVars, idempotencyKey: string) =>
+      api("POST", RESEARCH_PATHS.versionStatus(v.id), researchVersionSchema, {
+        body: { status: v.status },
+        idempotencyKey,
+      }),
+    refetch: versionReads,
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: KEY });
+    },
   });
 }

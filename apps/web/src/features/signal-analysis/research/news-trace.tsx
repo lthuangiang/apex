@@ -189,12 +189,15 @@ export function NewsTrace({
   range,
   onRange,
   request,
+  versionId = null,
 }: {
   ctx: PageCtx;
   funnel: ResearchFunnel | null;
   range: ResearchRange;
   onRange: (r: ResearchRange) => void;
   request: TraceRequest | null;
+  /** #306: News bot version (bước Filter / Decide, story và lệnh của version); null = Baseline. */
+  versionId?: string | null;
 }) {
   const t = useTranslations("signalAnalysis.research");
   const ts = useTranslations("signalAnalysis.states");
@@ -205,7 +208,7 @@ export function NewsTrace({
   const [run, setRun] = useState(0);
   const [step, setStep] = useState(DONE);
 
-  const trace = useResearchTrace(sel);
+  const trace = useResearchTrace(sel, versionId);
   const names = useMarketNames();
   const data = (trace.data?.article.id === sel ? trace.data : undefined) ?? null;
   const view: TraceView | null =
@@ -335,6 +338,7 @@ export function NewsTrace({
         <Feed
           ctx={ctx}
           filters={{ range, show, stage, reason }}
+          versionId={versionId}
           sel={sel}
           onShow={setShow}
           onClear={() => {
@@ -471,9 +475,11 @@ function Feed({
   onShow,
   onClear,
   onPick,
+  versionId,
 }: {
   ctx: PageCtx;
   filters: ArticleFilters;
+  versionId: string | null;
   sel: string | null;
   onShow: (s: Show) => void;
   onClear: () => void;
@@ -481,7 +487,7 @@ function Feed({
 }) {
   const t = useTranslations("signalAnalysis.research");
   const ts = useTranslations("signalAnalysis.states");
-  const q = useResearchArticles(filters);
+  const q = useResearchArticles(filters, versionId);
   const pages = q.data?.pages ?? [];
   const items = pages.flatMap((p) => p.items);
   const first = pages[0];

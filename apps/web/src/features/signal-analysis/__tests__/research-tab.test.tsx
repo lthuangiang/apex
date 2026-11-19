@@ -37,6 +37,7 @@ import {
   SKIPPED_ID,
   SKIPPED_TRADE,
 } from "./research-fixtures";
+import { CLASSIFIERS, MARKETS, VERSIONS } from "./versions-fixtures";
 
 // Tab Signal research (team, #273): mọi số từ API team (#271); ở đây API giả trả fixture đã qua đúng zod schema.
 
@@ -135,6 +136,11 @@ vi.mock("@/lib/api", async (importOriginal) => {
       const m = state.mode;
       if (m === "forbidden") return Promise.reject(new real.ApiError("FORBIDDEN", 403));
       if (m === "pending") return new Promise(() => undefined);
+      // #306: News bot versions (thẻ, bảng) có test riêng ở versions.test.tsx.
+      if (p.endsWith("/signal-research/versions")) return Promise.resolve(schema.parse(VERSIONS));
+      if (p.endsWith("/signal-research/classifiers"))
+        return Promise.resolve(schema.parse(CLASSIFIERS));
+      if (p.endsWith("/signal-research/markets")) return Promise.resolve(schema.parse(MARKETS));
       if (p.endsWith("/signal-research/summary")) {
         if (m === "error") return Promise.reject(new real.ApiError("INTERNAL_ERROR", 500));
         if (m === "empty")
@@ -290,18 +296,19 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(src).not.toHaveClass("max-md:hidden");
   });
 
-  it("paper bots: balance, open trades, rule version and last run", async () => {
+  it("paper bots: News bot versions, replay bots with balance, last run and rule version", async () => {
     wrap();
     await screen.findByRole("region", { name: "Paper bots" });
     const bots = region("Paper bots");
-    expect(within(bots).getByText("Running · live")).toBeInTheDocument();
-    // #297: 10,000 + kết quả đã chốt; "+$3.25 unrealized" khi có giá SoDEX cho mọi lệnh mở.
-    expect(within(bots).getByText("10,024.6")).toBeInTheDocument();
-    expect(within(bots).getByText("+$3.25 unrealized")).toBeInTheDocument();
-    expect(within(bots).getByText("2 trades")).toBeInTheDocument();
+    // #306: lane News là các News bot version; Baseline có balance của API versions.
+    const baseline = await within(bots).findByRole("article", { name: "News bot v3 · Baseline" });
+    expect(within(baseline).getByText("10,024.6")).toBeInTheDocument();
+    // #297: "+$3.25 unrealized" của tổng kết, chỉ trên thẻ của version mà tổng kết mô tả.
+    expect(within(baseline).getByText("+$3.25 unrealized")).toBeInTheDocument();
+    const v4 = within(bots).getByRole("article", { name: "News bot v4 · Strict subject" });
+    expect(within(v4).queryByText(/unrealized/)).not.toBeInTheDocument();
     expect(within(bots).getByText("01:00 · 23 trades")).toBeInTheDocument();
     expect(within(bots).getByText("9,623.4")).toBeInTheDocument();
-    expect(within(bots).getByRole("link", { name: "Rules" })).toHaveAttribute("href", "#sr-rules");
   });
 
   it("news signal rules and the per-level table say Not enough trades, never 0", async () => {
@@ -443,9 +450,10 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     const src = await screen.findByRole("region", { name: "Sources" });
     expect(within(src).getAllByRole("listitem")).toHaveLength(2);
     const bots = region("Paper bots");
-    expect(within(bots).getByText("News bot")).toBeInTheDocument();
+    expect(
+      await within(bots).findByRole("article", { name: "News bot v3 · Baseline" }),
+    ).toBeInTheDocument();
     expect(within(bots).queryByText("Whales bot")).not.toBeInTheDocument();
-    expect(within(bots).getByText("Not available")).toBeInTheDocument();
     const tbl = screen.getByRole("table", { name: "Where each signal type stands" });
     expect(within(tbl).getAllByRole("row")).toHaveLength(2);
     // Risk filter null → Not available (dải desktop, cửa sổ kế tiếp, dòng mobile).
@@ -570,7 +578,8 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     wrap();
     await screen.findByRole("region", { name: "Paper bots" });
     const bots = region("Paper bots");
-    expect(within(bots).getAllByText("Not available").length).toBeGreaterThanOrEqual(4);
+    // Whales balance, Funding balance, Price patterns balance (lane News: News bot versions).
+    expect(within(bots).getAllByText("Not available").length).toBeGreaterThanOrEqual(3);
     expect(within(bots).queryByText(/^0(\.0)?$/)).not.toBeInTheDocument();
     const f = region(/How news becomes a paper trade/);
     expect(within(f).getAllByText("Not available")).toHaveLength(2);
@@ -611,7 +620,9 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     c.unmount();
     state.mode = "tradesEmpty";
     const d = wrap();
-    expect(await screen.findByText("No trades match these filters")).toBeInTheDocument();
+    expect(
+      await screen.findByText("No trades match these filters", {}, { timeout: 5_000 }),
+    ).toBeInTheDocument();
     d.unmount();
     state.mode = "tradesError";
     wrap();

@@ -145,9 +145,12 @@ export function ResearchTrades({
   ctx,
   assets,
   onTrace,
+  versionId = null,
 }: {
   ctx: PageCtx;
   assets: readonly string[];
+  /** #306: News bot version của danh sách; null = Baseline. */
+  versionId?: string | null;
   /** Nút Trace (#292): mở phễu ở trên trên bài của dòng này. */
   onTrace: (articleId: string) => void;
 }) {
@@ -156,7 +159,7 @@ export function ResearchTrades({
   const [f, setF] = useState<ResearchFilters>(RESEARCH_DEFAULT);
   const [open, setOpen] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const q = useResearchTrades(f, true);
+  const q = useResearchTrades(f, true, versionId);
   const items = q.data?.pages.flatMap((p) => p.items) ?? [];
   const set = (p: Partial<ResearchFilters>) => {
     setF((x) => ({ ...x, ...p }));
