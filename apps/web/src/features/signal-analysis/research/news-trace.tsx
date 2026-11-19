@@ -10,11 +10,11 @@ import {
   type ResearchDropReason,
   type ResearchFunnel,
   type ResearchRange,
-  type ResearchStage,
+  type ResearchSignalContext,
 } from "@drift/shared";
 import { RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api";
 import { useMarketNames } from "@/lib/markets";
@@ -23,9 +23,25 @@ import type { PageCtx } from "../components/signal-analysis-page";
 import { clock, count, monthDay } from "../format";
 
 import { useResearchArticles, useResearchTrace, type ArticleFilters } from "./api";
+import { ContextCard, ContextIcons, ContextPanel, type ContextPanelState } from "./context-panel";
+import { contextYesCount } from "./context-text";
 import { delay, delayLong } from "./format";
+import { DOT, FunnelBands, type BandState, type FunnelBandView, type FunnelToken } from "./funnel";
 import { LabelForm } from "./labels";
 import type { Tr } from "./text";
+import {
+  BAND_COUNT,
+  bandPhase,
+  BANDS,
+  CONTEXT_BAND,
+  CONTEXT_STEP_MS,
+  prefersReducedMotion,
+  STEP_MS,
+  traceModel,
+  useStepPlayer,
+  type BandKey,
+  type TraceModel,
+} from "./trace-player";
 import {
   articleTitle,
   assetsText,
@@ -39,31 +55,22 @@ import {
 } from "./trace-text";
 import { Na, Sub } from "./ui";
 
-// "How news becomes a paper trade" (#292, thiết kế docs/mockups/signal-research/news-trace*.html, API #291). Một phễu
-// hai chế độ: tổng của 1 ngày / 7 ngày (mặc định), và trace một bài khi chọn bài ở News feed hoặc bấm Trace ở bảng
-// Trades: chip chạy xuống từng tầng, thẻ từng bước hiện dần. prefers-reduced-motion: không chạy, hiện ngay kết quả.
-// Mọi số từ API; thiếu thì "Not available", không bao giờ 0 (quy tắc 1.8).
+// "From headline to trade" (#292, làm lại ở #343 theo docs/mockups/signal-research/redesign-full-page.html,
+// redesign-trace-live.html, redesign-trace-no-signal.html). Phễu sáng 6 tầng (tầng 4 · Context viền đứt, chỉ ghi nhận,
+// không chặn), hai chế độ: tổng của 1 ngày / 7 ngày (mặc định), và trace một bài khi chọn bài ở News feed hoặc bấm Trace
+// ở bảng Trades: chip chạy xuống từng tầng, khung Context cạnh phễu chạy hiệu ứng H1 / H2 / H3 theo snapshot của bài, thẻ
+// từng bước hiện dần. Hẹn giờ nằm ở `useStepPlayer` (trace-player.ts), hiển thị ở FunnelBands / ContextPanel, để bài mới
+// live (#345) dùng lại. prefers-reduced-motion: không chạy, hiện ngay kết quả. Mọi số từ API; thiếu thì "Not available",
+// không bao giờ 0 (quy tắc 1.8).
 
-/** Thời gian mỗi bước (thiết kế: `normal` = 950 ms). */
-export const STEP_MS = 950;
-/** Sau bước cuối (5) là kết luận. */
-const DONE = 6;
+export { CONTEXT_STEP_MS, STEP_MS };
 
 type Show = ArticleFilters["show"];
-type BandState = "total" | "pass" | "drop" | "merge" | "active" | "idle" | "skip";
 
 export interface TraceRequest {
   id: string;
   /** Tăng mỗi lần bấm Trace, kể cả cùng bài (chạy lại). */
   seq: number;
-}
-
-function reducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
 }
 
 function scrollToId(id: string, onlyBelowMd: boolean) {
@@ -75,31 +82,9 @@ function scrollToId(id: string, onlyBelowMd: boolean) {
     return;
   const el = document.getElementById(id);
   if (el === null || typeof el.scrollIntoView !== "function") return;
-  el.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+  el.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
 }
 
-// Hình học tầng desktop (thiết kế: cao 392, mỗi tầng 60 px, cách 76 px, rộng 54 → 26 %). Dưới 768 px các tầng xếp chồng,
-// rộng 100 → 60 %, nhãn và kết quả một dòng nằm trong tầng.
-const ROW = 76;
-const TOP = 4;
-const WIDTHS = [54, 47, 40, 33, 26] as const;
-// #297: tầng cuối đủ rộng cho "5 · Decide" và "Long 0 · Short 2" trên cùng một dòng.
-const MOBILE_WIDTHS = [100, 94, 88, 82, 76] as const;
-// Màu tầng: chỉ token (accent-ink → accent → pos-dot).
-const BLUES = [
-  "bg-accent-ink",
-  "bg-[color-mix(in_srgb,var(--accent-ink)_50%,var(--accent))]",
-  "bg-accent",
-  "bg-[color-mix(in_srgb,var(--accent)_82%,var(--surface))]",
-  "bg-pos-dot",
-] as const;
-const BAND_BG: Record<Exclude<BandState, "total" | "pass">, string> = {
-  drop: "bg-neg",
-  merge: "bg-ink-2",
-  active: "bg-accent",
-  skip: "bg-[color-mix(in_srgb,var(--ink)_92%,var(--accent))]",
-  idle: "bg-[color-mix(in_srgb,var(--ink)_84%,var(--accent))]",
-};
 const CHIP: Record<ChipTone, string> = {
   pos: "bg-pos-bg text-pos",
   neg: "bg-neg-bg text-neg-ink",
@@ -183,6 +168,95 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
   };
 }
 
+/* ---------------------------------------------------------------- Bands */
+
+/** Tầng ở chế độ tổng: số bài trong tầng, chú thích (rê chuột), bấm để lọc feed. Tầng Context: "records only". */
+function totalBands(
+  tot: Totals,
+  t: Tr,
+  stage: string | null,
+  onBand: (i: number) => void,
+): FunnelBandView[] {
+  return BANDS.map((key, n) => {
+    const label = t("trace.band", { n: n + 1, name: t(`trace.stages.${key}`) });
+    if (key === "context")
+      return { key, label, note: t("context.recordsOnly"), state: "total" as const };
+    const i = STAGES.indexOf(key);
+    const name = t(`trace.stages.${key}`);
+    return {
+      key,
+      label,
+      note: tot.counts[i] ?? t("na"),
+      state: "total" as const,
+      title: tot.notes[i] ?? undefined,
+      onClick: () => {
+        onBand(i);
+      },
+      pressed: stage === key,
+      ariaLabel: t("trace.bandAria", { name }),
+    };
+  });
+}
+
+interface TraceBand {
+  key: BandKey;
+  state: BandState;
+  /** Bước API của tầng (null với Context). */
+  step: StepView | null;
+}
+
+/** Trạng thái 6 tầng khi trace. Chưa có dữ liệu: chỉ tầng 1 sáng ("Article arriving…"). */
+function traceBands(view: TraceView | null, model: TraceModel | null, step: number): TraceBand[] {
+  return BANDS.map((key, i) => {
+    const n = i + 1;
+    if (view === null || model === null)
+      return { key, state: n === 1 && step > 0 ? "active" : "idle", step: null };
+    const api = model.apiIndex(n);
+    const s = api === null ? null : (view.steps[api] ?? null);
+    const phase = bandPhase(n, step, model.stop);
+    if (phase !== "done") return { key, state: phase, step: s };
+    if (key === "context")
+      return { key, state: model.reach === "recorded" ? "pass" : "skip", step: null };
+    return {
+      key,
+      state: s?.status === "drop" ? "drop" : s?.status === "merge" ? "merge" : "pass",
+      step: s,
+    };
+  });
+}
+
+function traceBandViews(bands: TraceBand[], model: TraceModel | null, t: Tr): FunnelBandView[] {
+  const context = model?.context ?? null;
+  return bands.map((b, i) => {
+    const label = t("trace.band", { n: i + 1, name: t(`trace.stages.${b.key}`) });
+    if (b.key === "context") {
+      const lit = context !== null && (b.state === "pass" || b.state === "active");
+      return {
+        key: b.key,
+        label,
+        state: b.state,
+        note:
+          b.state === "pass" && context !== null
+            ? t("context.yesOf", { n: contextYesCount(context) })
+            : b.state === "skip" && model?.reach === "missing"
+              ? t("context.notRecorded")
+              : null,
+        extra: lit ? <ContextIcons context={context} /> : undefined,
+      };
+    }
+    const short = b.step?.band ?? "";
+    const note =
+      b.state === "drop"
+        ? t("trace.dropNote", { text: short })
+        : b.state === "merge"
+          ? t("trace.mergeNote", { text: short })
+          : b.state === "pass"
+            ? short
+            : null;
+    return { key: b.key, label, state: b.state, note: note === "" ? null : note };
+  });
+}
+
 /* ---------------------------------------------------------------- Component */
 
 export function NewsTrace({
@@ -207,40 +281,35 @@ export function NewsTrace({
   const t = useTranslations("signalAnalysis.research");
   const ts = useTranslations("signalAnalysis.states");
   const [show, setShow] = useState<Show>("all");
-  const [stage, setStage] = useState<ResearchStage | null>(null);
+  const [stage, setStage] = useState<(typeof STAGES)[number] | null>(null);
   const [reason, setReason] = useState<ResearchDropReason | null>(null);
   const [sel, setSel] = useState<string | null>(null);
-  const [run, setRun] = useState(0);
-  const [step, setStep] = useState(DONE);
 
   const trace = useResearchTrace(sel, versionId);
   const names = useMarketNames();
   const data = (trace.data?.article.id === sel ? trace.data : undefined) ?? null;
   const view: TraceView | null =
     data === null ? null : traceView(data, ctx.tz, t, (m) => names.info(m)?.tickSize ?? null);
-  const stop = view?.stop ?? STAGES.length;
-
-  // Mỗi bước một timeout; dừng khi tới kết luận. Chưa có dữ liệu trace thì đứng ở "Article arriving…".
-  useEffect(() => {
-    if (sel === null || view === null || step > stop) return;
-    const id = setTimeout(() => {
-      setStep((s) => s + 1);
-    }, STEP_MS);
-    return () => {
-      clearTimeout(id);
-    };
-  }, [sel, run, view, step, stop]);
+  const model = view === null || data === null ? null : traceModel(view, data.context);
+  const stop = model?.stop ?? BAND_COUNT;
+  const recorded = model?.reach === "recorded";
+  // Bước 4 giữ lâu hơn chỉ khi có hiệu ứng để xem.
+  const duration = useCallback(
+    (n: number) => (n === CONTEXT_BAND && recorded ? CONTEXT_STEP_MS : STEP_MS),
+    [recorded],
+  );
+  const player = useStepPlayer({ ready: sel !== null && view !== null, stop, duration });
+  const { step, run } = player;
 
   const start = (id: string, scroll: "funnel" | "trace") => {
     setSel(id);
-    setRun((r) => r + 1);
-    setStep(reducedMotion() ? DONE : 0);
+    player.play();
     if (scroll === "funnel") scrollToId("sr-funnel", false);
     else scrollToId("sr-trace", true);
   };
   const back = () => {
     setSel(null);
-    setStep(DONE);
+    player.reset();
   };
 
   // Nút Trace ở bảng Trades: cuộn tới phễu và chạy bài đó.
@@ -255,28 +324,12 @@ export function NewsTrace({
   const tot = totals(funnel, t);
   const pos = Math.min(step, stop);
   const finished = view !== null && step > stop;
-  const bandState = (i: number): BandState => {
-    if (!tracing) return "total";
-    const n = i + 1;
-    if (view === null) return n === 1 && step > 0 ? "active" : "idle";
-    if (n > stop) return step > stop ? "skip" : "idle";
-    if (n < pos) return "pass";
-    if (n === pos) {
-      if (step <= n) return "active";
-      const s = view.steps[i]?.status;
-      return s === "drop" ? "drop" : s === "merge" ? "merge" : "pass";
-    }
-    return "idle";
-  };
+  const tb = traceBands(view, model, step);
 
-  const rangeLabel = t(`trace.range.${range}`);
   let verdict: string;
-  let verdictTone = "text-on-ink-accent";
-  let verdictMobile: string | null = null;
-  if (!tracing) {
-    verdict = t("trace.verdict.idle");
-    verdictMobile = t("trace.verdict.idleMobile");
-  } else if (view === null)
+  let verdictTone = "text-ink-2";
+  if (!tracing) verdict = t("trace.verdict.idle");
+  else if (view === null)
     verdict = trace.isError ? t("trace.verdict.error") : t("trace.verdict.arriving");
   else if (!finished)
     verdict =
@@ -284,12 +337,11 @@ export function NewsTrace({
         ? t("trace.verdict.arriving")
         : t("trace.verdict.step", {
             n: pos,
-            name: t(`trace.stages.${STAGES[pos - 1] ?? "collect"}`),
+            name: t(`trace.stages.${BANDS[pos - 1] ?? "collect"}`),
           });
   else {
     verdict = `${view.verdict}${t("trades.sep")}${view.cost}`;
-    if (view.end === "drop") verdictTone = "text-on-ink-neg";
-    else if (view.end === "traded") verdictTone = "text-on-ink-pos";
+    if (view.end === "traded") verdictTone = "text-pos";
   }
 
   const onBand = (i: number) => {
@@ -302,11 +354,47 @@ export function NewsTrace({
     setStage(null);
   };
 
+  const bands = tracing ? traceBandViews(tb, model, t) : totalBands(tot, t, stage, onBand);
+  let token: FunnelToken | null = null;
+  if (tracing && view !== null) {
+    const end = finished ? view.end : null;
+    token = {
+      pos,
+      visible: step > 0,
+      tone:
+        end === "drop"
+          ? "dropped"
+          : end === "traded"
+            ? "traded"
+            : end === "merge"
+              ? "merged"
+              : "moving",
+      text:
+        end === "drop"
+          ? t("trace.token.out", { assets: view.assets })
+          : end === "traded"
+            ? t("trace.token.traded", { assets: view.assets })
+            : end === "merge"
+              ? t("trace.token.merged", { assets: view.assets })
+              : view.assets,
+    };
+  }
+
+  const panelState: ContextPanelState =
+    model === null
+      ? "waiting"
+      : model.reach === "recorded"
+        ? pos >= CONTEXT_BAND
+          ? "shown"
+          : "waiting"
+        : model.reach;
+  const asset = data?.article.asset ?? data?.context?.market ?? view?.assets ?? "";
+
   return (
     <section
       id="sr-funnel"
       aria-labelledby="sr-fn-title"
-      className="flex min-w-0 scroll-mt-4 flex-col gap-3 rounded-card bg-surface p-4 shadow-card md:gap-[18px] md:p-6"
+      className="flex min-w-0 scroll-mt-4 flex-col gap-3 rounded-card bg-surface p-4 shadow-card md:gap-3.5 md:px-6 md:py-5"
     >
       <div className="flex flex-col items-start gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
         {/* #342: "From headline to trade" + phụ đề; khoảng thời gian nằm ở nhóm nút 1 day / 7 days bên cạnh. */}
@@ -333,124 +421,94 @@ export function NewsTrace({
             </p>
           )}
         </div>
-        <div
-          role="group"
-          aria-label={t("trace.period")}
-          className="flex gap-1 rounded-control border border-border bg-surface-2 p-1"
-        >
-          {RESEARCH_RANGES.map((r) => {
-            const on = r === range;
-            return (
-              <button
-                key={r}
-                type="button"
-                aria-pressed={on}
-                onClick={() => {
-                  onRange(r);
-                }}
-                className={`min-h-9 cursor-pointer rounded-lg border-0 px-3.5 text-[13px] font-extrabold ${
-                  on ? "bg-surface text-ink shadow-card" : "bg-transparent text-muted"
-                }`}
-              >
-                {t(`trace.periods.${r}`)}
-              </button>
-            );
-          })}
-        </div>
+        {tracing ? (
+          <div className="flex flex-none gap-2 max-md:w-full">
+            <button
+              type="button"
+              onClick={back}
+              className="min-h-11 flex-1 cursor-pointer rounded-control border border-border-input bg-surface px-3.5 text-[13px] font-extrabold text-ink"
+            >
+              {t("trace.back")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                start(sel, "trace");
+              }}
+              className="min-h-11 flex-1 cursor-pointer rounded-control border border-accent bg-accent px-4 text-[13px] font-extrabold text-white"
+            >
+              {t("trace.replay")}
+            </button>
+          </div>
+        ) : (
+          <div
+            role="group"
+            aria-label={t("trace.period")}
+            className="flex gap-1 rounded-control border border-border bg-surface-2 p-1"
+          >
+            {RESEARCH_RANGES.map((r) => {
+              const on = r === range;
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => {
+                    onRange(r);
+                  }}
+                  className={`min-h-9 cursor-pointer rounded-lg border-0 px-3.5 text-[13px] font-extrabold ${
+                    on ? "bg-surface text-ink shadow-card" : "bg-transparent text-muted"
+                  }`}
+                >
+                  {t(`trace.periods.${r}`)}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      <div className="flex flex-wrap items-start gap-6">
-        <Feed
-          ctx={ctx}
-          filters={{ range, show, stage, reason }}
-          versionId={versionId}
-          sel={sel}
-          onShow={setShow}
-          onClear={() => {
-            setStage(null);
-            setReason(null);
-          }}
-          onPick={(id) => {
-            start(id, "trace");
-          }}
-        />
+      {tracing ? <TraceHead article={data?.article ?? null} tz={ctx.tz} /> : null}
+
+      {/* Lưới 3 cột: feed rộng bằng ô giải thích đầu; phễu (và khung Context khi trace) chiếm 2 cột. Điện thoại: phễu
+          trước, feed sau (mockup 390). */}
+      <div className="grid min-w-0 gap-3 md:grid-cols-3">
+        <div className="relative min-w-0 max-md:order-2 md:min-h-[300px]">
+          <div className="flex min-w-0 flex-col md:absolute md:inset-0">
+            <Feed
+              ctx={ctx}
+              filters={{ range, show, stage, reason }}
+              versionId={versionId}
+              sel={sel}
+              onShow={setShow}
+              onClear={() => {
+                setStage(null);
+                setReason(null);
+              }}
+              onPick={(id) => {
+                start(id, "trace");
+              }}
+            />
+          </div>
+        </div>
 
         <div
           id="sr-trace"
-          className="flex min-w-0 flex-[999_1_640px] scroll-mt-4 flex-col gap-4 max-md:border-t max-md:border-border max-md:pt-1"
+          className="flex min-w-0 scroll-mt-4 flex-col gap-3 max-md:order-1 md:col-span-2 xl:flex-row xl:items-stretch"
         >
-          <p className="m-0 mt-2 text-xs text-muted md:hidden">{t("trace.mobileHint")}</p>
-          <div className="flex flex-col gap-3 md:min-h-11 md:flex-row md:items-start md:justify-between">
-            {tracing ? (
-              <TraceHead article={data?.article ?? null} tz={ctx.tz} />
-            ) : (
-              <p className="m-0 max-w-[560px] text-[13px] text-ink-2">
-                {t("trace.totalsHint", { range: rangeLabel })}
-              </p>
-            )}
-            {tracing ? (
-              <div className="flex flex-none gap-2">
-                <button
-                  type="button"
-                  onClick={back}
-                  className="min-h-11 flex-1 cursor-pointer rounded-control border border-border-input bg-surface px-3.5 text-[13px] font-extrabold text-ink"
-                >
-                  {t("trace.back")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    start(sel, "trace");
-                  }}
-                  className="min-h-11 flex-1 cursor-pointer rounded-control border border-accent bg-accent px-4 text-[13px] font-extrabold text-white"
-                >
-                  {t("trace.replay")}
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="overflow-hidden rounded-tile bg-ink px-3 pb-4 pt-3.5 md:rounded-[16px] md:px-4 md:pb-[22px] md:pt-5">
-            <div className="relative flex flex-col items-center gap-0.5 md:block md:h-[392px]">
-              <div
-                aria-hidden="true"
-                className="absolute inset-y-0 left-1/2 -ml-px w-0.5 bg-[linear-gradient(var(--ink-2)_50%,transparent_50%)] bg-[length:2px_20px] max-md:hidden motion-safe:animate-[sr-spark_1.2s_linear_infinite]"
-              />
-              {STAGES.map((s, i) => (
-                <Band
-                  key={s}
-                  i={i}
-                  state={bandState(i)}
-                  tracing={tracing}
-                  pressed={!tracing && stage === s}
-                  count={tot.counts[i] ?? null}
-                  note={tot.notes[i] ?? null}
-                  step={view?.steps[i] ?? null}
-                  onClick={() => {
-                    onBand(i);
-                  }}
-                />
-              ))}
-              {tracing && view !== null ? (
-                <Token view={view} pos={pos} step={step} finished={finished} />
-              ) : null}
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-[14px] border border-border bg-surface-2 px-3 py-3.5 md:px-4">
+            <div className="flex flex-1 flex-col justify-center">
+              <FunnelBands bands={bands} tracing={tracing} token={token} />
             </div>
             <p
               role="status"
-              className={`m-0 mt-2 text-center text-[13px] font-extrabold md:text-sm ${verdictTone}`}
+              className={`m-0 mt-1.5 text-center text-xs font-extrabold md:text-[13px] ${verdictTone}`}
             >
-              {verdictMobile === null ? (
-                verdict
-              ) : (
-                <>
-                  <span className="md:hidden">{verdictMobile}</span>
-                  <span className="max-md:hidden">{verdict}</span>
-                </>
-              )}
+              {verdict}
             </p>
             {tracing ? null : (
-              <p className="m-0 mt-1 text-center text-xs text-on-ink-2">
-                {t("trace.unitNote", { range: rangeLabel })}
+              <p className="m-0 text-center text-xs text-muted">
+                {t("trace.unitNote", { range: t(`trace.range.${range}`) })}
               </p>
             )}
             {tracing &&
@@ -469,26 +527,63 @@ export function NewsTrace({
               </div>
             ) : null}
           </div>
-
           {tracing ? (
-            <Steps
-              key={`${sel}:${String(run)}`}
-              steps={view?.steps ?? []}
-              states={STAGES.map((_, i) => bandState(i))}
-              scoreExtra={labelBox(data, ctx.tz)}
+            <ContextPanel
+              state={panelState}
+              context={data?.context ?? null}
+              asset={asset}
+              tz={ctx.tz}
+              playKey={`${sel}:${String(run)}`}
+              className="xl:w-[300px] xl:flex-none"
             />
           ) : (
-            <TotalsPanel
-              funnel={funnel}
-              range={range}
-              reasons={tot.reasons}
-              reason={reason}
-              onReason={onReason}
-            />
+            <p className="m-0 text-xs leading-normal text-ink-2 md:hidden">
+              {t.rich("context.mobileHint", { b: (c) => <strong>{c}</strong> })}
+            </p>
           )}
         </div>
       </div>
+
+      {tracing ? (
+        <Steps
+          key={`${sel}:${String(run)}`}
+          bands={tb}
+          context={data?.context ?? null}
+          asset={asset}
+          tz={ctx.tz}
+          scoreExtra={labelBox(data, ctx.tz)}
+        />
+      ) : (
+        <>
+          <Explainers />
+          <TotalsPanel
+            funnel={funnel}
+            range={range}
+            reasons={tot.reasons}
+            reason={reason}
+            onReason={onReason}
+          />
+        </>
+      )}
     </section>
+  );
+}
+
+/** Ba ô giải thích bước 4 dưới phễu (chế độ tổng, từ 768 px; điện thoại có một dòng ngắn dưới phễu). */
+function Explainers() {
+  const t = useTranslations("signalAnalysis.research.page.drawer");
+  const b = (c: ReactNode) => <strong className="text-ink">{c}</strong>;
+  return (
+    <div className="grid gap-3 max-md:hidden md:grid-cols-3">
+      {(["context1", "context2", "context3"] as const).map((k) => (
+        <p
+          key={k}
+          className="m-0 rounded-tile border border-border px-3.5 py-3 text-[13px] leading-normal text-ink-2"
+        >
+          {t.rich(k, { b })}
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -521,14 +616,14 @@ function Feed({
   const filterLabel =
     stage !== null
       ? t("trace.stoppedAt", {
-          n: STAGES.indexOf(stage) + 1,
+          n: BANDS.indexOf(stage) + 1,
           name: t(`trace.stages.${stage}`),
         })
       : reason !== null
         ? t("trace.reasonFilter", { label: t(`trace.reasonLabels.${reason}`) })
         : null;
   return (
-    <div className="flex min-w-0 flex-[1_1_340px] flex-col gap-2.5">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="m-0 mt-1 text-sm font-extrabold md:mt-0 md:text-[15px]">
           {t("trace.feed")}
@@ -594,10 +689,10 @@ function Feed({
       ) : items.length === 0 ? (
         <p className="m-0 py-2 text-sm text-muted">{t("trace.feedEmpty")}</p>
       ) : (
-        // #297: chiều cao cố định (≈ khối phễu), cuộn trong khung; "Load more" ở cuối khung, 20 bài mỗi trang.
+        // #297 / #343: desktop cao bằng khối phễu (ô lưới), cuộn trong khung; "Load more" ở cuối khung, 20 bài mỗi trang.
         <div
           data-testid="sr-feed-scroll"
-          className="-mx-1 flex max-h-[420px] flex-col gap-2 overflow-y-auto overscroll-contain px-1 py-0.5 md:max-h-[470px]"
+          className="-mx-1 flex max-h-[420px] flex-col gap-2 overflow-y-auto overscroll-contain px-1 py-0.5 md:max-h-none md:min-h-0 md:flex-1"
         >
           <ul
             aria-busy={q.isPlaceholderData}
@@ -709,153 +804,6 @@ function TraceHead({ article, tz }: { article: ResearchArticle | null; tz: strin
   );
 }
 
-/* ---------------------------------------------------------------- Funnel bands */
-
-function Band({
-  i,
-  state,
-  tracing,
-  pressed,
-  count: countText,
-  note,
-  step,
-  onClick,
-}: {
-  i: number;
-  state: BandState;
-  tracing: boolean;
-  pressed: boolean;
-  count: string | null;
-  note: string | null;
-  step: StepView | null;
-  onClick: () => void;
-}) {
-  const t = useTranslations("signalAnalysis.research");
-  const name = t(`trace.stages.${STAGES[i] ?? "collect"}`);
-  const w = WIDTHS[i] ?? 26;
-  const bg = state === "total" || state === "pass" ? (BLUES[i] ?? BLUES[0]) : BAND_BG[state];
-  const showNote = state === "total" || state === "pass" || state === "drop" || state === "merge";
-  const short = step?.short ?? "";
-  const noteText =
-    state === "total"
-      ? note
-      : state === "drop"
-        ? t("trace.dropNote", { text: short })
-        : state === "merge"
-          ? t("trace.mergeNote", { text: short })
-          : short;
-  const mobileText =
-    state === "total" ? countText : state === "drop" ? t("trace.out") : showNote ? short : "";
-  const vars = {
-    "--top": `${String(TOP + i * ROW)}px`,
-    "--w": `${String(w)}%`,
-    "--mw": `${String(MOBILE_WIDTHS[i] ?? 60)}%`,
-    "--side": `${String(50 + w / 2 + 2)}%`,
-  } as CSSProperties;
-  const labelTone =
-    state === "idle" || state === "skip"
-      ? "text-on-ink-2/60"
-      : state === "drop"
-        ? "md:text-on-ink-neg text-white"
-        : "text-white";
-  const noteTone =
-    state === "total"
-      ? "text-on-ink-accent"
-      : state === "drop"
-        ? "text-on-ink-neg-2"
-        : state === "merge"
-          ? "text-on-ink-2"
-          : "text-on-ink-pos";
-  return (
-    <div
-      style={vars}
-      className="relative h-11 w-[var(--mw)] md:absolute md:inset-x-0 md:top-[var(--top)] md:h-[60px] md:w-auto"
-    >
-      <button
-        type="button"
-        disabled={tracing}
-        aria-label={tracing ? name : t("trace.bandAria", { name })}
-        aria-pressed={tracing ? undefined : pressed}
-        onClick={onClick}
-        style={{ clipPath: "polygon(0 0, 100% 0, 95% 100%, 5% 100%)" }}
-        className={`absolute inset-0 flex items-center justify-center border-0 p-0 text-sm font-extrabold whitespace-nowrap text-white transition-[background-color,transform,filter] duration-300 md:left-1/2 md:right-auto md:w-[var(--w)] md:-translate-x-1/2 ${bg} ${
-          tracing ? "cursor-default" : "cursor-pointer hover:brightness-110"
-        } ${state === "active" || pressed ? "md:scale-x-[1.04] md:scale-y-[1.04]" : ""} ${
-          state === "active" ? "motion-safe:animate-[sr-glow_1s_ease-in-out_infinite]" : ""
-        } ${pressed ? "outline outline-[3px] -outline-offset-[3px] outline-white" : ""} disabled:opacity-100`}
-      >
-        {state === "total" ? <span className="max-md:hidden">{countText ?? t("na")}</span> : null}
-      </button>
-      <span
-        className={`pointer-events-none absolute left-[22px] top-1/2 -translate-y-1/2 text-[13px] font-extrabold whitespace-nowrap md:left-auto md:right-[var(--side)] md:text-right md:text-sm ${labelTone}`}
-      >
-        {t("trace.band", { n: i + 1, name })}
-      </span>
-      <span
-        className={`pointer-events-none absolute right-[22px] top-1/2 max-w-[52%] -translate-y-1/2 truncate text-right text-[13px] font-semibold md:hidden ${
-          state === "total" ? "text-on-ink-pos" : noteTone
-        }`}
-      >
-        {mobileText ?? t("na")}
-      </span>
-      {showNote ? (
-        <span
-          className={`pointer-events-none absolute right-0 top-3 left-[var(--side)] text-[13px] leading-[1.35] font-bold max-md:hidden motion-safe:animate-[sr-slide_.4s_ease-out] ${noteTone}`}
-        >
-          {noteText ?? t("na")}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function Token({
-  view,
-  pos,
-  step,
-  finished,
-}: {
-  view: TraceView;
-  pos: number;
-  step: number;
-  finished: boolean;
-}) {
-  const t = useTranslations("signalAnalysis.research");
-  const dropped = finished && view.end === "drop";
-  const traded = finished && view.end === "traded";
-  const merged = finished && view.end === "merge";
-  const top = pos === 0 ? -48 : TOP + (pos - 1) * ROW + 12;
-  const text = dropped
-    ? t("trace.token.out", { assets: view.assets })
-    : traded
-      ? t("trace.token.traded", { assets: view.assets })
-      : merged
-        ? t("trace.token.merged", { assets: view.assets })
-        : view.assets;
-  const style: CSSProperties = {
-    top: `${String(dropped ? top + 30 : top)}px`,
-    left: dropped ? "calc(50% + 46px)" : "50%",
-    transform: `translateX(-50%)${dropped ? " rotate(-4deg)" : ""}`,
-    opacity: step === 0 ? 0 : 1,
-  };
-  const tone = dropped
-    ? "border-on-ink-neg bg-neg text-white"
-    : traded
-      ? "border-on-ink-pos bg-pos-dot text-white"
-      : merged
-        ? "border-on-ink-2 bg-ink-2 text-white"
-        : "border-on-ink-accent bg-surface text-ink";
-  return (
-    <div
-      aria-hidden="true"
-      style={style}
-      className={`absolute z-[2] max-w-[220px] truncate rounded-full border-2 px-3.5 py-2 text-[13px] font-extrabold whitespace-nowrap shadow-float transition-[top,left,transform,background-color,border-color,color,opacity] duration-700 ease-[cubic-bezier(.65,0,.35,1)] max-md:hidden ${tone}`}
-    >
-      {text}
-    </div>
-  );
-}
-
 /* ---------------------------------------------------------------- Step cards */
 
 /** #306: hộp gắn nhãn trên thẻ Score khi bài gắn nhãn được (trace không ẩn kết quả lệnh, DEC-333). */
@@ -874,77 +822,88 @@ function labelBox(data: ResearchArticleTrace | null, tz: string): ReactNode {
 }
 
 function Steps({
-  steps,
-  states,
+  bands,
+  context,
+  asset,
+  tz,
   scoreExtra = null,
 }: {
-  steps: StepView[];
-  states: BandState[];
+  bands: TraceBand[];
+  context: ResearchSignalContext | null;
+  asset: string;
+  tz: string;
   /** Thêm vào cuối thẻ Score (hộp gắn nhãn, #306). */
   scoreExtra?: ReactNode;
 }) {
   const t = useTranslations("signalAnalysis.research");
-  const visible = steps
-    .map((s, i) => ({ s, i, state: states[i] }))
-    .filter((x) => x.state === "pass" || x.state === "drop" || x.state === "merge");
+  const visible = bands
+    .map((b, i) => ({ b, n: i + 1 }))
+    .filter(
+      ({ b }) =>
+        (b.state === "pass" || b.state === "drop" || b.state === "merge") &&
+        (b.key !== "context" || context !== null),
+    );
   if (visible.length === 0) return null;
   return (
-    <ol aria-label={t("trace.steps")} className="m-0 flex list-none flex-col gap-2 p-0 md:gap-2.5">
-      {visible.map(({ s, i, state }) => {
-        const drop = state === "drop";
-        const merge = state === "merge";
+    <ol
+      aria-label={t("trace.steps")}
+      className="m-0 grid list-none grid-cols-1 items-start gap-2 p-0 md:grid-cols-3 md:gap-2.5"
+    >
+      {visible.map(({ b, n }) => {
+        if (b.key === "context" && context !== null)
+          return (
+            <li
+              key={b.key}
+              className="rounded-tile border-2 border-accent bg-surface p-3 motion-safe:animate-[sr-reveal_.45s_cubic-bezier(.2,.8,.2,1)_both] md:col-span-3 md:rounded-[14px] md:p-4"
+            >
+              <ContextCard context={context} asset={asset} tz={tz} />
+            </li>
+          );
+        const s = b.step;
+        if (s === null) return null;
+        const drop = b.state === "drop";
+        const merge = b.state === "merge";
         return (
           <li
-            key={s.key}
-            className={`rounded-tile border bg-surface p-3 shadow-card motion-safe:animate-[sr-reveal_.45s_cubic-bezier(.2,.8,.2,1)_both] md:rounded-[14px] md:px-4 md:py-3.5 ${
-              drop ? "border-neg-border" : "border-border"
-            }`}
+            key={b.key}
+            className="rounded-tile border border-border bg-surface p-3 motion-safe:animate-[sr-reveal_.45s_cubic-bezier(.2,.8,.2,1)_both] md:px-3.5"
           >
-            <div className="flex items-center gap-2 md:gap-2.5">
+            <div className="flex items-center gap-2">
               <span
                 aria-hidden="true"
-                className={`inline-flex size-6 flex-none items-center justify-center rounded-full text-xs font-extrabold text-white md:size-7 md:text-[13px] ${
-                  drop ? "bg-neg" : (BLUES[i] ?? BLUES[0])
+                className={`inline-flex size-6 flex-none items-center justify-center rounded-full text-xs font-extrabold ${
+                  drop || merge ? "bg-bg text-ink-2" : DOT[b.key]
                 }`}
               >
-                {i + 1}
+                {n}
               </span>
-              <h4 className="m-0 flex-1 text-sm font-extrabold md:text-[15px]">
-                <span className="sr-only">{i + 1}. </span>
+              <h4 className="m-0 flex-1 text-sm font-extrabold">
+                <span className="sr-only">{n}. </span>
                 {t(`trace.stages.${s.key}`)}
               </h4>
               <span
-                className={`flex-none rounded-full px-2 py-[3px] text-xs font-extrabold md:px-2.5 ${
-                  drop
-                    ? "bg-neg-bg text-neg-ink"
-                    : merge
-                      ? "bg-bg text-ink-2"
-                      : "bg-pos-bg text-pos"
+                className={`flex-none rounded-full px-2 py-0.5 text-[11px] font-extrabold ${
+                  drop || merge ? "bg-bg text-ink-2" : "bg-pos-bg text-pos"
                 }`}
               >
                 {t(`trace.status.${drop ? "drop" : merge ? "merge" : "pass"}`)}
               </span>
             </div>
             {s.summary === "" ? null : (
-              <p className="m-0 mt-2 text-[13px] text-ink-2 md:ml-[38px]">{s.summary}</p>
+              <p className="m-0 mt-1.5 text-xs leading-normal text-ink-2">{s.summary}</p>
             )}
             {s.rows.length === 0 ? null : (
-              <dl className="m-0 mt-2 flex flex-col gap-1 text-[13px] md:ml-[38px] md:gap-[5px]">
+              <dl className="m-0 mt-2 flex flex-col gap-1 text-xs">
                 {s.rows.map((r) => (
-                  <div
-                    key={r.label}
-                    className="flex justify-between gap-3 md:grid md:grid-cols-[minmax(0,170px)_minmax(0,1fr)] md:gap-3.5"
-                  >
+                  <div key={r.label} className="flex justify-between gap-3">
                     <dt className="text-muted">{r.label}</dt>
-                    <dd className="m-0 text-right font-bold text-ink md:text-left">
-                      {r.value ?? <Na />}
-                    </dd>
+                    <dd className="m-0 text-right font-bold text-ink">{r.value ?? <Na />}</dd>
                   </div>
                 ))}
               </dl>
             )}
             {s.key === "score" && scoreExtra !== null ? (
-              <div className="mt-3 md:ml-[38px]">{scoreExtra}</div>
+              <div className="mt-3">{scoreExtra}</div>
             ) : null}
           </li>
         );

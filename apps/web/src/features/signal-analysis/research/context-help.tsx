@@ -41,7 +41,7 @@ export function ContextHelp({
   backfilled: ResearchContextSummary | null;
   picked: ResearchVersion | null;
 }) {
-  const t = useTranslations("signalAnalysis.research.context");
+  const t = useTranslations("signalAnalysis.research.contextHelp");
   const tn = useTranslations("signalAnalysis.research");
   const tv = useTranslations("signalAnalysis.research.versions");
   const [source, setSource] = useState<ContextSource>("live");
@@ -147,7 +147,7 @@ export function ContextHelp({
 }
 
 function Table({ c }: { c: ResearchContextSummary }) {
-  const t = useTranslations("signalAnalysis.research.context");
+  const t = useTranslations("signalAnalysis.research.contextHelp");
   const min = c.minClosedPerGroup;
   const cols = [
     "colQuestion",
@@ -248,7 +248,7 @@ function Table({ c }: { c: ResearchContextSummary }) {
 }
 
 function StatusSub({ q }: { q: ResearchContextQuestion }) {
-  const t = useTranslations("signalAnalysis.research.context");
+  const t = useTranslations("signalAnalysis.research.contextHelp");
   if (q.status === "collecting") {
     const w = count(q.needWith);
     const wo = count(q.needWithout);

@@ -173,3 +173,134 @@
     background-position: 0 40px;
   }
 }
+
+/*
+ * Signal research › bước 4 · Context (#343, docs/mockups/signal-research/redesign-trace-live.html,
+ * redesign-context-effects.html). Chỉ dùng qua `motion-safe:animate-[…]`; trạng thái gốc của phần tử là khung cuối, nên
+ * reduced motion hiện ngay khung cuối. Hiệu ứng mang thông tin ≤ 1.2 s, chạy một lần (Replay gắn lại `key`); cá voi lội
+ * nền (`sr-swim*`) 2.6 s một lượt, không che chữ, ẩn hẳn khi reduced motion (`motion-reduce:hidden`).
+ */
+@keyframes sr-whale {
+  0% {
+    transform: translate(-70px, 34px) rotate(-25deg);
+    opacity: 0;
+  }
+  45% {
+    transform: translate(0, -26px) rotate(10deg);
+    opacity: 1;
+  }
+  70% {
+    transform: translate(6px, 4px) rotate(16deg);
+  }
+  100% {
+    transform: translate(8px, 2px) rotate(0);
+    opacity: 1;
+  }
+}
+@keyframes sr-ripple {
+  0% {
+    transform: scale(0.2);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+@keyframes sr-scan {
+  0% {
+    left: -60px;
+  }
+  100% {
+    left: 100%;
+  }
+}
+@keyframes sr-away {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(50px);
+    opacity: 0.35;
+  }
+}
+@keyframes sr-tip {
+  0% {
+    transform: rotate(0);
+  }
+  100% {
+    transform: rotate(var(--tip));
+  }
+}
+@keyframes sr-wobble {
+  0% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
+  75% {
+    transform: rotate(-1deg);
+  }
+  100% {
+    transform: rotate(0);
+  }
+}
+@keyframes sr-run {
+  0% {
+    stroke-dashoffset: 120;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes sr-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes sr-sonar {
+  0% {
+    transform: scale(0.1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+@keyframes sr-swim {
+  0% {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateX(60px);
+    opacity: 0.55;
+  }
+}
+@keyframes sr-swim2 {
+  0% {
+    transform: translateX(40px) scaleX(-1);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateX(-50px) scaleX(-1);
+    opacity: 0.4;
+  }
+}

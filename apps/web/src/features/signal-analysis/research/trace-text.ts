@@ -65,10 +65,9 @@ export function reached(a: ResearchArticle, t: Tr): { text: string; tone: ChipTo
             : t("trace.chip.traded", { side: t(`sides.${a.side}`), asset: a.asset }),
         tone: "pos",
       };
-    case "dropped": {
-      const late = STAGES.indexOf(a.stage) >= 2;
-      return { text: t("trace.chip.dropped", { stage }), tone: late ? "neg" : "neutral" };
-    }
+    case "dropped":
+      // #343: "Dropped at …" luôn xám; xanh lá chỉ cho lệnh đã vào, đỏ chỉ cho lỗ / lỗi.
+      return { text: t("trace.chip.dropped", { stage }), tone: "neutral" };
     case "merged":
       // Gộp vào câu chuyện đã có không phải bị loại: màu trung tính.
       return { text: t("trace.chip.merged"), tone: "neutral" };
@@ -88,8 +87,13 @@ export type StepStatus = ResearchTraceStep["status"];
 export interface StepView {
   key: ResearchStage;
   status: StepStatus;
-  /** Một dòng trên tầng phễu. */
+  /** Một dòng kết quả của bước. */
   short: string;
+  /**
+   * #343: kết quả gọn trên tầng phễu sáng ("ETH-USD · new story", "ETF approved → Long", "4 of 4 checks"); không cắt
+   * "…", không vừa thì xuống 2 dòng.
+   */
+  band: string;
   summary: string;
   rows: Row[];
 }
@@ -342,12 +346,12 @@ function stepView(
         },
       ];
       if (drop) rows.push(droppedRow(s, t));
+      const collectShort =
+        drop && noCoin ? t("trace.short.noCoin") : t("trace.short.seen", { d: delay(d.delaySecs) });
       return {
         ...base,
-        short:
-          drop && noCoin
-            ? t("trace.short.noCoin")
-            : t("trace.short.seen", { d: delay(d.delaySecs) }),
+        short: collectShort,
+        band: collectShort,
         summary: drop && noCoin ? t("trace.summary.collectNoCoin") : t("trace.summary.collect"),
         rows,
       };
@@ -423,7 +427,16 @@ function stepView(
         }
       }
       if (drop) rows.push(droppedRow(s, t));
-      return { ...base, short, summary, rows };
+      const marketList = cands.map((c) => c.market).join(", ");
+      const band =
+        drop || story === null
+          ? drop
+            ? short
+            : marketList
+          : t(story.isNew ? "trace.short.newStory" : "trace.short.sameStory", {
+              markets: story.market,
+            });
+      return { ...base, short, band, summary, rows };
     }
     case "score": {
       const d = s.detail;
@@ -460,6 +473,8 @@ function stepView(
         if (d?.level != null) parts.push(t(`levels.${d.level}`));
         summary = t("trace.summary.score");
       }
+      // Tầng phễu: chỉ loại tin → chiều (hoặc lý do bị loại), không mức / chi phí.
+      const band = parts[0] ?? "";
       if (cost !== null) parts.push(usd4(cost));
       const rows: Row[] = [];
       if (d !== null) {
@@ -514,16 +529,18 @@ function stepView(
       }
       if (drop) rows.push(droppedRow(s, t));
       if (a.sentToClaude || u !== null) rows.push(...claudeRows(u, t));
-      return { ...base, short: parts.join(sep), summary, rows };
+      return { ...base, short: parts.join(sep), band, summary, rows };
     }
     case "filter": {
       const d = s.detail;
       const checks = d?.checks ?? [];
       const rows: Row[] = checks.map((c) => checkRow(c, market, t));
       let short: string;
+      let band: string | null = null;
       let summary: string;
       if (s.status === "merge") {
         short = t("trace.short.merged");
+        band = t("trace.status.merge");
         summary =
           s.mergeReason === "storyTooOld"
             ? t("trace.summary.mergedTooOld")
@@ -567,13 +584,12 @@ function stepView(
         if (d?.shadowTradeId != null)
           rows.push({ label: t("trace.rows.shadow"), value: t("trace.values.shadow") });
       } else {
-        short = t("trace.short.checks", {
-          passed: checks.filter((c) => c.ok).length,
-          total: checks.length,
-        });
+        const passed = checks.filter((c) => c.ok).length;
+        short = t("trace.short.checks", { passed, total: checks.length });
+        band = t("trace.bandShort.checks", { passed, total: checks.length });
         summary = t("trace.summary.filter");
       }
-      return { ...base, short, summary, rows };
+      return { ...base, short, band: band ?? short, summary, rows };
     }
     case "decide": {
       const d = s.detail;
@@ -581,6 +597,7 @@ function stepView(
         return {
           ...base,
           short: s.status === "notReached" ? "" : t("na"),
+          band: s.status === "notReached" ? "" : t("na"),
           summary: "",
           rows: [],
         };
@@ -589,6 +606,7 @@ function stepView(
       return {
         ...base,
         short: t("trace.short.trade", { side, market, size }),
+        band: t("trace.bandShort.trade", { side, size }),
         summary: t("trace.summary.decide"),
         rows: [
           { label: t("trace.rows.side"), value: t("trace.values.sideMarket", { side, market }) },

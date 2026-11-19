@@ -173,7 +173,7 @@ function ProgressCards({
   classifiers: ResearchClassifiers | undefined;
 }) {
   const t = useTranslations("signalAnalysis.research.judge");
-  const tc = useTranslations("signalAnalysis.research.context");
+  const tc = useTranslations("signalAnalysis.research.contextHelp");
   const na = useTranslations("signalAnalysis.research")("na");
   const b = (c: ReactNode) => <b>{c}</b>;
 
