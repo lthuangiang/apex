@@ -69,6 +69,7 @@ const ICONS: Record<NotificationItem["type"], { icon: LucideIcon; tone: string }
   team_invariant: { icon: UserRound, tone: "bg-bg text-ink-2" },
   team_incident: { icon: UserRound, tone: "bg-bg text-ink-2" },
   team_incident_digest: { icon: UserRound, tone: "bg-bg text-ink-2" },
+  team_sr_new_market: { icon: UserRound, tone: "bg-bg text-ink-2" },
 };
 /** Bot dừng đúng kế hoạch hoặc bot tiền ảo: không tô đỏ (DEC-180). */
 const QUIET_TONE = "bg-bg text-ink-2";

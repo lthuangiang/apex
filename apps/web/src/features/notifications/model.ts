@@ -121,6 +121,8 @@ export function targetOf(n: Pick<NotificationItem, "type" | "data">, aiDesk: boo
     case "team_incident":
     case "team_incident_digest":
       return "/admin/bot-monitor";
+    case "team_sr_new_market":
+      return "/admin/signal-analysis";
   }
 }
 

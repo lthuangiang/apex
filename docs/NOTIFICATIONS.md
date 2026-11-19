@@ -238,3 +238,12 @@ Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegr
   User page · SoDEX Debugger · Bot Monitor
   ```
 - Bot Monitor: lệch vị thế hiện ở cột Latest alert như cảnh báo "Position".
+
+### 13.3 Market SoDEX mới chưa có trong asset map Signal research (#311, DEC-TBD-sr-new-market-alert)
+
+Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegram của thành viên team bật nhóm `teamOps`). Type `team_sr_new_market`, nút "Open Signal Analysis" mở `/admin/signal-analysis`.
+
+- **Khi nào:** mỗi lần scheduler (tiến trình giữ lease) đọc danh sách perps SoDEX (`loadPerps`, đã ghi Redis `sr:markets`), market chưa từng thấy (Redis set `sr:markets:seen`) và không thuộc `STOCK_MARKET_SET`. Không thêm lời gọi SoDEX nào.
+- **Một lần cho mỗi market:** `SADD` là lời "nhận" (hai lượt chạy chồng không báo trùng); ghi outbox lỗi thì bỏ market khỏi tập để lượt sau báo lại. Lần đầu (tập chưa có, hoặc Redis mất dữ liệu) ghi toàn bộ danh sách hiện tại làm mốc, không báo.
+- **Giới hạn:** ≤ 10 market mới cùng lượt thì mỗi market một tin; nhiều hơn thì một tin tổng hợp (10 tên đầu + "and N more").
+- **Tin:** "🆕 New SoDEX market {market} is not in the Signal research asset map ({version}). Classify it as stock or crypto and bump NEWS_ASSET_MAP_VERSION." / "🆕 {n} new SoDEX markets are not in the Signal research asset map ({version}): {markets} and {k} more. Classify each as stock or crypto and bump NEWS_ASSET_MAP_VERSION." Chỉ tên market SoDEX và version asset map, không có dữ liệu người dùng.

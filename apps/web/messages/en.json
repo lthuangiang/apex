@@ -4277,7 +4277,8 @@
       "team_mcp_daily_limit": "MCP daily limit reached",
       "team_invariant": "Money invariant check",
       "team_incident": "Real-money incident",
-      "team_incident_digest": "Daily incidents"
+      "team_incident_digest": "Daily incidents",
+      "team_sr_new_market": "New SoDEX market"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
