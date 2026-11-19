@@ -545,6 +545,12 @@ describe("limits and shadow trades", () => {
       market: "SOL-USD",
     });
     expect(await filterReasons(v.id)).toEqual(["drop:LIMIT_OPEN"]);
+    // #304: giới hạn của version đi cùng event để API hiện "Limit: 1 open".
+    const [drop] = await db
+      .select()
+      .from(signalEvents)
+      .where(and(eq(signalEvents.versionId, v.id), eq(signalEvents.stage, "filter")));
+    expect(drop?.detail).toMatchObject({ maxOpenTrades: 1, maxNewTradesPerDay: null });
     const [story] = await db.select().from(signalStories).where(eq(signalStories.versionId, v.id));
     expect(story).toMatchObject({ outcome: "shadow", locked: true, tradeId: shadow?.id });
     // Watcher theo dõi lệnh shadow như lệnh thật.
@@ -555,6 +561,26 @@ describe("limits and shadow trades", () => {
       .from(signalPaperTrades)
       .where(eq(signalPaperTrades.id, shadow?.id ?? ""));
     expect(closed).toMatchObject({ status: "closed", exitReason: "take_profit", label: "shadow" });
+  });
+
+  it("#304: a shadow already open on the asset still records the version's limit on the drop", async () => {
+    await pauseBaseline();
+    const v = await newVersion("One at a time", { maxOpenTrades: 1 });
+    await insertTrade({ versionId: v.id, market: "ETH-USD", token: "ETH" });
+    const sh = await insertTrade({
+      versionId: v.id,
+      label: "shadow",
+      shadowReason: "LIMIT_OPEN",
+      market: "SOL-USD",
+      token: "SOL",
+    });
+    await run();
+    const [drop] = await db
+      .select()
+      .from(signalEvents)
+      .where(and(eq(signalEvents.versionId, v.id), eq(signalEvents.stage, "filter")));
+    expect(drop).toMatchObject({ outcome: "drop", reason: "LIMIT_OPEN" });
+    expect(drop?.detail).toMatchObject({ openShadowTradeId: sh.id, maxOpenTrades: 1 });
   });
 
   it("Max new trades per day (UTC): shadow with LIMIT_DAY", async () => {

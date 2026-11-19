@@ -2824,7 +2824,9 @@
     "signalAnalysis.research.trace.why.limitOpen",
     "signalAnalysis.research.trace.why.limitDay",
     "signalAnalysis.research.trace.why.noBalance",
-    "signalAnalysis.research.trace.why.oppositeNews"
+    "signalAnalysis.research.trace.why.oppositeNews",
+    "signalAnalysis.research.reasonsN",
+    "signalAnalysis.research.trace.reasonLabelsN"
   ],
   "beta": {
     "label": "Beta",
@@ -7962,6 +7964,10 @@
           "noBalance": "Not enough fake balance",
           "oppositeNews": "Opposite news"
         },
+        "reasonLabelsN": {
+          "limitOpen": "Limit: {n} open",
+          "limitDay": "Limit: {n} per day"
+        },
         "reasonChip": "{label} · {n}",
         "drops": "Why they dropped out",
         "dropsHint": "Click a reason to list those articles in the feed.",
@@ -8153,10 +8159,14 @@
         "newsTypeOff": "News type off in this version",
         "assetNotInVersion": "Asset not in this version",
         "levelTooLow": "Level below this version’s lowest",
-        "limitOpen": "Limit: max open trades",
-        "limitDay": "Limit: max new trades per day",
+        "limitOpen": "Limit: open trades",
+        "limitDay": "Limit: trades per day",
         "noBalance": "Not enough fake balance",
         "oppositeNews": "Opposite news on an open trade"
+      },
+      "reasonsN": {
+        "limitOpen": "Limit: {n} open",
+        "limitDay": "Limit: {n} per day"
       },
       "rules": {
         "title": "What counts as a news signal",

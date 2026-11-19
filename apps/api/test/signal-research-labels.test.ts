@@ -455,14 +455,30 @@ describe("filter reason codes of News bot versions (#303) map to API reasons", (
     OPPOSITE_NEWS: "oppositeNews",
   } as const;
 
+  /** #304: giới hạn của version lưu trong detail (dòng mới); `r-old-*` là dòng cũ không có số. */
+  const DETAIL: Partial<Record<keyof typeof CODES, object>> = {
+    LIMIT_OPEN: { maxOpenTrades: 20, maxNewTradesPerDay: null },
+    LIMIT_DAY: { maxOpenTrades: 20, maxNewTradesPerDay: 5 },
+    // Mã khác không bao giờ có N, kể cả khi detail có giới hạn.
+    NO_BALANCE: { maxOpenTrades: 20, maxNewTradesPerDay: 5 },
+  };
+
+  async function dropped(id: string, code: string, detail?: object) {
+    // Không có version prompt → không phải tín hiệu gắn nhãn được, không ảnh hưởng các test nhãn.
+    await article(id, { promptVersion: null, classification: cls, min: 30 });
+    await event(id, "understand", "pass", { detail: { market: "ETH-USD" } });
+    await event(id, "filter", "drop", {
+      reason: code,
+      storyId,
+      ...(detail === undefined ? {} : { detail }),
+    });
+  }
+
   beforeAll(async () => {
-    for (const code of Object.keys(CODES)) {
-      const id = `r-${code}`;
-      // Không có version prompt → không phải tín hiệu gắn nhãn được, không ảnh hưởng các test nhãn.
-      await article(id, { promptVersion: null, classification: cls, min: 30 });
-      await event(id, "understand", "pass", { detail: { market: "ETH-USD" } });
-      await event(id, "filter", "drop", { reason: code, storyId });
-    }
+    for (const code of Object.keys(CODES) as (keyof typeof CODES)[])
+      await dropped(`r-${code}`, code, DETAIL[code]);
+    await dropped("r-old-LIMIT_OPEN", "LIMIT_OPEN");
+    await dropped("r-old-LIMIT_DAY", "LIMIT_DAY", { maxOpenTrades: 20, maxNewTradesPerDay: 0 });
   });
 
   it("the article feed and the skipped-signal list show the mapped reason", async () => {
@@ -478,6 +494,46 @@ describe("filter reason codes of News bot versions (#303) map to API reasons", (
     const skipped = researchTradesPageSchema.parse(
       (await team.request("GET", `${base}/trades?show=skipped&limit=100`)).json(),
     );
-    expect(skipped.items.map((t) => t.skipped?.reason).sort()).toEqual(Object.values(CODES).sort());
+    expect(skipped.items.map((t) => t.skipped?.reason).sort()).toEqual(
+      [...Object.values(CODES), "limitDay", "limitOpen"].sort(),
+    );
+  });
+
+  it("limit reasons carry the version's N when stored, null (never 0) on old rows", async () => {
+    const feed = researchArticlesPageSchema.parse(
+      (await team.request("GET", `${base}/articles?show=dropped&limit=100`)).json(),
+    );
+    const limitOf = (id: string) => feed.items.find((a) => a.id === id)?.reasonLimit;
+    expect(limitOf("r-LIMIT_OPEN")).toBe(20);
+    expect(limitOf("r-LIMIT_DAY")).toBe(5);
+    expect(limitOf("r-NO_BALANCE")).toBeNull();
+    expect(limitOf("r-old-LIMIT_OPEN")).toBeNull();
+    expect(limitOf("r-old-LIMIT_DAY")).toBeNull();
+
+    const skipped = researchTradesPageSchema.parse(
+      (await team.request("GET", `${base}/trades?show=skipped&limit=100`)).json(),
+    );
+    const limits = skipped.items
+      .filter((t) => t.skipped?.reason === "limitOpen" || t.skipped?.reason === "limitDay")
+      .map((t) => `${t.skipped?.reason ?? ""}:${String(t.skipped?.limit)}`)
+      .sort();
+    expect(limits).toEqual(["limitDay:5", "limitDay:null", "limitOpen:20", "limitOpen:null"]);
+
+    const filterOf = async (id: string) => {
+      const tr = researchArticleTraceSchema.parse(
+        (await team.request("GET", `${base}/articles/${id}/trace`)).json(),
+      );
+      const f = tr.steps.find((x) => x.key === "filter");
+      return f?.key === "filter" ? f : null;
+    };
+    expect(await filterOf("r-LIMIT_OPEN")).toMatchObject({
+      status: "drop",
+      reason: "limitOpen",
+      detail: { reasonLimit: 20 },
+    });
+    expect(await filterOf("r-old-LIMIT_OPEN")).toMatchObject({
+      reason: "limitOpen",
+      detail: { reasonLimit: null },
+    });
   });
 });

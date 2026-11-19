@@ -60,7 +60,7 @@ import {
   signalStories,
 } from "./schema";
 import { loadArticleStops, rangeSince } from "./signal-research-articles";
-import { DROP, newsTypeOf } from "./signal-research-keys";
+import { DROP, newsTypeOf, reasonLimitOf } from "./signal-research-keys";
 import { classifierStatusOf, loadClassifierGates } from "./signal-research-labels";
 
 // Báo cáo Signal research (#271; hợp đồng: packages/shared/src/api/signal-research.ts, UI #273), dùng chung cho CLI của
@@ -853,6 +853,7 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
       reason,
       tpPct: tp,
       neededPct: cost === null ? null : num(cost.mul(NEWS_RULES.minTpCostMultiple)),
+      limit: reasonLimitOf(e.reason, e.detail),
     },
     retry: false,
     movedBeforePct: null,

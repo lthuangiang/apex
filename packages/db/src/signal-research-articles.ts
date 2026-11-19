@@ -25,7 +25,13 @@ import { z } from "zod";
 import type { Db } from "./client";
 import type { DbTx } from "./read-only";
 import { signalArticles, signalEvents, signalPaperTrades, signalStories } from "./schema";
-import { DROP, newsTypeOf, newsTypeOrNull, PRE_CLAUDE_REASONS } from "./signal-research-keys";
+import {
+  DROP,
+  newsTypeOf,
+  newsTypeOrNull,
+  PRE_CLAUDE_REASONS,
+  reasonLimitOf,
+} from "./signal-research-keys";
 import { loadMyLabel, signalClassifierOf } from "./signal-research-labels";
 
 // Feed bài và trace từng bài của Signal research (#291; hợp đồng packages/shared/src/api/signal-research.ts, thiết kế
@@ -86,6 +92,7 @@ function stateCte(since: Date | null, onlyId: string | null = null): SQL {
           (array_agg(e.trade_id) filter (where e.stage = 'decide' and e.outcome = 'open'))[1] as trade_id,
           (array_agg(e.outcome order by e.at desc, e.id) filter (where e.stage = 'filter'))[1] as f_out,
           (array_agg(e.reason order by e.at desc, e.id) filter (where e.stage = 'filter'))[1] as f_reason,
+          (array_agg(e.detail order by e.at desc, e.id) filter (where e.stage = 'filter'))[1] as f_detail,
           (array_agg(e.outcome order by e.at desc, e.id) filter (where e.stage = 'understand'))[1] as u_out,
           (array_agg(e.reason order by e.at desc, e.id) filter (where e.stage = 'understand'))[1] as u_reason,
           (array_agg(e.detail order by e.at desc, e.id) filter (where e.stage = 'understand' and e.outcome = 'pass'))[1] as u_detail,
@@ -147,6 +154,7 @@ interface StateRow extends Record<string, unknown> {
   code: string | null;
   trade_id: string | null;
   u_detail: unknown;
+  f_detail: unknown;
   sent_to_claude: boolean;
 }
 
@@ -236,6 +244,7 @@ function articleItem(a: ArticleRow, s: StateRow): ResearchArticle {
     stage: s.stage,
     outcome: s.outcome,
     reason: s.reason,
+    reasonLimit: s.outcome === "dropped" ? reasonLimitOf(s.code, s.f_detail) : null,
     mergeReason: s.merge_reason,
     sentToClaude: s.sent_to_claude,
     claude: usageOf(a),
@@ -565,6 +574,8 @@ function stepsOf(input: {
             level: merged ? null : levelOf(fd.level),
             checks: merged ? [] : checksOf(a, fEv),
             laterLevel: merged ? levelOf(fd.laterLevel) : null,
+            reasonLimit:
+              fEv.outcome === "drop" ? reasonLimitOf(fEv.reason, fEv.detail) : null,
             storyStartedAt:
               merged &&
               fd.storyStartedAt !== undefined &&

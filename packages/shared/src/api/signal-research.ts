@@ -324,6 +324,8 @@ export const researchSkipSchema = z.object({
   reason: z.enum(RESEARCH_DROP_REASONS),
   tpPct: z.number().nullable(),
   neededPct: z.number().nullable(),
+  /** #304: N của "Limit: N open" / "Limit: N per day" (lý do `limitOpen` / `limitDay`); null với lý do khác hoặc dòng cũ không lưu. */
+  limit: z.number().int().positive().nullable(),
 });
 
 export const researchTradeSchema = z.object({
@@ -548,6 +550,8 @@ export const researchArticleSchema = z.object({
   outcome: z.enum(RESEARCH_ARTICLE_OUTCOMES),
   /** Chỉ khi `outcome = dropped`. */
   reason: z.enum(RESEARCH_DROP_REASONS).nullable(),
+  /** #304: N của "Limit: N open" / "Limit: N per day" (lý do `limitOpen` / `limitDay`); null với lý do khác hoặc dòng cũ không lưu. */
+  reasonLimit: z.number().int().positive().nullable(),
   /** Chỉ khi `outcome = merged`. */
   mergeReason: z.enum(RESEARCH_MERGE_REASONS).nullable(),
   /** Bài đã được gửi cho Claude (kể cả bài cũ chưa có usage). */
@@ -818,6 +822,8 @@ export const researchTraceStepSchema = z.discriminatedUnion("key", [
         checks: z.array(researchTraceCheckSchema),
         /** Gộp: mức câu chuyện sau khi thêm bài này. */
         laterLevel: level.nullable(),
+        /** #304: N của "Limit: N open" / "Limit: N per day" (lý do `limitOpen` / `limitDay`); null với lý do khác hoặc dòng cũ không lưu. */
+        reasonLimit: z.number().int().positive().nullable(),
         /** Gộp `storyTooOld`: giờ bài đầu tiên được tính của câu chuyện. */
         storyStartedAt: iso.nullable(),
       })

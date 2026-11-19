@@ -1125,7 +1125,13 @@ async function decideStory(
   const blocked = limitBlock({ cfg, ...book });
   if (blocked !== null && openShadow !== undefined)
     // Đã có lệnh shadow đang mở trên token này: không mở thêm (một lệnh mỗi version × token, kể cả shadow).
-    return fail(blocked, { openShadowTradeId: openShadow.id, ...costDetail });
+    // #304: mang giới hạn của version để API hiện "Limit: N open" / "Limit: N per day".
+    return fail(blocked, {
+      openShadowTradeId: openShadow.id,
+      ...costDetail,
+      maxOpenTrades: cfg.maxOpenTrades,
+      maxNewTradesPerDay: cfg.maxNewTradesPerDay,
+    });
 
   // ── Decide: mở lệnh giấy (thật hoặc shadow) ──────────────────────────────────────────────────────────────────
   const before = await priceBefore(db, market, storyStart);
