@@ -31,12 +31,13 @@ export interface OpenPaperTrade {
 }
 
 /**
- * Lãi / lỗ chưa chốt của một lệnh đang mở = kết quả nếu đóng NGAY ở giá SoDEX gần nhất `last` (cùng công thức
- * `closeResult` khi lệnh đóng thật: lãi giá − phí vào − phí ra tính trên notional lúc ra). Không có giá → null.
+ * Lãi / lỗ chưa chốt của một lệnh đang mở = kết quả nếu đóng NGAY ở giá thoát `exitPrice` (cùng công thức `closeResult`
+ * khi lệnh đóng thật: lãi giá − phí vào − phí ra tính trên notional lúc ra). Giá thoát là bid cho Long, ask cho Short, còn
+ * mới (`exitPriceOf`, #308). Không có giá → null.
  */
-export function unrealizedUsdc(t: OpenPaperTrade, last: DecimalInput | null): Decimal | null {
-  if (last === null) return null;
-  const px = dec(last);
+export function unrealizedUsdc(t: OpenPaperTrade, exitPrice: DecimalInput | null): Decimal | null {
+  if (exitPrice === null) return null;
+  const px = dec(exitPrice);
   if (px.lte(0)) return null;
   return closeResult({
     direction: t.direction,

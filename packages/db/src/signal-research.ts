@@ -32,6 +32,8 @@ import {
   type TradeDirection,
   botVersionConfigSchema,
   type BotVersionConfig,
+  exitPriceOf,
+  type SrQuotesSnapshot,
   unrealizedUsdc,
 } from "@drift/shared";
 import {
@@ -101,33 +103,38 @@ const num = (d: Decimal | null | undefined): number | null =>
 const numOf = (s: string | null): number | null => (s === null ? null : num(dec(s)));
 const decOut = (s: string | null): string | null => (s === null ? null : dec(s).toFixed());
 /**
- * Giá SoDEX gần nhất theo market (Redis `md:last:*` của marketdata, do api truyền vào). Không truyền / thiếu market →
- * không tính lãi / lỗ chưa chốt (null), không bao giờ 0.
+ * Bid / ask SoDEX theo market (bản chụp Redis `sr:quotes` do watcher của scheduler ghi, api truyền vào; #308). Không
+ * truyền / thiếu market / giá cũ → không tính lãi / lỗ chưa chốt (null), không bao giờ 0 hay giá cũ.
  */
-export type LastPrices = (markets: readonly string[]) => Promise<Record<string, string>>;
+export type ExitQuotes = () => Promise<SrQuotesSnapshot>;
 
-/** Lãi / lỗ chưa chốt của một lệnh đang mở theo giá trong `px`; null khi đã đóng hoặc thiếu giá. */
-function openPnl(t: TradeRow, px: Readonly<Record<string, string>>): Decimal | null {
+/**
+ * Lãi / lỗ chưa chốt của một lệnh đang mở theo giá thoát thật (Long → bid, Short → ask) còn mới; null khi đã đóng, thiếu
+ * giá hoặc giá cũ hơn ngưỡng fresh (`exitPriceOf`).
+ */
+function openPnl(t: TradeRow, px: SrQuotesSnapshot, now: number): Decimal | null {
   if (t.status === "closed") return null;
-  const last = px[t.market];
+  const direction = t.direction === "short" ? "short" : "long";
   return unrealizedUsdc(
     {
-      direction: t.direction === "short" ? "short" : "long",
+      direction,
       entryPrice: t.entryPrice,
       qty: t.qty,
       sizeUsdc: t.sizeUsdc,
       entryFee: t.entryFee,
       feePct: t.feePct,
     },
-    last ?? null,
+    exitPriceOf(direction, px[t.market], now),
   );
 }
 
-async function pricesOf(prices: LastPrices | undefined, rows: readonly TradeRow[]) {
-  const markets = [...new Set(rows.filter((t) => t.status !== "closed").map((t) => t.market))];
-  if (prices === undefined || markets.length === 0) return {};
+async function pricesOf(
+  prices: ExitQuotes | undefined,
+  rows: readonly TradeRow[],
+): Promise<SrQuotesSnapshot> {
+  if (prices === undefined || !rows.some((t) => t.status !== "closed")) return {};
   try {
-    return await prices(markets);
+    return await prices();
   } catch {
     // Redis lỗi: không có giá thì không có lãi / lỗ chưa chốt (hiện "Open"), tổng kết vẫn trả về.
     return {};
@@ -296,7 +303,7 @@ export async function loadSignalResearchSummary(
   limits: SummaryLimits,
   check: () => void = () => undefined,
   range?: ResearchRange,
-  prices?: LastPrices,
+  prices?: ExitQuotes,
   versionId?: string,
 ): Promise<ResearchSummary> {
   const v = NEWS_RULES.version;
@@ -404,7 +411,7 @@ export async function loadSignalResearchSummary(
   const realized = paperBalance(
     all.flatMap((t) => (t.status === "closed" && t.resultUsdc !== null ? [t.resultUsdc] : [])),
   );
-  const openPnls = openRows.map((t) => openPnl(t, px));
+  const openPnls = openRows.map((t) => openPnl(t, px, now.getTime()));
   const unrealized =
     open === 0 || openPnls.some((x) => x === null)
       ? null
@@ -869,12 +876,7 @@ function outcomeOf(r: string | null): "tp" | "sl" | "maxHold" | "opposite" | "op
   return "open";
 }
 
-function tradeItem(
-  t: TradeRow,
-  ctx: Ctx,
-  now: number,
-  px: Readonly<Record<string, string>> = {},
-): ResearchTrade {
+function tradeItem(t: TradeRow, ctx: Ctx, now: number, px: SrQuotesSnapshot = {}): ResearchTrade {
   const a = t.articleId === null ? undefined : ctx.articles.get(t.articleId);
   const story = t.storyId === null ? undefined : ctx.stories.get(t.storyId);
   const done = t.status === "closed";
@@ -905,7 +907,7 @@ function tradeItem(
     },
     result: {
       pnl: done && t.resultUsdc !== null ? dec(t.resultUsdc).toDecimalPlaces(6).toFixed() : null,
-      unrealized: openPnl(t, px)?.toDecimalPlaces(6).toFixed() ?? null,
+      unrealized: openPnl(t, px, now)?.toDecimalPlaces(6).toFixed() ?? null,
       outcome: outcomeOf(t.exitReason),
       leftSecs: done ? null : Math.max(0, Math.round((t.maxHoldUntil.getTime() - now) / 1000)),
     },
@@ -1002,7 +1004,7 @@ export async function loadSignalResearchTrades(
   q: Q,
   query: ResearchTradesQuery,
   now: Date,
-  prices?: LastPrices,
+  prices?: ExitQuotes,
 ): Promise<ResearchTradesPage> {
   // Version không tồn tại → 404 kể cả khi loại / nhãn không có dữ liệu.
   const scope = await resolveSignalVersion(q, query.versionId);
@@ -1237,7 +1239,7 @@ export async function loadSignalResearchTrade(
   q: Q,
   id: string,
   now: Date,
-  prices?: LastPrices,
+  prices?: ExitQuotes,
 ): Promise<ResearchTradeDetail | null> {
   if (!z.uuid().safeParse(id).success) return null;
   const [trade] = await q

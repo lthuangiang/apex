@@ -1,6 +1,6 @@
 import { createDb, createSodexCallSink } from "@drift/db";
 import { loadClientTls, createBotApi } from "@drift/runtime";
-import { SR_MARKETS_KEY } from "@drift/shared";
+import { SR_MARKETS_KEY, SR_QUOTES_KEY } from "@drift/shared";
 import {
   createSodexCallRecorder,
   RedisRateLimitStore,
@@ -70,6 +70,7 @@ const app = await buildApp({
   lastPrice,
   prices,
   srMarkets: () => redis.get(SR_MARKETS_KEY),
+  srQuotes: () => redis.get(SR_QUOTES_KEY),
   reco: httpRecoClient(config.RECO_URL),
   // `none`: tab Liquidation map ẩn (IMP-05, DEC-92).
   liquidations: config.LIQUIDATION_PROVIDER === "hyperliquid" ? hyperliquidProvider(redis) : null,

@@ -882,12 +882,24 @@ describe("signal research articles feed and trace (#291)", () => {
     expect(f.long).toBe(1);
   });
 
-  it("#297: open trades are marked at the SoDEX last price; no price → null, never 0", async () => {
-    env.prices.set("ETH-USD", { price: "3500", at: env.clock.now.getTime() });
-    try {
+  it("#297/#308: open trades are marked at the real exit price (Long → bid); stale or no price → null, never 0", async () => {
+    const nowMs = env.clock.now.getTime();
+    const quotes = (q: object) => {
+      env.srQuotes.value = JSON.stringify({ "ETH-USD": q });
+    };
+    const openUnrealized = async () => {
       const s = researchSummarySchema.parse(
         (await team.request("GET", `${base}/summary?range=1d`)).json(),
       );
+      const p = researchTradesPageSchema.parse(
+        (await team.request("GET", `${base}/trades?limit=100`)).json(),
+      );
+      return { s, p, trade: p.items.find((x) => x.id === trade2)?.result };
+    };
+    // Long đóng theo bid 3500 (không theo ask 3510 hay giá giữa).
+    quotes({ bid: "3500", ask: "3510", source: "book", at: nowMs - 1_000 });
+    try {
+      const { s, p, trade } = await openUnrealized();
       // 0.1465 × (3500 − 3412.5) − 0.25 − 0.1465 × 3500 × 0.05% = 12.312375
       expect(s.bots[0]).toMatchObject({
         balance: "10009.5",
@@ -895,27 +907,31 @@ describe("signal research articles feed and trace (#291)", () => {
         unrealized: "12.312375",
         openTrades: 1,
       });
-      const p = researchTradesPageSchema.parse(
-        (await team.request("GET", `${base}/trades?limit=100`)).json(),
-      );
-      expect(p.items.find((x) => x.id === trade2)?.result).toMatchObject({
-        pnl: null,
-        unrealized: "12.312375",
-        outcome: "open",
-      });
+      expect(trade).toMatchObject({ pnl: null, unrealized: "12.312375", outcome: "open" });
       // Lệnh đã đóng không có lãi / lỗ chưa chốt.
       expect(p.items.find((x) => x.id === tradeId)?.result?.unrealized).toBeNull();
+
+      // Sổ cũ hơn NEWS_RULES.bookFreshMs (5 s) → bỏ, không dùng giá cũ.
+      quotes({ bid: "3500", ask: "3510", source: "book", at: nowMs - 6_000 });
+      const stale = await openUnrealized();
+      expect(stale.s.bots[0]).toMatchObject({ balance: "10009.5", unrealized: null });
+      expect(stale.trade?.unrealized).toBeNull();
+
+      // Giá gần nhất ± nửa spread: ngưỡng NEWS_RULES.lastPriceFreshMs (15 s).
+      quotes({ bid: "3500", ask: "3510", source: "last_spread", at: nowMs - 10_000 });
+      expect((await openUnrealized()).trade?.unrealized).toBe("12.312375");
+      quotes({ bid: "3500", ask: "3510", source: "last_spread", at: nowMs - 16_000 });
+      expect((await openUnrealized()).trade?.unrealized).toBeNull();
+
+      // Thiếu ask (bản chụp sai dạng) → không có giá.
+      quotes({ bid: "3500", source: "book", at: nowMs });
+      expect((await openUnrealized()).trade?.unrealized).toBeNull();
     } finally {
-      env.prices.delete("ETH-USD");
+      env.srQuotes.value = null;
     }
-    const s = researchSummarySchema.parse(
-      (await team.request("GET", `${base}/summary?range=1d`)).json(),
-    );
+    const { s, trade } = await openUnrealized();
     expect(s.bots[0]).toMatchObject({ balance: "10009.5", unrealized: null });
-    const p = researchTradesPageSchema.parse(
-      (await team.request("GET", `${base}/trades?limit=100`)).json(),
-    );
-    expect(p.items.find((x) => x.id === trade2)?.result?.unrealized).toBeNull();
+    expect(trade?.unrealized).toBeNull();
   });
 
   it("#297: SoSoValue stock tag names read EN, never raw JSON; Claude shows in Sources", async () => {

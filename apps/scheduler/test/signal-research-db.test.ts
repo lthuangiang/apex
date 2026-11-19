@@ -191,9 +191,15 @@ function setup(input: {
 }) {
   const errors: unknown[] = [];
   const soso = fakeSoso(input.items);
+  /** Giá trị Redis đã ghi (`sr:quotes`, #308) kèm TTL. */
+  const written = new Map<string, { value: string; ms: number }>();
   const sr = createSignalResearch({
     db,
     redis: {
+      set: (key: string, value: string, _px: "PX", ms: number) => {
+        written.set(key, { value, ms });
+        return Promise.resolve("OK");
+      },
       mget: (...keys: string[]) =>
         Promise.resolve(
           keys.map((k) => {
@@ -214,7 +220,7 @@ function setup(input: {
     soso: input.soso ?? soso,
     classifier: input.claude,
   });
-  return { sr, soso, errors };
+  return { sr, soso, errors, written };
 }
 
 const hack: Classification = {
@@ -259,7 +265,7 @@ describe("news pipeline end to end", () => {
       "Protocol on Solana drained in exploit": hack,
       "Solana exploit: attacker moved funds": hack,
     });
-    const { sr, errors } = setup({ items: () => items, claude, now: () => now });
+    const { sr, errors, written } = setup({ items: () => items, claude, now: () => now });
     book(sr, "SOL-USD", "99.99", "100.01", now);
     await sr.runCycle();
     expect(errors).toEqual([]);
@@ -310,6 +316,15 @@ describe("news pipeline end to end", () => {
     // Không có giá → chờ. Giá ask xuống dưới TP → đóng TP theo ask.
     now = T0 + 10 * MIN;
     expect(await sr.watcher.tick()).toBe(0);
+    // #308: bản chụp `sr:quotes` cho api không có market thiếu giá (api hiện như chưa có giá, không bao giờ 0).
+    expect(JSON.parse(written.get("sr:quotes")?.value ?? "null")).toEqual({});
+    expect(written.get("sr:quotes")?.ms).toBe(60_000);
+    // Có sổ nhưng chưa chạm TP: lệnh vẫn mở, bản chụp có bid / ask và giờ của sổ.
+    book(sr, "SOL-USD", "97.9", "98", now);
+    expect(await sr.watcher.tick()).toBe(0);
+    expect(JSON.parse(written.get("sr:quotes")?.value ?? "null")).toEqual({
+      "SOL-USD": { bid: "97.9", ask: "98", source: "book", at: now },
+    });
     book(sr, "SOL-USD", "96.4", "96.5", now);
     expect(await sr.watcher.tick()).toBe(1);
     const [closed] = await db.select().from(signalPaperTrades);

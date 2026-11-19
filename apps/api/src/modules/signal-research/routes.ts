@@ -14,12 +14,13 @@ import {
   setSignalBotVersionStatus,
   signalBotVersions,
   type Db,
-  type LastPrices,
+  type ExitQuotes,
 } from "@drift/db";
 import {
   AppError,
   ErrorCode,
   NEWS_LIMIT_DEFAULTS,
+  parseSrQuotes,
   researchArticlesPageSchema,
   researchArticlesQuerySchema,
   researchArticleTraceSchema,
@@ -80,10 +81,11 @@ export interface SignalResearchDeps {
   /** Statement timeout (ms) của transaction; mặc định 10 s. */
   queryTimeoutMs?: number;
   /**
-   * Giá SoDEX gần nhất (Redis `md:last:*`) cho lãi / lỗ chưa chốt của lệnh giấy đang mở (#297). Chỉ đọc cache, không gọi
-   * SoDEX. Không truyền → không có lãi / lỗ chưa chốt.
+   * #308: giá trị Redis `sr:quotes` (bid / ask SoDEX do watcher của scheduler ghi) cho lãi / lỗ chưa chốt của lệnh giấy
+   * đang mở: Long theo bid, Short theo ask, giá cũ bị bỏ. Chỉ đọc cache, không gọi SoDEX. Không truyền → không có lãi /
+   * lỗ chưa chốt.
    */
-  prices?: LastPrices;
+  srQuotes?: () => Promise<string | null>;
   /**
    * #305: giá trị Redis `sr:markets` (bản chụp danh sách perps SoDEX do scheduler ghi); null = chưa có. Module này không
    * bao giờ chạm SoDEX (DEC-322 / DEC-327; PM chọn phương án (a) ở review #324).
@@ -99,6 +101,12 @@ const articleParams = z.object({ id: z.string().min(1).max(200) });
 
 /** Trần tổng thời gian của một request (giữa các câu; mỗi câu còn bị `statement_timeout`). */
 const DEADLINE_MS = 20_000;
+
+/** Bản chụp `sr:quotes` đã parse; không có nguồn → undefined (không tính lãi / lỗ chưa chốt). */
+function quotesOf(deps: SignalResearchDeps): ExitQuotes | undefined {
+  const read = deps.srQuotes;
+  return read === undefined ? undefined : async () => parseSrQuotes(await read());
+}
 
 function tx<T>(deps: SignalResearchDeps, fn: Parameters<typeof readOnlyTx<T>>[2]): Promise<T> {
   return readOnlyTx(
@@ -125,7 +133,7 @@ export async function signalResearchSummary(
       },
       check,
       range,
-      deps.prices,
+      quotesOf(deps),
       versionId,
     ),
   );
@@ -139,7 +147,7 @@ export async function signalResearchTrades(
 ): Promise<ResearchTradesPage> {
   await requireTeam(deps.db, userId, FORBIDDEN);
   const q = parseOrThrow(researchTradesQuerySchema, query);
-  const out = await tx(deps, (t) => loadSignalResearchTrades(t, q, deps.now(), deps.prices));
+  const out = await tx(deps, (t) => loadSignalResearchTrades(t, q, deps.now(), quotesOf(deps)));
   return researchTradesPageSchema.parse(out);
 }
 
@@ -151,7 +159,7 @@ export async function signalResearchTrade(
 ): Promise<ResearchTradeDetail> {
   await requireTeam(deps.db, userId, FORBIDDEN);
   parseOrThrow(tzQuery, query);
-  const out = await tx(deps, (t) => loadSignalResearchTrade(t, id, deps.now(), deps.prices));
+  const out = await tx(deps, (t) => loadSignalResearchTrade(t, id, deps.now(), quotesOf(deps)));
   if (out === null) throw new AppError(ErrorCode.notFound, "Trade not found.");
   return researchTradeDetailSchema.parse(out);
 }

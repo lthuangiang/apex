@@ -52,6 +52,8 @@ export interface TestEnv {
   unusableKeys: Set<string>;
   /** Giá trị Redis `sr:markets` giả (danh sách market SoDEX do scheduler ghi, #305); null = chưa có. */
   srMarkets: { value: string | null };
+  /** Giá trị Redis `sr:quotes` giả (bid / ask SoDEX do watcher của scheduler ghi, #308); null = chưa có. */
+  srQuotes: { value: string | null };
   close(): Promise<void>;
 }
 
@@ -88,10 +90,12 @@ export async function startTestEnv(
   const prices = new Map<string, { price: string; at: number }>();
   const reco: FakeReco = { markets: [], down: false };
   const srMarkets: { value: string | null } = { value: null };
+  const srQuotes: { value: string | null } = { value: null };
   const app = await buildApp({
     lastPrice: (market) => Promise.resolve(prices.get(market) ?? null),
     reco: fakeRecoClient(reco),
     srMarkets: () => Promise.resolve(srMarkets.value),
+    srQuotes: () => Promise.resolve(srQuotes.value),
     rateLimiter: memoryRateLimiter(),
     rateLimits: { perIp: 1_000_000, perUser: 1_000_000, windowMs: 60_000 },
     prices: (markets) =>
@@ -166,6 +170,7 @@ export async function startTestEnv(
     prices,
     reco,
     srMarkets,
+    srQuotes,
     async close() {
       await app.close();
       await pool.end();
