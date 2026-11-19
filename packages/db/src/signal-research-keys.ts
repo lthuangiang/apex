@@ -51,6 +51,14 @@ export const DROP: ReadonlyMap<string, ResearchDropReason> = new Map<string, Res
   ["TOO_THIN_TO_TRADE", "tooThin"],
   ["MOVE_TOO_SMALL_FOR_COST", "tpUnderCost"],
   ["NEWS_TRADE_ALREADY_OPEN", "alreadyOpen"],
+  // #303 (DEC-331): Filter riêng từng News bot version; giới hạn / số dư → lệnh shadow (#304 thêm lý do API).
+  ["NEWS_TYPE_OFF", "newsTypeOff"],
+  ["ASSET_NOT_IN_VERSION", "assetNotInVersion"],
+  ["LEVEL_TOO_LOW", "levelTooLow"],
+  ["LIMIT_OPEN", "limitOpen"],
+  ["LIMIT_DAY", "limitDay"],
+  ["NO_BALANCE", "noBalance"],
+  ["OPPOSITE_NEWS", "oppositeNews"],
 ]);
 
 /** Mã lý do bị loại TRƯỚC khi gọi Claude ở bước Understand (bài không được gửi cho Claude). */

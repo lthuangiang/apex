@@ -12,6 +12,7 @@ import {
   type ResearchArticleTrace,
   type ResearchClaudeUsage,
   type ResearchDropReason,
+  type ResearchMyLabel,
   type ResearchRange,
   type ResearchStage,
   type ResearchTraceCheck,
@@ -25,6 +26,7 @@ import type { Db } from "./client";
 import type { DbTx } from "./read-only";
 import { signalArticles, signalEvents, signalPaperTrades, signalStories } from "./schema";
 import { DROP, newsTypeOf, newsTypeOrNull, PRE_CLAUDE_REASONS } from "./signal-research-keys";
+import { loadMyLabel, signalClassifierOf } from "./signal-research-labels";
 
 // Feed bài và trace từng bài của Signal research (#291; hợp đồng packages/shared/src/api/signal-research.ts, thiết kế
 // docs/mockups/signal-research/news-trace.html). Chỉ đọc; nơi gọi bọc trong transaction chỉ đọc. Chỉ bài của version quy
@@ -428,6 +430,8 @@ function stepsOf(input: {
   story: StoryRow | null;
   trade: TradeRow | null;
   dupOf: ArticleRow | null;
+  labelable: boolean;
+  label: ResearchMyLabel | null;
 }): ResearchTraceStep[] {
   const { a, s, events, story, trade, dupOf } = input;
   const stop = STAGES.indexOf(s.stage);
@@ -546,6 +550,8 @@ function stepsOf(input: {
             laterLevel: story === null ? null : levelOf(story.laterLevel),
             levelSources,
             claude: usageOf(a),
+            labelable: input.labelable,
+            label: input.label,
           },
   });
   const fb = base(3, fEv);
@@ -613,11 +619,15 @@ function stepsOf(input: {
   return steps;
 }
 
-/** Trace một bài (id SoSoValue). null = không có, bài backlog, hoặc bài của version quy tắc khác. */
+/**
+ * Trace một bài (id SoSoValue). null = không có, bài backlog, hoặc bài của version quy tắc khác. `viewerId` (#304): thẻ
+ * Score kèm nhãn của chính người xem; trace KHÔNG ẩn kết quả lệnh (chỉ luồng `labels/next` ẩn).
+ */
 export async function loadSignalResearchArticleTrace(
   q: Q,
   id: string,
   check: () => void = () => undefined,
+  viewerId: string | null = null,
 ): Promise<ResearchArticleTrace | null> {
   if (id.length === 0 || id.length > 200) return null;
   const st = await q.execute<StateRow>(sql`${stateCte(null, id)} select * from st`);
@@ -646,6 +656,9 @@ export async function loadSignalResearchArticleTrace(
     a.duplicateOf === null
       ? []
       : await q.select().from(signalArticles).where(eq(signalArticles.id, a.duplicateOf));
+  const labelable = (await signalClassifierOf(q, id)) !== null;
+  const label = viewerId === null ? null : await loadMyLabel(q, id, viewerId);
+  check();
   return {
     article: articleItem(a, s),
     steps: stepsOf({
@@ -655,6 +668,8 @@ export async function loadSignalResearchArticleTrace(
       story: story ?? null,
       trade: trade ?? null,
       dupOf: dupOf ?? null,
+      labelable,
+      label,
     }),
   };
 }

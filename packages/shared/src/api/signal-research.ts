@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 import { isoDateTimeSchema } from "../schemas";
+import {
+  CLASSIFICATION_VERDICTS,
+  CLASSIFICATION_WRONG_REASONS,
+  CLASSIFIER_GATE_STATUSES,
+  ClassificationVerdict,
+  LABEL_NOTE_MAX,
+} from "../signal-research/labels";
 
 // Hợp đồng API của Signal research (#271; UI #273). Endpoint team (role team, chỉ đọc, transaction READ ONLY):
 //   GET /api/v1/admin/signal-research/summary?range=&tz=
@@ -8,6 +15,9 @@ import { isoDateTimeSchema } from "../schemas";
 //   GET /api/v1/admin/signal-research/trades/:id?tz=
 //   GET /api/v1/admin/signal-research/articles?range=&show=&stage=&reason=&cursor=&limit=&tz=   (#291)
 //   GET /api/v1/admin/signal-research/articles/:id/trace?tz=                                   (#291)
+//   GET /api/v1/admin/signal-research/labels/next                                              (#304)
+//   PUT /api/v1/admin/signal-research/articles/:id/label   (Idempotency-Key)                   (#304)
+//   GET /api/v1/admin/signal-research/classifiers                                              (#304)
 // CLI `signals:report` của scheduler in cùng dữ liệu. Tên export giữ đúng như bản sao tạm của web (#273) để web chỉ đổi
 // import. Quy ước: phần trăm là số theo đơn vị % (0.21 = +0.21%); tiền / giá là chuỗi thập phân; thời điểm là ISO UTC.
 // Giá trị không biết là null (web hiện "Not available" / "Not enough trades", không bao giờ 0, quy tắc 1.8). API không
@@ -50,6 +60,20 @@ export const RESEARCH_DROP_REASONS = [
   "assetNotInText",
   /** #298 (news-v3): tin treasury trên BTC / ETH không giao dịch (`TREASURY_MAJOR_ASSET`). */
   "treasuryMajorAsset",
+  /** #303 (DEC-331), riêng từng News bot version: loại tin bị tắt trong version (`NEWS_TYPE_OFF`). */
+  "newsTypeOff",
+  /** Tài sản không thuộc danh sách / loại tài sản của version (`ASSET_NOT_IN_VERSION`). */
+  "assetNotInVersion",
+  /** Level của câu chuyện dưới mức tối thiểu của version (`LEVEL_TOO_LOW`). */
+  "levelTooLow",
+  /** Bị chặn bởi Max open trades (`LIMIT_OPEN`): không vào lệnh, chỉ theo dõi giả định (shadow). */
+  "limitOpen",
+  /** Bị chặn bởi Max new trades per day, ngày UTC (`LIMIT_DAY`): shadow. */
+  "limitDay",
+  /** Không đủ số dư giả (`NO_BALANCE`): shadow. */
+  "noBalance",
+  /** Tin ngược chiều trên lệnh đang mở của version (`OPPOSITE_NEWS`): không mở lệnh mới, không đảo chiều. */
+  "oppositeNews",
 ] as const;
 export const RESEARCH_NEWS_TYPES = [
   "hack",
@@ -178,10 +202,42 @@ export const researchNeedsSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("passed") }),
 ]);
 
+/**
+ * #304: trạng thái cổng precision của classifier đã tạo ra một lệnh (`classifier_version` của lệnh). `unknown` = lệnh
+ * không ghi classifier (bài trước migration 0045).
+ */
+export const researchClassifierStatusSchema = z.enum(CLASSIFIER_GATE_STATUSES);
+
+/**
+ * #304 (DEC-328 mục 2): lệnh chỉ tính cổng khi classifier tạo ra nó đã qua (≥ 50 nhãn, precision ≥ 80%). `counted` = số
+ * lệnh đã đóng được tính; `notCounted` = lệnh đã đóng KHÔNG được tính, gom theo classifier, để web ghi "Not counted ·
+ * classifier vX under 80%" / "waits for labels (N to go)".
+ */
+export const researchGateClassifiersSchema = z.object({
+  counted: int,
+  notCounted: z.array(
+    z.object({
+      /** `claude_prompt_version` (vd `news-classifier-v2`); null = không biết. */
+      classifierVersion: z.string().nullable(),
+      closed: int,
+      /** Không bao giờ `passed` (lệnh của classifier đã qua thì được tính). */
+      status: researchClassifierStatusSchema,
+      labeled: int,
+      precisionPct: z.number().nullable(),
+      /** Số nhãn còn thiếu để đủ 50; null khi `unknown`. */
+      labelsToGo: int.nullable(),
+    }),
+  ),
+});
+
 export const researchSummaryRowSchema = z.object({
   type,
   label,
   rulesVersion: int,
+  /**
+   * Mọi lệnh đã đóng. Từ #304 các số thống kê của dòng (`avgPct`, `range`, `status`, `needs`…) chỉ tính lệnh có
+   * classifier đã qua cổng (`classifiers.counted`).
+   */
   closed: int,
   opened: int.nullable(),
   avgPct: z.number().nullable(),
@@ -193,6 +249,8 @@ export const researchSummaryRowSchema = z.object({
   clusters: int,
   status,
   needs: researchNeedsSchema,
+  /** null với lane không dùng classifier (replay). */
+  classifiers: researchGateClassifiersSchema.nullable(),
 });
 
 /** Tách theo chiều (#269 v3.4 điểm 5): một tuần thị trường tăng không được trông như có edge. */
@@ -297,6 +355,12 @@ export const researchTradeSchema = z.object({
   sl: dec.nullable(),
   slPct: z.number().nullable(),
   maxHoldHours: int.nullable(),
+  /**
+   * #304: classifier đã tạo ra lệnh và trạng thái cổng của nó (lệnh chỉ tính cổng khi `passed`). null với tín hiệu bị bỏ.
+   */
+  classifier: z
+    .object({ version: z.string().nullable(), status: researchClassifierStatusSchema })
+    .nullable(),
   /** null khi tín hiệu bị bỏ qua. */
   result: z
     .object({
@@ -553,6 +617,119 @@ export const researchTraceCheckSchema = z.object({
   openTradeId: z.uuid().nullable(),
 });
 
+// ── Nhãn phân loại và cổng precision của classifier (#304, DEC-328 mục 2) ─────────────────────────────────────────
+
+/** Nhãn của người đang xem cho một bài. */
+export const researchMyLabelSchema = z.object({
+  classifierVersion: z.string(),
+  verdict: z.enum(CLASSIFICATION_VERDICTS),
+  /** Chỉ khi `verdict = wrong`. */
+  reason: z.enum(CLASSIFICATION_WRONG_REASONS).nullable(),
+  note: z.string().nullable(),
+  createdAt: iso,
+  updatedAt: iso,
+});
+
+/** Body của `PUT /articles/:id/label`. Wrong bắt buộc `reason`; Right không được có `reason`. */
+export const researchLabelBodySchema = z
+  .strictObject({
+    verdict: z.enum(CLASSIFICATION_VERDICTS),
+    reason: z.enum(CLASSIFICATION_WRONG_REASONS).nullish(),
+    note: z.string().trim().max(LABEL_NOTE_MAX).nullish(),
+  })
+  .superRefine((b, ctx) => {
+    const hasReason = b.reason !== undefined && b.reason !== null;
+    if (b.verdict === ClassificationVerdict.wrong && !hasReason)
+      ctx.addIssue({ code: "custom", path: ["reason"], message: "required" });
+    if (b.verdict === ClassificationVerdict.right && hasReason)
+      ctx.addIssue({ code: "custom", path: ["reason"], message: "not_allowed" });
+  });
+
+/**
+ * Bài để gắn nhãn (`GET /labels/next`): chỉ nội dung bài và điều Claude nói. KHÔNG có bất kỳ trường kết quả nào (bước
+ * dừng, kết quả, lệnh, level, lý do bị loại) để kết quả không ảnh hưởng nhãn.
+ */
+export const researchLabelArticleSchema = z.strictObject({
+  id: z.string().min(1),
+  title: z.string().nullable(),
+  /** Nội dung đã bỏ HTML (đã cắt ≤ 6 000 ký tự khi thu). */
+  content: z.string().nullable(),
+  url: z.string().nullable(),
+  source: z.string(),
+  tier: tier.nullable(),
+  publishedAt: iso,
+  tagged: z.array(z.string()),
+});
+
+/** Điều classifier nói về bài (như thẻ Score của thiết kế), không có level hay kết quả. */
+export const researchLabelClassificationSchema = z.strictObject({
+  classifierVersion: z.string(),
+  newsType: z.enum(RESEARCH_NEWS_TYPES),
+  asset: z.string().nullable(),
+  relevance: z.enum(["direct", "passingMention"]).nullable(),
+  promotional: z.boolean().nullable(),
+  eventDate: z.string().nullable(),
+  claude: researchClaudeUsageSchema.nullable(),
+});
+
+export const researchLabelNextSchema = z.strictObject({
+  /** null = không còn bài nào của classifier hiện tại mà người này chưa gắn nhãn. */
+  item: z
+    .strictObject({
+      article: researchLabelArticleSchema,
+      classification: researchLabelClassificationSchema,
+    })
+    .nullable(),
+  /** Số bài tín hiệu của classifier hiện tại người này chưa gắn nhãn (gồm cả `item`). */
+  remaining: int,
+});
+
+/** Kết quả của các lệnh bài này đã mở (mọi News bot version), chỉ trả SAU khi đã lưu nhãn. */
+export const researchLabelTradeResultSchema = z.object({
+  tradeId: z.uuid(),
+  versionId: z.uuid().nullable(),
+  side,
+  status: z.enum(["open", "closed"]),
+  outcome: z.enum(["tp", "sl", "maxHold", "opposite", "open"]),
+  resultPct: z.number().nullable(),
+  resultUsdc: dec.nullable(),
+});
+
+export const researchLabelSavedSchema = z.object({
+  articleId: z.string().min(1),
+  label: researchMyLabelSchema,
+  trades: z.array(researchLabelTradeResultSchema),
+});
+
+export const researchClassifierRowSchema = z.object({
+  classifierVersion: z.string(),
+  /** Classifier đang chạy (`NEWS_CLASSIFIER.promptVersion`). */
+  current: z.boolean(),
+  /** Lần đầu chạy (`signal_classifier_versions.started_at`); null khi không ghi. */
+  startedAt: iso.nullable(),
+  /** Số bài classifier này gọi là tín hiệu (tổng thể của precision). */
+  signals: int,
+  /** Số bài có ít nhất một nhãn. */
+  labeled: int,
+  /** Số bài kết luận Right (đa số nhãn Right; hoà tính Wrong). */
+  right: int,
+  precisionPct: z.number().nullable(),
+  /** Khoảng Wilson 95% của precision, đơn vị %; null khi chưa có nhãn. */
+  interval: z.object({ lo: z.number(), hi: z.number() }).nullable(),
+  passes: z.boolean(),
+  status: researchClassifierStatusSchema.exclude(["unknown"]),
+  labelsToGo: int,
+  /** Lý do Wrong hay gặp nhất (đếm theo nhãn), nhiều trước. */
+  mostCommonMistakes: z.array(z.object({ reason: z.enum(CLASSIFICATION_WRONG_REASONS), n: int })),
+});
+
+export const researchClassifiersSchema = z.object({
+  /** Mức sàn của cổng (50 nhãn, 80%). */
+  gate: z.object({ minLabels: int, minPrecisionPct: z.number() }),
+  /** Classifier hiện tại trước, rồi mới nhất trước. */
+  items: z.array(researchClassifierRowSchema),
+});
+
 const stepBase = {
   status: z.enum(RESEARCH_STEP_STATUSES),
   /** Lúc ghi event của bước; null khi chưa tới. */
@@ -622,6 +799,12 @@ export const researchTraceStepSchema = z.discriminatedUnion("key", [
         /** Nguồn dùng để tính mức: lệnh → nguồn lúc vào; còn lại → nguồn HIỆN TẠI của câu chuyện; null khi không có. */
         levelSources: z.array(sourceRef).nullable(),
         claude: researchClaudeUsageSchema.nullable(),
+        /**
+         * #304: bài này gắn nhãn được (classifier gọi là tín hiệu: catalyst ≠ none và qua Score, có version prompt).
+         */
+        labelable: z.boolean(),
+        /** #304: nhãn của CHÍNH người đang xem (null = chưa gắn). Trace không ẩn kết quả lệnh. */
+        label: researchMyLabelSchema.nullable(),
       })
       .nullable(),
   }),
@@ -687,6 +870,14 @@ export type ResearchTraceStory = z.infer<typeof researchTraceStorySchema>;
 export type ResearchTraceCheck = z.infer<typeof researchTraceCheckSchema>;
 export type ResearchTraceStep = z.infer<typeof researchTraceStepSchema>;
 export type ResearchArticleTrace = z.infer<typeof researchArticleTraceSchema>;
+export type ResearchMyLabel = z.infer<typeof researchMyLabelSchema>;
+export type ResearchLabelBody = z.infer<typeof researchLabelBodySchema>;
+export type ResearchLabelNext = z.infer<typeof researchLabelNextSchema>;
+export type ResearchLabelTradeResult = z.infer<typeof researchLabelTradeResultSchema>;
+export type ResearchLabelSaved = z.infer<typeof researchLabelSavedSchema>;
+export type ResearchClassifierRow = z.infer<typeof researchClassifierRowSchema>;
+export type ResearchClassifiers = z.infer<typeof researchClassifiersSchema>;
+export type ResearchGateClassifiers = z.infer<typeof researchGateClassifiersSchema>;
 
 export type ResearchType = (typeof RESEARCH_TYPES)[number];
 export type ResearchLabel = (typeof RESEARCH_LABELS)[number];

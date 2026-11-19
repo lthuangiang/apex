@@ -251,6 +251,8 @@ export const ETH_TRACE: ResearchArticleTrace = {
         laterLevel: "medium",
         levelSources: [{ name: "Reuters", tier: "top" }],
         claude: ETH.claude,
+        labelable: true,
+        label: null,
       },
     },
     {
@@ -332,6 +334,8 @@ export const SOL_TRACE: ResearchArticleTrace = {
         laterLevel: null,
         levelSources: null,
         claude: SOL.claude,
+        labelable: true,
+        label: null,
       },
     },
     {
@@ -422,6 +426,8 @@ export const HYPE_TRACE: ResearchArticleTrace = {
         laterLevel: null,
         levelSources: null,
         claude: null,
+        labelable: false,
+        label: null,
       },
     },
     notReached("filter"),

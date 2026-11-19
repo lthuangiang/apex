@@ -205,6 +205,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
       status: "collecting",
       clusters: 9,
       needs: { kind: "pooled", more: 70, weeks: 3 },
+      classifiers: { counted: 30, notCounted: [] },
     },
     {
       type: "whales",
@@ -219,6 +220,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
       status: "failing",
       clusters: 41,
       needs: { kind: "rangeBelowZero", needed: 480 },
+      classifiers: null,
     },
     {
       type: "funding",
@@ -233,6 +235,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
       status: "collecting",
       clusters: 20,
       needs: { kind: "moreTrades", more: 36, fundingDays: 41 },
+      classifiers: null,
     },
     {
       type: "price",
@@ -247,6 +250,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
       status: "failing",
       clusters: 41,
       needs: { kind: "losesAfterFees" },
+      classifiers: null,
     },
   ],
   directions: [
@@ -312,6 +316,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       sl: "143.60",
       slPct: 1.0,
       maxHoldHours: 48,
+      classifier: { version: "news-classifier-v2", status: "passed" },
       result: { pnl: "9.50", unrealized: null, outcome: "tp", leftSecs: null },
     },
     {
@@ -340,6 +345,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       sl: "3395.4",
       slPct: -0.5,
       maxHoldHours: 4,
+      classifier: null,
       result: { pnl: "-3.01", unrealized: null, outcome: "sl", leftSecs: null },
     },
     {
@@ -362,6 +368,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       sl: null,
       slPct: null,
       maxHoldHours: null,
+      classifier: null,
       result: null,
     },
     {
@@ -392,6 +399,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       sl: "180.58",
       slPct: -1.0,
       maxHoldHours: 72,
+      classifier: { version: "news-classifier-v2", status: "passed" },
       result: { pnl: null, unrealized: "2.17", outcome: "open", leftSecs: 187_200 },
     },
     {
@@ -414,6 +422,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       sl: null,
       slPct: null,
       maxHoldHours: null,
+      classifier: null,
       result: null,
     },
   ],
@@ -653,6 +662,7 @@ export const SKIPPED_TRADE = {
   sl: null,
   slPct: null,
   maxHoldHours: null,
+  classifier: null,
   result: null,
 };
 

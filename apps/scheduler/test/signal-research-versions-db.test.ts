@@ -749,9 +749,12 @@ describe("migration 0047 on existing data", () => {
       const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
         entries: { tag: string }[];
       };
-      journal.entries = journal.entries.filter((e) => !e.tag.startsWith("0047"));
+      // Bỏ 0047 VÀ mọi migration sau nó: migrator chỉ chạy migration mới hơn migration cuối đã chạy, nên để lại 0048+ thì
+      // lần migrate thứ hai sẽ bỏ qua 0047.
+      const later = journal.entries.filter((e) => e.tag >= "0047");
+      journal.entries = journal.entries.filter((e) => e.tag < "0047");
       writeFileSync(journalPath, JSON.stringify(journal));
-      rmSync(join(dir, "0047_sr_bot_versions.sql"));
+      for (const e of later) rmSync(join(dir, `${e.tag}.sql`));
       const p = createDb(uri);
       const trade = (id: string, market: string, opened: string, rule: string) =>
         `('${id}', 'news', 'live', 'a-${rule}', '${opened}', '${opened}', '${market}', 'X', 'hack_exploit', 'short', 500, 5, 100, 100, 0.01, 0.05, 0.25, 2, 3, 1.5, 97, 101.5, now() + interval '1 day', '${opened}', 'low', '[]', false, 'book', 'open', '${rule}')`;

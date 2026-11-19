@@ -337,6 +337,13 @@
       "when": 1795071022752,
       "tag": "0047_sr_bot_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1795072990147,
+      "tag": "0048_sr_classification_labels",
+      "breakpoints": true
     }
   ]
 }
