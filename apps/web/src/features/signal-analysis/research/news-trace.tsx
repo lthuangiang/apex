@@ -306,10 +306,16 @@ export function NewsTrace({
       className="flex min-w-0 scroll-mt-4 flex-col gap-3 rounded-card bg-surface p-4 shadow-card md:gap-[18px] md:p-6"
     >
       <div className="flex flex-col items-start gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
-        <h2 id="sr-fn-title" className="m-0 text-[17px] font-extrabold md:text-xl">
-          <span className="md:hidden">{t("trace.titleShort")}</span>
-          <span className="max-md:hidden">{t("trace.title", { range: rangeLabel })}</span>
-        </h2>
+        {/* #342: "From headline to trade" + phụ đề; khoảng thời gian nằm ở nhóm nút 1 day / 7 days bên cạnh. */}
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h2 id="sr-fn-title" className="m-0 text-[17px] font-extrabold md:text-xl">
+            {t("trace.title")}
+          </h2>
+          <p className="m-0 text-xs text-muted md:text-[13px]">
+            <span className="md:hidden">{t("trace.subShort")}</span>
+            <span className="max-md:hidden">{t("trace.sub")}</span>
+          </p>
+        </div>
         <div
           role="group"
           aria-label={t("trace.period")}
