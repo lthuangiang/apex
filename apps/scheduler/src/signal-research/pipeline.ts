@@ -902,8 +902,8 @@ interface StoryResult {
  *   `retryWindowMinutes` (2 giờ); quá thì gộp với lý do `STORY_TOO_OLD`. Lần thử lại: mức tính cả nguồn của lần trước,
  *   `eventAt` và `moved_before_entry` đo từ bài ĐẦU TIÊN của câu chuyện, lệnh gắn `retry`.
  * - Level dưới mức của version → `LEVEL_TOO_LOW` (story không khoá, bài sau nâng level vẫn thử lại được trong 2 giờ).
- * - Tin ngược chiều trên lệnh đang mở → ghi kết quả đóng giả định; Close → đóng rồi xét tiếp tín hiệu mới; Keep → bỏ
- *   `NEWS_TRADE_ALREADY_OPEN`.
+ * - Tin ngược chiều trên lệnh đang mở → ghi kết quả đóng giả định; Close → chỉ đóng, không bao giờ đảo chiều (DEC-328,
+ *   review PR #312): tín hiệu mới bỏ `OPPOSITE_NEWS` (`closed: true`) và story khoá; Keep → bỏ `NEWS_TRADE_ALREADY_OPEN`.
  * - Qua Filter nhưng bị Max open trades / Max new trades per day / số dư giả chặn → lệnh shadow (ngoài balance), story khoá.
  */
 async function decideStory(
@@ -1052,6 +1052,7 @@ async function decideStory(
     );
   let openLive: TradeRow | undefined;
   let openShadow: TradeRow | undefined;
+  const closedIds: string[] = [];
   for (const t of openRows) {
     if (t.direction !== direction) {
       const closed = await onOppositeNews(db, {
@@ -1065,11 +1066,26 @@ async function decideStory(
       });
       if (closed) {
         oppositeClosed += 1;
+        closedIds.push(t.id);
         continue;
       }
     }
     if (t.label === "shadow") openShadow = t;
     else openLive = t;
+  }
+  if (closedIds.length > 0) {
+    // Close chỉ đóng, không đảo chiều: tín hiệu ngược chiều đã được xử lý (đóng lệnh), story khoá như mọi tín hiệu đã
+    // dùng, không mở lệnh theo chiều mới.
+    if (storyId !== null)
+      await db
+        .update(signalStories)
+        .set({ outcome: "opposite_news", locked: true, updatedAt: new Date(now) })
+        .where(eq(signalStories.id, storyId));
+    return fail(SignalReason.oppositeNews, {
+      closed: true,
+      closedTradeId: closedIds[0],
+      closedTradeIds: closedIds,
+    });
   }
   if (openLive !== undefined)
     return fail(SignalReason.tradeOpen, {

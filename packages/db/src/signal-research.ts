@@ -547,6 +547,7 @@ export async function loadSignalResearchSummary(
             tp: closedInRange.filter((t) => t.exitReason === "take_profit").length,
             sl: closedInRange.filter((t) => t.exitReason === "stop_loss").length,
             maxHold: closedInRange.filter((t) => t.exitReason === "max_hold").length,
+            opposite: closedInRange.filter((t) => t.exitReason === "opposite_news").length,
             open: inRange.filter((t) => t.status !== "closed").length,
           },
         }
@@ -741,10 +742,12 @@ function whatOf(
   };
 }
 
-function outcomeOf(r: string | null): "tp" | "sl" | "maxHold" | "open" {
+function outcomeOf(r: string | null): "tp" | "sl" | "maxHold" | "opposite" | "open" {
   if (r === "take_profit") return "tp";
   if (r === "stop_loss") return "sl";
   if (r === "max_hold") return "maxHold";
+  // #303: News bot version chọn "Close at market" khi có tin ngược chiều.
+  if (r === "opposite_news") return "opposite";
   return "open";
 }
 

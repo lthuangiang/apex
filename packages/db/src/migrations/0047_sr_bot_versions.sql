@@ -1,6 +1,8 @@
 -- Signal research: News bot versions (#303, DEC-328). Thêm bảng / cột nullable; seed version Baseline = tham số quyết
 -- định của NEWS_RULES lúc migration (news-v3, test `baselineVersionConfig()` so sánh), gắn lệnh / story / event Filter-
--- Decide-Watch cũ vào Baseline. Trigger: config bất biến, tối đa 3 version `running`.
+-- Decide-Watch của news-v3 vào Baseline (news-v2 để version_id null: chỉ là lịch sử, DEC-329). `created_at` của Baseline
+-- = lúc news-v3 bắt đầu = sớm nhất trong (collected_at của bài, at của event, opened_at của lệnh) có rule_version
+-- news-v3; chưa có gì thì now(). Trigger: config bất biến, tối đa 3 version `running`.
 CREATE TABLE "signal_bot_versions" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"number" integer NOT NULL,
@@ -65,16 +67,21 @@ CREATE TRIGGER "signal_bot_versions_guard_trg" BEFORE INSERT OR UPDATE ON "signa
 INSERT INTO "signal_bot_versions" ("id", "number", "name", "config", "status", "is_baseline", "status_changed_at", "created_at", "updated_at")
 SELECT gen_random_uuid(), 3, 'Baseline', '{"news":{"hack_exploit":{"enabled":true,"maxHoldHours":24},"listing":{"enabled":true,"maxHoldHours":24},"delisting":{"enabled":true,"maxHoldHours":48},"etf_approved":{"enabled":true,"maxHoldHours":72},"etf_delayed_or_rejected":{"enabled":true,"maxHoldHours":48},"regulatory_action":{"enabled":true,"maxHoldHours":72},"favorable_ruling":{"enabled":true,"maxHoldHours":72},"treasury_buy":{"enabled":true,"maxHoldHours":48},"treasury_sell":{"enabled":true,"maxHoldHours":48},"earnings_beat":{"enabled":true,"maxHoldHours":72},"earnings_miss":{"enabled":true,"maxHoldHours":72},"token_unlock":{"enabled":true,"maxHoldHours":48}},"minLevel":"low","maxSourceDelayMinutes":30,"sizeUsdc":"500","tpMultiple":"1.5","slMultiple":"0.75","minTpCostMultiple":"2","assets":{"mode":"all","markets":[],"crypto":true,"stocks":true},"maxOpenTrades":20,"maxNewTradesPerDay":null,"onOppositeNews":"keep"}'::jsonb, 'running', true, now(), t.at, now()
 FROM (
-  SELECT LEAST(now(), coalesce(min("opened_at"), now())) AS at
-  FROM "signal_paper_trades" WHERE "lane" = 'news' AND "label" = 'live'
+  SELECT LEAST(
+    now(),
+    coalesce((SELECT min("collected_at") FROM "signal_articles" WHERE "rule_version" = 'news-v3'), now()),
+    coalesce((SELECT min("at") FROM "signal_events" WHERE "rule_version" = 'news-v3'), now()),
+    coalesce((SELECT min("opened_at") FROM "signal_paper_trades" WHERE "rule_version" = 'news-v3'), now())
+  ) AS at
 ) t;--> statement-breakpoint
 UPDATE "signal_paper_trades" SET "version_id" = (SELECT "id" FROM "signal_bot_versions" WHERE "is_baseline")
-WHERE "lane" = 'news' AND "label" = 'live';--> statement-breakpoint
+WHERE "lane" = 'news' AND "label" = 'live' AND "rule_version" = 'news-v3';--> statement-breakpoint
 UPDATE "signal_paper_trades" t SET "classifier_version" = a."claude_prompt_version"
 FROM "signal_articles" a WHERE a."id" = t."article_id" AND t."lane" = 'news';--> statement-breakpoint
-UPDATE "signal_stories" SET "version_id" = (SELECT "id" FROM "signal_bot_versions" WHERE "is_baseline");--> statement-breakpoint
+UPDATE "signal_stories" SET "version_id" = (SELECT "id" FROM "signal_bot_versions" WHERE "is_baseline")
+WHERE "rule_version" = 'news-v3';--> statement-breakpoint
 UPDATE "signal_events" SET "version_id" = (SELECT "id" FROM "signal_bot_versions" WHERE "is_baseline")
-WHERE "stage" IN ('filter', 'decide', 'watch');--> statement-breakpoint
+WHERE "stage" IN ('filter', 'decide', 'watch') AND "rule_version" = 'news-v3';--> statement-breakpoint
 INSERT INTO "signal_classifier_versions" ("prompt_version", "model", "started_at")
 SELECT "claude_prompt_version", min(coalesce("claude_model", 'claude-haiku-4-5')), min(coalesce("classified_at", "collected_at"))
 FROM "signal_articles" WHERE "claude_prompt_version" IS NOT NULL

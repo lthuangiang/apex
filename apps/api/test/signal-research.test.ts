@@ -93,7 +93,14 @@ describe("signal research (team only, read-only)", () => {
     expect(s.statusCode).toBe(200);
     expect(s.headers["cache-control"]).toBe("no-store");
     const summary = researchSummarySchema.parse(s.json());
-    expect(summary.funnel?.outcomes).toEqual({ closed: 1, tp: 1, sl: 0, maxHold: 0, open: 0 });
+    expect(summary.funnel?.outcomes).toEqual({
+      closed: 1,
+      tp: 1,
+      sl: 0,
+      maxHold: 0,
+      opposite: 0,
+      open: 0,
+    });
     expect(summary.rows[0]).toMatchObject({
       type: "news",
       label: "live",

@@ -7,6 +7,8 @@ import {
   candles1m,
   createDb,
   createSignalBotVersion,
+  loadSignalResearchSummary,
+  loadSignalResearchTrade,
   MIGRATIONS_FOLDER,
   runMigrations,
   runningSignalBotVersions,
@@ -463,6 +465,60 @@ describe("decide per running version", () => {
   });
 });
 
+describe("level retry for a High-only version", () => {
+  it("enters when a later source lifts the story to High; moved before entry and event time from the FIRST article", async () => {
+    await pauseBaseline();
+    const high = await newVersion("High only", { minLevel: "high" });
+    // Giá trước bài đầu (T0 − 2 phút → nến T0 − 3 phút) = 101; trước bài sau (T0 + 20 phút → nến T0 + 19 phút) = 105.
+    await db
+      .insert(candles1m)
+      .values([
+        {
+          market: "SOL-USD",
+          ts: new Date(T0 - 3 * MIN),
+          open: "101",
+          high: "101",
+          low: "101",
+          close: "101",
+          volume: "1",
+        },
+        {
+          market: "SOL-USD",
+          ts: new Date(T0 + 19 * MIN),
+          open: "105",
+          high: "105",
+          low: "105",
+          close: "105",
+          volume: "1",
+        },
+      ])
+      .onConflictDoNothing();
+    const first = item("a1", T0 - 2 * MIN, "Solana protocol drained in exploit");
+    const c1 = setup([first], fakeClaude({ "Solana protocol drained in exploit": hack }), () => T0);
+    c1.book("SOL-USD", "99.99", "100.01", T0);
+    await c1.sr.runCycle();
+    expect(await filterReasons(high.id)).toEqual(["drop:LEVEL_TOO_LOW"]);
+    expect(await tradesOf(high.id)).toHaveLength(0);
+
+    const now = T0 + 25 * MIN;
+    const c2 = setup(
+      [
+        first,
+        item("a2", T0 + 20 * MIN, "Solana exploit confirmed", { author: "Bloomberg", category: 5 }),
+      ],
+      fakeClaude({ "Solana exploit confirmed": hack }),
+      () => now,
+    );
+    c2.book("SOL-USD", "99.99", "100.01", now);
+    await c2.sr.runCycle();
+    const [t] = await tradesOf(high.id);
+    expect(t).toMatchObject({ levelAtEntry: "high", retry: true, articleId: "a2" });
+    expect(t?.eventAt.getTime()).toBe(T0 - 2 * MIN);
+    // (100 − 101) ÷ 101: tính từ giá trước bài ĐẦU TIÊN, không phải bài làm story lên High (sẽ là (100 − 105) ÷ 105).
+    expect(Number(t?.movedBeforeEntryPct)).toBeCloseTo(-0.990099, 4);
+  });
+});
+
 describe("limits and shadow trades", () => {
   const run = async (now = T0) => {
     const { sr, book } = setup(
@@ -611,9 +667,53 @@ describe("opposite news on an open trade", () => {
       .from(signalEvents)
       .where(and(eq(signalEvents.tradeId, ct.id), eq(signalEvents.stage, "watch")));
     expect(closeEv[0]).toMatchObject({ reason: "OPPOSITE_NEWS", versionId: close.id });
-    // Sau khi đóng, tín hiệu mới (short) của version Close được xét tiếp và vào lệnh.
-    const next = (await tradesOf(close.id)).filter((t) => t.status === "open");
-    expect(next.map((t) => t.direction)).toEqual(["short"]);
+    // Không đảo chiều: Close chỉ đóng, tín hiệu ngược chiều bỏ OPPOSITE_NEWS, không có lệnh mới trên tài sản đó.
+    expect((await tradesOf(close.id)).map((t) => t.id)).toEqual([ct.id]);
+    const [drop] = await db
+      .select()
+      .from(signalEvents)
+      .where(and(eq(signalEvents.versionId, close.id), eq(signalEvents.stage, "filter")));
+    expect(drop).toMatchObject({ outcome: "drop", reason: "OPPOSITE_NEWS" });
+    expect(drop?.detail).toMatchObject({ closed: true, closedTradeId: ct.id });
+    const [story] = await db
+      .select()
+      .from(signalStories)
+      .where(eq(signalStories.versionId, close.id));
+    expect(story).toMatchObject({ outcome: "opposite_news", locked: true });
+    expect(c?.oppositeStoryId).toBe(story?.id);
+    // API: lệnh đóng vì tin ngược chiều không hiện là "open".
+    await db
+      .update(signalPaperTrades)
+      .set({ articleId: "a1", storyId: story?.id ?? null })
+      .where(eq(signalPaperTrades.id, ct.id));
+    const detail = await loadSignalResearchTrade(db, ct.id, new Date(T0));
+    expect(detail?.trade.result?.outcome).toBe("opposite");
+    expect(detail?.steps.at(-1)?.facts.find((f) => f.key === "exit")?.outcome).toBe("opposite");
+    const summary = await loadSignalResearchSummary(db, new Date(T0), {
+      sosoMonthlyLimit: 9500,
+      claudeDailyInputBudget: 2_000_000,
+    });
+    expect(summary.funnel?.outcomes).toMatchObject({ opposite: 1 });
+    // Keep: tín hiệu bị bỏ vì lệnh đang mở, có cờ oppositeNews; vẫn chỉ một lệnh.
+    const [keepDrop] = await db
+      .select()
+      .from(signalEvents)
+      .where(and(eq(signalEvents.versionId, keep.id), eq(signalEvents.stage, "filter")));
+    expect(keepDrop?.detail).toMatchObject({ oppositeNews: true, openTradeId: kt.id });
+    expect(await tradesOf(keep.id)).toHaveLength(1);
+
+    // Chu kỳ sau, bài mới cùng câu chuyện: story đã khoá → gộp, vẫn không mở lệnh.
+    const s2 = setup(
+      [
+        item("a1", T0 - 2 * MIN, "Solana protocol drained in exploit"),
+        item("a2", T0 + 3 * MIN, "Solana exploit follow-up", { author: "PANews" }),
+      ],
+      fakeClaude({ "Solana exploit follow-up": hack }),
+      () => T0 + 5 * MIN,
+    );
+    s2.book("SOL-USD", "99.5", "99.52", T0 + 5 * MIN);
+    await s2.sr.runCycle();
+    expect(await tradesOf(close.id)).toHaveLength(1);
   });
 
   it("news in the same direction is not opposite news", async () => {
@@ -639,7 +739,7 @@ describe("opposite news on an open trade", () => {
 });
 
 describe("migration 0047 on existing data", () => {
-  it("attaches open trades, stories and filter events from before the migration to the Baseline version", async () => {
+  it("attaches only news-v3 trades, stories and filter / decide events to Baseline; news-v2 stays null", async () => {
     await db.execute(sql`create database premig`);
     const uri = container.getConnectionUri().replace(/\/[^/?]+(\?|$)/, "/premig$1");
     const dir = mkdtempSync(join(tmpdir(), "mig-"));
@@ -653,18 +753,24 @@ describe("migration 0047 on existing data", () => {
       writeFileSync(journalPath, JSON.stringify(journal));
       rmSync(join(dir, "0047_sr_bot_versions.sql"));
       const p = createDb(uri);
+      const trade = (id: string, market: string, opened: string, rule: string) =>
+        `('${id}', 'news', 'live', 'a-${rule}', '${opened}', '${opened}', '${market}', 'X', 'hack_exploit', 'short', 500, 5, 100, 100, 0.01, 0.05, 0.25, 2, 3, 1.5, 97, 101.5, now() + interval '1 day', '${opened}', 'low', '[]', false, 'book', 'open', '${rule}')`;
       try {
         await migrate(p.db, { migrationsFolder: dir });
         await p.pool.query(`
-          insert into signal_articles (id, source, published_at, collected_at, matched_currencies, candidates, content_hash, status, rule_version, claude_prompt_version, claude_model, classified_at)
-          values ('old1', 'Odaily', now(), now(), '[]', '[]', 'h', 'classified', 'news-v3', 'news-classifier-v2', 'claude-haiku-4-5', now() - interval '1 hour');
-          insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry, later_level, outcome, locked, rule_version)
-          values ('00000000-0000-7000-8000-000000000001', 'SOL-USD|hack_exploit', 'SOL-USD', 'hack_exploit', 'short', 'old1', now(), '[]', 'low', 'low', 'entered', true, 'news-v3');
-          insert into signal_events (id, article_id, stage, outcome, rule_version) values
-            ('00000000-0000-7000-8000-000000000002', 'old1', 'understand', 'pass', 'news-v3'),
-            ('00000000-0000-7000-8000-000000000003', 'old1', 'decide', 'open', 'news-v3');
-          insert into signal_paper_trades (id, lane, label, article_id, event_at, seen_at, market, token, catalyst, direction, size_usdc, qty, entry_price, entry_mid, spread_at_entry_pct, fee_pct, entry_fee, typical_move_pct, tp_pct, sl_pct, tp_price, sl_price, max_hold_until, opened_at, level_at_entry, sources_at_entry, outside_market_hours, price_source, status, rule_version)
-          values ('00000000-0000-7000-8000-000000000004', 'news', 'live', 'old1', now(), now(), 'SOL-USD', 'SOL', 'hack_exploit', 'short', 500, 5, 100, 100, 0.01, 0.05, 0.25, 2, 3, 1.5, 97, 101.5, now() + interval '1 day', now() - interval '2 hours', 'low', '[]', false, 'book', 'open', 'news-v3');
+          insert into signal_articles (id, source, published_at, collected_at, matched_currencies, candidates, content_hash, status, rule_version, claude_prompt_version, claude_model, classified_at) values
+            ('a-news-v2', 'Odaily', '2026-11-16T10:00Z', '2026-11-16T10:00Z', '[]', '[]', 'h2', 'classified', 'news-v2', 'news-classifier-v1', 'claude-haiku-4-5', '2026-11-16T10:01Z'),
+            ('a-news-v3', 'Odaily', '2026-11-18T08:00Z', '2026-11-18T08:00Z', '[]', '[]', 'h3', 'classified', 'news-v3', 'news-classifier-v2', 'claude-haiku-4-5', '2026-11-18T08:01Z');
+          insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry, later_level, outcome, locked, rule_version) values
+            ('00000000-0000-7000-8000-000000000001', 'BTC-USD|hack_exploit', 'BTC-USD', 'hack_exploit', 'short', 'a-news-v2', '2026-11-16T10:02Z', '[]', 'low', 'low', 'entered', true, 'news-v2'),
+            ('00000000-0000-7000-8000-000000000002', 'SOL-USD|hack_exploit', 'SOL-USD', 'hack_exploit', 'short', 'a-news-v3', '2026-11-18T08:05Z', '[]', 'low', 'low', 'entered', true, 'news-v3');
+          insert into signal_events (id, article_id, stage, outcome, rule_version, at) values
+            ('00000000-0000-7000-8000-000000000011', 'a-news-v2', 'decide', 'open', 'news-v2', '2026-11-16T10:02Z'),
+            ('00000000-0000-7000-8000-000000000012', 'a-news-v3', 'understand', 'pass', 'news-v3', '2026-11-18T08:04Z'),
+            ('00000000-0000-7000-8000-000000000013', 'a-news-v3', 'decide', 'open', 'news-v3', '2026-11-18T08:05Z');
+          insert into signal_paper_trades (id, lane, label, article_id, event_at, seen_at, market, token, catalyst, direction, size_usdc, qty, entry_price, entry_mid, spread_at_entry_pct, fee_pct, entry_fee, typical_move_pct, tp_pct, sl_pct, tp_price, sl_price, max_hold_until, opened_at, level_at_entry, sources_at_entry, outside_market_hours, price_source, status, rule_version) values
+            ${trade("00000000-0000-7000-8000-000000000021", "BTC-USD", "2026-11-16T10:02Z", "news-v2")},
+            ${trade("00000000-0000-7000-8000-000000000022", "SOL-USD", "2026-11-18T09:00Z", "news-v3")};
         `);
         await migrate(p.db, { migrationsFolder: MIGRATIONS_FOLDER });
         const base = await p.pool.query<{ id: string; created_at: Date }>(
@@ -672,33 +778,45 @@ describe("migration 0047 on existing data", () => {
         );
         const bid = base.rows[0]?.id;
         expect(bid).toBeDefined();
-        const trade = await p.pool.query<{ version_id: string; classifier_version: string }>(
-          "select version_id, classifier_version from signal_paper_trades",
+        // Mốc Baseline = lúc news-v3 bắt đầu (bài news-v3 sớm nhất), không phải lệnh cũ nhất (news-v2).
+        expect(base.rows[0]?.created_at.toISOString()).toBe("2026-11-18T08:00:00.000Z");
+        const trades = await p.pool.query<{
+          rule_version: string;
+          version_id: string | null;
+          classifier_version: string;
+        }>(
+          "select rule_version, version_id, classifier_version from signal_paper_trades order by rule_version",
         );
-        expect(trade.rows[0]).toEqual({
-          version_id: bid,
-          classifier_version: "news-classifier-v2",
-        });
-        // Mốc Baseline = lệnh cũ nhất, để lệnh cũ vẫn tính cho Baseline.
-        const opened = await p.pool.query<{ opened_at: Date }>(
-          "select opened_at from signal_paper_trades",
+        expect(trades.rows).toEqual([
+          { rule_version: "news-v2", version_id: null, classifier_version: "news-classifier-v1" },
+          { rule_version: "news-v3", version_id: bid, classifier_version: "news-classifier-v2" },
+        ]);
+        const stories = await p.pool.query<{ rule_version: string; version_id: string | null }>(
+          "select rule_version, version_id from signal_stories order by rule_version",
         );
-        expect(base.rows[0]?.created_at.getTime()).toBe(opened.rows[0]?.opened_at.getTime());
-        const story = await p.pool.query<{ version_id: string }>(
-          "select version_id from signal_stories",
-        );
-        expect(story.rows[0]?.version_id).toBe(bid);
-        const evs = await p.pool.query<{ stage: string; version_id: string | null }>(
-          "select stage, version_id from signal_events order by stage",
+        expect(stories.rows).toEqual([
+          { rule_version: "news-v2", version_id: null },
+          { rule_version: "news-v3", version_id: bid },
+        ]);
+        const evs = await p.pool.query<{
+          rule_version: string;
+          stage: string;
+          version_id: string | null;
+        }>(
+          "select rule_version, stage, version_id from signal_events order by rule_version, stage",
         );
         expect(evs.rows).toEqual([
-          { stage: "decide", version_id: bid },
-          { stage: "understand", version_id: null },
+          { rule_version: "news-v2", stage: "decide", version_id: null },
+          { rule_version: "news-v3", stage: "decide", version_id: bid },
+          { rule_version: "news-v3", stage: "understand", version_id: null },
         ]);
-        const cv = await p.pool.query<{ prompt_version: string }>(
-          "select prompt_version from signal_classifier_versions",
+        const cv = await p.pool.query<{ prompt_version: string; started_at: Date }>(
+          "select prompt_version, started_at from signal_classifier_versions order by prompt_version",
         );
-        expect(cv.rows.map((r) => r.prompt_version)).toEqual(["news-classifier-v2"]);
+        expect(cv.rows.map((r) => [r.prompt_version, r.started_at.toISOString()])).toEqual([
+          ["news-classifier-v1", "2026-11-16T10:01:00.000Z"],
+          ["news-classifier-v2", "2026-11-18T08:01:00.000Z"],
+        ]);
       } finally {
         await p.pool.end();
       }

@@ -2792,7 +2792,11 @@
     "signalAnalysis.research.trades.unrealized",
     "signalAnalysis.research.trades.openCard",
     "signalAnalysis.research.reasons.assetNotInText",
-    "signalAnalysis.research.reasons.treasuryMajorAsset"
+    "signalAnalysis.research.reasons.treasuryMajorAsset",
+    "signalAnalysis.research.trades.result.opposite",
+    "signalAnalysis.research.trades.resultShort.opposite",
+    "signalAnalysis.research.detail.outcome.opposite",
+    "signalAnalysis.research.detail.outcome.oppositeNoHeld"
   ],
   "beta": {
     "label": "Beta",
@@ -8271,6 +8275,7 @@
           "tp": "Hit take profit",
           "sl": "Hit stop loss",
           "maxHold": "Closed at max hold",
+          "opposite": "Closed: opposite news",
           "open": "Open · {left} left",
           "openNoLeft": "Open"
         },
@@ -8278,6 +8283,7 @@
           "tp": "hit take profit",
           "sl": "hit stop loss",
           "maxHold": "closed at max hold",
+          "opposite": "closed on opposite news",
           "open": "open"
         },
         "notTraded": "Not traded",
@@ -8301,10 +8307,12 @@
           "tp": "hit take profit after {held}",
           "sl": "hit stop loss after {held}",
           "maxHold": "closed at max hold after {held}",
+          "opposite": "closed on opposite news after {held}",
           "open": "still open",
           "tpNoHeld": "hit take profit",
           "slNoHeld": "hit stop loss",
-          "maxHoldNoHeld": "closed at max hold"
+          "maxHoldNoHeld": "closed at max hold",
+          "oppositeNoHeld": "closed on opposite news"
         },
         "steps": {
           "received": "Received",
@@ -8445,7 +8453,7 @@
           },
           "exit": {
             "label": "Exit",
-            "value": "{price} at {time} · {outcome, select, tp {take profit} sl {stop loss} other {max hold}}"
+            "value": "{price} at {time} · {outcome, select, tp {take profit} sl {stop loss} opposite {opposite news} other {max hold}}"
           },
           "priceMove": {
             "label": "Price move",
