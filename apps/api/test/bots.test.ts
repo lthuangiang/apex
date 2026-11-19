@@ -1333,6 +1333,137 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
   });
 });
 
+describe("Idempotency-Key is bound to the bot it was used on (#314)", () => {
+  const made = async (client: TestClient, name: string, state: string) => {
+    const res = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name, paramSource: "manual", config: grid },
+    });
+    const id = res.json<{ id: string }>().id;
+    await env.pool.query("update bots set state = $2 where id = $1", [id, state]);
+    return id;
+  };
+  const stateOf = async (id: string) =>
+    (await env.pool.query<{ state: string }>("select state from bots where id = $1", [id])).rows[0]
+      ?.state;
+
+  it("never replays a stop of one bot for another bot with the same key and body", async () => {
+    const { client } = await connectedUser(`idem-stop-${randomUUID()}@drift.test`);
+    const a = await made(client, "A", "paused");
+    const b = await made(client, "B", "paused");
+    const key = randomUUID();
+    const stopA = await client.request("POST", `/api/v1/bots/${a}/actions/stop`, {
+      body: {},
+      idempotencyKey: key,
+    });
+    expect(stopA.statusCode).toBe(202);
+    expect(stopA.json()).toMatchObject({ id: a });
+
+    // Trước #314: trả lại response của bot A (202) và bot B không dừng.
+    const stopB = await client.request("POST", `/api/v1/bots/${b}/actions/stop`, {
+      body: {},
+      idempotencyKey: key,
+    });
+    expect(stopB.statusCode).toBe(409);
+    expect(errorOf(stopB.body).code).toBe("IDEMPOTENCY_KEY_CONFLICT");
+    expect(stopB.headers["idempotent-replayed"]).toBeUndefined();
+    expect(await stateOf(b)).toBe("paused");
+
+    // Cùng key, cùng bot, cùng body: phát lại đúng response cũ.
+    const again = await client.request("POST", `/api/v1/bots/${a}/actions/stop`, {
+      body: {},
+      idempotencyKey: key,
+    });
+    expect(again.statusCode).toBe(202);
+    expect(again.headers["idempotent-replayed"]).toBe("true");
+    expect(again.json()).toEqual(stopA.json());
+
+    // Cùng key, khác action trên cùng bot: cũng là request khác.
+    const pause = await client.request("POST", `/api/v1/bots/${a}/actions/pause`, {
+      body: {},
+      idempotencyKey: key,
+    });
+    expect(errorOf(pause.body).code).toBe("IDEMPOTENCY_KEY_CONFLICT");
+  });
+
+  it("never replays a start of one bot for another, and keeps keys of different users apart", async () => {
+    const { client, secret } = await connectedUser(`idem-start-${randomUUID()}@drift.test`);
+    env.sodex.setBuilder(ADDRESS, Number(TEST_BUILDER_ID), 50);
+    // Nhập mã 2FA một lần để phiên được tin 2 giờ (DEC-115): các lần Start sau có cùng body.
+    const first = await made(client, "First", "stopped");
+    const code = nextTotp(secret);
+    env.prices.set("vBTC_vUSDC", { price: "100", at: env.clock.now.getTime() });
+    const trusted = await client.request("POST", `/api/v1/bots/${first}/actions/start`, {
+      body: { acknowledged: true, twoFactorCode: code },
+    });
+    expect(trusted.statusCode, trusted.body).toBe(202);
+    env.prices.set("vBTC_vUSDC", { price: "100", at: env.clock.now.getTime() });
+
+    const a = await made(client, "A", "stopped");
+    const b = await made(client, "B", "stopped");
+    const key = randomUUID();
+    const body = { acknowledged: true };
+    const startA = await client.request("POST", `/api/v1/bots/${a}/actions/start`, {
+      body,
+      idempotencyKey: key,
+    });
+    expect(startA.statusCode, startA.body).toBe(202);
+    const startB = await client.request("POST", `/api/v1/bots/${b}/actions/start`, {
+      body,
+      idempotencyKey: key,
+    });
+    expect(errorOf(startB.body).code).toBe("IDEMPOTENCY_KEY_CONFLICT");
+    expect(await stateOf(b)).toBe("stopped");
+    const replay = await client.request("POST", `/api/v1/bots/${a}/actions/start`, {
+      body,
+      idempotencyKey: key,
+    });
+    expect(replay.headers["idempotent-replayed"]).toBe("true");
+    expect(replay.json()).toEqual(startA.json());
+
+    // Người dùng khác dùng đúng key đó: độc lập, xử lý bình thường.
+    const other = await connectedUser(`idem-other-${randomUUID()}@drift.test`);
+    const c = await made(other.client, "C", "paused");
+    const stopC = await other.client.request("POST", `/api/v1/bots/${c}/actions/stop`, {
+      body: {},
+      idempotencyKey: key,
+    });
+    expect(stopC.statusCode).toBe(202);
+    expect(stopC.headers["idempotent-replayed"]).toBeUndefined();
+    expect(await stateOf(c)).toBe("stopping");
+  });
+
+  it("refuses a key stored with the old route-only fingerprint until it expires", async () => {
+    const { client } = await connectedUser(`idem-legacy-${randomUUID()}@drift.test`);
+    const a = await made(client, "A", "paused");
+    const me = meSchema.parse((await client.request("GET", "/api/v1/me")).json());
+    const key = randomUUID();
+    // Dòng ghi trước #314: hash không có tiền tố "v2:", không biết thuộc bot nào.
+    await env.pool.query(
+      `insert into idempotency_keys (id, key, user_id, request_hash, status_code, response, expires_at)
+       values (gen_random_uuid(), $1, $2, repeat('a', 64), 202, '{"id":"other"}'::jsonb, $3)`,
+      [key, me.id, new Date(env.clock.now.getTime() + 3_600_000)],
+    );
+    const stop = () =>
+      client.request("POST", `/api/v1/bots/${a}/actions/stop`, { body: {}, idempotencyKey: key });
+    const refused = await stop();
+    expect(errorOf(refused.body)).toMatchObject({
+      code: "IDEMPOTENCY_KEY_CONFLICT",
+      details: { reason: "fingerprint_outdated" },
+    });
+    expect(await stateOf(a)).toBe("paused");
+
+    // Hết 24 h thì key được giải phóng: request chạy bình thường.
+    await env.pool.query("update idempotency_keys set expires_at = $2 where key = $1", [
+      key,
+      new Date(env.clock.now.getTime() - 1),
+    ]);
+    const done = await stop();
+    expect(done.statusCode).toBe(202);
+    expect(done.headers["idempotent-replayed"]).toBeUndefined();
+    expect(await stateOf(a)).toBe("stopping");
+  });
+});
+
 describe("Waiting for price (IMP-01, DEC-91)", () => {
   it("shows what a running bot waits for, and nothing once it is not running", async () => {
     const { client } = await connectedUser(`waiting-${randomUUID()}@drift.test`);
