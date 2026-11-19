@@ -221,12 +221,31 @@ describe("ContextCard", () => {
     await noViolations();
   });
 
-  it("exploratory values: missing ones say Not available, never 0", () => {
+  it("exploratory values: collapsed by default; missing ones say Not available, never 0", () => {
     wrap(<ContextCard context={CTX_NONE} asset="SOL" tz={TZ} />);
+    const details = screen.getByText("Exploratory values").closest("details");
+    expect(details?.tagName).toBe("DETAILS");
+    expect(details).not.toHaveAttribute("open");
     const row = (label: string) => screen.getByText(label).closest("div");
     expect(row("Volume vs 24 h average")).toHaveTextContent("Not available");
     expect(row("Range breakout")).toHaveTextContent("Not available");
     expect(row("Open interest")).toHaveTextContent("Not available");
+  });
+});
+
+describe("band text (#343)", () => {
+  it("short results for the funnel bands; the long line stays on the step card", () => {
+    const v = traceView(ETH_TRACE, TZ, t);
+    expect(v.steps.map((x) => x.band)).toEqual([
+      "Seen 4 min after release",
+      "ETH-USD · new story",
+      "ETF approved → Long",
+      "4 of 4 checks",
+      "Long 500 USDC",
+    ]);
+    expect(v.steps[2]?.short).toBe("ETF approved → Long · Medium · $0.0021");
+    const sol = traceView(SOL_TRACE, TZ, t);
+    expect(sol.steps[3]?.band).toBe("TP 0.15% < 2× cost");
   });
 });
 

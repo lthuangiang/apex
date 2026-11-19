@@ -441,18 +441,32 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     const h3 = within(list).getByTestId("sr-ctx-card-h3");
     expect(within(h3).getByText("No")).toHaveClass("text-ink-2");
     expect(h3).toHaveTextContent("+0.2% before entry · typical 1 h move 0.6% · threshold 0.6%");
-    expect(within(list).getByText("Exploratory values")).toBeInTheDocument();
+    // Exploratory values: <details> gập sẵn.
+    const details = within(list).getByText("Exploratory values").closest("details");
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute("open");
     expect(within(list).getByText("1.8×")).toBeInTheDocument();
     expect(within(list).getByText("Open interest").closest("div")).toHaveTextContent(
       "Not available",
     );
-    expect(within(f).getAllByText("Seen 4 min after release").length).toBeGreaterThan(0);
-    expect(within(f).getAllByText("ETH → ETH-USD · new story").length).toBeGreaterThan(0);
-    expect(within(f).getAllByText("ETF approved → Long · Medium · $0.0021").length).toBeGreaterThan(
-      0,
+    // #343: tầng phễu chỉ hiện kết quả gọn, không cắt "…" (xuống 2 dòng nếu cần).
+    const bandsBox = within(f).getByTestId("sr-funnel-bands");
+    const notes = [...bandsBox.querySelectorAll("[data-band]")].map(
+      (b) => b.lastElementChild?.textContent ?? "",
     );
-    expect(within(f).getAllByText("4 of 4 checks passed").length).toBeGreaterThan(0);
-    expect(within(f).getAllByText("Long ETH-USD · 500 USDC").length).toBeGreaterThan(0);
+    expect(notes).toEqual([
+      "Seen 4 min after release",
+      "ETH-USD · new story",
+      "ETF approved → Long",
+      "2 of 3 yes",
+      "4 of 4 checks",
+      "Long 500 USDC",
+    ]);
+    for (const el of bandsBox.querySelectorAll("[data-band] span"))
+      expect(el.getAttribute("class") ?? "").not.toMatch(/truncate|text-ellipsis|line-clamp/);
+    expect(bandsBox.querySelector("[data-band='normalize'] > span:last-child")).toHaveClass(
+      "whitespace-normal",
+    );
     expect(within(list).getByText("10:20:11 (4 min 9 s later)")).toBeInTheDocument();
     expect(within(list).getByText("ETHEREUM (ETH)")).toBeInTheDocument();
     expect(within(list).getByText("New · ETF approved · ETH-USD")).toBeInTheDocument();

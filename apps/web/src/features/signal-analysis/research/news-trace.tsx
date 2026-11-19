@@ -244,7 +244,7 @@ function traceBandViews(bands: TraceBand[], model: TraceModel | null, t: Tr): Fu
         extra: lit ? <ContextIcons context={context} /> : undefined,
       };
     }
-    const short = b.step?.short ?? "";
+    const short = b.step?.band ?? "";
     const note =
       b.state === "drop"
         ? t("trace.dropNote", { text: short })

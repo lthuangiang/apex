@@ -43,7 +43,8 @@ export interface FunnelToken {
 export const BAND_ROW = 44;
 // Rộng theo % khung phễu: chế độ tổng / trace (desktop) và điện thoại (mockup 390).
 const WIDTHS_TOTAL = [70, 62, 54, 50, 46, 38] as const;
-const WIDTHS_TRACE = [74, 66, 58, 54, 46, 38] as const;
+// Trace: khung phễu hẹp hơn (có khung Context bên cạnh) nên tầng rộng hơn mockup để kết quả gọn vừa tối đa 2 dòng.
+const WIDTHS_TRACE = [94, 88, 82, 78, 72, 66] as const;
 const WIDTHS_MOBILE = [100, 92, 86, 80, 72, 64] as const;
 
 // Màu tầng khi đã qua / chế độ tổng (chỉ token): accent-ink → accent → accent nhạt → (Context trắng) → accent rất nhạt →
@@ -112,7 +113,12 @@ export function FunnelBands({
               <span>{b.label}</span>
               {b.extra}
             </span>
-            {b.note === null ? null : <span className="min-w-0 truncate font-bold">{b.note}</span>}
+            {/* #343: không cắt "…"; kết quả dài thì xuống tối đa 2 dòng trong tầng (cao cố định). */}
+            {b.note === null ? null : (
+              <span className="min-w-0 text-right leading-[1.15] font-bold whitespace-normal">
+                {b.note}
+              </span>
+            )}
           </>
         );
         return b.onClick === undefined ? (
