@@ -2838,7 +2838,14 @@
     "signalAnalysis.research.trades.opposite",
     "signalAnalysis.research.trades.oppositeTip",
     "signalAnalysis.research.trades.shadow",
-    "signalAnalysis.research.trades.shadowPnl"
+    "signalAnalysis.research.trades.shadowPnl",
+    "signalAnalysis.pricesMainnet",
+    "signalAnalysis.research.page",
+    "signalAnalysis.research.trace.title",
+    "signalAnalysis.research.trace.sub",
+    "signalAnalysis.research.trace.subShort",
+    "signalAnalysis.research.summary.title",
+    "signalAnalysis.research.trades.title"
   ],
   "beta": {
     "label": "Beta",
@@ -7046,8 +7053,7 @@
     "past": {
       "all": "<b>Analysis of past trades, not a forecast.</b> It shows what fills on live bots cost. This page never changes a bot or a setting.",
       "vb": "<b>Analysis of past trades, not a forecast.</b> It shows what happened on these entries. This page never changes a bot; any change to VB logic is made and approved separately.",
-      "mm": "<b>Analysis of past trades, not a forecast.</b> It shows what happened after these fills. This page never changes a bot; any change to Market Making defaults or logic is made and approved separately.",
-      "research": "<b>Research only, fake money.</b> News signals are traded on paper as they happen. Whales, funding and price patterns are replayed every night from stored data. Nothing is sent to SoDEX. A signal type gets a page for users only after it passes the gate: 100 trades or more, average result after fees at least 2× the cost of a trade, and a likely range that stays above 0."
+      "mm": "<b>Analysis of past trades, not a forecast.</b> It shows what happened after these fills. This page never changes a bot; any change to Market Making defaults or logic is made and approved separately."
     },
     "na": "Not available",
     "thin": "Thin sample",
@@ -7758,9 +7764,6 @@
       "partialNote": "Prices cover the first 24 hours of the hold only."
     },
     "loading": "Loading…",
-    "pastShort": {
-      "research": "<b>Research only, fake money.</b> News is traded on paper live; whales, funding and price patterns are replayed nightly. Nothing is sent to SoDEX."
-    },
     "research": {
       "states": {
         "emptyTitle": "No signal research data yet",
@@ -7854,8 +7857,7 @@
         "unrealized": "{pnl} unrealized"
       },
       "trace": {
-        "title": "How news becomes a paper trade · {range}",
-        "titleShort": "How news becomes a paper trade",
+        "title": "From headline to trade",
         "range": {
           "1d": "last 1 day",
           "7d": "last 7 days"
@@ -8157,7 +8159,9 @@
         "traceCol": "Trace",
         "traceBtn": "Trace",
         "traceAria": "Trace: {title}",
-        "unitNote": "Every step counts the same articles, collected in the {range}: in − out = next step."
+        "unitNote": "Every step counts the same articles, collected in the {range}: in − out = next step.",
+        "sub": "Every article, what happened to it, and why. Pick one to watch it go through.",
+        "subShort": "Every article, what happened to it, and why."
       },
       "reasons": {
         "notCatalyst": "Not a catalyst on the list",
@@ -8188,7 +8192,6 @@
         "limitDay": "Limit: {n} per day"
       },
       "rules": {
-        "title": "What counts as a news signal",
         "sub": "Rules v{v} · a starting guess that the results prove or drop",
         "intro": "A signal is <b>one story</b> about one SoDEX asset, of a type on the list below. The <b>type sets the direction</b>; Claude only names the type and the asset. The bot decides on the <b>first article</b> and locks the confidence level at that moment. Articles that arrive later don’t open more trades; if they would have raised the level, the trade is tagged “later High” for analysis.",
         "typesTable": "News types, direction and max hold",
@@ -8233,8 +8236,7 @@
         "noLevels": "No news signals yet."
       },
       "summary": {
-        "title": "Where each signal type stands",
-        "titleShort": "Where each type stands",
+        "title": "Is it working?",
         "sub": "Closed trades opened after the rules were fixed · cost of a trade ≈ {cost} (SoDEX taker fee and builder fee, in and out, plus spread)",
         "table": "Where each signal type stands",
         "colType": "Signal type",
@@ -8280,7 +8282,7 @@
         "shortNa": "<b>Risk filter:</b> Not available"
       },
       "trades": {
-        "title": "Trades",
+        "title": "Paper trades",
         "filters": "Filters",
         "filtersLabel": "Trade filters",
         "type": "Signal type",
@@ -8897,7 +8899,57 @@
         "noTrades": "No trade was opened from this article.",
         "trade": "{side} · {outcome}",
         "tradeOpen": "{side} · open"
+      },
+      "page": {
+        "banner": {
+          "title": "Research only · fake money",
+          "titleShort": "Research only · fake money.",
+          "body": "Nothing here is sent to SoDEX.",
+          "sourcesLabel": "Sources"
+        },
+        "version": "Version",
+        "baselineOption": "Baseline (v{n})",
+        "versionLoading": "Loading versions…",
+        "progress": {
+          "label": "Progress",
+          "closed": "{n} of ~{gate} closed trades",
+          "closedNa": "Closed trades: Not available",
+          "labels": "Classifier {name}: {n} of {min} labels · {pct}% right",
+          "labelsNoPct": "Classifier {name}: {n} of {min} labels",
+          "labelsNa": "Classifier: Not available",
+          "contextNa": "Context: Not available",
+          "open": "{n, plural, one {# open trade} other {# open trades}}",
+          "openNa": "Open trades: Not available"
+        },
+        "howItWorks": "How it works",
+        "help": "How it works: {tab}",
+        "drawer": {
+          "title": "How it works",
+          "desc": "Rules of {name}.",
+          "descNa": "No version picked. Rules of the picked version are not available.",
+          "close": "Close",
+          "tabsLabel": "How it works sections",
+          "tabs": {
+            "news": "News types",
+            "levels": "Levels",
+            "tpsl": "Take profit / Stop loss",
+            "gate": "The gate",
+            "context": "Context questions",
+            "versions": "Versions"
+          },
+          "off": "Off",
+          "minLevel": "This version trades level <b>{level}</b> and up.",
+          "tpsl": "TP = <b>{tp} ×</b> and SL = <b>{sl} ×</b> the asset’s typical move over the max hold (from its last 30 days). If TP is under <b>{min}×</b> the cost of a trade, the signal is skipped.",
+          "size": "Each trade is <b>{size} USDC</b> of fake money.",
+          "gate": "A signal type gets a page for users only after it passes the gate: <b>100 trades or more</b>, average result after fees at least <b>2× the cost of a trade</b>, a likely range that stays above 0, it <b>beats random entries at the same moments</b>, and the result has the <b>same sign in both halves</b>.",
+          "classifierGate": "A trade counts only when the classifier that made it has <b>{min} labels</b> and is at least <b>{pct}% right</b>.",
+          "context1": "<b>Where the other signals go: step 4 · Context.</b> After Claude names the news type and the asset (Score), DeskLabs checks three things about that asset at that moment: did whales on the leaderboard just trade the same way, is funding against the crowd, has the price already run.",
+          "context2": "<b>Now: records only (dashed).</b> Every signal passes step 4; the answers are saved on the signal and the trade. \"Is it working? › Does context help?\" compares trades with and without each one.",
+          "context3": "<b>Later: a version can use it.</b> If one check proves itself, a new version can turn it on, e.g. \"Require whales agree\". Then step 4 becomes solid for that version and signals that fail it drop here with that reason.",
+          "versionNow": "<b>{name}:</b> {config}"
+        }
       }
-    }
+    },
+    "pricesMainnet": "Prices from mainnet"
   }
 }

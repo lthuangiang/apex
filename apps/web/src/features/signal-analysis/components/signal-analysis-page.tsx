@@ -99,10 +99,17 @@ export function SignalAnalysisPage() {
           action={
             forbidden ? undefined : (
               <div className="flex flex-wrap items-center gap-3 text-[13px]">
-                <span className="inline-flex items-center gap-1.5 font-bold text-ink-2">
-                  <Lock aria-hidden="true" size={15} />
-                  {t("readOnly")}
-                </span>
+                {tab === "research" ? (
+                  // #342: tab nghiên cứu chỉ đọc giá mainnet, không gửi gì tới SoDEX (dải cảnh báo ở dưới).
+                  <span className="inline-flex min-h-8 items-center rounded-full border border-border bg-surface px-3 font-bold text-ink-2">
+                    {t("pricesMainnet")}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 font-bold text-ink-2">
+                    <Lock aria-hidden="true" size={15} />
+                    {t("readOnly")}
+                  </span>
+                )}
                 {cur === null ? null : (
                   <span className="text-muted">
                     {t("updated", { time: clock(cur.computedAt, tz, false) })}
@@ -133,7 +140,8 @@ export function SignalAnalysisPage() {
               <div
                 role="tablist"
                 aria-label={t("tabsLabel")}
-                className="flex gap-1 overflow-x-auto rounded-tile border border-border bg-surface p-1"
+                // #342: dưới 768px thanh tab cuộn ngang, mép phải mờ dần (mockup redesign-full-page-mobile).
+                className="flex gap-1 overflow-x-auto rounded-tile border border-border bg-surface p-1 max-md:mask-r-from-85%"
               >
                 {TABS.map((k) => {
                   const on = k === tab;
@@ -156,7 +164,7 @@ export function SignalAnalysisPage() {
                       onClick={() => {
                         choose(k);
                       }}
-                      className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[10px] border-0 px-4 text-sm font-extrabold ${on ? "bg-accent text-white" : "bg-transparent text-ink"}`}
+                      className={`inline-flex min-h-11 flex-none cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[10px] border-0 px-4 text-sm font-extrabold ${on ? "bg-accent text-white" : "bg-transparent text-ink"}`}
                     >
                       {short === undefined ? (
                         t(`tabs.${k}`)
@@ -192,24 +200,16 @@ export function SignalAnalysisPage() {
                 </button>
               </div>
             </div>
-            <div
-              role="note"
-              className="flex items-start gap-2.5 rounded-tile bg-accent-tint px-4 py-3 text-[13px] text-accent-ink"
-            >
-              <Info aria-hidden="true" size={18} className="mt-0.5 flex-none" />
-              {tab === "research" ? (
-                <>
-                  <span className="md:hidden">
-                    {t.rich("pastShort.research", { b: (c) => <b className="text-ink">{c}</b> })}
-                  </span>
-                  <span className="max-md:hidden">
-                    {t.rich("past.research", { b: (c) => <b className="text-ink">{c}</b> })}
-                  </span>
-                </>
-              ) : (
+            {tab === "research" ? null : (
+              // Tab Signal research có dải "Research only · fake money" riêng (#342, research/page-bar.tsx).
+              <div
+                role="note"
+                className="flex items-start gap-2.5 rounded-tile bg-accent-tint px-4 py-3 text-[13px] text-accent-ink"
+              >
+                <Info aria-hidden="true" size={18} className="mt-0.5 flex-none" />
                 <span>{t.rich(`past.${tab}`, { b: (c) => <b className="text-ink">{c}</b> })}</span>
-              )}
-            </div>
+              </div>
+            )}
             <div
               id="sa-panel"
               role="tabpanel"
