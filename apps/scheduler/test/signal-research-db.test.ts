@@ -12,7 +12,12 @@ import {
   signalStories,
   type Db,
 } from "@drift/db";
-import { articleClaudeUsage, NEWS_CLASSIFIER, NEWS_RULES } from "@drift/shared";
+import {
+  articleClaudeUsage,
+  NEWS_ASSET_MAP_VERSION,
+  NEWS_CLASSIFIER,
+  NEWS_RULES,
+} from "@drift/shared";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -261,6 +266,7 @@ describe("news pipeline end to end", () => {
       status: "open",
       priceSource: "book",
       ruleVersion: NEWS_RULES.version,
+      assetMapVersion: NEWS_ASSET_MAP_VERSION,
       outsideMarketHours: false,
     });
     expect(t?.entryPrice).toBe("99.990000000000000000");
@@ -963,7 +969,11 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
       sosoMonthlyLimit: 9500,
       claudeDailyInputBudget: 2_000_000,
     });
-    expect(summary.rows[0]).toMatchObject({ rulesVersion: 3, closed: 0, opened: 0 });
+    expect(summary.rows[0]).toMatchObject({
+      rulesVersion: 3,
+      closed: 0,
+      opened: 0,
+    });
     expect(summary.funnel?.outcomes).toEqual({ closed: 0, tp: 0, sl: 0, maxHold: 0, open: 0 });
     expect(summary.assets).not.toContain("SOL-USD");
 
@@ -971,5 +981,62 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
     expect(page.items.map((i) => i.id)).toContain(tradeId);
     const detail = await loadSignalResearchTrade(db, tradeId, new Date(T0));
     expect(detail).toMatchObject({ rulesVersion: 2 });
+  });
+});
+
+describe("#309: company tags use the SoDEX market list, asset map version", () => {
+  it("keeps a SpaceX tag as SPCX-USD (stock) and still drops Anthropic and a coin on COIN-USD", async () => {
+    const perps = () => [
+      ...PERPS,
+      { name: "SPCX-USD", status: "TRADING", tickSize: "0.01", takerFee: "0.0004" },
+      { name: "COIN-USD", status: "TRADING", tickSize: "0.01", takerFee: "0.0004" },
+    ];
+    const items = [
+      item("spx", T0 - 3 * MIN, "SpaceX files for an IPO", {
+        matched_currencies: [{ symbol: "SPCX", name: '{"EN":"SPACEX"}' }],
+      }),
+      item("ant", T0 - 2 * MIN, "Anthropic raises a new round", {
+        matched_currencies: [{ symbol: "ANT", name: '{"EN":"ANTHROPIC"}' }],
+      }),
+      item("coin", T0 - MIN, "COIN token rallies", {
+        matched_currencies: [{ symbol: "COIN", name: "Some Coin" }],
+      }),
+    ];
+    const { sr, errors } = setup({
+      items: () => items,
+      claude: fakeClaude({}),
+      now: () => T0,
+      perps,
+    });
+    await sr.runCycle();
+    expect(errors).toEqual([]);
+    const rows = await db.select().from(signalArticles);
+    const by = new Map(rows.map((r) => [r.id, r]));
+    expect(by.get("spx")?.candidates).toEqual([
+      { symbol: "SPCX", market: "SPCX-USD", kind: "stock" },
+    ]);
+    expect(by.get("spx")?.status).not.toBe("dropped");
+    expect(by.get("ant")).toMatchObject({ status: "dropped", candidates: [] });
+    expect(by.get("coin")).toMatchObject({ status: "dropped", candidates: [] });
+    const drops = await db
+      .select({
+        articleId: signalEvents.articleId,
+        reason: signalEvents.reason,
+        detail: signalEvents.detail,
+      })
+      .from(signalEvents)
+      .where(eq(signalEvents.stage, "normalize"));
+    const assets = { assetMapVersion: NEWS_ASSET_MAP_VERSION };
+    expect(drops).toEqual(
+      expect.arrayContaining([
+        { articleId: "ant", reason: "NO_SODEX_MARKET", detail: assets },
+        { articleId: "coin", reason: "NO_SODEX_MARKET", detail: assets },
+        { articleId: "spx", reason: null, detail: { candidates: ["SPCX-USD"], ...assets } },
+      ]),
+    );
+    // Đổi danh sách tài sản không đổi version quy tắc (không reset cổng).
+    expect(NEWS_RULES.version).toBe("news-v3");
+    expect(NEWS_ASSET_MAP_VERSION).toMatch(/^assets-\d{4}-\d{2}-\d{2}[a-z]$/);
+    expect(drops.some((d) => d.articleId === "spx" && d.reason !== null)).toBe(false);
   });
 });

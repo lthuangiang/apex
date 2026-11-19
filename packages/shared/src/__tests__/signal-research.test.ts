@@ -160,6 +160,15 @@ describe("asset must be written in the article (news-v3, #298)", () => {
     expect(assetInText("Alphabet results", null, stock("GOOGL"), g)).toBe(true);
     expect(assetInText("Googleplex tour", null, stock("GOOGL"), g)).toBe(false);
     expect(assetInText("google it", null, stock("GOOGL"), g)).toBe(false);
+    // #309: market mới có tên thương hiệu tường minh; market chưa có tên chỉ khớp mã.
+    const sx = [{ symbol: "SPACEX", name: '{"EN":"SPACEX"}' }];
+    expect(assetInText("SpaceX files for an IPO", null, stock("SPACEX", "SPCX-USD"), sx)).toBe(
+      true,
+    );
+    expect(assetInText("SPCX perp jumps", null, stock("SPACEX", "SPCX-USD"), sx)).toBe(true);
+    const cx = [{ symbol: "CXMT", name: '{"EN":"CXMT"}' }];
+    expect(assetInText("CXMT raises prices", null, stock("CXMT"), cx)).toBe(true);
+    expect(assetInText("Cxmt raises prices", null, stock("CXMT"), cx)).toBe(false);
     const m = [{ symbol: "META", name: '{"EN": "META PLATFORMS, INC."}' }];
     expect(assetInText("Facebook parent fined", null, stock("META"), m)).toBe(true);
     expect(assetInText("Meta investors sue", null, stock("META"), m)).toBe(true);
@@ -220,6 +229,78 @@ describe("candidatesOf", () => {
 
   it("never maps a coin onto a stock market with the same ticker", () => {
     expect(candidatesOf([{ symbol: "COIN", name: "Some Coin" }], MARKETS)).toEqual([]);
+  });
+
+  describe("company tags use the live SoDEX list (#309)", () => {
+    const LIVE = new Set([
+      ...MARKETS,
+      "SPCX-USD",
+      "SAMSUNG-USD",
+      "SKHY-USD",
+      "GOOGL-USD",
+      "ANT-USD",
+      "SOL-USD",
+    ]);
+
+    it("maps a company tag onto <SYMBOL>-USD when SoDEX lists it as a stock market", () => {
+      expect(
+        candidatesOf(
+          [
+            { symbol: "SPCX", name: '{"EN":"SPACEX"}' },
+            { symbol: "SAMSUNG", name: '{"EN": "SAMSUNG ELECTRONICS"}' },
+            { symbol: "SKHY", name: '{"EN": "SK HYNIX"}' },
+          ],
+          LIVE,
+        ),
+      ).toEqual([
+        { symbol: "SAMSUNG", market: "SAMSUNG-USD", kind: "stock" },
+        { symbol: "SKHY", market: "SKHY-USD", kind: "stock" },
+        { symbol: "SPCX", market: "SPCX-USD", kind: "stock" },
+      ]);
+    });
+
+    it("maps names that differ from the SoDEX ticker through the alias table", () => {
+      expect(
+        candidatesOf(
+          [
+            { symbol: "SPACEX", name: '{"EN":"SPACEX"}' },
+            { symbol: "GOOG", name: '{"EN":"ALPHABET INC."}' },
+          ],
+          LIVE,
+        ),
+      ).toEqual([
+        { symbol: "GOOG", market: "GOOGL-USD", kind: "stock" },
+        { symbol: "SPACEX", market: "SPCX-USD", kind: "stock" },
+      ]);
+    });
+
+    it("drops a company with no SoDEX market (ANTHROPIC): NO_SODEX_MARKET upstream", () => {
+      // ANT-USD tồn tại (đang HALT) nhưng không phải market cổ phiếu: tag công ty không map vào.
+      expect(candidatesOf([{ symbol: "ANT", name: '{"EN":"ANTHROPIC"}' }], LIVE)).toEqual([]);
+      expect(candidatesOf([{ symbol: "ANT", name: '{"EN":"ANTHROPIC"}' }], MARKETS)).toEqual([]);
+    });
+
+    it("drops a company tag whose stock market is not listed on SoDEX right now", () => {
+      expect(candidatesOf([{ symbol: "ZHIPU", name: '{"EN":"ZHIPU AI"}' }], LIVE)).toEqual([]);
+      expect(candidatesOf([{ symbol: "SPCX", name: '{"EN":"SPACEX"}' }], MARKETS)).toEqual([]);
+    });
+
+    it("never maps a company tag onto a crypto market with the same ticker", () => {
+      // Emeren Group có mã NYSE "SOL": không bao giờ thành SOL-USD.
+      expect(candidatesOf([{ symbol: "SOL", name: '{"EN":"EMEREN GROUP"}' }], LIVE)).toEqual([]);
+    });
+
+    it("never maps a crypto tag onto a stock market, even a new one", () => {
+      expect(
+        candidatesOf(
+          [
+            { symbol: "COIN", name: "Some Coin" },
+            { symbol: "SPCX", name: "Spacecoin" },
+          ],
+          LIVE,
+        ),
+      ).toEqual([]);
+    });
   });
 });
 

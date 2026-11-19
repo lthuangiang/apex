@@ -41,6 +41,7 @@ import {
   smallTreasury,
   sourceTierOf,
   spreadPctOf,
+  NEWS_ASSET_MAP_VERSION,
   STOCK_MARKET_SET,
   storyKey,
   stripHtml,
@@ -359,7 +360,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
             stage: SignalStage.understand,
             outcome: SignalOutcome.drop,
             reason,
-            detail: classification,
+            detail: { ...classification, assetMapVersion: NEWS_ASSET_MAP_VERSION },
             at: now,
           },
         ]);
@@ -465,6 +466,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
             direction: rule.direction,
             maxHoldHours: rule.maxHoldHours,
             ...(small ? { smallTreasury: true } : {}),
+            assetMapVersion: NEWS_ASSET_MAP_VERSION,
           },
           at: now,
         },
@@ -583,7 +585,10 @@ async function normalizeCollected(
               articleId: a.id,
               stage: SignalStage.normalize,
               outcome: SignalOutcome.pass,
-              detail: { candidates: candidates.map((c) => c.market) },
+              detail: {
+                candidates: candidates.map((c) => c.market),
+                assetMapVersion: NEWS_ASSET_MAP_VERSION,
+              },
               at: now,
             }
           : {
@@ -591,6 +596,7 @@ async function normalizeCollected(
               stage: SignalStage.normalize,
               outcome: SignalOutcome.drop,
               reason,
+              detail: { assetMapVersion: NEWS_ASSET_MAP_VERSION },
               at: now,
             },
       ]);
@@ -1153,6 +1159,7 @@ async function decideStory(
           priceSource: quote.source,
           status: "open",
           ruleVersion: NEWS_RULES.version,
+          assetMapVersion: NEWS_ASSET_MAP_VERSION,
         })
         .returning({ id: signalPaperTrades.id });
       const tradeId = t?.id ?? null;

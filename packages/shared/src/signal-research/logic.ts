@@ -12,7 +12,7 @@ import {
   SourceTier,
   STOCK_BRAND_ALIASES,
   STOCK_MARKET_SET,
-  STOCK_MARKETS,
+  STOCK_SYMBOL_ALIASES,
   TradeDirection,
   type SignalCatalyst,
 } from "./rules";
@@ -44,9 +44,11 @@ function isStockName(name: string | null): boolean {
 }
 
 /**
- * Token ứng viên của một bài: các currency SoSoValue gắn với bài, cộng bảng map mã cổ phiếu, chỉ giữ market có trên
- * SoDEX (`markets`: perps đang giao dịch). Coin → `<SYM>-USD` hoặc `1000<SYM>-USD`, không bao giờ trùng một market cổ
- * phiếu (coin "COIN" không phải Coinbase). Cổ phiếu chỉ qua `STOCK_MARKETS`; xStock (mã có thêm "X") về cổ phiếu gốc.
+ * Token ứng viên của một bài: các currency SoSoValue gắn với bài, chỉ giữ market có trên SoDEX (`markets`: perps đang
+ * giao dịch). Coin → `<SYM>-USD` hoặc `1000<SYM>-USD`, không bao giờ trùng một market cổ phiếu (coin "COIN" không phải
+ * Coinbase). Tag công ty (tên JSON) hoặc xStock (mã có thêm "X") → `STOCK_SYMBOL_ALIASES` nếu có (GOOG, SPACEX), không thì
+ * `<SYMBOL>-USD`; chỉ nhận khi market có trên SoDEX **và** nằm trong `STOCK_MARKET_SET` (#309), để tag công ty
+ * không bao giờ rơi vào market coin trùng mã.
  */
 export function candidatesOf(
   matched: readonly MatchedCurrency[],
@@ -58,8 +60,9 @@ export function candidatesOf(
     if (symbol === "") continue;
     const xstock = (m.name ?? "").toUpperCase().trim().endsWith("XSTOCK") && symbol.endsWith("X");
     if (isStockName(m.name) || xstock) {
-      const market = STOCK_MARKETS[xstock ? symbol.slice(0, -1) : symbol];
-      if (market !== undefined && markets.has(market) && !out.has(market))
+      const ticker = xstock ? symbol.slice(0, -1) : symbol;
+      const market = STOCK_SYMBOL_ALIASES[ticker] ?? `${ticker}-USD`;
+      if (markets.has(market) && STOCK_MARKET_SET.has(market) && !out.has(market))
         out.set(market, { symbol, market, kind: AssetKind.stock });
       continue;
     }

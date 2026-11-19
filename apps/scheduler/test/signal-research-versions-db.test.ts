@@ -22,6 +22,7 @@ import {
 import {
   AppError,
   baselineVersionConfig,
+  NEWS_ASSET_MAP_VERSION,
   NEWS_CLASSIFIER,
   NEWS_RULES,
   type BotVersionConfig,
@@ -363,6 +364,7 @@ describe("decide per running version", () => {
       label: "live",
       direction: "short",
       classifierVersion: NEWS_CLASSIFIER.promptVersion,
+      assetMapVersion: NEWS_ASSET_MAP_VERSION,
       shadowReason: null,
     });
     expect(await tradesOf(strict.id)).toHaveLength(0);
@@ -479,7 +481,13 @@ describe("limits and shadow trades", () => {
     await insertTrade({ versionId: v.id });
     const { sr, book } = await run();
     const shadow = (await tradesOf(v.id)).find((t) => t.label === "shadow");
-    expect(shadow).toMatchObject({ shadowReason: "LIMIT_OPEN", status: "open", market: "SOL-USD" });
+    expect(shadow).toMatchObject({
+      shadowReason: "LIMIT_OPEN",
+      assetMapVersion: NEWS_ASSET_MAP_VERSION,
+      classifierVersion: NEWS_CLASSIFIER.promptVersion,
+      status: "open",
+      market: "SOL-USD",
+    });
     expect(await filterReasons(v.id)).toEqual(["drop:LIMIT_OPEN"]);
     const [story] = await db.select().from(signalStories).where(eq(signalStories.versionId, v.id));
     expect(story).toMatchObject({ outcome: "shadow", locked: true, tradeId: shadow?.id });
@@ -630,7 +638,7 @@ describe("opposite news on an open trade", () => {
   });
 });
 
-describe("migration 0046 on existing data", () => {
+describe("migration 0047 on existing data", () => {
   it("attaches open trades, stories and filter events from before the migration to the Baseline version", async () => {
     await db.execute(sql`create database premig`);
     const uri = container.getConnectionUri().replace(/\/[^/?]+(\?|$)/, "/premig$1");
@@ -641,9 +649,9 @@ describe("migration 0046 on existing data", () => {
       const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
         entries: { tag: string }[];
       };
-      journal.entries = journal.entries.filter((e) => !e.tag.startsWith("0046"));
+      journal.entries = journal.entries.filter((e) => !e.tag.startsWith("0047"));
       writeFileSync(journalPath, JSON.stringify(journal));
-      rmSync(join(dir, "0046_sr_bot_versions.sql"));
+      rmSync(join(dir, "0047_sr_bot_versions.sql"));
       const p = createDb(uri);
       try {
         await migrate(p.db, { migrationsFolder: dir });

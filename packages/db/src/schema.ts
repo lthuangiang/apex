@@ -1766,7 +1766,7 @@ export const signalStories = pgTable(
     ruleVersion: text("rule_version").notNull(),
     /**
      * News bot version đã quyết định câu chuyện này (#303, DEC-328): Filter / Decide chạy riêng cho từng version, nên mỗi
-     * version có story riêng cho cùng một key. Story trước migration 0046 gắn version Baseline.
+     * version có story riêng cho cùng một key. Story trước migration 0047 gắn version Baseline.
      */
     versionId: uuid("version_id"),
     ...timestamps,
@@ -1878,7 +1878,7 @@ export const signalPaperTrades = pgTable(
     resultUsdc: money("result_usdc"),
     resultPct: money("result_pct"),
     ruleVersion: text("rule_version").notNull(),
-    /** News bot version (#303, DEC-328); null với replay. Lệnh news trước migration 0046 gắn version Baseline. */
+    /** News bot version (#303, DEC-328); null với replay. Lệnh news trước migration 0047 gắn version Baseline. */
     versionId: uuid("version_id"),
     /** `NEWS_CLASSIFIER.promptVersion` của classifier đã tạo lệnh (đoạn đếm của cổng, DEC-328 mục 2). */
     classifierVersion: text("classifier_version"),
@@ -1896,6 +1896,8 @@ export const signalPaperTrades = pgTable(
     oppositeExitPrice: money("opposite_exit_price"),
     oppositeResultUsdc: money("opposite_result_usdc"),
     oppositeResultPct: money("opposite_result_pct"),
+    /** Version danh sách tài sản lúc mở lệnh (`NEWS_ASSET_MAP_VERSION`, #309); lệnh trước #309 là null. */
+    assetMapVersion: text("asset_map_version"),
     ...timestamps,
   },
   (t) => [

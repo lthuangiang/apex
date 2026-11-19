@@ -1,5 +1,5 @@
 {
-  "id": "70ae84eb-c822-444a-a6db-dc3933fa70bf",
+  "id": "dd5664b2-94f4-4d5c-b3d1-9307896ecf54",
   "prevId": "75694af2-cf41-49a5-8c6e-3459a038f37a",
   "version": "7",
   "dialect": "postgresql",
@@ -6804,188 +6804,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.signal_bot_versions": {
-      "name": "signal_bot_versions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "number": {
-          "name": "number",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "config": {
-          "name": "config",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "saved_from_version_id": {
-          "name": "saved_from_version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_baseline": {
-          "name": "is_baseline",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "status_changed_at": {
-          "name": "status_changed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "signal_bot_versions_number_uq": {
-          "name": "signal_bot_versions_number_uq",
-          "columns": [
-            {
-              "expression": "number",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "signal_bot_versions_baseline_uq": {
-          "name": "signal_bot_versions_baseline_uq",
-          "columns": [
-            {
-              "expression": "is_baseline",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"signal_bot_versions\".\"is_baseline\"",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "signal_bot_versions_status_idx": {
-          "name": "signal_bot_versions_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "signal_bot_versions_created_by_users_id_fk": {
-          "name": "signal_bot_versions_created_by_users_id_fk",
-          "tableFrom": "signal_bot_versions",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.signal_classifier_versions": {
-      "name": "signal_classifier_versions",
-      "schema": "",
-      "columns": {
-        "prompt_version": {
-          "name": "prompt_version",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.signal_events": {
       "name": "signal_events",
       "schema": "",
@@ -7043,12 +6861,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "version_id": {
-          "name": "version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "at": {
           "name": "at",
@@ -7435,51 +7247,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "version_id": {
-          "name": "version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "classifier_version": {
-          "name": "classifier_version",
+        "asset_map_version": {
+          "name": "asset_map_version",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "shadow_reason": {
-          "name": "shadow_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "opposite_story_id": {
-          "name": "opposite_story_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "opposite_at": {
-          "name": "opposite_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "opposite_exit_price": {
-          "name": "opposite_exit_price",
-          "type": "numeric(38, 18)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "opposite_result_usdc": {
-          "name": "opposite_result_usdc",
-          "type": "numeric(38, 18)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "opposite_result_pct": {
-          "name": "opposite_result_pct",
-          "type": "numeric(38, 18)",
           "primaryKey": false,
           "notNull": false
         },
@@ -7509,18 +7279,6 @@
               "nulls": "last"
             },
             {
-              "expression": "version_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "label",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
               "expression": "market",
               "isExpression": false,
               "asc": true,
@@ -7528,34 +7286,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"signal_paper_trades\".\"status\" = 'open' and \"signal_paper_trades\".\"label\" in ('live', 'shadow')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "signal_paper_trades_version_idx": {
-          "name": "signal_paper_trades_version_idx",
-          "columns": [
-            {
-              "expression": "version_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "opened_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
+          "where": "\"signal_paper_trades\".\"status\" = 'open' and \"signal_paper_trades\".\"label\" = 'live'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -7826,12 +7557,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "version_id": {
-          "name": "version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -7851,33 +7576,6 @@
         "signal_stories_key_idx": {
           "name": "signal_stories_key_idx",
           "columns": [
-            {
-              "expression": "story_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "first_seen_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "signal_stories_version_key_idx": {
-          "name": "signal_stories_version_key_idx",
-          "columns": [
-            {
-              "expression": "version_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
             {
               "expression": "story_key",
               "isExpression": false,

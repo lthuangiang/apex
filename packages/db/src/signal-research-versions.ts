@@ -13,7 +13,7 @@ import { auditLog, signalBotVersions, signalClassifierVersions } from "./schema"
 
 // News bot versions (#303, DEC-328): đọc version đang chạy cho scheduler, và service lưu / đổi trạng thái cho API (#305).
 // Config bất biến: lưu = dòng mới. Tối đa 3 version `running`: khoá advisory trong transaction ở đây + trigger DB
-// `signal_bot_versions_guard` (migration 0046). Mọi lần lưu / đổi trạng thái ghi `audit_log`.
+// `signal_bot_versions_guard` (migration 0047). Mọi lần lưu / đổi trạng thái ghi `audit_log`.
 
 type Exec = Pick<Db, "insert" | "select" | "update" | "execute">;
 

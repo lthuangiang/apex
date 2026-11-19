@@ -110,7 +110,7 @@ export function defaultMaxOpenTrades(sizeUsdc: string): number {
 }
 
 /**
- * Config của version mốc (Baseline): đúng các tham số quyết định của `NEWS_RULES` hiện tại (news-v3 lúc migration 0046):
+ * Config của version mốc (Baseline): đúng các tham số quyết định của `NEWS_RULES` hiện tại (news-v3 lúc migration 0047):
  * mọi loại tin bật với giữ tối đa của bảng quy tắc, mọi level, nguồn trễ ≤ 30 phút, 500 USDC, TP 1.5×, SL 0.75×,
  * TP ≥ 2× chi phí, mọi tài sản, Max open trades 20, không giới hạn ngày, Keep khi có tin ngược chiều. Migration seed
  * đúng giá trị này (test so sánh).
