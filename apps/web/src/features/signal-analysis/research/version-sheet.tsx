@@ -21,6 +21,7 @@ import { useTranslations } from "next-intl";
 import { useId, useRef, useState, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api";
+import { uncertainOutcome } from "@/lib/financial-action";
 import { BELOW_LG, useMediaQuery } from "@/lib/use-media";
 
 import { count } from "../format";
@@ -666,7 +667,10 @@ export function VersionSheet({
 export function saveErrorText(
   e: unknown,
   t: ReturnType<typeof useTranslations<"signalAnalysis.research.versions">>,
+  unconfirmed: string,
 ): string {
+  // Kết quả không rõ (mạng, 5xx, 409 unknown / in_progress): không được khẳng định là chưa có gì thay đổi (quy tắc 1.8).
+  if (uncertainOutcome(e) !== null) return unconfirmed;
   if (e instanceof ApiError) {
     if (e.code === ErrorCode.stateConflict && e.details.reason === "MAX_RUNNING_VERSIONS")
       return t("errors.maxRunning");

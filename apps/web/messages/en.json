@@ -8659,7 +8659,7 @@
         "staleNotice": "Saved v{n} · {name}. The market list was out of date when the assets were checked.",
         "errors": {
           "maxRunning": "Pause or stop a version first.",
-          "generic": "Couldn’t change this version. Nothing changed."
+          "generic": "Couldn’t change this version."
         },
         "change": {
           "newsTypeOn": "{type} on",

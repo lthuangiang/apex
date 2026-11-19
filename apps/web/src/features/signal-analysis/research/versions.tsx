@@ -10,6 +10,7 @@ import { useTranslations } from "next-intl";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api";
+import { uncertainOutcome } from "@/lib/financial-action";
 
 import { ScrollTable } from "../components/bits";
 import { count, monthDay, clock } from "../format";
@@ -231,7 +232,7 @@ export function NewsVersions({
             setSaveError(null);
             create.mutate(body, {
               onError: (e) => {
-                setSaveError(saveErrorText(e, t));
+                setSaveError(saveErrorText(e, t, tc("unconfirmed")));
               },
             });
           }}
@@ -300,9 +301,11 @@ function VersionCard({
         },
         onError: (e) => {
           setErr(
-            e instanceof ApiError && e.details.reason === "MAX_RUNNING_VERSIONS"
-              ? t("errors.maxRunning")
-              : t("errors.generic"),
+            uncertainOutcome(e) !== null
+              ? tc("unconfirmed")
+              : e instanceof ApiError && e.details.reason === "MAX_RUNNING_VERSIONS"
+                ? t("errors.maxRunning")
+                : t("errors.generic"),
           );
         },
       },
