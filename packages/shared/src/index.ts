@@ -45,4 +45,5 @@ export * from "./signal-research/rules";
 export * from "./signal-research/logic";
 export * from "./signal-research/report";
 export * from "./signal-research/usage";
+export * from "./signal-research/display";
 export * from "./stats/day-bootstrap";

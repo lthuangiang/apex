@@ -6,6 +6,7 @@ import {
   loadSignalResearchTrades,
   readOnlyTx,
   type Db,
+  type LastPrices,
 } from "@drift/db";
 import {
   AppError,
@@ -33,13 +34,19 @@ import { requireAuth } from "../../plugins/session";
 import { requireTeam } from "../account/team";
 
 // Signal research, lane tin tức (#271): chỉ role team (401 chưa đăng nhập, 403 người ngoài team, kiểm trước khi parse
-// tham số), chỉ đọc (transaction READ ONLY, statement timeout). Không bao giờ chạm SoDEX. no-store.
+// tham số), chỉ đọc (transaction READ ONLY, statement timeout). Không bao giờ chạm SoDEX (giá của lệnh đang mở chỉ đọc
+// cache `md:last:*`). no-store.
 
 export interface SignalResearchDeps {
   db: Db;
   now: () => Date;
   /** Statement timeout (ms) của transaction; mặc định 10 s. */
   queryTimeoutMs?: number;
+  /**
+   * Giá SoDEX gần nhất (Redis `md:last:*`) cho lãi / lỗ chưa chốt của lệnh giấy đang mở (#297). Chỉ đọc cache, không gọi
+   * SoDEX. Không truyền → không có lãi / lỗ chưa chốt.
+   */
+  prices?: LastPrices;
 }
 
 const FORBIDDEN = "Signal research is for the DeskLabs team only.";
@@ -75,6 +82,7 @@ export async function signalResearchSummary(
       },
       check,
       range,
+      deps.prices,
     ),
   );
   return researchSummarySchema.parse(out);
@@ -87,7 +95,7 @@ export async function signalResearchTrades(
 ): Promise<ResearchTradesPage> {
   await requireTeam(deps.db, userId, FORBIDDEN);
   const q = parseOrThrow(researchTradesQuerySchema, query);
-  const out = await tx(deps, (t) => loadSignalResearchTrades(t, q, deps.now()));
+  const out = await tx(deps, (t) => loadSignalResearchTrades(t, q, deps.now(), deps.prices));
   return researchTradesPageSchema.parse(out);
 }
 
@@ -99,7 +107,7 @@ export async function signalResearchTrade(
 ): Promise<ResearchTradeDetail> {
   await requireTeam(deps.db, userId, FORBIDDEN);
   parseOrThrow(tzQuery, query);
-  const out = await tx(deps, (t) => loadSignalResearchTrade(t, id, deps.now()));
+  const out = await tx(deps, (t) => loadSignalResearchTrade(t, id, deps.now(), deps.prices));
   if (out === null) throw new AppError(ErrorCode.notFound, "Trade not found.");
   return researchTradeDetailSchema.parse(out);
 }

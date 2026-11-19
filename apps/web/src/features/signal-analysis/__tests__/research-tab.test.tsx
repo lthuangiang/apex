@@ -92,7 +92,13 @@ const ONE: ResearchSummary = {
 const NULLS: ResearchSummary = {
   ...RESEARCH_SUMMARY,
   sources: RESEARCH_SUMMARY.sources.slice(0, 1),
-  bots: RESEARCH_SUMMARY.bots.map((b) => ({ ...b, balance: null, openTrades: null })),
+  bots: RESEARCH_SUMMARY.bots.map((b) => ({
+    ...b,
+    balance: null,
+    realized: null,
+    unrealized: null,
+    openTrades: null,
+  })),
   funnel:
     RESEARCH_SUMMARY.funnel === null
       ? null
@@ -106,8 +112,15 @@ const NULLS: ResearchSummary = {
 const NULL_TRADES: ResearchTradesPage = {
   items: RESEARCH_TRADES.items.map((x) =>
     x.id === "sr-0001"
-      ? { ...x, movedBeforePct: null, result: { outcome: "tp", leftSecs: null, pnl: null } }
-      : x,
+      ? {
+          ...x,
+          movedBeforePct: null,
+          result: { outcome: "tp", leftSecs: null, pnl: null, unrealized: null },
+        }
+      : x.result?.outcome === "open"
+        ? // #297: lệnh đang mở chưa có giá SoDEX → thẻ ghi "Open", không bao giờ 0.
+          { ...x, result: { ...x.result, unrealized: null } }
+        : x,
   ),
   nextCursor: null,
 };
@@ -271,6 +284,10 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     ).toBeInTheDocument();
     expect(within(src).getByText("Status: Delayed.")).toBeInTheDocument();
     expect(within(src).getByText(/Funding rates · replayed 01:00/)).toBeInTheDocument();
+    // #297: Claude có chấm trạng thái như các nguồn khác; khối Sources hiện cả trên điện thoại.
+    const claude = within(src).getByText(/^Claude · Delayed · /);
+    expect(claude.querySelector("span[aria-hidden]")).toHaveClass("bg-warn-bar");
+    expect(src).not.toHaveClass("max-md:hidden");
   });
 
   it("paper bots: balance, open trades, rule version and last run", async () => {
@@ -278,7 +295,9 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     await screen.findByRole("region", { name: "Paper bots" });
     const bots = region("Paper bots");
     expect(within(bots).getByText("Running · live")).toBeInTheDocument();
+    // #297: 10,000 + kết quả đã chốt; "+$3.25 unrealized" khi có giá SoDEX cho mọi lệnh mở.
     expect(within(bots).getByText("10,024.6")).toBeInTheDocument();
+    expect(within(bots).getByText("+$3.25 unrealized")).toBeInTheDocument();
     expect(within(bots).getByText("2 trades")).toBeInTheDocument();
     expect(within(bots).getByText("01:00 · 23 trades")).toBeInTheDocument();
     expect(within(bots).getByText("9,623.4")).toBeInTheDocument();
@@ -362,6 +381,12 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(within(eth).getByText("price 31 s after the fill")).toBeInTheDocument();
     expect(within(eth).getByText("31 s after the whale’s fill")).toBeInTheDocument();
     expect(within(tbl).getByText("Open · 2 d 4 h left")).toBeInTheDocument();
+    // #297: lệnh đang mở hiện lãi / lỗ chưa chốt theo giá SoDEX; tiêu đề cắt 2 dòng, đủ trong title.
+    expect(within(tbl).getByText("+$2.17 unrealized")).toBeInTheDocument();
+    const solTitle = within(sol).getByRole("button", { name: "SEC delays decision on SOL ETF" });
+    expect(solTitle).toHaveAttribute("title", "SEC delays decision on SOL ETF");
+    expect(solTitle).toHaveClass("line-clamp-2");
+    expect(tbl).toHaveClass("xl:table-fixed");
     // Lệnh vào ở lần thử lại (#278): nhãn Retry có tooltip; độ trễ tính từ bài đầu.
     const nvda = within(tbl).getByRole("row", { name: /Nvidia raises/ });
     const retry = within(nvda).getByText("Retry");
@@ -557,6 +582,8 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     const sol = within(trades).getByRole("row", { name: /SEC delays decision/ });
     expect(within(sol).getAllByText("Not available")).toHaveLength(2);
     expect(within(sol).queryByText("$0.00")).not.toBeInTheDocument();
+    expect(screen.getByText("Open", { selector: "b" })).toBeInTheDocument();
+    expect(screen.queryByText(/unrealized/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
     await noViolations();
     expect(intlErrors).toEqual([]);
