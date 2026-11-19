@@ -330,6 +330,13 @@
       "when": 1795070272883,
       "tag": "0046_sr_asset_map_version",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795071022752,
+      "tag": "0047_sr_bot_versions",
+      "breakpoints": true
     }
   ]
 }

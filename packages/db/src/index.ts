@@ -8,3 +8,4 @@ export * from "./sodex-calls";
 export * from "./read-only";
 export * from "./signal-research";
 export * from "./signal-research-articles";
+export * from "./signal-research-versions";

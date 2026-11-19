@@ -1764,10 +1764,16 @@ export const signalStories = pgTable(
     locked: boolean("locked").notNull(),
     tradeId: uuid("trade_id"),
     ruleVersion: text("rule_version").notNull(),
+    /**
+     * News bot version đã quyết định câu chuyện này (#303, DEC-328): Filter / Decide chạy riêng cho từng version, nên mỗi
+     * version có story riêng cho cùng một key. Story trước migration 0047 gắn version Baseline.
+     */
+    versionId: uuid("version_id"),
     ...timestamps,
   },
   (t) => [
     index("signal_stories_key_idx").on(t.storyKey, t.firstSeenAt),
+    index("signal_stories_version_key_idx").on(t.versionId, t.storyKey, t.firstSeenAt),
     index("signal_stories_locked_idx")
       .on(t.storyKey, t.firstSeenAt)
       .where(sql`${t.locked}`),
@@ -1787,6 +1793,8 @@ export const signalEvents = pgTable(
     reason: text("reason"),
     detail: jsonb("detail"),
     ruleVersion: text("rule_version").notNull(),
+    /** News bot version của event Filter / Decide / Watch (#303); null ở Collect / Normalize / Understand (dùng chung). */
+    versionId: uuid("version_id"),
     at: tstz("at").notNull().defaultNow(),
   },
   (t) => [
@@ -1870,15 +1878,34 @@ export const signalPaperTrades = pgTable(
     resultUsdc: money("result_usdc"),
     resultPct: money("result_pct"),
     ruleVersion: text("rule_version").notNull(),
+    /** News bot version (#303, DEC-328); null với replay. Lệnh news trước migration 0047 gắn version Baseline. */
+    versionId: uuid("version_id"),
+    /** `NEWS_CLASSIFIER.promptVersion` của classifier đã tạo lệnh (đoạn đếm của cổng, DEC-328 mục 2). */
+    classifierVersion: text("classifier_version"),
+    /**
+     * Chỉ lệnh `label = 'shadow'`: lý do bị chặn (`LIMIT_OPEN`, `LIMIT_DAY`, `NO_BALANCE`). Lệnh shadow theo dõi tới TP /
+     * SL / giữ tối đa như lệnh thật nhưng không bao giờ tính vào balance, tổng kết hay cổng.
+     */
+    shadowReason: text("shadow_reason"),
+    /**
+     * Tin ngược chiều đầu tiên lúc lệnh đang mở (#303): story, lúc đó, và kết quả giả định nếu đóng ở giá thị trường lúc đó
+     * (long theo bid, short theo ask, sau phí). Ghi cho mọi version, kể cả version chọn Keep.
+     */
+    oppositeStoryId: uuid("opposite_story_id"),
+    oppositeAt: tstz("opposite_at"),
+    oppositeExitPrice: money("opposite_exit_price"),
+    oppositeResultUsdc: money("opposite_result_usdc"),
+    oppositeResultPct: money("opposite_result_pct"),
     /** Version danh sách tài sản lúc mở lệnh (`NEWS_ASSET_MAP_VERSION`, #309); lệnh trước #309 là null. */
     assetMapVersion: text("asset_map_version"),
     ...timestamps,
   },
   (t) => [
-    // Mỗi token chỉ một lệnh tin tức đang mở (kiểm cả ở DB, không chỉ ở code).
+    // Mỗi (version, token) chỉ một lệnh tin tức đang mở, riêng lệnh thật và lệnh shadow (kiểm cả ở DB, không chỉ ở code).
     uniqueIndex("signal_paper_trades_open_uq")
-      .on(t.lane, t.market)
-      .where(sql`${t.status} = 'open' and ${t.label} = 'live'`),
+      .on(t.lane, t.versionId, t.label, t.market)
+      .where(sql`${t.status} = 'open' and ${t.label} in ('live', 'shadow')`),
+    index("signal_paper_trades_version_idx").on(t.versionId, t.status, t.openedAt),
     index("signal_paper_trades_opened_idx").on(t.openedAt),
     index("signal_paper_trades_story_idx").on(t.storyId),
     index("signal_paper_trades_random_todo_idx")
@@ -1886,6 +1913,48 @@ export const signalPaperTrades = pgTable(
       .where(sql`${t.status} = 'closed' and ${t.randomDoneAt} is null`),
   ],
 );
+
+/**
+ * News bot version (#303, DEC-328): config bất biến (trigger DB chặn sửa `config`), tối đa 3 `running` (trigger DB + khoá
+ * trong service). Lưu = dòng mới; Pause / Resume / Stop / Retire chỉ đổi `status`, ghi `audit_log`.
+ */
+export const signalBotVersions = pgTable(
+  "signal_bot_versions",
+  {
+    id: id(),
+    /** Số hiển thị ("v4"), tăng dần, không dùng lại. */
+    number: integer("number").notNull(),
+    name: text("name").notNull(),
+    /** `botVersionConfigSchema` (packages/shared). */
+    config: jsonb("config").notNull(),
+    /** `running` | `paused` | `stopped` | `retired`. */
+    status: text("status").notNull(),
+    /** Người lưu (role team); null với version Baseline seed ở migration. */
+    createdBy: uuid("created_by").references(() => users.id),
+    savedFromVersionId: uuid("saved_from_version_id"),
+    isBaseline: boolean("is_baseline").notNull().default(false),
+    statusChangedAt: tstz("status_changed_at").notNull().defaultNow(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("signal_bot_versions_number_uq").on(t.number),
+    uniqueIndex("signal_bot_versions_baseline_uq")
+      .on(t.isBaseline)
+      .where(sql`${t.isBaseline}`),
+    index("signal_bot_versions_status_idx").on(t.status),
+  ],
+);
+
+/**
+ * Version prompt của classifier đã chạy và lúc bắt đầu (DEC-328 mục 2): đổi classifier thì mọi version đang chạy bắt đầu
+ * một đoạn đếm mới từ `started_at` (hoặc từ lúc lưu version, lấy mốc sau).
+ */
+export const signalClassifierVersions = pgTable("signal_classifier_versions", {
+  promptVersion: text("prompt_version").primaryKey(),
+  model: text("model").notNull(),
+  startedAt: tstz("started_at").notNull(),
+  createdAt: tstz("created_at").notNull().defaultNow(),
+});
 
 /** Hạn mức theo ngày (UTC): số request SoSoValue và token Claude của lane tin tức. */
 export const signalResearchUsage = pgTable("signal_research_usage", {

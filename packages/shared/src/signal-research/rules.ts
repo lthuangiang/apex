@@ -101,10 +101,23 @@ export const SignalReason = {
   tooThin: "TOO_THIN_TO_TRADE",
   moveTooSmall: "MOVE_TOO_SMALL_FOR_COST",
   tradeOpen: "NEWS_TRADE_ALREADY_OPEN",
+  // filter, riêng từng News bot version (#303, DEC-328)
+  /** Loại tin bị tắt trong version. */
+  newsTypeOff: "NEWS_TYPE_OFF",
+  /** Tài sản không thuộc danh sách / loại tài sản của version. */
+  assetNotInVersion: "ASSET_NOT_IN_VERSION",
+  /** Level của câu chuyện dưới "Lowest level to trade" của version. */
+  levelTooLow: "LEVEL_TOO_LOW",
+  /** Bị chặn bởi giới hạn hoặc số dư giả: không vào lệnh, chỉ theo dõi giả định (shadow). */
+  limitOpen: "LIMIT_OPEN",
+  limitDay: "LIMIT_DAY",
+  noBalance: "NO_BALANCE",
   // close
   takeProfit: "TAKE_PROFIT",
   stopLoss: "STOP_LOSS",
   maxHold: "MAX_HOLD",
+  /** Đóng vì tin ngược chiều (version chọn Close at market). */
+  oppositeNews: "OPPOSITE_NEWS",
 } as const;
 export type SignalReason = (typeof SignalReason)[keyof typeof SignalReason];
 
@@ -112,6 +125,8 @@ export const PaperExitReason = {
   takeProfit: "take_profit",
   stopLoss: "stop_loss",
   maxHold: "max_hold",
+  /** Version chọn "Close at market" khi có tin ngược chiều (#303). */
+  oppositeNews: "opposite_news",
 } as const;
 export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitReason];
 

@@ -321,7 +321,14 @@ describe("news pipeline end to end", () => {
       sosoMonthlyLimit: 9500,
       claudeDailyInputBudget: 2_000_000,
     });
-    expect(summary.funnel?.outcomes).toEqual({ closed: 1, tp: 1, sl: 0, maxHold: 0, open: 0 });
+    expect(summary.funnel?.outcomes).toEqual({
+      closed: 1,
+      tp: 1,
+      sl: 0,
+      maxHold: 0,
+      opposite: 0,
+      open: 0,
+    });
     expect(summary.funnel).toMatchObject({ long: 0, short: 1, merged: 2, stories: 1, passed: 1 });
     expect(summary.funnel?.drops.score.reasons).toEqual(
       expect.arrayContaining([
@@ -974,7 +981,14 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
       closed: 0,
       opened: 0,
     });
-    expect(summary.funnel?.outcomes).toEqual({ closed: 0, tp: 0, sl: 0, maxHold: 0, open: 0 });
+    expect(summary.funnel?.outcomes).toEqual({
+      closed: 0,
+      tp: 0,
+      sl: 0,
+      maxHold: 0,
+      opposite: 0,
+      open: 0,
+    });
     expect(summary.assets).not.toContain("SOL-USD");
 
     const page = await loadSignalResearchTrades(db, { limit: 50, show: "all" }, new Date(T0));

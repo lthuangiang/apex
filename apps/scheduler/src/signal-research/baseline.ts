@@ -70,6 +70,10 @@ export async function fillRandomBaselines(db: Db, now: number): Promise<number> 
           eq(signalPaperTrades.lane, NEWS_RULES.lane),
           eq(signalPaperTrades.label, "live"),
           eq(signalPaperTrades.ruleVersion, t.ruleVersion),
+          // Riêng từng News bot version (#303); lệnh không có version (cũ) dùng chung nhóm null.
+          t.versionId === null
+            ? isNull(signalPaperTrades.versionId)
+            : eq(signalPaperTrades.versionId, t.versionId),
         ),
       );
     const total = dirs?.total ?? 0;
