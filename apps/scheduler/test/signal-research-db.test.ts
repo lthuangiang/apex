@@ -950,8 +950,8 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
          '[{"name":"Bloomberg","tier":"top"}]', false, 'book', 'closed', 139.3, 'take_profit', '2026-11-18T09:12:00Z', 0.24, 9.5, 1.9, 'news-v2')`,
       [tradeId, storyId],
     );
-    expect(NEWS_RULES.version).toBe("news-v3");
-    // Một chu kỳ v3 (bài không phải tín hiệu) để lane có dữ liệu của version hiện tại.
+    expect(NEWS_RULES.version).toBe("news-v4");
+    // Một chu kỳ v4 (bài không phải tín hiệu) để lane có dữ liệu của version hiện tại.
     const { sr } = setup({
       items: () => [item("now-1", T0 - MIN, "SOL market recap")],
       claude: fakeClaude({}),
@@ -963,7 +963,11 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
       sosoMonthlyLimit: 9500,
       claudeDailyInputBudget: 2_000_000,
     });
-    expect(summary.rows[0]).toMatchObject({ rulesVersion: 3, closed: 0, opened: 0 });
+    expect(summary.rows[0]).toMatchObject({
+      rulesVersion: NEWS_RULES.versionNumber,
+      closed: 0,
+      opened: 0,
+    });
     expect(summary.funnel?.outcomes).toEqual({ closed: 0, tp: 0, sl: 0, maxHold: 0, open: 0 });
     expect(summary.assets).not.toContain("SOL-USD");
 
@@ -971,5 +975,53 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
     expect(page.items.map((i) => i.id)).toContain(tradeId);
     const detail = await loadSignalResearchTrade(db, tradeId, new Date(T0));
     expect(detail).toMatchObject({ rulesVersion: 2 });
+  });
+});
+
+describe("news-v4 (#309): company tags use the SoDEX market list", () => {
+  it("keeps a SpaceX tag as SPCX-USD (stock) and still drops Anthropic and a coin on COIN-USD", async () => {
+    const perps = () => [
+      ...PERPS,
+      { name: "SPCX-USD", status: "TRADING", tickSize: "0.01", takerFee: "0.0004" },
+      { name: "COIN-USD", status: "TRADING", tickSize: "0.01", takerFee: "0.0004" },
+    ];
+    const items = [
+      item("spx", T0 - 3 * MIN, "SpaceX files for an IPO", {
+        matched_currencies: [{ symbol: "SPCX", name: '{"EN":"SPACEX"}' }],
+      }),
+      item("ant", T0 - 2 * MIN, "Anthropic raises a new round", {
+        matched_currencies: [{ symbol: "ANT", name: '{"EN":"ANTHROPIC"}' }],
+      }),
+      item("coin", T0 - MIN, "COIN token rallies", {
+        matched_currencies: [{ symbol: "COIN", name: "Some Coin" }],
+      }),
+    ];
+    const { sr, errors } = setup({
+      items: () => items,
+      claude: fakeClaude({}),
+      now: () => T0,
+      perps,
+    });
+    await sr.runCycle();
+    expect(errors).toEqual([]);
+    const rows = await db.select().from(signalArticles);
+    const by = new Map(rows.map((r) => [r.id, r]));
+    expect(by.get("spx")?.candidates).toEqual([
+      { symbol: "SPCX", market: "SPCX-USD", kind: "stock" },
+    ]);
+    expect(by.get("spx")?.status).not.toBe("dropped");
+    expect(by.get("ant")).toMatchObject({ status: "dropped", candidates: [] });
+    expect(by.get("coin")).toMatchObject({ status: "dropped", candidates: [] });
+    const drops = await db
+      .select({ articleId: signalEvents.articleId, reason: signalEvents.reason })
+      .from(signalEvents)
+      .where(eq(signalEvents.stage, "normalize"));
+    expect(drops).toEqual(
+      expect.arrayContaining([
+        { articleId: "ant", reason: "NO_SODEX_MARKET" },
+        { articleId: "coin", reason: "NO_SODEX_MARKET" },
+      ]),
+    );
+    expect(drops.some((d) => d.articleId === "spx" && d.reason !== null)).toBe(false);
   });
 });
