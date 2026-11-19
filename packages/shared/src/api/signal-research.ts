@@ -1143,7 +1143,10 @@ export const researchVersionStatusBodySchema = z.strictObject({
 
 export const researchVersionParamsSchema = z.object({ id: z.uuid() });
 
-/** Market perps SoDEX đang listed cho picker (cache của client REST, không gọi SoDEX mỗi request). */
+/**
+ * Market perps SoDEX đang listed cho picker. Đọc bản chụp Redis `sr:markets` do scheduler ghi (module Signal research của
+ * api không chạm SoDEX, DEC-322 / DEC-327).
+ */
 export const researchMarketSchema = z.object({
   market: z.string(),
   base: z.string(),
@@ -1155,10 +1158,26 @@ export const researchMarketSchema = z.object({
 });
 
 export const researchMarketsSchema = z.object({
-  /** Crypto trước rồi cổ phiếu, mỗi nhóm theo tên market. */
-  items: z.array(researchMarketSchema),
+  /**
+   * Crypto trước rồi cổ phiếu, mỗi nhóm theo tên market. null = chưa có bản chụp (scheduler chưa ghi / không đọc được):
+   * không bao giờ trả danh sách rỗng như thể SoDEX không có market nào.
+   */
+  items: z.array(researchMarketSchema).nullable(),
+  /** Lúc scheduler ghi bản chụp; null khi chưa có. */
+  updatedAt: iso.nullable(),
+  /** Cũ hơn 15 phút hoặc chưa có: web ghi "Market list may be out of date". */
+  stale: z.boolean(),
 });
 
+/** Cảnh báo kèm khi lưu version thành công (không chặn lưu). */
+export const RESEARCH_VERSION_WARNINGS = ["market_list_stale"] as const;
+
+/** Kết quả `POST /versions`: version vừa lưu + cảnh báo (vd danh sách market đã cũ lúc kiểm tài sản). */
+export const researchVersionCreatedSchema = researchVersionSchema.extend({
+  warnings: z.array(z.enum(RESEARCH_VERSION_WARNINGS)),
+});
+
+export type ResearchVersionCreated = z.infer<typeof researchVersionCreatedSchema>;
 export type ResearchVersionChange = z.infer<typeof researchVersionChangeSchema>;
 export type ResearchVersion = z.infer<typeof researchVersionSchema>;
 export type ResearchVersions = z.infer<typeof researchVersionsSchema>;

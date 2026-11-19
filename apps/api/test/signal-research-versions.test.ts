@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   baselineVersionConfig,
@@ -11,7 +13,9 @@ import {
   researchSummarySchema,
   researchTradeDetailSchema,
   researchTradesPageSchema,
+  researchVersionCreatedSchema,
   researchVersionSchema,
+  srMarketsSnapshot,
   researchVersionsSchema,
   type BotVersionConfig,
   type ResearchVersion,
@@ -57,6 +61,25 @@ const item = async (id: string) => {
 };
 const count = async (sql: string, params: unknown[] = []) =>
   Number((await env.pool.query<{ n: number }>(sql, params)).rows[0]?.n);
+
+/** Bản chụp `sr:markets` giả do scheduler ghi `minutesAgo` phút trước (null = chưa có). */
+function setMarkets(minutesAgo: number | null) {
+  env.srMarkets.value =
+    minutesAgo === null
+      ? null
+      : JSON.stringify(
+          srMarketsSnapshot(
+            [
+              { name: "SOL-USD", status: "TRADING", baseCoin: "SOL", displayName: "Solana" },
+              { name: "NVDA-USD", status: "TRADING" },
+              { name: "BTC-USD", status: "TRADING", baseCoin: "BTC" },
+              { name: "KIOXIA-USD", status: "HALT" },
+              { name: "ETH-USD", status: "TRADING", baseCoin: "ETH" },
+            ],
+            new Date(env.clock.now.getTime() - minutesAgo * 60_000),
+          ),
+        );
+}
 
 /** Version chèn thẳng (đã dừng, để không đụng giới hạn 3 version chạy). */
 async function insertVersion(number: number, createdAt: string): Promise<string> {
@@ -196,9 +219,7 @@ beforeAll(async () => {
   await env.pool.query("update users set role = 'team' where id = $1", [teamId]);
   user = new TestClient(env.app);
   await signIn(env, user, `ver-user-${randomUUID()}@drift.test`);
-  env.sodex.addPerpSymbol("ETH-USD", { maxLeverage: 10 });
-  env.sodex.addPerpSymbol("SOL-USD", { maxLeverage: 10 });
-  env.sodex.addPerpSymbol("NVDA-USD", { maxLeverage: 5 });
+  setMarkets(1);
   const b = await env.pool.query<{ id: string }>(
     "select id from signal_bot_versions where is_baseline",
   );
@@ -262,17 +283,43 @@ describe("News bot versions API (#305)", () => {
     });
   });
 
-  it("markets: SoDEX listed perps for the picker, crypto then stocks", async () => {
-    const r = await team.request("GET", `${base}/markets`);
-    expect(r.statusCode).toBe(200);
-    const m = researchMarketsSchema.parse(r.json());
-    expect(m.items.map((x) => [x.market, x.kind])).toEqual([
-      ["BTC-USD", "crypto"],
-      ["ETH-USD", "crypto"],
-      ["SOL-USD", "crypto"],
-      ["NVDA-USD", "stock"],
+  it("markets: read only from the scheduler's sr:markets snapshot; missing → null + stale, old → stale", async () => {
+    const get = async () => {
+      const r = await team.request("GET", `${base}/markets`);
+      expect(r.statusCode).toBe(200);
+      return researchMarketsSchema.parse(r.json());
+    };
+    setMarkets(null);
+    expect(await get()).toEqual({ items: null, updatedAt: null, stale: true });
+    env.srMarkets.value = "{not json";
+    expect(await get()).toEqual({ items: null, updatedAt: null, stale: true });
+    setMarkets(1);
+    const fresh = await get();
+    expect(fresh.stale).toBe(false);
+    expect(fresh.updatedAt).toBe(new Date(env.clock.now.getTime() - 60_000).toISOString());
+    expect(fresh.items?.map((x) => [x.market, x.kind, x.status])).toEqual([
+      ["BTC-USD", "crypto", "TRADING"],
+      ["ETH-USD", "crypto", "TRADING"],
+      ["SOL-USD", "crypto", "TRADING"],
+      ["KIOXIA-USD", "stock", "HALT"],
+      ["NVDA-USD", "stock", "TRADING"],
     ]);
-    expect(m.items[0]).toMatchObject({ base: "BTC", displayName: null, status: "TRADING" });
+    expect(fresh.items?.find((x) => x.market === "SOL-USD")).toEqual({
+      market: "SOL-USD",
+      base: "SOL",
+      displayName: "Solana",
+      kind: "crypto",
+      status: "TRADING",
+    });
+    expect(fresh.items?.find((x) => x.market === "NVDA-USD")).toMatchObject({
+      base: "NVDA",
+      displayName: null,
+    });
+    setMarkets(16);
+    const old = await get();
+    expect(old.stale).toBe(true);
+    expect(old.items).toHaveLength(5);
+    setMarkets(1);
   });
 
   it("rejects an invalid version: TP under 1× cost, unknown market, unknown parent, extra keys", async () => {
@@ -332,7 +379,9 @@ describe("News bot versions API (#305)", () => {
     };
     const r = await post(team, "/versions", body, key);
     expect(r.statusCode).toBe(201);
-    v4 = researchVersionSchema.parse(r.json());
+    const created = researchVersionCreatedSchema.parse(r.json());
+    expect(created.warnings).toEqual([]);
+    v4 = researchVersionSchema.parse(created);
     expect(v4).toMatchObject({
       number: 4,
       name: "Strict subject",
@@ -723,5 +772,60 @@ describe("News bot versions API (#305)", () => {
       ).toBe(404);
       expect((await team.request("GET", `${base}${path}?versionId=nope`)).statusCode).toBe(400);
     }
+  });
+
+  it("version create: missing market list → 503, stale → saved with a warning, stale + unknown market → 400", async () => {
+    const before = await count("select count(*)::int as n from signal_bot_versions");
+    const withAssets = (markets: string[]) => ({
+      name: "Assets check",
+      config: { ...cfg, assets: { mode: "except", markets, crypto: true, stocks: true } },
+      start: false,
+    });
+    setMarkets(null);
+    const missing = await post(team, "/versions", withAssets(["BTC-USD"]));
+    expect(missing.statusCode).toBe(503);
+    expect(errOf(missing)).toMatchObject({
+      code: "MARKET_LIST_UNAVAILABLE",
+      details: { reason: "MARKET_LIST_MISSING" },
+    });
+    expect(await count("select count(*)::int as n from signal_bot_versions")).toBe(before);
+    // Không có danh sách tài sản thì không cần bản chụp.
+    const noList = await post(team, "/versions", { name: "All assets", config: cfg, start: false });
+    expect(noList.statusCode).toBe(201);
+    expect(researchVersionCreatedSchema.parse(noList.json()).warnings).toEqual([]);
+
+    setMarkets(30);
+    const staleUnknown = await post(team, "/versions", withAssets(["BTC-USD", "NEW-USD"]));
+    expect(staleUnknown.statusCode).toBe(400);
+    expect(errOf(staleUnknown).details).toMatchObject({
+      fieldErrors: { "config.assets.markets": ["not_listed"] },
+      markets: ["NEW-USD"],
+    });
+    const stale = await post(team, "/versions", withAssets(["BTC-USD", "KIOXIA-USD"]));
+    expect(stale.statusCode).toBe(201);
+    expect(researchVersionCreatedSchema.parse(stale.json())).toMatchObject({
+      status: "paused",
+      warnings: ["market_list_stale"],
+    });
+    expect(await count("select count(*)::int as n from signal_bot_versions")).toBe(before + 2);
+    setMarkets(1);
+  });
+});
+
+describe("signal research API module never reaches SoDEX (DEC-322 / DEC-327)", () => {
+  const dir = join(import.meta.dirname, "../src/modules/signal-research");
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => join(dir, f));
+  it.each(files)("%s imports nothing that can reach SoDEX", (file) => {
+    const src = readFileSync(file, "utf8");
+    for (const m of src.matchAll(/from\s+"([^"]+)"/g))
+      expect(m[1] ?? "").not.toMatch(/@drift\/sodex|signer|gateway|engine/i);
+    expect(src).not.toMatch(
+      /HttpGateway|SignedWriteClient|SodexRestClient|getPerpsSymbols|sodex\.dev/,
+    );
+  });
+  it("finds the module files", () => {
+    expect(files.length).toBeGreaterThan(0);
   });
 });

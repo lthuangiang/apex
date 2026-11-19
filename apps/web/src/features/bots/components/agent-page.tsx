@@ -11,12 +11,12 @@ import {
   type BotDetail,
 } from "@drift/shared";
 import { Button, ConfirmDialog, Skeleton, StatusPill } from "@drift/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Download, Pause, Plus, Square } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { NotConnected, useSodexMissing } from "@/components/not-connected";
 import { PageHead } from "@/components/workspace";
@@ -24,6 +24,7 @@ import { WorkspaceShell } from "@/components/workspace-shell";
 import { AskAboutThis } from "@/features/desk/components/ask-about-this";
 import { PaperChip } from "@/features/desk/components/paper-chip";
 import { api, ApiError } from "@/lib/api";
+import { useFinancialMutation } from "@/lib/financial-action";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import { useMarketNames } from "@/lib/markets";
 import { ME_KEY, useMe, useTwoFactorNeeded } from "@/lib/queries";
@@ -81,6 +82,7 @@ export function AgentPage({ botId }: { botId?: string }) {
   const tsh = useTranslations("common.shell");
   const te = useTranslations("botEdit");
   const tr = useTranslations("reasons");
+  const tc = useTranslations("common.errors");
   const reasonLabel = useReasonLabel();
   const router = useRouter();
   const qc = useQueryClient();
@@ -118,14 +120,6 @@ export function AgentPage({ botId }: { botId?: string }) {
   const [code, setCode] = useState("");
   const twoFactorNeeded = useTwoFactorNeeded();
   const [sentAt, setSentAt] = useState<number | null>(null);
-  const keys = useRef<Record<Action, string>>({
-    start: crypto.randomUUID(),
-    pause: crypto.randomUUID(),
-    resume: crypto.randomUUID(),
-    stop: crypto.randomUUID(),
-    archive: crypto.randomUUID(),
-    unarchive: crypto.randomUUID(),
-  });
 
   const d: BotDetail | undefined = detail.data;
   const bot = d?.bot;
@@ -150,19 +144,23 @@ export function AgentPage({ botId }: { botId?: string }) {
     if (bot.state === BotState.draft) router.replace(`/bots/${bot.id}/edit`);
   }, [bot, router]);
 
-  const act = useMutation({
-    mutationFn: (action: Action) =>
+  const bodyOf = (action: Action) =>
+    action === "start"
+      ? { acknowledged: true, ...(code === "" ? {} : { twoFactorCode: code }) }
+      : action === "stop"
+        ? { closePosition: closeChoice === "close" }
+        : {};
+  // Kết quả không rõ (mạng, 5xx, 409 unknown / in_progress): giữ nút ở trạng thái chờ, đọc lại bot rồi mới cho bấm
+  // lại; gửi lại tự động chỉ với cùng Idempotency-Key (#318).
+  const act = useFinancialMutation({
+    mutationFn: (action: Action, idempotencyKey: string) =>
       api("POST", `/api/v1/bots/${id ?? ""}/actions/${action}`, botSummarySchema, {
-        idempotencyKey: keys.current[action],
-        body:
-          action === "start"
-            ? { acknowledged: true, ...(code === "" ? {} : { twoFactorCode: code }) }
-            : action === "stop"
-              ? { closePosition: closeChoice === "close" }
-              : {},
+        idempotencyKey,
+        body: bodyOf(action),
       }),
+    identity: (action) => [id, action, bodyOf(action)],
+    refetch: [["bot", id], BOTS_KEY],
     onSuccess: async (_d, action) => {
-      keys.current[action] = crypto.randomUUID();
       setSentAt(Date.now());
       setDialog(null);
       setCode("");
@@ -173,10 +171,8 @@ export function AgentPage({ botId }: { botId?: string }) {
       await qc.invalidateQueries({ queryKey: BOTS_KEY });
       if (action === "archive") router.push("/bots");
     },
-    onError: (_e, action) => {
-      keys.current[action] = crypto.randomUUID();
-    },
   });
+  const actError = (e: Error) => (act.checking ? tc("unconfirmed") : errorText(e));
 
   const can = (cmd: (typeof BotCommand)[keyof typeof BotCommand]) =>
     bot !== undefined && applyCommand(bot.state, cmd) !== null;
@@ -509,7 +505,7 @@ export function AgentPage({ botId }: { botId?: string }) {
             {hero(d)}
             {act.error === null || dialog !== null ? null : (
               <p role="alert" className="m-0 text-sm text-neg-ink">
-                {errorText(act.error)}
+                {actError(act.error)}
               </p>
             )}
 
@@ -702,7 +698,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                   <p className="m-0 text-sm text-ink-2">{t("finished.body")}</p>
                   {act.error === null || dialog !== null ? null : (
                     <p role="alert" className="m-0 text-sm text-neg-ink">
-                      {errorText(act.error)}
+                      {actError(act.error)}
                     </p>
                   )}
                 </div>
@@ -841,12 +837,12 @@ export function AgentPage({ botId }: { botId?: string }) {
                       label: t("twoFactor"),
                       value: code,
                       onChange: setCode,
-                      ...(act.error === null ? {} : { error: errorText(act.error) }),
+                      ...(act.error === null ? {} : { error: actError(act.error) }),
                     },
                   }
                 : act.error === null
                   ? {}
-                  : { error: errorText(act.error) })}
+                  : { error: actError(act.error) })}
               pending={act.isPending}
               onConfirm={() => {
                 if (dialog !== null) act.mutate(dialog);

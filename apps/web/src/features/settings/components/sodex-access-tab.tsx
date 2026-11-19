@@ -18,6 +18,7 @@ import { useRef, useState } from "react";
 
 import { LowestPill, MmFeeLadder, MmFeeStatus, mmFeeView } from "@/components/mm-fee-tiers";
 import { api, ApiError } from "@/lib/api";
+import { readBackState, sendWithSameKey, uncertainOutcome } from "@/lib/financial-action";
 import { feeLabels, formatDate, formatDateTime, shortAddress } from "@/lib/format";
 import { useFeatures, useSodexConnection, useTwoFactorNeeded } from "@/lib/queries";
 import { useSodexSignature } from "@/lib/use-sodex-signature";
@@ -202,19 +203,21 @@ function RenewButton({ connection, primary }: { connection: Connected; primary: 
     setOpen(false);
     setBusy(true);
     try {
-      const request = await api(
-        "POST",
-        "/api/v1/sodex/connection/renewal",
-        signatureRequestSchema,
-        {
-          idempotencyKey: crypto.randomUUID(),
-        },
+      const request = await sendWithSameKey((idempotencyKey) =>
+        api("POST", "/api/v1/sodex/connection/renewal", signatureRequestSchema, {
+          idempotencyKey,
+        }),
       );
       const outcome = await signAndSubmit(request);
       if (outcome.kind === "failed")
         setError(tConnect("errors.rejectedBySodex", { reason: outcome.request.sodexError ?? "" }));
       else if (outcome.kind !== "rejected") setDone(true);
-    } catch {
+    } catch (e) {
+      // Không rõ kết quả (#318): giữ nút khoá, đọc lại kết nối rồi mới cho bấm lại.
+      if (uncertainOutcome(e) !== null) {
+        setError(tc("unconfirmed"));
+        await readBackState(queryClient, [CONNECTION_KEY]);
+      }
       setError(tc("generic"));
     } finally {
       inFlight.current = false;
@@ -299,14 +302,11 @@ function DisconnectButton({ connection }: { connection: Connected }) {
     inFlight.current = true;
     setError(null);
     try {
-      const { spot, perps } = await api(
-        "POST",
-        "/api/v1/sodex/disconnection",
-        disconnectResponseSchema,
-        {
+      const { spot, perps } = await sendWithSameKey((idempotencyKey) =>
+        api("POST", "/api/v1/sodex/disconnection", disconnectResponseSchema, {
           body: code === "" ? {} : { twoFactorCode: code },
-          idempotencyKey: crypto.randomUUID(),
-        },
+          idempotencyKey,
+        }),
       );
       setOpen(false);
       for (const [index, request] of [spot, perps].entries()) {
@@ -329,6 +329,12 @@ function DisconnectButton({ connection }: { connection: Connected }) {
         setCodeError(
           e.code === "TWO_FACTOR_REQUIRED" && code === "" ? undefined : ts("errors.invalid"),
         );
+      } else if (uncertainOutcome(e) !== null) {
+        // Không rõ kết quả (#318): giữ thao tác khoá, đọc lại kết nối rồi mới cho bấm lại.
+        setOpen(false);
+        setError(tc("unconfirmed"));
+        await readBackState(queryClient, [CONNECTION_KEY]);
+        setError(tc("generic"));
       } else {
         setOpen(false);
         setError(tc("generic"));
@@ -484,13 +490,16 @@ function FeeCard({ connection }: { connection: Connected }) {
   const otherRates = others.map((s) => builderFeeRateFor(s, fees));
   const otherDefaults = others.map((s) => builderFeeRateOf(s));
 
-  async function run(kind: "revoking" | "approving", open: () => Promise<unknown>) {
+  async function run(
+    kind: "revoking" | "approving",
+    open: (idempotencyKey: string) => Promise<unknown>,
+  ) {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(kind);
     setError(null);
     try {
-      const request = signatureRequestSchema.parse(await open());
+      const request = signatureRequestSchema.parse(await sendWithSameKey(open));
       setDialogOpen(false);
       const outcome = await signAndSubmit(request);
       if (outcome.kind === "failed") {
@@ -506,6 +515,12 @@ function FeeCard({ connection }: { connection: Connected }) {
         setCodeError(
           e.code === "TWO_FACTOR_REQUIRED" && code === "" ? undefined : ts("errors.invalid"),
         );
+      } else if (uncertainOutcome(e) !== null) {
+        // Không rõ kết quả (#318): giữ thao tác khoá, đọc lại kết nối rồi mới cho bấm lại.
+        setDialogOpen(false);
+        setError(tc("unconfirmed"));
+        await readBackState(queryClient, [CONNECTION_KEY]);
+        setError(tc("generic"));
       } else {
         setDialogOpen(false);
         setError(tc("generic"));
@@ -519,16 +534,16 @@ function FeeCard({ connection }: { connection: Connected }) {
   }
 
   const revoke = () =>
-    run("revoking", () =>
+    run("revoking", (idempotencyKey) =>
       api("POST", "/api/v1/sodex/builder-fee/revocation", signatureRequestSchema, {
         body: code === "" ? {} : { twoFactorCode: code },
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey,
       }),
     );
   const approve = () =>
-    run("approving", () =>
+    run("approving", (idempotencyKey) =>
       api("POST", "/api/v1/sodex/builder-fee/approval", signatureRequestSchema, {
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey,
       }),
     );
 

@@ -38,7 +38,12 @@ import {
   researchVersionSchema,
   researchVersionsSchema,
   researchVersionStatusBodySchema,
+  parseSrMarkets,
+  researchVersionCreatedSchema,
+  srMarketsStale,
   STOCK_MARKET_SET,
+  type ResearchVersionCreated,
+  type SrMarketsSnapshot,
   type ResearchMarket,
   type ResearchMarkets,
   type ResearchVersion,
@@ -66,16 +71,7 @@ import { requireTeam } from "../account/team";
 // cache `md:last:*`). no-store. Ngoại lệ ghi (#304): `PUT /articles/:id/label` lưu nhãn phân loại của người gọi,
 // bắt buộc Idempotency-Key, ghi audit. #305: `POST /versions` (lưu News bot version bất biến) và
 // `POST /versions/:id/status` (Pause / Resume / Stop / Retire), bắt buộc Idempotency-Key, audit trong service DB. Danh sách
-// market SoDEX (`/markets`, kiểm tài sản khi lưu) đọc qua cache TTL của client REST (như scheduler), không gọi SoDEX mỗi
-// request.
-
-/** Phần của một perps symbol SoDEX mà picker / kiểm tài sản cần. */
-interface PerpsSymbolLite {
-  name: string;
-  status: string;
-  displayName?: string | undefined;
-  baseCoin?: string | undefined;
-}
+// market SoDEX (`/markets`, kiểm tài sản khi lưu) chỉ đọc bản chụp Redis `sr:markets` do scheduler ghi.
 
 export interface SignalResearchDeps {
   db: Db;
@@ -88,10 +84,10 @@ export interface SignalResearchDeps {
    */
   prices?: LastPrices;
   /**
-   * #305: danh sách perps SoDEX (`getPerpsSymbols` của client REST, cache TTL `MARKET_INFO_TTL_MS` trong client, cùng nguồn
-   * với scheduler). Kiểu khai báo tại chỗ: module này không import `@drift/sodex` (test "no SoDEX write path").
+   * #305: giá trị Redis `sr:markets` (bản chụp danh sách perps SoDEX do scheduler ghi); null = chưa có. Module này không
+   * bao giờ chạm SoDEX (DEC-322 / DEC-327; PM chọn phương án (a) ở review #324).
    */
-  rest: { getPerpsSymbols: () => Promise<readonly PerpsSymbolLite[]> };
+  srMarkets: () => Promise<string | null>;
 }
 
 const FORBIDDEN = "Signal research is for the DeskLabs team only.";
@@ -259,24 +255,29 @@ async function versionItem(deps: SignalResearchDeps, id: string): Promise<Resear
 
 const KIND_ORDER = { crypto: 0, stock: 1 } as const;
 
+/** Bản chụp `sr:markets`; thiếu, hỏng hoặc Redis lỗi → null. */
+async function readMarkets(deps: SignalResearchDeps): Promise<SrMarketsSnapshot | null> {
+  try {
+    return parseSrMarkets(await deps.srMarkets());
+  } catch {
+    return null;
+  }
+}
+
 /** Perps SoDEX đang listed (mọi trạng thái), crypto trước rồi cổ phiếu (`STOCK_MARKET_SET`), mỗi nhóm theo tên. */
-async function listedMarkets(deps: SignalResearchDeps): Promise<ResearchMarket[]> {
-  const symbols = await deps.rest.getPerpsSymbols();
-  return symbols
-    .map((m): ResearchMarket => {
-      const kind = STOCK_MARKET_SET.has(m.name) ? "stock" : "crypto";
-      const base = m.baseCoin ?? m.name.replace(/-USD$/, "");
-      return {
-        market: m.name,
-        base,
-        displayName: m.displayName ?? null,
-        kind,
-        status: m.status,
-      };
-    })
+function listedMarkets(snap: SrMarketsSnapshot): ResearchMarket[] {
+  return snap.markets
+    .map((m): ResearchMarket => ({
+      market: m.name,
+      base: m.baseCoin ?? m.name.replace(/-USD$/, ""),
+      displayName: m.displayName,
+      kind: STOCK_MARKET_SET.has(m.name) ? "stock" : "crypto",
+      status: m.status,
+    }))
     .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.market.localeCompare(b.market));
 }
 
+/** Chưa có bản chụp → `items: null`, `stale: true` (không bao giờ là danh sách rỗng); cũ hơn 15 phút → `stale: true`. */
 export async function signalResearchMarkets(
   deps: SignalResearchDeps,
   userId: string,
@@ -284,12 +285,22 @@ export async function signalResearchMarkets(
 ): Promise<ResearchMarkets> {
   await requireTeam(deps.db, userId, FORBIDDEN);
   parseOrThrow(tzQuery, query);
-  return researchMarketsSchema.parse({ items: await listedMarkets(deps) });
+  const snap = await readMarkets(deps);
+  return researchMarketsSchema.parse(
+    snap === null
+      ? { items: null, updatedAt: null, stale: true }
+      : {
+          items: listedMarkets(snap),
+          updatedAt: snap.updatedAt,
+          stale: srMarketsStale(snap, deps.now()),
+        },
+  );
 }
 
 /**
  * Lưu một version mới (bất biến; không có route sửa). Kiểm: config (zod, TP tối thiểu ≥ 1× chi phí…), version gốc có
- * thật, mọi tài sản trong danh sách đang listed trên SoDEX (chỉ gọi danh sách market khi danh sách không rỗng), tối đa 3
+ * thật, mọi tài sản trong danh sách có trong bản chụp `sr:markets` (chỉ khi danh sách không rỗng: chưa có bản chụp →
+ * 503 `MARKET_LIST_UNAVAILABLE`; bản chụp cũ vẫn kiểm theo nó và lưu được, kèm cảnh báo `market_list_stale`), tối đa 3
  * version chạy (409 `MAX_RUNNING_VERSIONS`, trong service DB).
  */
 export async function signalResearchCreateVersion(
@@ -297,7 +308,7 @@ export async function signalResearchCreateVersion(
   userId: string,
   body: unknown,
   ip: string | null,
-): Promise<ResearchVersion> {
+): Promise<ResearchVersionCreated> {
   const b = parseOrThrow(researchVersionCreateBodySchema, body);
   const from = b.savedFromVersionId ?? null;
   if (from !== null) {
@@ -311,8 +322,17 @@ export async function signalResearchCreateVersion(
       });
   }
   const wanted = [...new Set(b.config.assets.markets)];
+  const warnings: ResearchVersionCreated["warnings"] = [];
   if (wanted.length > 0) {
-    const listed = new Set((await listedMarkets(deps)).map((m) => m.market));
+    const snap = await readMarkets(deps);
+    if (snap === null)
+      throw new AppError(
+        ErrorCode.marketListUnavailable,
+        "The SoDEX market list is not available yet. Try again in a few minutes.",
+        { reason: "MARKET_LIST_MISSING" },
+      );
+    if (srMarketsStale(snap, deps.now())) warnings.push("market_list_stale");
+    const listed = new Set(snap.markets.map((m) => m.name));
     const unknown = wanted.filter((m) => !listed.has(m)).sort();
     if (unknown.length > 0)
       throw new AppError(ErrorCode.validationFailed, "Invalid input.", {
@@ -331,7 +351,7 @@ export async function signalResearchCreateVersion(
   });
   // DEC-334: version đã commit; lỗi sau đây (đọc lại danh sách) không được giải phóng key, tránh lưu hai lần khi retry.
   markSideEffect();
-  return versionItem(deps, v.id);
+  return researchVersionCreatedSchema.parse({ ...(await versionItem(deps, v.id)), warnings });
 }
 
 /** Pause / Resume / Stop / Retire (running ↔ paused; running / paused → stopped; stopped → retired). */

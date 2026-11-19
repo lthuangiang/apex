@@ -2,13 +2,13 @@
 
 import { deskRecordViewSchema, switchBackViewSchema, type DeskRecordView } from "@drift/shared";
 import { Button, EmptyState, ErrorState, Skeleton } from "@drift/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useRef } from "react";
 
 import { Card, PageHead, Workspace } from "@/components/workspace";
 import { api } from "@/lib/api";
+import { useFinancialMutation } from "@/lib/financial-action";
 import { formatDate, formatMoney } from "@/lib/format";
 
 import { leverageChange, recordChip, type RecordChip } from "../bplus";
@@ -38,14 +38,16 @@ function useChange() {
 
 function RecordRow({ r }: { r: Row }) {
   const t = useTranslations("desk.record");
+  const te = useTranslations("common.errors");
   const change = useChange();
   const qc = useQueryClient();
-  const key = useRef(crypto.randomUUID());
-  const back = useMutation({
-    mutationFn: () =>
+  // Switch back đổi cấu hình bot: kết quả không rõ thì đọc lại bảng trước khi cho bấm lại (#318).
+  const back = useFinancialMutation({
+    mutationFn: (_: null, idempotencyKey: string) =>
       api("POST", `/api/v1/desk/applies/${r.id}/switch-back`, switchBackViewSchema, {
-        idempotencyKey: key.current,
+        idempotencyKey,
       }),
+    refetch: [["desk", "record"]],
     onSuccess: () => qc.invalidateQueries({ queryKey: ["desk", "record"] }),
   });
   const chip = recordChip(r);
@@ -90,12 +92,16 @@ function RecordRow({ r }: { r: Row }) {
             variant="secondary"
             pending={back.isPending}
             onClick={() => {
-              back.mutate();
+              back.mutate(null);
             }}
           >
             {back.isPending ? t("switching") : t("switchBack")}
           </Button>
-          {back.isError ? (
+          {back.checking ? (
+            <span role="status" className="text-xs text-ink-2">
+              {te("unconfirmed")}
+            </span>
+          ) : back.isError ? (
             <span role="alert" className="text-xs text-neg-ink">
               {t("switchError")}
             </span>

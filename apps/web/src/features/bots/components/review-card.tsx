@@ -9,6 +9,7 @@ import { useRef } from "react";
 import { z } from "zod";
 
 import { api, ApiError } from "@/lib/api";
+import { useFinancialMutation } from "@/lib/financial-action";
 import { formatDateTime } from "@/lib/format";
 
 // Review sau khi chạy của Volume Builder (DEC-131): chạy lại lối thoát trên lệnh vào thật của bot với nhiều bộ tham
@@ -51,9 +52,9 @@ function paramText(
 
 export function ReviewCard({ botId, stopped }: { botId: string; stopped: boolean }) {
   const t = useTranslations("agent.review");
+  const tc = useTranslations("common.errors");
   const qc = useQueryClient();
   const startKey = useRef(crypto.randomUUID());
-  const applyKey = useRef(crypto.randomUUID());
   const q = useQuery({
     queryKey: ["bot-review", botId],
     queryFn: () => api("GET", `/api/v1/bots/${botId}/review`, latestSchema),
@@ -74,14 +75,18 @@ export function ReviewCard({ botId, stopped }: { botId: string; stopped: boolean
     },
   });
   const review = q.data?.review ?? null;
-  const apply = useMutation({
-    mutationFn: () =>
-      api("POST", `/api/v1/bots/${botId}/review/${review?.id ?? ""}/apply`, appliedSchema, {
-        idempotencyKey: applyKey.current,
+  // Áp version mới cho bot: kết quả không rõ thì đọc lại review và bot trước khi cho bấm lại (#318).
+  const apply = useFinancialMutation({
+    mutationFn: (reviewId: string, idempotencyKey: string) =>
+      api("POST", `/api/v1/bots/${botId}/review/${reviewId}/apply`, appliedSchema, {
+        idempotencyKey,
         body: {},
       }),
+    refetch: [
+      ["bot-review", botId],
+      ["bot", botId],
+    ],
     onSuccess: async () => {
-      applyKey.current = crypto.randomUUID();
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["bot-review", botId] }),
         qc.invalidateQueries({ queryKey: ["bot", botId] }),
@@ -146,10 +151,16 @@ export function ReviewCard({ botId, stopped }: { botId: string; stopped: boolean
           stopped={stopped}
           applying={apply.isPending}
           applyError={
-            apply.error instanceof ApiError ? apply.error.message : apply.error ? t("failed") : null
+            apply.checking
+              ? tc("unconfirmed")
+              : apply.error instanceof ApiError
+                ? apply.error.message
+                : apply.error
+                  ? t("failed")
+                  : null
           }
           onApply={() => {
-            apply.mutate();
+            apply.mutate(review.id);
           }}
         />
       )}
