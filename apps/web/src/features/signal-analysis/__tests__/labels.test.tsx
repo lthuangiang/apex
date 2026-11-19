@@ -247,8 +247,10 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
     expect(within(cur).getByText("from traces: 9")).toBeInTheDocument();
     expect(within(tbl).getAllByText(/from traces/)).toHaveLength(1);
     expect(
-      within(block).getByText(/^Only labels saved from Label a random signal count toward/),
-    ).toBeInTheDocument();
+      within(block).getByText("Label a random signal", { selector: "b" }).closest("p"),
+    ).toHaveTextContent(
+      "Only labels from Label a random signal count toward Labels, Right and the floor. Labels saved from a trace show as “from traces” and still count in the mistakes.",
+    );
     expect(within(cur).getByText("84%")).toBeInTheDocument();
     expect(within(cur).getByText("likely 69–92%")).toBeInTheDocument();
     expect(within(cur).getByText("Not yet · 13 more labels")).toBeInTheDocument();

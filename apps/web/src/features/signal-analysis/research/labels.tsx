@@ -251,7 +251,9 @@ export function ClassifierQuality({ tz }: { tz: string }) {
           ) : (
             <>
               <QualityTable rows={data.items} />
-              <p className="m-0 text-xs leading-normal text-muted">{t("randomOnly")}</p>
+              <p className="m-0 text-xs leading-normal text-muted">
+                {t.rich("randomOnly", { b: (c: ReactNode) => <b className="text-ink">{c}</b> })}
+              </p>
               <p className="m-0 rounded-tile bg-surface-2 p-3.5 text-[13px] leading-normal text-ink-2">
                 {cur?.interval != null && cur.precisionPct !== null
                   ? t.rich("floorRange", {
