@@ -34,6 +34,19 @@ function changeBps(
   return null;
 }
 
+/**
+ * Giá `ref` so với giá đóng của nến 1 phút đã đóng ≤ `at` − `mins` phút (bp, có dấu: dương = giá đã lên), cùng công thức
+ * với `chg{1,3,5}mBps` của snapshot. Dùng cho biến thể `fade` của công cụ nghiên cứu #282.
+ */
+export function moveBeforeBps(
+  raw: readonly MinuteCandle[],
+  at: number,
+  ref: number | null,
+  mins: number,
+): number | null {
+  return changeBps(validCandles(raw, at), at, ref, mins);
+}
+
 export interface EntrySnapshotInput {
   sig: FarmSignal & { direction: "long" | "short" };
   side: "long" | "short";

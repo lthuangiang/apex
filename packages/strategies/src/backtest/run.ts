@@ -7,6 +7,7 @@ import type {
   StrategyAction,
   StrategyEvent,
   StrategyModule,
+  VbResearchOptions,
 } from "../core/types";
 
 // Backtest (BACKTEST.md mục 11.2): chạy đúng `step` của chiến lược trên nến quá khứ, thay sàn bằng mô hình
@@ -63,6 +64,10 @@ export interface BacktestInput<C, S> {
    * Không có sổ lệnh lịch sử nên `book` là null (tín hiệu chạy chế độ chỉ-nến).
    */
   snapshotCandles?: number;
+  /** Dựng `log.payload` (snapshot tín hiệu Volume Farm) như engine; chỉ công cụ nghiên cứu bật (#282). */
+  decisionPayload?: boolean;
+  /** Biến thể nghiên cứu của Volume Farm (#282); backtest của người dùng không bao giờ đặt. */
+  vbResearch?: VbResearchOptions;
 }
 
 export interface BacktestFill {
@@ -134,6 +139,8 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
     takerFeeRate: dec(first?.rules.takerFee ?? input.fees[anyEngine].taker)
       .add(dec(input.fees.builder).mul(anyEngine === "perps" ? 1 : "0.5"))
       .toString(),
+    ...(input.decisionPayload === true ? { decisionPayload: true } : {}),
+    ...(input.vbResearch === undefined ? {} : { vbResearch: input.vbResearch }),
   };
 
   // Gom nến theo thời điểm; chỉ dùng các mốc mà mọi market đều có nến (thị trường đồng bộ).

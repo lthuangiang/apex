@@ -223,6 +223,33 @@ export interface StepContext {
    * #221). Backtest / dry run / What-if không ghi event nên bỏ qua, khỏi tốn công dựng. Không bao giờ đổi lệnh hay state.
    */
   decisionPayload?: boolean;
+  /**
+   * CHỈ cho công cụ nghiên cứu (#282, `apps/backtest/src/vb-counter-trend`): đổi bộ chặn ngược xu hướng của Volume Farm
+   * trong mô phỏng. Engine, API, dry run, Review this run và What-if KHÔNG BAO GIỜ đặt field này; nó không nằm trong
+   * config hay schema zod của người dùng, nên không thể đi từ DB / API vào bot thật. Thiếu = hành vi hiện tại.
+   */
+  vbResearch?: VbResearchOptions;
+}
+
+/**
+ * Biến thể bộ chặn ngược xu hướng của Volume Farm (#282), chỉ dùng trong mô phỏng:
+ * - `pre_and_post` (mặc định, như bot thật): chặn trong `farmSignal` trên hướng tín hiệu (trước khi đảo), và khi bật
+ *   Reverse thì kiểm lại trên hướng sau khi đảo (DEC-158);
+ * - `final_only`: chỉ chặn một lần, trên hướng bot thực sự vào (sau cân long / short và Reverse), cùng công thức ngưỡng
+ *   0.70 của `farmSignal`;
+ * - `off`: không chặn;
+ * - `fade`: không chặn theo regime; chỉ vào khi hướng cuối cùng NGƯỢC cú chạy 3 phút vừa rồi (giá lên thì chỉ short, giá
+ *   xuống thì chỉ long; không đo được hoặc bằng 0 thì bỏ lượt).
+ */
+export type VbCounterTrendMode = "pre_and_post" | "final_only" | "off" | "fade";
+
+export interface VbResearchOptions {
+  counterTrendMode?: VbCounterTrendMode;
+  /**
+   * Baseline "vào ngẫu nhiên": hướng = tung đồng xu tất định theo (botId, cycle), bỏ qua tín hiệu, cân long / short,
+   * Reverse và mọi bộ chặn xu hướng; các bước khác (cooldown, spread, giá đặt, giữ, thoát) giữ nguyên.
+   */
+  randomDirection?: boolean;
 }
 
 export interface StepResult<S> {

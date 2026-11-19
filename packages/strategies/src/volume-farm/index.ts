@@ -11,11 +11,12 @@ import type {
   StrategyAction,
   StrategyEvent,
   StrategyModule,
+  VbCounterTrendMode,
 } from "../core/types";
 
 import type { VolumeFarmConfig } from "./schema";
-import { farmSignal, type FarmRegime } from "./signal";
-import { safeEntrySnapshot } from "./snapshot";
+import { counterTrendBlocked, farmSignal, type FarmRegime } from "./signal";
+import { moveBeforeBps, safeEntrySnapshot } from "./snapshot";
 
 // S10 Volume Farm (DEC-80): vòng lặp FARM của bot "standard" trong apex (src/modules/Watcher.ts), viết lại dạng
 // hàm thuần cho engine của DRIFT.
@@ -497,6 +498,43 @@ function guards(c: VolumeFarmConfig, s: VolumeFarmState, ctx: StepContext) {
   return null;
 }
 
+/** Biến thể `fade` (#282): đo cú chạy trong chừng này phút trước lúc vào. */
+export const VB_FADE_MOVE_MINS = 3;
+
+/**
+ * Cổng của biến thể nghiên cứu (#282) trên hướng cuối cùng; null = cho vào. `pre_and_post` / `off` luôn null (bước chặn
+ * của `pre_and_post` đã chạy ở `farmSignal` và sau Reverse như bot thật).
+ */
+function researchGate(
+  mode: VbCounterTrendMode,
+  s: VolumeFarmState,
+  at: number,
+  candles: Parameters<typeof farmSignal>[0],
+  sig: { regime: FarmRegime; score: number },
+  direction: "long" | "short",
+): { code: string; why: string } | null {
+  if (mode === "final_only" && counterTrendBlocked(sig.regime, direction, sig.score))
+    return {
+      code: "COUNTER_TREND_BLOCKED",
+      why: `Research: ${direction} goes against ${REGIME_TEXT[sig.regime]}, so the bot waits.`,
+    };
+  if (mode !== "fade") return null;
+  const b = s.book;
+  const usable = b !== null && dec(b.bid).gt(0) && dec(b.ask).gt(b.bid);
+  const ref = usable
+    ? dec(b.bid).add(b.ask).div(2).toNumber()
+    : s.lastPrice === null
+      ? null
+      : Number(s.lastPrice);
+  const move = moveBeforeBps(candles, at, ref, VB_FADE_MOVE_MINS);
+  if (move === null || move === 0 || (direction === "long") === move > 0)
+    return {
+      code: "FADE_WITH_MOVE",
+      why: `Research: ${direction} does not fade the last ${String(VB_FADE_MOVE_MINS)} min move (${move === null ? "n/a" : String(move)} bp), so the bot waits.`,
+    };
+  return null;
+}
+
 function tryEnter(
   c: VolumeFarmConfig,
   s: VolumeFarmState,
@@ -515,7 +553,18 @@ function tryEnter(
       ? none(s)
       : { actions: [{ type: "log", decision: "Waiting", why }], state: { ...s, lastSkip: why } };
   }
-  const sig = farmSignal(candles, s.book, at, Number(c.maxSpreadBps));
+  // #282: biến thể bộ chặn ngược xu hướng, chỉ khi công cụ nghiên cứu đặt `ctx.vbResearch` (engine không bao giờ đặt).
+  const random = ctx.vbResearch?.randomDirection === true;
+  const ctMode: VbCounterTrendMode = random
+    ? "off"
+    : (ctx.vbResearch?.counterTrendMode ?? "pre_and_post");
+  const sig = farmSignal(
+    candles,
+    s.book,
+    at,
+    Number(c.maxSpreadBps),
+    ctMode === "pre_and_post" ? undefined : { counterTrend: false },
+  );
   const lastSignal = {
     at,
     direction: sig.direction,
@@ -554,28 +603,35 @@ function tryEnter(
     );
   let direction: "long" | "short" = sig.direction;
   const notes: string[] = [];
+  if (random) {
+    direction = farmRandom(ctx.botId, s.cycle + 1, "dir") < 0.5 ? "long" : "short";
+    notes.push(`Research baseline: random direction ${direction}.`);
+  }
   // Khối lượng long / short của các lượt đã đóng lệch quá một lệnh lớn nhất: buộc đi ngược lượt trước (apex MM
   // inventory hard block, DEC-80). Bot đang phẳng nên đây là một lượt mới như mọi lượt; câu Decisions nói đúng là cân
   // khối lượng, không phải đưa vị thế về 0 (DEC-304).
-  const balanced = dec(s.netExposure).abs().gt(c.orderSizeMaxUsd) && s.lastSide !== null;
+  const balanced = !random && dec(s.netExposure).abs().gt(c.orderSizeMaxUsd) && s.lastSide !== null;
   if (balanced) {
     direction = s.lastSide === "long" ? "short" : "long";
     notes.push(`Went ${direction} to balance long and short volume.`);
   }
-  if (c.reverseSignal) {
+  if (c.reverseSignal && !random) {
     direction = direction === "long" ? "short" : "long";
     notes.push(`Reversed to ${direction} because "Reverse the signal" is on.`);
     // DEC-158: chặn ngược xu hướng nằm trong farmSignal, chạy trước khi đảo; kiểm lại trên hướng sau khi đảo để
     // Reverse không mở lệnh ngược xu hướng (bot BTC 11-11: 116 / 116 lượt long giữa lúc giá giảm).
     if (
-      (sig.regime === "TREND_UP" && direction === "short") ||
-      (sig.regime === "TREND_DOWN" && direction === "long")
+      ctMode === "pre_and_post" &&
+      ((sig.regime === "TREND_UP" && direction === "short") ||
+        (sig.regime === "TREND_DOWN" && direction === "long"))
     )
       return skipEntry(
         "COUNTER_TREND_BLOCKED",
         `"Reverse the signal" would trade ${direction} against ${regime}, so the bot waits.`,
       );
   }
+  const research = researchGate(ctMode, s, at, candles, sig, direction);
+  if (research !== null) return skipEntry(research.code, research.why);
   const side = direction === "long" ? "buy" : "sell";
   const cycle = s.cycle + 1;
   const min = dec(c.orderSizeMinUsd);
