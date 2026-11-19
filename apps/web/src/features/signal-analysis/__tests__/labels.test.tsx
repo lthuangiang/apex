@@ -64,6 +64,7 @@ const NEXT: ResearchLabelNext = {
     },
   },
   remaining: 12,
+  labelToken: "tok_".padEnd(43, "x"),
 };
 
 interface Call {
@@ -132,6 +133,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
               verdict: b.verdict,
               reason: b.reason ?? null,
               note: b.note ?? null,
+              source: b.labelToken == null ? "trace" : "random",
               createdAt: "2026-11-19T06:22:00.000Z",
               updatedAt: "2026-11-19T06:22:00.000Z",
             },
@@ -241,6 +243,12 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
     });
     const cur = within(tbl).getByRole("row", { name: /v2 \(current\)/ });
     expect(within(cur).getByText("37")).toBeInTheDocument();
+    // #348: nhãn từ trace hiện riêng, không cộng vào số nhãn của cổng.
+    expect(within(cur).getByText("from traces: 9")).toBeInTheDocument();
+    expect(within(tbl).getAllByText(/from traces/)).toHaveLength(1);
+    expect(
+      within(block).getByText(/^Only labels saved from Label a random signal count toward/),
+    ).toBeInTheDocument();
     expect(within(cur).getByText("84%")).toBeInTheDocument();
     expect(within(cur).getByText("likely 69–92%")).toBeInTheDocument();
     expect(within(cur).getByText("Not yet · 13 more labels")).toBeInTheDocument();
@@ -319,10 +327,12 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
     await waitFor(() => {
       expect(puts()).toHaveLength(1);
     });
+    // #348: lần lưu đầu của luồng ngẫu nhiên gửi token của labels/next.
     expect(puts()[0]?.body).toEqual({
       verdict: "wrong",
       reason: "person_not_company",
       note: "Charges against an ex-employee, not Alphabet",
+      labelToken: NEXT.labelToken,
     });
     expect(puts()[0]?.key).toMatch(/^[0-9a-f-]{36}$/);
     // Sau khi lưu mới thấy kết quả lệnh.
@@ -336,6 +346,13 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
         "Labelled by ··a91f at 13:22 · one label per person per article · change it any time",
       ),
     ).toBeInTheDocument();
+    // Sửa sau khi lưu: không gửi lại token (đã dùng).
+    await userEvent.clear(within(card).getByRole("textbox", { name: "Note (optional)" }));
+    await userEvent.click(within(card).getByRole("button", { name: "Save label" }));
+    await waitFor(() => {
+      expect(puts()).toHaveLength(2);
+    });
+    expect(puts()[1]?.body).toEqual({ verdict: "wrong", reason: "person_not_company", note: null });
     // Bài tiếp theo: đọc lại labels/next.
     await userEvent.click(within(block).getByRole("button", { name: "Label another" }));
     await waitFor(() => {
@@ -359,6 +376,7 @@ describe("label box on the trace Score card", () => {
             verdict: "right",
             reason: null,
             note: null,
+            source: "trace",
             createdAt: "2026-11-19T06:00:00.000Z",
             updatedAt: "2026-11-19T06:00:00.000Z",
           }}
@@ -380,6 +398,7 @@ describe("label box on the trace Score card", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Save label" }));
     await waitFor(() => {
+      // Trace: không bao giờ có token.
       expect(puts()[0]?.body).toEqual({ verdict: "wrong", reason: "wrong_asset", note: null });
     });
   });

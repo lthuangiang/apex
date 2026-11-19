@@ -53,10 +53,10 @@ beforeAll(async () => {
        'cls-passed')`,
     [tradeId, storyId],
   );
-  // #304: lệnh chỉ tính cổng khi classifier của nó đã qua (≥ 50 nhãn, ≥ 80%): 50 nhãn Right cho classifier của lệnh này.
+  // #304: lệnh chỉ tính cổng khi classifier của nó đã qua (≥ 50 nhãn, ≥ 80%): 50 nhãn Right (random, #348) cho classifier của lệnh này.
   await env.pool.query(
-    `insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict)
-     select gen_random_uuid(), 'lbl-' || g, 'cls-passed', $1, 'right' from generate_series(1, 50) g`,
+    `insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict, source)
+     select gen_random_uuid(), 'lbl-' || g, 'cls-passed', $1, 'right', 'random' from generate_series(1, 50) g`,
     [me.id],
   );
 });

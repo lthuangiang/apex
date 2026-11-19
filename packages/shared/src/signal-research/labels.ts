@@ -26,10 +26,29 @@ export const CLASSIFICATION_WRONG_REASONS = Object.values(ClassificationWrongRea
   ...ClassificationWrongReason[],
 ];
 
+/**
+ * Nguồn của nhãn (#348, DEC-TBD-sr-label-source): `random` = lưu từ luồng "Label a random signal" với token server cấp
+ * trong `GET /labels/next` (bài do server chọn ngẫu nhiên, người gắn chưa thấy kết quả lệnh); `trace` = mọi cách khác
+ * (thẻ Score của trace, token sai / hết hạn / đã dùng, nhãn cũ trước migration 0050). Cổng precision chỉ tính `random`.
+ */
+export const ClassificationLabelSource = { random: "random", trace: "trace" } as const;
+export type ClassificationLabelSource =
+  (typeof ClassificationLabelSource)[keyof typeof ClassificationLabelSource];
+export const CLASSIFICATION_LABEL_SOURCES = Object.values(ClassificationLabelSource) as [
+  ClassificationLabelSource,
+  ...ClassificationLabelSource[],
+];
+
+/** Token gắn nhãn ngẫu nhiên của `GET /labels/next` hết hạn sau ngần này phút và chỉ dùng được một lần. */
+export const LABEL_TOKEN_TTL_MIN = 60;
+
 /** Ghi chú tuỳ chọn của nhãn: tối đa ngần này ký tự. */
 export const LABEL_NOTE_MAX = 500;
 
-/** Cổng: classifier qua khi có ≥ 50 bài đã gắn nhãn và precision ≥ 80% (DEC-328 mục 2). */
+/**
+ * Cổng: classifier qua khi có ≥ 50 bài đã gắn nhãn và precision ≥ 80% (DEC-328 mục 2). Chỉ đếm nhãn `random` (#348):
+ * nhãn gắn từ trace bị lệch vì người gắn tự chọn bài và đã thấy kết quả lệnh.
+ */
 export const CLASSIFIER_GATE = { minLabels: 50, minPrecisionPct: 80 } as const;
 
 /**

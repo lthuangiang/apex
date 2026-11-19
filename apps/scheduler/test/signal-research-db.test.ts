@@ -85,8 +85,8 @@ beforeEach(async () => {
 async function passCurrentClassifier() {
   await pool.query(
     `with u as (insert into users (id, email) values (gen_random_uuid(), 'lbl-' || gen_random_uuid() || '@example.test') returning id)
-     insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict)
-     select gen_random_uuid(), 'lbl-' || g, $1, u.id, 'right' from u, generate_series(1, 50) g`,
+     insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict, source)
+     select gen_random_uuid(), 'lbl-' || g, $1, u.id, 'right', 'random' from u, generate_series(1, 50) g`,
     [NEWS_CLASSIFIER.promptVersion],
   );
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { researchLabelBodySchema, RESEARCH_DROP_REASONS } from "../api/signal-research";
 import {
   articleVerdict,
+  CLASSIFICATION_LABEL_SOURCES,
   CLASSIFIER_GATE,
   classifierGate,
   commonMistakes,
@@ -141,6 +142,26 @@ describe("researchLabelBodySchema", () => {
         .success,
     ).toBe(false);
     expect(researchLabelBodySchema.safeParse({ verdict: "right", extra: 1 }).success).toBe(false);
+  });
+});
+
+describe("label source (#348)", () => {
+  it("the body takes an optional labels/next token, never a source the client picks", () => {
+    const token = "a".repeat(43);
+    expect(researchLabelBodySchema.parse({ verdict: "right", labelToken: token }).labelToken).toBe(
+      token,
+    );
+    expect(researchLabelBodySchema.safeParse({ verdict: "right", labelToken: null }).success).toBe(
+      true,
+    );
+    for (const bad of ["", "short", "a".repeat(44), `${"a".repeat(42)}=`])
+      expect(researchLabelBodySchema.safeParse({ verdict: "right", labelToken: bad }).success).toBe(
+        false,
+      );
+    expect(researchLabelBodySchema.safeParse({ verdict: "right", source: "random" }).success).toBe(
+      false,
+    );
+    expect(CLASSIFICATION_LABEL_SOURCES).toEqual(["random", "trace"]);
   });
 });
 
