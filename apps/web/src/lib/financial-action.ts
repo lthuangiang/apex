@@ -153,3 +153,18 @@ export function useFinancialMutation<TData, TVars>(
   });
   return { ...m, checking };
 }
+
+/**
+ * Builder fee: mỗi account chỉ một ý định chờ ký (#327). `superseded` = request này đã bị một approve / revoke mới hơn
+ * thay, không bao giờ tới SoDEX (409 khi gửi chữ ký; request đọc lại thì là `failed` với `sodexError = "superseded"`);
+ * `inFlight` = thay đổi ngược chiều trước đó đã gửi SoDEX và chưa đối soát xong. `null` = lỗi khác.
+ */
+export type BuilderFeeConflict = "superseded" | "inFlight";
+
+export function builderFeeConflict(error: unknown): BuilderFeeConflict | null {
+  if (!(error instanceof ApiError) || error.code !== "STATE_CONFLICT") return null;
+  const reason = error.details.reason;
+  if (reason === "superseded") return "superseded";
+  if (reason === "builder_fee_in_flight") return "inFlight";
+  return null;
+}

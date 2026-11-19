@@ -21,6 +21,7 @@ import { z } from "zod";
 import { runImport } from "./import";
 import { handleNotify } from "./notify";
 import { relayOnce } from "./outbox";
+import { reconcileUnknownSignaturesOnce, SIGNATURE_RECONCILE_INTERVAL_MS } from "./sodex-reconcile";
 import { handleTeamOps, redisIncidentStore, TEAM_OPS_SUBJECT } from "./team-ops";
 import {
   handleTelegram,
@@ -206,8 +207,26 @@ const relay = (async () => {
   }
 })();
 
+const isRunning = () => state.running;
+// Đối soát request ký SoDEX `unknown` (#327): mỗi ~90 giây, chỉ đọc. Ngủ theo từng bước ngắn để tắt nhanh.
+const signatureReconcile = (async () => {
+  while (state.running) {
+    try {
+      await reconcileUnknownSignaturesOnce(
+        { db, rest, builderId: sodex.builderId, now: () => new Date() },
+        log,
+      );
+    } catch (error) {
+      log.error({ err: error }, "signature reconcile pass failed");
+    }
+    const until = Date.now() + SIGNATURE_RECONCILE_INTERVAL_MS;
+    while (isRunning() && Date.now() < until) await new Promise((r) => setTimeout(r, 1000));
+  }
+})();
+
 async function shutdown() {
   state.running = false;
+  await signatureReconcile;
   await stopImport();
   await stopNotify();
   await stopTeamOps();
