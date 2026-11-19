@@ -3,11 +3,16 @@ import {
   apiKeys,
   bots,
   builderApprovals,
-  outbox,
   sodexAccounts,
   sodexSignatureRequests,
   users,
 } from "@drift/db";
+import {
+  addKeyMessageSchema,
+  approveMessageSchema,
+  reconcileSignatureRequest,
+  SODEX_NONCE_WINDOW_MS,
+} from "@drift/db/sodex-reconcile";
 import {
   AppError,
   isBuilderAccount,
@@ -22,11 +27,9 @@ import {
 import {
   addPermissionedApiKeyRequest,
   approveBuilderFeeRequest,
-  blocksWithdrawAndTransfer,
   DRIFT_API_KEY_NAME,
   DRIFT_API_KEY_TTL_MS,
   newTraceId,
-  readDriftApproval,
   REVOKE_API_KEY_ACTION,
   revokeApiKeyRequest,
   RevokeEngine,
@@ -41,7 +44,7 @@ import {
   type UniversalRequest,
 } from "@drift/sodex";
 import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
-import { getAddress, isAddressEqual, type Address, type Hex } from "viem";
+import { getAddress, type Address, type Hex } from "viem";
 import { z } from "zod";
 
 import { AuditAction, audit } from "../../lib/audit";
@@ -73,9 +76,6 @@ export const SIGNATURE_REQUEST_SUPERSEDED = "superseded";
 /** `details.reason` khi approve / revoke builder fee ngược chiều còn đang chờ SoDEX xác nhận (#327). */
 export const BUILDER_FEE_IN_FLIGHT = "builder_fee_in_flight";
 
-/** SoDEX chỉ nhận nonce trong (T − 2 ngày, T + 1 ngày) (SODEX.md mục 5.6): quá 2 ngày thì request không còn áp được. */
-export const SODEX_NONCE_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
-
 export interface SignerClient {
   createApiKey(input: { sodexAccountId: string; name: string; expiresAt: string }): Promise<{
     id: string;
@@ -100,24 +100,6 @@ export interface SodexDeps extends TwoFactorDeps {
 }
 
 const uint = z.string().regex(/^\d+$/).transform(BigInt);
-const addKeyMessageSchema = z.object({
-  chainID: uint,
-  nonce: uint,
-  accountID: uint,
-  name: z.string(),
-  keyType: z.number().int(),
-  publicKey: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
-  expiresAt: uint,
-  permissions: uint,
-});
-const approveMessageSchema = z.object({
-  chainID: uint,
-  nonce: uint,
-  accountID: uint,
-  builderID: uint,
-  maxFeeRate: uint,
-});
-
 const revokeMessageSchema = z.object({ accountID: uint, name: z.string(), nonce: uint });
 
 const REVOKE_ACTIONS: ReadonlySet<string> = new Set([
@@ -547,152 +529,20 @@ export async function submitSignature(
   return reconcile(deps, userId, id);
 }
 
-/** Đọc lại trạng thái từ SoDEX cho request đã gửi (`unknown`). Chỉ đọc, không gửi lại. */
+/**
+ * Đọc lại trạng thái từ SoDEX cho request đã gửi (`unknown`). Chỉ đọc, không gửi lại. Cùng hàm với vòng đối soát nền
+ * của jobs (`@drift/db/sodex-reconcile`, #327).
+ */
 export async function reconcile(
   deps: SodexDeps,
   userId: string,
   id: string,
 ): Promise<SignatureRequest> {
-  const row = await loadRow(deps.db, userId, id);
-  if (row.status !== SignatureRequestStatus.unknown) return toView(row);
-  const account = await accountById(deps.db, row.sodexAccountId);
-  const user = getAddress(account.address);
-  const now = deps.now();
-
-  if (row.action === SignatureAction.addApiKey) {
-    const message = addKeyMessageSchema.parse(row.message);
-    const keys = await deps.rest.getApiKeys(user, account.sodexAccountId);
-    const matches = (list: typeof keys.spot) =>
-      list.some(
-        (k) =>
-          k.name === message.name &&
-          isAddressEqual(k.publicKey as Address, getAddress(message.publicKey)) &&
-          blocksWithdrawAndTransfer(k.permissions),
-      );
-    if (!matches(keys.spot) || !matches(keys.perps)) return toView(row);
-    await deps.db.transaction(async (tx) => {
-      if (row.apiKeyId !== null) {
-        await tx.update(apiKeys).set({ status: "active" }).where(eq(apiKeys.id, row.apiKeyId));
-        // Renew: key cũ thôi được dùng (engine chỉ lấy key `active`); key cũ còn trên SoDEX tới khi người dùng xoá.
-        await tx
-          .update(apiKeys)
-          .set({ status: "expired" })
-          .where(
-            and(
-              eq(apiKeys.sodexAccountId, account.id),
-              eq(apiKeys.status, "active"),
-              ne(apiKeys.id, row.apiKeyId),
-            ),
-          );
-      }
-      await tx
-        .update(sodexAccounts)
-        .set({ status: "connected" })
-        .where(eq(sodexAccounts.id, account.id));
-      await tx
-        .update(sodexSignatureRequests)
-        .set({ status: SignatureRequestStatus.succeeded, resolvedAt: now })
-        .where(eq(sodexSignatureRequests.id, id));
-    });
-    return getSignatureRequest(deps, userId, id);
-  }
-
-  if (REVOKE_ACTIONS.has(row.action)) {
-    return reconcileRevoke(deps, userId, row, account);
-  }
-
-  const message = approveMessageSchema.parse(row.message);
-  const approval = readDriftApproval(await deps.rest.getBuilderApprovals(user), deps.builderId);
-  await deps.db
-    .insert(builderApprovals)
-    .values({
-      sodexAccountId: account.id,
-      builderId: deps.builderId,
-      maxFeeRateSpot: approval.spot,
-      maxFeeRatePerps: approval.perps,
-      readBackAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [builderApprovals.sodexAccountId, builderApprovals.builderId],
-      set: { maxFeeRateSpot: approval.spot, maxFeeRatePerps: approval.perps, readBackAt: now },
-    });
-  const target = Number(message.maxFeeRate);
-  const applied = (rate: number | null) => (rate ?? 0) === target;
-  if (applied(approval.spot) && applied(approval.perps)) {
-    await deps.db.transaction(async (tx) => {
-      const done = await tx
-        .update(sodexSignatureRequests)
-        .set({ status: SignatureRequestStatus.succeeded, resolvedAt: now })
-        .where(
-          and(
-            eq(sodexSignatureRequests.id, id),
-            eq(sodexSignatureRequests.status, SignatureRequestStatus.unknown),
-          ),
-        )
-        .returning({ id: sodexSignatureRequests.id });
-      if (done.length === 0 || target === 0) return;
-      // Báo team (DEC-184): đủ hai chữ ký lần đầu của account (approve lại sau revoke không báo).
-      const [earlier] = await tx
-        .select({ id: sodexSignatureRequests.id })
-        .from(sodexSignatureRequests)
-        .where(
-          and(
-            eq(sodexSignatureRequests.sodexAccountId, account.id),
-            eq(sodexSignatureRequests.action, SignatureAction.approveBuilderFee),
-            eq(sodexSignatureRequests.status, SignatureRequestStatus.succeeded),
-            ne(sodexSignatureRequests.id, id),
-          ),
-        )
-        .limit(1);
-      if (earlier === undefined)
-        await tx.insert(outbox).values({
-          topic: "jobs.team_ops",
-          payload: { type: "team_sodex_connected", userId, sodexAccountId: account.id },
-        });
-    });
-  }
-  return getSignatureRequest(deps, userId, id);
+  await loadRow(deps.db, userId, id);
+  return toView(await reconcileSignatureRequest(deps, id));
 }
 
 // ---------- helpers ----------
-
-/** Key đã biến mất ở engine này chưa; khi cả hai engine đều xong thì đánh dấu đã ngắt kết nối. */
-async function reconcileRevoke(
-  deps: SodexDeps,
-  userId: string,
-  row: Row,
-  account: typeof sodexAccounts.$inferSelect,
-): Promise<SignatureRequest> {
-  if (row.apiKeyId === null) throw new AppError(ErrorCode.internal, "Revoke request has no key.");
-  const [key] = await deps.db.select().from(apiKeys).where(eq(apiKeys.id, row.apiKeyId)).limit(1);
-  if (key === undefined) throw new AppError(ErrorCode.internal, "Revoke request has no key.");
-  const keys = await deps.rest.getApiKeys(getAddress(account.address), account.sodexAccountId);
-  const present = (list: typeof keys.spot) =>
-    list.some((k) => isAddressEqual(k.publicKey as Address, getAddress(key.publicKey)));
-  const list = row.action === SignatureAction.revokeApiKeySpot ? keys.spot : keys.perps;
-  if (present(list)) return toView(row);
-
-  const now = deps.now();
-  await deps.db.transaction(async (tx) => {
-    await tx
-      .update(sodexSignatureRequests)
-      .set({ status: SignatureRequestStatus.succeeded, resolvedAt: now })
-      .where(eq(sodexSignatureRequests.id, row.id));
-    if (!present(keys.spot) && !present(keys.perps)) {
-      // Key không còn trên SoDEX: xoá luôn bản mã hoá, DRIFT không thể dùng lại key này.
-      await tx
-        .update(apiKeys)
-        .set({ status: "deleted", ciphertext: "revoked" })
-        .where(eq(apiKeys.id, key.id));
-      await tx
-        .update(sodexAccounts)
-        .set({ status: "disconnected" })
-        .where(eq(sodexAccounts.id, account.id));
-      await audit(tx, { userId, action: AuditAction.disconnected, target: account.id, ip: null });
-    }
-  });
-  return getSignatureRequest(deps, userId, row.id);
-}
 
 /**
  * Tạo request ký của một account lần lượt (#318): khoá advisory theo account trong transaction, để hai request

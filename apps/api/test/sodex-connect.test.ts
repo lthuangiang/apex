@@ -76,7 +76,7 @@ async function signAndSubmit(
   created: { body: string; statusCode: number },
   wallet = t.wallet,
 ) {
-  expect(created.statusCode).toBe(201);
+  expect(created.statusCode, created.body).toBe(201);
   const request = signatureRequestSchema.parse(JSON.parse(created.body));
   const signature = await walletSign(wallet, request.typedData);
   return t.client.request("POST", `/api/v1/sodex/signature-requests/${request.id}/signature`, {
@@ -663,6 +663,14 @@ describe("one builder-fee intent awaiting signature per account (#327)", () => {
       [v.id],
     );
     expect(conflict(await approve(t)).details).toMatchObject({ reason: "builder_fee_in_flight" });
+    // Đọc lại: SoDEX vẫn approve 10 nên revoke chưa áp dụng, request vẫn `unknown` và approve vẫn bị chặn.
+    const read = await t.client.request(
+      "POST",
+      `/api/v1/sodex/signature-requests/${v.id}/reconciliation`,
+    );
+    expect(read.statusCode, read.body).toBe(200);
+    expect(parse(read).status).toBe("unknown");
+    expect((await approve(t)).statusCode).toBe(409);
     // Đối soát kết luận xong (ở đây: SoDEX đã từ chối) thì approve tạo được.
     await env.pool.query(
       `update sodex_signature_requests set status = 'failed', resolved_at = now() where id = $1`,
