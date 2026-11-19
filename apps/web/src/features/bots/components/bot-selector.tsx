@@ -61,6 +61,34 @@ import { useWaitingText } from "./bots-page";
 
 export const PHONE = "(max-width: 767px)";
 
+/**
+ * Bot tối thiểu của panel chọn. Trading Agent truyền `BotSummary` đầy đủ (PnL, tóm tắt cấu hình, lý do dừng); Signal
+ * Analysis (#289) chỉ có tên, market, chiến lược, trạng thái, version, ngày tạo và account, nên dòng bỏ cột PnL thay vì
+ * bịa số (quy tắc 1.8).
+ */
+export type PickerBot = Pick<
+  BotSummary,
+  | "id"
+  | "name"
+  | "strategy"
+  | "market"
+  | "marketLabel"
+  | "state"
+  | "reasonCode"
+  | "needsAttention"
+  | "activeVersion"
+  | "createdAt"
+  | "updatedAt"
+> & {
+  /** Nhãn account ("Account ··b569370e") khi danh sách có bot của nhiều account (team). */
+  account?: string;
+};
+
+/** Có đủ dữ liệu của Trading Agent (PnL, tóm tắt, lý do). */
+function isFull(b: PickerBot): b is PickerBot & BotSummary {
+  return "fills" in b && "engine" in b;
+}
+
 type Tone = "mm" | "grid" | "dca" | "exec";
 const TONE: Record<string, Tone> = {
   volume_maker: "mm",
@@ -540,8 +568,15 @@ export function NoneRunning({ bots }: { bots: readonly BotSummary[] }) {
   );
 }
 
-/** Panel chọn bot: ô tìm (combobox) + bộ lọc + listbox theo nhóm. Dùng chung cho panel desktop và BottomSheet. */
-function BotPickerPanel({
+/** Một mục của listbox: bot, hoặc null = lựa chọn "All …" (Signal Analysis). */
+type Entry = PickerBot | null;
+const ALL_KEY = "all";
+
+/**
+ * Panel chọn bot: ô tìm (combobox) + bộ lọc + listbox theo nhóm. Dùng chung cho panel desktop và BottomSheet của
+ * Trading Agent, và bộ lọc Bot của Signal Analysis (#289: `onSelect`, `allOption`, `fixedStrategy`, `created`).
+ */
+export function BotPickerPanel({
   bots,
   currentId,
   filters,
@@ -549,8 +584,15 @@ function BotPickerPanel({
   phone,
   onPick,
   onEscape,
+  onSelect,
+  allOption,
+  fixedStrategy = false,
+  created,
+  keysHint,
+  manageLink = true,
 }: {
-  bots: readonly BotSummary[];
+  bots: readonly PickerBot[];
+  /** Bot đang xem / đang chọn; null = không bot nào (hoặc lựa chọn "All …" khi có `allOption`). */
   currentId: string | null;
   filters: PickerFilters;
   setFilters: (f: PickerFilters) => void;
@@ -558,6 +600,18 @@ function BotPickerPanel({
   onPick: () => void;
   /** Esc trong ô tìm; null = để dialog (BottomSheet) tự đóng. */
   onEscape: (() => void) | null;
+  /** Chọn một mục (null = "All …"); mặc định mở /agent/:botId như Trading Agent. */
+  onSelect?: (id: string | null) => void;
+  /** Dòng "All …" đầu danh sách (ẩn khi đang tìm). */
+  allOption?: { label: string; sub: string };
+  /** Danh sách chỉ có một chiến lược cố định: ẩn bộ lọc Strategy. */
+  fixedStrategy?: boolean;
+  /** Ngày tạo theo múi giờ của trang gọi; mặc định múi giờ của account. */
+  created?: (iso: string) => string;
+  /** Dòng phím tắt ở chân panel; mặc định câu của Trading Agent. */
+  keysHint?: string;
+  /** Link "Manage all bots in Strategy Lab" ở chân panel. */
+  manageLink?: boolean;
 }) {
   const t = useTranslations("agent.selector");
   const router = useRouter();
@@ -566,13 +620,17 @@ function BotPickerPanel({
   const optId = (id: string) => `${listId}-${id}`;
   const view = useMemo(() => pickerView(bots, filters, text, text.asset), [bots, filters, text]);
   const counts = stateCounts(bots);
+  const searching = filters.query.trim() !== "";
+  const showAll = allOption !== undefined && !searching;
+  const entries: Entry[] = showAll ? [null, ...view.flat] : view.flat;
+  const keyOf = (e: Entry) => (e === null ? ALL_KEY : e.id);
   const [active, setActive] = useState(() =>
     Math.max(
       0,
-      view.flat.findIndex((b) => b.id === currentId),
+      entries.findIndex((e) => (e === null ? null : e.id) === currentId),
     ),
   );
-  const flatKey = view.flat.map((b) => b.id).join(",");
+  const flatKey = entries.map(keyOf).join(",");
   const firstRender = useRef(true);
   // Đổi tìm kiếm / bộ lọc: về dòng đầu.
   useEffect(() => {
@@ -582,8 +640,8 @@ function BotPickerPanel({
     }
     setActive(0);
   }, [flatKey]);
-  const activeBot = view.flat[Math.min(active, view.flat.length - 1)];
-  const activeId = activeBot?.id;
+  const activeEntry: Entry | undefined = entries[Math.min(active, entries.length - 1)];
+  const activeId = activeEntry === undefined ? undefined : keyOf(activeEntry);
   useEffect(() => {
     if (activeId === undefined) return;
     document.getElementById(`${listId}-${activeId}`)?.scrollIntoView({ block: "nearest" });
@@ -595,16 +653,17 @@ function BotPickerPanel({
     inputRef.current?.focus();
   }, []);
 
-  const pick = (b: BotSummary) => {
+  const pick = (e: Entry) => {
     onPick();
-    router.push(`/agent/${b.id}`);
+    if (onSelect !== undefined) onSelect(e === null ? null : e.id);
+    else if (e !== null) router.push(`/agent/${e.id}`);
   };
   const set = (f: Partial<PickerFilters>) => {
     setFilters({ ...filters, ...f });
   };
 
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    const last = view.flat.length - 1;
+    const last = entries.length - 1;
     const move = (i: number) => {
       e.preventDefault();
       if (last >= 0) setActive(Math.max(0, Math.min(last, i)));
@@ -615,7 +674,7 @@ function BotPickerPanel({
     else if (e.key === "End") move(last);
     else if (e.key === "Enter") {
       e.preventDefault();
-      if (activeBot !== undefined) pick(activeBot);
+      if (activeEntry !== undefined) pick(activeEntry);
     } else if (e.key === "Escape" && onEscape !== null) {
       e.preventDefault();
       onEscape();
@@ -626,7 +685,6 @@ function BotPickerPanel({
     text.strategy({ strategy: a }).localeCompare(text.strategy({ strategy: b })),
   );
   const markets = [...new Set(bots.map((b) => text.asset(b.market)))].sort();
-  const searching = filters.query.trim() !== "";
   const selectClass =
     "min-h-tap rounded-control border border-border-input bg-surface px-2 text-[13px] text-ink";
 
@@ -641,10 +699,10 @@ function BotPickerPanel({
           <input
             type="search"
             role="combobox"
-            aria-expanded={view.flat.length > 0}
-            aria-controls={view.flat.length > 0 ? listId : undefined}
+            aria-expanded={entries.length > 0}
+            aria-controls={entries.length > 0 ? listId : undefined}
             aria-autocomplete="list"
-            aria-activedescendant={activeBot === undefined ? undefined : optId(activeBot.id)}
+            aria-activedescendant={activeId === undefined ? undefined : optId(activeId)}
             ref={inputRef}
             value={filters.query}
             onChange={(e) => {
@@ -691,23 +749,25 @@ function BotPickerPanel({
           </div>
         </div>
         <div className={`gap-2 ${phone ? "grid grid-cols-2" : "flex flex-wrap items-center"}`}>
-          <label className="flex items-center gap-1.5 text-[12.5px] font-bold text-ink-2">
-            <span className={phone ? "sr-only" : ""}>{t("strategy")}</span>
-            <select
-              value={filters.strategy}
-              onChange={(e) => {
-                set({ strategy: e.target.value });
-              }}
-              className={`${selectClass} ${phone ? "w-full" : ""}`}
-            >
-              <option value="all">{t("allStrategies")}</option>
-              {strategies.map((s) => (
-                <option key={s} value={s}>
-                  {text.strategy({ strategy: s })}
-                </option>
-              ))}
-            </select>
-          </label>
+          {fixedStrategy ? null : (
+            <label className="flex items-center gap-1.5 text-[12.5px] font-bold text-ink-2">
+              <span className={phone ? "sr-only" : ""}>{t("strategy")}</span>
+              <select
+                value={filters.strategy}
+                onChange={(e) => {
+                  set({ strategy: e.target.value });
+                }}
+                className={`${selectClass} ${phone ? "w-full" : ""}`}
+              >
+                <option value="all">{t("allStrategies")}</option>
+                {strategies.map((s) => (
+                  <option key={s} value={s}>
+                    {text.strategy({ strategy: s })}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex items-center gap-1.5 text-[12.5px] font-bold text-ink-2">
             <span className={phone ? "sr-only" : ""}>{t("market")}</span>
             <select
@@ -733,6 +793,42 @@ function BotPickerPanel({
       </p>
 
       <div className={`overflow-y-auto ${phone ? "pt-1.5" : "max-h-[560px] px-2 pt-1.5 pb-2"}`}>
+        {entries.length === 0 ? null : (
+          <div id={listId} role="listbox" aria-label={t("switchBot")} className="flex flex-col">
+            {showAll ? (
+              <AllRow
+                id={optId(ALL_KEY)}
+                label={allOption.label}
+                sub={allOption.sub}
+                current={currentId === null}
+                active={activeId === ALL_KEY}
+                phone={phone}
+                onPick={() => {
+                  pick(null);
+                }}
+                onHover={() => {
+                  setActive(0);
+                }}
+              />
+            ) : null}
+            {view.groups.map((g) => (
+              <Group
+                key={g.key}
+                group={g.key}
+                bots={g.bots}
+                currentId={currentId}
+                activeId={activeId}
+                optId={optId}
+                phone={phone}
+                created={created}
+                onPick={pick}
+                onHover={(b) => {
+                  setActive(entries.indexOf(b));
+                }}
+              />
+            ))}
+          </div>
+        )}
         {view.flat.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-3 py-7 text-center">
             <strong className="text-[15px]">
@@ -749,25 +845,7 @@ function BotPickerPanel({
               {t("clear")}
             </button>
           </div>
-        ) : (
-          <div id={listId} role="listbox" aria-label={t("switchBot")} className="flex flex-col">
-            {view.groups.map((g) => (
-              <Group
-                key={g.key}
-                group={g.key}
-                bots={g.bots}
-                currentId={currentId}
-                activeId={activeBot?.id}
-                optId={optId}
-                phone={phone}
-                onPick={pick}
-                onHover={(b) => {
-                  setActive(view.flat.indexOf(b));
-                }}
-              />
-            ))}
-          </div>
-        )}
+        ) : null}
         {view.hiddenStopped > 0 ? (
           <button
             type="button"
@@ -784,11 +862,13 @@ function BotPickerPanel({
 
       {phone ? null : (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-2.5 text-[12.5px] text-muted">
-          <span aria-hidden="true">{t("keys")}</span>
+          <span aria-hidden="true">{keysHint ?? t("keys")}</span>
           <span className="flex-1" />
-          <Link href="/bots" className="font-bold text-accent-ink">
-            {t("manage")}
-          </Link>
+          {manageLink ? (
+            <Link href="/bots" className="font-bold text-accent-ink">
+              {t("manage")}
+            </Link>
+          ) : null}
         </div>
       )}
     </div>
@@ -802,17 +882,19 @@ function Group({
   activeId,
   optId,
   phone,
+  created,
   onPick,
   onHover,
 }: {
   group: PickerGroup;
-  bots: readonly BotSummary[];
+  bots: readonly PickerBot[];
   currentId: string | null;
   activeId: string | undefined;
   optId: (id: string) => string;
   phone: boolean;
-  onPick: (b: BotSummary) => void;
-  onHover: (b: BotSummary) => void;
+  created: ((iso: string) => string) | undefined;
+  onPick: (b: PickerBot) => void;
+  onHover: (b: PickerBot) => void;
 }) {
   const t = useTranslations("agent.selector");
   const title = t(`groups.${group}`);
@@ -833,10 +915,66 @@ function Group({
           active={b.id === activeId}
           attention={group === "attention"}
           phone={phone}
+          created={created}
           onPick={onPick}
           onHover={onHover}
         />
       ))}
+    </div>
+  );
+}
+
+/** Dòng "All VB bots" / "All MM bots" đầu danh sách (Signal Analysis): bỏ lọc theo bot. */
+function AllRow({
+  id,
+  label,
+  sub,
+  current,
+  active,
+  phone,
+  onPick,
+  onHover,
+}: {
+  id: string;
+  label: string;
+  sub: string;
+  current: boolean;
+  active: boolean;
+  phone: boolean;
+  onPick: () => void;
+  onHover: () => void;
+}) {
+  const t = useTranslations("agent.selector");
+  return (
+    // Bàn phím đi qua ô tìm (aria-activedescendant), như Row.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events
+    <div
+      id={id}
+      role="option"
+      tabIndex={-1}
+      aria-selected={current}
+      data-active={active || undefined}
+      onClick={onPick}
+      onMouseMove={() => {
+        if (!active) onHover();
+      }}
+      className={`mt-1 grid min-h-tap cursor-pointer items-center gap-3 rounded-[14px] border-2 p-2.5 text-ink ${
+        phone ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-[40px_minmax(0,1fr)_128px]"
+      } ${current ? "border-accent bg-accent-tint" : active ? "border-border-input bg-surface-2" : "border-transparent bg-surface"}`}
+    >
+      {phone ? null : <span aria-hidden="true" className="size-10 flex-none" />}
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <strong className="truncate text-[14.5px]">{label}</strong>
+        <span className="truncate text-[12.5px] text-ink-2">{sub}</span>
+      </span>
+      <span className="flex flex-col items-end gap-1">
+        {current ? (
+          <span className="inline-flex items-center gap-1 text-xs font-extrabold text-accent-ink">
+            <Check aria-hidden="true" size={14} strokeWidth={2.6} />
+            {t("viewing")}
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 }
@@ -848,13 +986,14 @@ function useOptionName() {
   const tm = useTranslations("common.missing");
   const text = useBotText();
   const names = useMarketNames();
-  return (b: BotSummary) => {
-    const quote = b.engine === "spot" ? names.info(b.market)?.quote : null;
-    const unit = quote === null || quote === undefined ? "USDC" : names.asset(quote);
-    let pnl: string;
-    if (b.fills === 0) pnl = tm("noFillsYet");
+  return (b: PickerBot) => {
+    let pnl: string | null;
+    if (!isFull(b)) pnl = null;
+    else if (b.fills === 0) pnl = tm("noFillsYet");
     else if (b.netPnl === null) pnl = tm("notAvailable");
     else {
+      const quote = b.engine === "spot" ? names.info(b.market)?.quote : null;
+      const unit = quote === null || quote === undefined ? "USDC" : names.asset(quote);
       const v = `${formatDecimal(dec(b.netPnl).abs(), { locale: "en-US", maximumFractionDigits: 2 }) ?? b.netPnl} ${unit}`;
       const d = dec(b.netPnl);
       pnl = d.isZero()
@@ -866,6 +1005,7 @@ function useOptionName() {
       t("sr.idEnding", { id: b.id.slice(-8) }),
       text.market(b),
       b.activeVersion === null ? null : t("sr.version", { version: b.activeVersion }),
+      b.account,
       ts(b.state),
       pnl,
     ]).replaceAll(" · ", ", ");
@@ -879,42 +1019,48 @@ function Row({
   active,
   attention,
   phone,
+  created: createdIn,
   onPick,
   onHover,
 }: {
-  bot: BotSummary;
+  bot: PickerBot;
   id: string;
   current: boolean;
   active: boolean;
   attention: boolean;
   phone: boolean;
-  onPick: (b: BotSummary) => void;
-  onHover: (b: BotSummary) => void;
+  created: ((iso: string) => string) | undefined;
+  onPick: (b: PickerBot) => void;
+  onHover: (b: PickerBot) => void;
 }) {
   const t = useTranslations("agent.selector");
   const ts = useTranslations("states");
   const text = useBotText();
-  const created = useCreated();
+  const createdOwn = useCreated();
+  const created = createdIn ?? createdOwn;
+  const full = isFull(b) ? b : null;
   const reasonLabel = useReasonLabel();
   const waiting = useWaitingText();
   const optionName = useOptionName();
   const version = b.activeVersion === null ? null : t("version", { version: b.activeVersion });
+  const summary = full === null ? null : text.summary(full);
   const reason =
-    b.reasonCode !== null && (attention || b.state !== BotState.running)
+    full !== null && full.reasonCode !== null && (attention || full.state !== BotState.running)
       ? reasonLabel({
-          reasonCode: b.reasonCode,
-          strategy: b.strategy,
-          mode: b.mode,
-          stopDetail: b.stopDetail,
+          reasonCode: full.reasonCode,
+          strategy: full.strategy,
+          mode: full.mode,
+          stopDetail: full.stopDetail,
         })
       : attention
         ? ts("needsAttention")
         : null;
+  // Không có PnL (Signal Analysis): bỏ cột, không hiện số bịa (quy tắc 1.8).
   const pnl =
-    b.waiting !== null && b.fills === 0 ? (
-      <span className="text-[13px] font-semibold text-muted">{waiting(b.waiting)}</span>
+    full === null ? null : full.waiting !== null && full.fills === 0 ? (
+      <span className="text-[13px] font-semibold text-muted">{waiting(full.waiting)}</span>
     ) : (
-      <BotProfit bot={b} className="text-[13.5px] font-extrabold" />
+      <BotProfit bot={full} className="text-[13.5px] font-extrabold" />
     );
   const pill = <StatusPill state={b.state} label={ts(b.state)} />;
   const viewing = current ? (
@@ -936,7 +1082,7 @@ function Row({
     <span className="flex min-w-0 items-baseline gap-2">
       <strong className="truncate text-[14.5px]">{b.name}</strong>
       <IdTag id={b.id} />
-      {b.mode === "paper" ? (
+      {full?.mode === "paper" ? (
         <span className="flex-none self-center">
           <PaperChip short />
         </span>
@@ -960,7 +1106,11 @@ function Row({
         if (!active) onHover(b);
       }}
       className={`grid min-h-tap cursor-pointer items-center gap-3 rounded-[14px] border-2 p-2.5 text-ink ${
-        phone ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-[40px_minmax(0,1fr)_120px_128px]"
+        phone
+          ? "grid-cols-[minmax(0,1fr)_auto]"
+          : full === null
+            ? "grid-cols-[40px_minmax(0,1fr)_128px]"
+            : "grid-cols-[40px_minmax(0,1fr)_120px_128px]"
       } ${current ? "border-accent bg-accent-tint" : active ? "border-border-input bg-surface-2" : "border-transparent bg-surface"}`}
     >
       {phone ? (
@@ -968,7 +1118,7 @@ function Row({
           <span className="flex min-w-0 flex-col gap-0.5">
             {nameLine}
             <span className="truncate text-[12.5px] text-ink-2">
-              {join([text.market(b), version, text.summary(b)])}
+              {join([text.market(b), version, summary, b.account])}
             </span>
             {reasonLine}
           </span>
@@ -989,19 +1139,22 @@ function Row({
                 text.strategy(b),
                 version,
                 t("created", { date: created(b.createdAt) }),
+                b.account,
               ])}
             </span>
-            {text.summary(b) === null ? null : (
-              <span className="truncate text-[12.5px] text-muted">{text.summary(b)}</span>
+            {summary === null ? null : (
+              <span className="truncate text-[12.5px] text-muted">{summary}</span>
             )}
             {reasonLine}
           </span>
-          <span className="flex flex-col items-end gap-0.5 text-right">
-            {pnl}
-            {b.fills > 0 && b.netPnl !== null ? (
-              <span className="text-[11.5px] text-muted">{t("netPnl")}</span>
-            ) : null}
-          </span>
+          {full === null ? null : (
+            <span className="flex flex-col items-end gap-0.5 text-right">
+              {pnl}
+              {full.fills > 0 && full.netPnl !== null ? (
+                <span className="text-[11.5px] text-muted">{t("netPnl")}</span>
+              ) : null}
+            </span>
+          )}
           <span className="flex flex-col items-end gap-1">
             {pill}
             {viewing}

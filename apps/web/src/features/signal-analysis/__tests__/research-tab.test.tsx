@@ -176,6 +176,11 @@ vi.mock("@/lib/api", async (importOriginal) => {
     },
   };
 });
+// Bộ lọc Bot dùng bộ chọn của Trading Agent (#289): desktop; danh sách market / me không cần cho trang này.
+vi.mock("@/lib/use-media", () => ({ useMediaQuery: () => false }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: () => undefined, replace: () => undefined }),
+}));
 vi.mock("@/components/workspace", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   Workspace: ({ children }: { children: ReactNode }) => <main>{children}</main>,

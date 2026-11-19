@@ -117,6 +117,7 @@ export function MmTab({ ctx }: { ctx: PageCtx }) {
           <BotSelect
             label={t("filters.bot")}
             allLabel={t("filters.allMmBots")}
+            strategy="volume_maker"
             bots={v?.botList ?? []}
             value={f.botId}
             tz={ctx.tz}

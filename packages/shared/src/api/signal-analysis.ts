@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { BotState } from "../enums";
 import { decimalStringSchema, isoDateTimeSchema } from "../schemas";
 
 import { timeZoneSchema } from "./market-hours";
@@ -95,6 +96,10 @@ const botFacet = z.object({
   createdAt: isoDateTimeSchema,
   /** 8 ký tự cuối của user id ("Account ··{tail}", DEC-288); không bao giờ email. */
   tail: z.string(),
+  /** Trạng thái hiện tại của bot (bộ chọn bot dùng lại bộ lọc State của Trading Agent, #289). */
+  state: z.enum(BotState),
+  /** Số version cấu hình đang chạy; null khi chưa có. */
+  version: z.number().int().nullable(),
 });
 export type SignalBotFacet = z.infer<typeof botFacet>;
 const accountFacet = z.object({ id: uuid, tail: z.string() });
