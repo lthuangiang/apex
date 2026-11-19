@@ -21,6 +21,7 @@ import {
   ErrorCode,
   NEWS_LIMIT_DEFAULTS,
   parseSrQuotes,
+  SR_QUOTES_KEY,
   researchArticlesPageSchema,
   researchArticlesQuerySchema,
   researchArticleTraceSchema,
@@ -86,6 +87,8 @@ export interface SignalResearchDeps {
    * lỗ chưa chốt.
    */
   srQuotes?: () => Promise<string | null>;
+  /** Log cảnh báo (mục `sr:quotes` sai dạng). `registerSignalResearchRoutes` dùng logger của Fastify. */
+  log?: { warn: (obj: object, msg: string) => void };
   /**
    * #305: giá trị Redis `sr:markets` (bản chụp danh sách perps SoDEX do scheduler ghi); null = chưa có. Module này không
    * bao giờ chạm SoDEX (DEC-322 / DEC-327; PM chọn phương án (a) ở review #324).
@@ -102,10 +105,28 @@ const articleParams = z.object({ id: z.string().min(1).max(200) });
 /** Trần tổng thời gian của một request (giữa các câu; mỗi câu còn bị `statement_timeout`). */
 const DEADLINE_MS = 20_000;
 
-/** Bản chụp `sr:quotes` đã parse; không có nguồn → undefined (không tính lãi / lỗ chưa chốt). */
+/**
+ * Bản chụp `sr:quotes` đã parse; không có nguồn → undefined (không tính lãi / lỗ chưa chốt). Mục sai dạng chỉ bỏ market
+ * đó và log tên market (không log giá trị).
+ */
 function quotesOf(deps: SignalResearchDeps): ExitQuotes | undefined {
   const read = deps.srQuotes;
-  return read === undefined ? undefined : async () => parseSrQuotes(await read());
+  if (read === undefined) return undefined;
+  return async () => {
+    const p = parseSrQuotes(await read());
+    if (p.broken)
+      deps.log?.warn({ key: SR_QUOTES_KEY }, "signal research quotes snapshot unreadable");
+    else if (p.invalid.length > 0)
+      deps.log?.warn(
+        {
+          key: SR_QUOTES_KEY,
+          invalidCount: p.invalid.length,
+          markets: p.invalid.slice(0, 20).map((m) => m.slice(0, 64)),
+        },
+        "signal research quotes snapshot has invalid entries",
+      );
+    return p.quotes;
+  };
 }
 
 function tx<T>(deps: SignalResearchDeps, fn: Parameters<typeof readOnlyTx<T>>[2]): Promise<T> {
@@ -385,7 +406,11 @@ export async function signalResearchSetVersionStatus(
   return versionItem(deps, id);
 }
 
-export function registerSignalResearchRoutes(app: FastifyInstance, deps: SignalResearchDeps): void {
+export function registerSignalResearchRoutes(
+  app: FastifyInstance,
+  input: SignalResearchDeps,
+): void {
+  const deps: SignalResearchDeps = { ...input, log: input.log ?? app.log };
   const base = "/api/v1/admin/signal-research";
   app.get(`${base}/summary`, async (request, reply) => {
     void reply.header("cache-control", "no-store");

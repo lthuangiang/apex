@@ -15,10 +15,12 @@ export const SR_QUOTES_KEY = "sr:quotes";
 /** TTL của key Redis: watcher ngừng ghi (không còn lệnh mở / mất lease) thì key tự hết; giá cũ vẫn bị bỏ theo `at`. */
 export const SR_QUOTES_TTL_MS = 60_000;
 
-const positiveDecimal = z
-  .string()
-  .regex(/^\d+(\.\d+)?$/)
-  .refine((s) => dec(s).gt(0));
+/**
+ * Số thập phân dương dạng chuỗi. Không gọi `dec` trong refine: zod v4 vẫn chạy refine khi regex đã fail, và `dec` ném
+ * lỗi với chuỗi không phải số (làm hỏng cả bản chụp thay vì chỉ một mục).
+ */
+const DECIMAL_RE = /^\d+(\.\d+)?$/;
+const positiveDecimal = z.string().refine((s) => DECIMAL_RE.test(s) && /[1-9]/.test(s));
 
 export const srQuoteSchema = z.object({
   bid: positiveDecimal,
@@ -42,15 +44,36 @@ export function srQuotesSnapshot(quotes: ReadonlyMap<string, Quote>): SrQuotesSn
   return out;
 }
 
-/** Giá trị Redis → bản chụp; thiếu, JSON hỏng hoặc sai dạng → bản chụp rỗng (không có giá nào). */
-export function parseSrQuotes(raw: string | null | undefined): SrQuotesSnapshot {
-  if (raw == null) return {};
+export interface ParsedSrQuotes {
+  quotes: SrQuotesSnapshot;
+  /** Market có mục sai dạng: chỉ market đó không có giá, các market khác giữ nguyên. */
+  invalid: string[];
+  /** Cả giá trị hỏng (không parse được JSON / không phải object): không có giá nào. */
+  broken: boolean;
+}
+
+/**
+ * Giá trị Redis → bản chụp, parse TỪNG mục: mục sai dạng chỉ bỏ market đó (ghi vào `invalid`), các market khác vẫn có
+ * giá. Chỉ khi cả giá trị không parse được hoặc không phải object mới coi như không có giá (`broken`). Thiếu key → rỗng,
+ * không phải lỗi.
+ */
+export function parseSrQuotes(raw: string | null | undefined): ParsedSrQuotes {
+  const none = (broken: boolean): ParsedSrQuotes => ({ quotes: {}, invalid: [], broken });
+  if (raw == null) return none(false);
+  let json: unknown;
   try {
-    const p = srQuotesSnapshotSchema.safeParse(JSON.parse(raw));
-    return p.success ? p.data : {};
+    json = JSON.parse(raw);
   } catch {
-    return {};
+    return none(true);
   }
+  if (typeof json !== "object" || json === null || Array.isArray(json)) return none(true);
+  const out: ParsedSrQuotes = { quotes: {}, invalid: [], broken: false };
+  for (const [market, entry] of Object.entries(json)) {
+    const p = srQuoteSchema.safeParse(entry);
+    if (market !== "" && p.success) out.quotes[market] = p.data;
+    else out.invalid.push(market);
+  }
+  return out;
 }
 
 /** Giá còn mới không, theo ngưỡng fresh của nguồn (dùng lại ngưỡng của `combineQuote`). */

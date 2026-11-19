@@ -923,8 +923,32 @@ describe("signal research articles feed and trace (#291)", () => {
       quotes({ bid: "3500", ask: "3510", source: "last_spread", at: nowMs - 16_000 });
       expect((await openUnrealized()).trade?.unrealized).toBeNull();
 
-      // Thiếu ask (bản chụp sai dạng) → không có giá.
+      // Thiếu ask (mục sai dạng) → market đó không có giá.
       quotes({ bid: "3500", source: "book", at: nowMs });
+      expect((await openUnrealized()).trade?.unrealized).toBeNull();
+
+      // Parse từng mục: mục lỗi của market khác không làm mất giá của ETH-USD; mục lỗi chỉ bỏ market đó (log tên market,
+      // không log giá trị).
+      const good = { bid: "3500", ask: "3510", source: "book", at: nowMs - 1_000 };
+      const logsBefore = env.logs.length;
+      env.srQuotes.value = JSON.stringify({
+        "ETH-USD": good,
+        "SOL-USD": { bid: "9", ask: "secret-ish", source: "book", at: nowMs },
+      });
+      const mixed = await openUnrealized();
+      expect(mixed.trade?.unrealized).toBe("12.312375");
+      expect(mixed.s.bots[0]?.unrealized).toBe("12.312375");
+      const warn = env.logs.slice(logsBefore).join("");
+      expect(warn).toContain("signal research quotes snapshot has invalid entries");
+      expect(warn).toContain("SOL-USD");
+      expect(warn).not.toContain("secret-ish");
+      env.srQuotes.value = JSON.stringify({ "ETH-USD": { ...good, ask: "x" }, "SOL-USD": good });
+      expect((await openUnrealized()).trade?.unrealized).toBeNull();
+
+      // Cả giá trị hỏng (không phải JSON / không phải object) → không có giá nào.
+      env.srQuotes.value = `{"ETH-USD": ${JSON.stringify(good)}`;
+      expect((await openUnrealized()).trade?.unrealized).toBeNull();
+      env.srQuotes.value = JSON.stringify([good]);
       expect((await openUnrealized()).trade?.unrealized).toBeNull();
     } finally {
       env.srQuotes.value = null;

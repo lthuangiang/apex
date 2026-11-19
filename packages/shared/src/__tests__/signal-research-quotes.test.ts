@@ -84,17 +84,40 @@ describe("#308 sr:quotes snapshot", () => {
     expect(snap).toEqual({
       "ETH-USD": { bid: "3500", ask: "3500.5", source: "book", at: NOW },
     });
-    expect(parseSrQuotes(JSON.stringify(snap))).toEqual(snap);
+    expect(parseSrQuotes(JSON.stringify(snap))).toEqual({
+      quotes: snap,
+      invalid: [],
+      broken: false,
+    });
   });
 
-  it("missing, broken or wrongly shaped values parse to no quotes", () => {
-    expect(parseSrQuotes(null)).toEqual({});
-    expect(parseSrQuotes("{not json")).toEqual({});
-    expect(
-      parseSrQuotes(JSON.stringify({ "ETH-USD": { bid: "1", source: "book", at: 1 } })),
-    ).toEqual({});
-    expect(
-      parseSrQuotes(JSON.stringify({ "ETH-USD": { bid: "0", ask: "1", source: "book", at: 1 } })),
-    ).toEqual({});
+  it("a bad entry drops only that market; the others keep their price", () => {
+    const good = { bid: "3500", ask: "3500.5", source: "book", at: NOW };
+    const p = parseSrQuotes(
+      JSON.stringify({
+        "ETH-USD": good,
+        "SOL-USD": { bid: "1", source: "book", at: 1 },
+        "BTC-USD": { bid: "0", ask: "1", source: "book", at: 1 },
+        "XRP-USD": "nope",
+        // Chuỗi không phải số không được làm hỏng cả bản chụp.
+        "ADA-USD": { bid: "abc", ask: "1", source: "book", at: 1 },
+      }),
+    );
+    expect(p).toEqual({
+      quotes: { "ETH-USD": good },
+      invalid: ["SOL-USD", "BTC-USD", "XRP-USD", "ADA-USD"],
+      broken: false,
+    });
+    expect(exitPriceOf("long", p.quotes["ETH-USD"], NOW)?.toFixed()).toBe("3500");
+    expect(exitPriceOf("long", p.quotes["SOL-USD"], NOW)).toBeNull();
+  });
+
+  it("only an unreadable value (not JSON / not an object) means no quotes at all", () => {
+    const none = { quotes: {}, invalid: [], broken: true };
+    expect(parseSrQuotes(null)).toEqual({ quotes: {}, invalid: [], broken: false });
+    expect(parseSrQuotes("{not json")).toEqual(none);
+    expect(parseSrQuotes("[]")).toEqual(none);
+    expect(parseSrQuotes("null")).toEqual(none);
+    expect(parseSrQuotes('"x"')).toEqual(none);
   });
 });
