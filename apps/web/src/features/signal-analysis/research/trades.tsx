@@ -118,7 +118,16 @@ function TypeLabel({ x }: { x: ResearchTrade }) {
 const linkBtn =
   "cursor-pointer border-0 bg-transparent p-0 text-left text-sm font-bold text-accent-ink underline hover:text-accent";
 
-export function ResearchTrades({ ctx, assets }: { ctx: PageCtx; assets: readonly string[] }) {
+export function ResearchTrades({
+  ctx,
+  assets,
+  onTrace,
+}: {
+  ctx: PageCtx;
+  assets: readonly string[];
+  /** Nút Trace (#292): mở phễu ở trên trên bài của dòng này. */
+  onTrace: (articleId: string) => void;
+}) {
   const t = useTranslations("signalAnalysis.research");
   const ts = useTranslations("signalAnalysis.states");
   const [f, setF] = useState<ResearchFilters>(RESEARCH_DEFAULT);
@@ -245,9 +254,9 @@ export function ResearchTrades({ ctx, assets }: { ctx: PageCtx; assets: readonly
       ) : (
         <div aria-busy={q.isPlaceholderData} className={q.isPlaceholderData ? "opacity-50" : ""}>
           <div className="max-md:hidden">
-            <TradesTable items={items} tz={ctx.tz} onOpen={setOpen} />
+            <TradesTable items={items} tz={ctx.tz} onOpen={setOpen} onTrace={onTrace} />
           </div>
-          <TradeCards items={items} onOpen={setOpen} />
+          <TradeCards items={items} onOpen={setOpen} onTrace={onTrace} />
         </div>
       )}
       {q.hasNextPage ? (
@@ -271,14 +280,46 @@ export function ResearchTrades({ ctx, assets }: { ctx: PageCtx; assets: readonly
   );
 }
 
+const traceBtn =
+  "min-h-10 cursor-pointer whitespace-nowrap rounded-control border border-border-input bg-surface px-3 text-[13px] font-extrabold text-accent-ink";
+
+/** Nút Trace: chỉ dòng có bài (News); replay / dòng thiếu bài không có (`articleId = null`). */
+function TraceButton({
+  x,
+  onTrace,
+  className = "",
+}: {
+  x: ResearchTrade;
+  onTrace: (articleId: string) => void;
+  className?: string;
+}) {
+  const t = useTranslations("signalAnalysis.research");
+  const id = x.articleId;
+  if (id === null) return null;
+  return (
+    <button
+      type="button"
+      aria-label={t("trace.traceAria", { title: tradeTitle(x, t) })}
+      onClick={() => {
+        onTrace(id);
+      }}
+      className={`${traceBtn} ${className}`}
+    >
+      {t("trace.traceBtn")}
+    </button>
+  );
+}
+
 function TradesTable({
   items,
   tz,
   onOpen,
+  onTrace,
 }: {
   items: ResearchTrade[];
   tz: string;
   onOpen: (id: string) => void;
+  onTrace: (articleId: string) => void;
 }) {
   const t = useTranslations("signalAnalysis.research");
   const cols = [
@@ -303,6 +344,9 @@ function TradesTable({
                 {t(`trades.${k}`)}
               </th>
             ))}
+            <th scope="col" className={thR}>
+              <span className="sr-only">{t("trace.traceCol")}</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -383,6 +427,9 @@ function TradesTable({
                     </>
                   )}
                 </td>
+                <td className={`${tdR} text-right`}>
+                  <TraceButton x={x} onTrace={onTrace} />
+                </td>
               </tr>
             );
           })}
@@ -392,7 +439,15 @@ function TradesTable({
   );
 }
 
-function TradeCards({ items, onOpen }: { items: ResearchTrade[]; onOpen: (id: string) => void }) {
+function TradeCards({
+  items,
+  onOpen,
+  onTrace,
+}: {
+  items: ResearchTrade[];
+  onOpen: (id: string) => void;
+  onTrace: (articleId: string) => void;
+}) {
   const t = useTranslations("signalAnalysis.research");
   const na = t("na");
   const p = (v: string | null) => (v === null ? na : priceText(v));
@@ -448,7 +503,7 @@ function TradeCards({ items, onOpen }: { items: ResearchTrade[]; onOpen: (id: st
         );
         const cls = "flex w-full flex-col gap-1.5 rounded-tile border border-border p-3 text-left";
         return (
-          <li key={x.id}>
+          <li key={x.id} className="flex flex-col gap-1.5">
             <button
               type="button"
               aria-haspopup="dialog"
@@ -459,6 +514,7 @@ function TradeCards({ items, onOpen }: { items: ResearchTrade[]; onOpen: (id: st
             >
               {body}
             </button>
+            <TraceButton x={x} onTrace={onTrace} className="self-end" />
           </li>
         );
       })}

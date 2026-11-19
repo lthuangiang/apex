@@ -121,3 +121,45 @@
     stroke-dashoffset: -24;
   }
 }
+
+/*
+ * Signal research › News feed và funnel trace (#292, docs/mockups/signal-research/news-trace.html). Chỉ dùng qua
+ * `motion-safe:animate-[…]`, nên prefers-reduced-motion không chạy hiệu ứng nào.
+ */
+@keyframes sr-glow {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.25);
+  }
+}
+@keyframes sr-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sr-fade {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sr-spark {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 40px;
+  }
+}
