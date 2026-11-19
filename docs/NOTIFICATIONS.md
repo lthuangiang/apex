@@ -239,7 +239,7 @@ Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegr
   ```
 - Bot Monitor: lệch vị thế hiện ở cột Latest alert như cảnh báo "Position".
 
-### 13.3 Market SoDEX mới chưa có trong asset map Signal research (#311, DEC-TBD-sr-new-market-alert)
+### 13.3 Market SoDEX mới chưa có trong asset map Signal research (#311, DEC-339)
 
 Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegram của thành viên team bật nhóm `teamOps`). Type `team_sr_new_market`, nút "Open Signal Analysis" mở `/admin/signal-analysis`.
 
