@@ -574,8 +574,7 @@ function stepsOf(input: {
             level: merged ? null : levelOf(fd.level),
             checks: merged ? [] : checksOf(a, fEv),
             laterLevel: merged ? levelOf(fd.laterLevel) : null,
-            reasonLimit:
-              fEv.outcome === "drop" ? reasonLimitOf(fEv.reason, fEv.detail) : null,
+            reasonLimit: fEv.outcome === "drop" ? reasonLimitOf(fEv.reason, fEv.detail) : null,
             storyStartedAt:
               merged &&
               fd.storyStartedAt !== undefined &&
