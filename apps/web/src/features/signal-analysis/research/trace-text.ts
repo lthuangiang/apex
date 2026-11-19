@@ -10,7 +10,16 @@ import type {
 
 import { clock, count } from "../format";
 
-import { delay, delayLong, hold, pctPlain, pctSigned, priceText, tickPrice } from "./format";
+import {
+  delay,
+  delayLong,
+  hold,
+  pctPlain,
+  pctSigned,
+  priceText,
+  tickPrice,
+  usdSigned,
+} from "./format";
 import type { Tr } from "./text";
 
 // Câu chữ của News feed và trace một bài (#292, thiết kế docs/mockups/signal-research/news-trace.html). Hàm thuần: chỉ
@@ -548,6 +557,15 @@ function stepView(
                 reason: s.reason === null ? t("na") : t(`trace.reasonLabels.${s.reason}`),
               });
         rows.push(droppedRow(s, t));
+        // #306: bài là tin ngược chiều trên lệnh đang mở (đóng hay giữ lệnh đó); tín hiệu bị giới hạn chặn vẫn được
+        // theo dõi giả định (shadow).
+        if (d?.opposite != null)
+          rows.push({
+            label: t("trace.rows.oppositeArticle"),
+            value: t("trace.values.oppositeArticle", { action: d.opposite.action }),
+          });
+        if (d?.shadowTradeId != null)
+          rows.push({ label: t("trace.rows.shadow"), value: t("trace.values.shadow") });
       } else {
         short = t("trace.short.checks", {
           passed: checks.filter((c) => c.ok).length,
@@ -592,6 +610,20 @@ function stepView(
             }),
           },
           { label: t("trace.rows.maxHold"), value: hold(d.maxHoldHours) },
+          // #306: tin ngược chiều lúc lệnh đang mở; kết quả là kết quả giả định nếu đóng lúc đó (DEC-337 mục 9).
+          ...(d.opposite === null
+            ? []
+            : [
+                {
+                  label: t("trace.rows.opposite"),
+                  value: t("trace.values.opposite", {
+                    time: clock(d.opposite.at, tz, false),
+                    action: d.opposite.action,
+                    usd: usdSigned(d.opposite.resultUsdc),
+                    pct: pctSigned(d.opposite.resultPct),
+                  }),
+                },
+              ]),
         ],
       };
     }
