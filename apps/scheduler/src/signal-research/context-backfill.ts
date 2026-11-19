@@ -20,7 +20,7 @@ import { priceBefore } from "./store";
 // Backfill ngữ cảnh cho tín hiệu tin cũ (#333, thay #274; thuộc #329). Tín hiệu = bài qua Understand (event `understand` /
 // `pass`), kể cả bài sau đó bị loại ở Filter hay thành shadow. Thời điểm quyết định = giờ của event đó (bước 4 live chạy cùng
 // chu kỳ, cùng `now`). Chỉ đọc DB của DeskLabs; không gọi SoDEX, Hyperliquid hay dịch vụ ngoài nào.
-// Quy tắc (DEC-TBD-sr-context-backfill):
+// Quy tắc (DEC-342):
 // - Không nhìn trước: chỉ dữ liệu có timestamp < thời điểm quyết định (funding_time, nến 1 phút đã đóng, story có trước đó
 //   và nguồn của story đã qua Understand trước đó).
 // - Snapshot gắn `source = backfilled`, tách khỏi `live`; một dòng mỗi bài, insert-or-nothing: không bao giờ ghi đè snapshot
