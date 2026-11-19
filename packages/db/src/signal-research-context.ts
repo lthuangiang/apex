@@ -6,6 +6,7 @@ import {
   NEWS_RULES,
   SIGNAL_CONTEXT_RULES,
   SIGNAL_CONTEXT_VERSION,
+  type ContextSource,
   type DayObs,
   type Decimal,
   type FundingPayer,
@@ -118,13 +119,15 @@ const KEYS = ["h1", "h2", "h3"] as const;
 
 /**
  * "Does context help?" của một version: `closed` = lệnh thật đã đóng ĐƯỢC TÍNH của version (cùng tập với cổng chính,
- * classifier đã qua cổng precision). Mỗi lệnh nối snapshot `live` của bài đã mở nó; `na` không vào nhóm nào. Độ phủ đếm mọi
- * snapshot `live` của version quy tắc hiện tại (từ lúc lưu version; Baseline: mọi lúc).
+ * classifier đã qua cổng precision). Mỗi lệnh nối snapshot của bài đã mở nó, chỉ khi snapshot đúng nguồn `source` (#344:
+ * `live` và `backfilled` không bao giờ trộn); `na` không vào nhóm nào. Độ phủ đếm mọi snapshot của nguồn đó thuộc version
+ * quy tắc hiện tại (từ lúc lưu version; Baseline: mọi lúc).
  */
 export async function loadContextSummary(
   q: Q,
   scope: SignalVersionScope | null,
   closed: readonly TradeRow[],
+  source: ContextSource = "live",
 ): Promise<ResearchContextSummary> {
   const ctx = await loadSignalContexts(
     q,
@@ -138,7 +141,7 @@ export async function loadContextSummary(
   let missing = 0;
   for (const t of closed) {
     const c = t.articleId === null ? undefined : ctx.get(t.articleId);
-    if (c?.source !== "live" || t.resultPct === null) {
+    if (c?.source !== source || t.resultPct === null) {
       missing += 1;
       continue;
     }
@@ -186,19 +189,19 @@ export async function loadContextSummary(
       signalContexts.h2Status,
       signalContexts.h3Status,
     );
-  const live = cov.filter((r) => r.source === "live");
+  const own = cov.filter((r) => r.source === source);
   const sum = (rows: typeof cov) => rows.reduce((s, r) => s + r.n, 0);
   return {
     contextVersion: SIGNAL_CONTEXT_VERSION,
-    source: "live",
+    source,
     minClosedPerGroup: SIGNAL_CONTEXT_RULES.compareMinClosed,
     questions,
-    closedWithoutLiveSnapshot: missing,
+    closedWithoutSnapshot: missing,
     coverage: {
-      signals: sum(live),
-      whale: sum(live.filter((r) => r.h1 !== "na")),
-      funding: sum(live.filter((r) => r.h2 !== "na")),
-      priceRun: sum(live.filter((r) => r.h3 !== "na")),
+      signals: sum(own),
+      whale: sum(own.filter((r) => r.h1 !== "na")),
+      funding: sum(own.filter((r) => r.h2 !== "na")),
+      priceRun: sum(own.filter((r) => r.h3 !== "na")),
       backfilled: sum(cov.filter((r) => r.source === "backfilled")),
       openInterest: "notAvailable",
     },

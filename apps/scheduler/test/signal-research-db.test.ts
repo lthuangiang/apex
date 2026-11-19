@@ -1006,8 +1006,16 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
     });
     expect(summary.assets).not.toContain("SOL-USD");
 
+    // #344: mặc định danh sách chỉ có quy tắc hiện tại; news-v2 hiện khi bật "Show older rules" (olderRules=true).
     const page = await loadSignalResearchTrades(db, { limit: 50, show: "all" }, new Date(T0));
-    expect(page.items.map((i) => i.id)).toContain(tradeId);
+    expect(page.items.map((i) => i.id)).not.toContain(tradeId);
+    const older = await loadSignalResearchTrades(
+      db,
+      { limit: 50, show: "all", olderRules: "true" },
+      new Date(T0),
+    );
+    expect(older.items.find((i) => i.id === tradeId)).toMatchObject({ rulesVersion: 2 });
+    expect(summary.olderRules).toEqual({ trades: 1, versions: [2] });
     const detail = await loadSignalResearchTrade(db, tradeId, new Date(T0));
     expect(detail).toMatchObject({ rulesVersion: 2 });
   });

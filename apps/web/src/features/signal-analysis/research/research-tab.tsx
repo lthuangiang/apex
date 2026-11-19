@@ -1,46 +1,32 @@
 "use client";
 
 import type {
-  ResearchLevelRow,
+  ResearchClassifiers,
   ResearchPaperBot,
   ResearchRange,
-  ResearchRisk,
   ResearchSummary,
-  ResearchSummaryRow,
-  ResearchDirectionRow,
+  ResearchVersion,
+  ResearchVersions,
 } from "@drift/shared";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api";
 
-import { Refreshing, ScrollTable, StateBox, StaleNote } from "../components/bits";
+import { Refreshing, StateBox, StaleNote } from "../components/bits";
 import type { PageCtx } from "../components/signal-analysis-page";
-import { clock, count, monthDay } from "../format";
+import { clock } from "../format";
 
 import { useResearchClassifiers, useResearchSummary, useResearchVersions } from "./api";
-import { balance, pctPlain, pctSigned, tone } from "./format";
-import { HelpButton, HowItWorksDrawer, HowItWorksProvider, type HowTab } from "./how-it-works";
+import { balance } from "./format";
+import { HowItWorksDrawer, HowItWorksProvider, type HowTab } from "./how-it-works";
+import { IsItWorking } from "./is-it-working";
 import { ClassifierQuality } from "./labels";
 import { NewsTrace, type TraceRequest } from "./news-trace";
 import { ResearchBanner, VersionBar } from "./page-bar";
-import type { Tr } from "./text";
+import { rulesList } from "./text";
 import { ResearchTrades } from "./trades";
-import {
-  Block,
-  Dash,
-  LabelPill,
-  LEVEL_TONE,
-  Na,
-  NotEnough,
-  Pill,
-  SIDE_TONE,
-  STATUS_TONE,
-  Sub,
-  tdR,
-  tdW,
-  thR,
-} from "./ui";
+import { Block, Na, Pill } from "./ui";
 import { NewsVersions } from "./versions";
 
 // Tab "Signal research" (team, #273; thiết kế docs/mockups/signal-research, #269 v3.4). Chỉ nghiên cứu, tiền giả: tin
@@ -48,6 +34,22 @@ import { NewsVersions } from "./versions";
 // số đến từ API team của #271; thiếu thì hiện "Not available" / "Not enough trades", không bao giờ 0 (quy tắc 1.8).
 // Dưới 768px theo mockup 390: News feed + funnel trace (#292), "Is it working?" (thẻ) và "Paper trades" (thẻ). #342: đầu
 // trang có một bộ chọn Version (query `?version=`), dòng Progress và drawer How it works (research/how-it-works.tsx).
+
+const RANGE_MS: Record<ResearchRange, number> = { "1d": 86_400_000, "7d": 7 * 86_400_000 };
+
+/**
+ * #321: phễu chỉ đếm quy tắc hiện tại; quy tắc đó bắt đầu sau đầu khoảng đã chọn thì trả mốc để ghi "Since rules v3
+ * started …" (không thì người xem tưởng thu tin bị hỏng). null khi quy tắc đã chạy hết khoảng hoặc thiếu số.
+ */
+export function rulesSinceOf(
+  v: Pick<ResearchSummary, "computedAt" | "newsRulesSince" | "newsRulesVersion">,
+  range: ResearchRange,
+): { v: number; at: string; sameDay: boolean } | null {
+  if (v.newsRulesSince === null || v.newsRulesVersion === null) return null;
+  const age = Date.parse(v.computedAt) - Date.parse(v.newsRulesSince);
+  if (age >= RANGE_MS[range]) return null;
+  return { v: v.newsRulesVersion, at: v.newsRulesSince, sameDay: age < RANGE_MS["1d"] };
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -125,6 +127,9 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
             ctx={ctx}
             versionId={versionId}
             onVersion={setVersionId}
+            versions={versions.data}
+            classifiers={classifiers.data}
+            picked={picked}
             news={
               <NewsTrace
                 ctx={ctx}
@@ -133,6 +138,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
                 onRange={setRange}
                 request={trace}
                 versionId={versionId}
+                rulesSince={rulesSinceOf(v, range)}
               />
             }
           />
@@ -141,6 +147,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
           ctx={ctx}
           assets={v.assets}
           versionId={versionId}
+          older={v.olderRules}
           onTrace={(id) => {
             setTrace((x) => ({ id, seq: (x?.seq ?? 0) + 1 }));
           }}
@@ -157,6 +164,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
         versions={versions.data}
         versionsError={versions.isError}
         classifiers={classifiers.data}
+        context={v?.context ?? null}
         current={picked}
         onVersion={setVersionId}
         onHow={setHow}
@@ -181,12 +189,18 @@ function Body({
   news,
   versionId,
   onVersion,
+  versions,
+  classifiers,
+  picked,
 }: {
   v: ResearchSummary;
   ctx: PageCtx;
   news: ReactNode;
   versionId: string | null;
   onVersion: (id: string) => void;
+  versions: ResearchVersions | undefined;
+  classifiers: ResearchClassifiers | undefined;
+  picked: ResearchVersion | null;
 }) {
   return (
     <>
@@ -196,16 +210,16 @@ function Body({
         versionId={versionId}
         onVersion={onVersion}
         summaryVersion={v.version?.id ?? null}
+        older={v.olderRules}
       />
       <ClassifierQuality tz={ctx.tz} />
       {news}
-      <Summary
-        rows={v.rows}
-        directions={v.directions}
-        levels={v.levels}
-        costPct={v.costPct}
-        risk={v.risk}
+      <IsItWorking
+        v={v}
         tz={ctx.tz}
+        versions={versions}
+        classifiers={classifiers}
+        picked={picked}
       />
     </>
   );
@@ -267,6 +281,7 @@ function PaperBots({
   versionId,
   onVersion,
   summaryVersion,
+  older,
 }: {
   bots: ResearchPaperBot[];
   tz: string;
@@ -274,8 +289,11 @@ function PaperBots({
   onVersion: (id: string) => void;
   /** Version mà tổng kết (và lãi / lỗ chưa chốt của bot News) đang mô tả. */
   summaryVersion: string | null;
+  /** #321: lệnh của quy tắc cũ (v2) vẫn theo dõi ở bảng Paper trades. */
+  older: ResearchSummary["olderRules"];
 }) {
   const t = useTranslations("signalAnalysis.research.bots");
+  const tn = useTranslations("signalAnalysis.research");
   const by = (k: ResearchPaperBot["type"]) => bots.find((b) => b.type === k);
   const news = by("news");
   const whales = by("whales");
@@ -348,431 +366,11 @@ function PaperBots({
             : { versionId: summaryVersion, value: news.unrealized }
         }
       />
-    </Block>
-  );
-}
-
-/* ---------------------------------------------------------------- Results by level (dưới "Is it working?", #342) */
-
-function Levels({ levels }: { levels: ResearchLevelRow[] }) {
-  const t = useTranslations("signalAnalysis.research");
-  const tr = useTranslations("signalAnalysis.research.rules");
-  return (
-    <div className="flex flex-col gap-2 max-md:hidden">
-      <h3 className="m-0 text-[15px] font-extrabold">{tr("levelsTable")}</h3>
-      <ScrollTable label={tr("levelsTable")}>
-        <table className="w-full border-collapse">
-          <caption className="sr-only">{tr("levelsTable")}</caption>
-          <thead>
-            <tr>
-              {(
-                [
-                  "colLevel",
-                  "colWhen",
-                  "colSignals",
-                  "colTrades",
-                  "colLs",
-                  "colAvg",
-                  "colRandom",
-                  "colVerdict",
-                ] as const
-              ).map((k) => (
-                <th key={k} scope="col" className={thR}>
-                  {tr(k)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {levels.length === 0 ? (
-              <tr>
-                <td colSpan={8} className={`${tdR} text-muted`}>
-                  {tr("noLevels")}
-                </td>
-              </tr>
-            ) : (
-              levels.map((l) => (
-                <tr key={l.level}>
-                  <th scope="row" className={`${tdR} font-normal`}>
-                    <Pill tone={LEVEL_TONE[l.level]}>{t(`levels.${l.level}`)}</Pill>
-                    <HelpButton tab="levels" />
-                  </th>
-                  <td className={`${tdW} min-w-[240px]`}>
-                    {tr(`when.${l.level}`)}
-                    {l.laterHigh === null ? null : tr("laterHigh", { n: count(l.laterHigh) })}
-                  </td>
-                  <td className={tdR}>{count(l.signals)}</td>
-                  <td className={tdR}>{tr("pair", { a: count(l.trades), b: count(l.closed) })}</td>
-                  <td className={tdR}>
-                    {tr("ls", { long: count(l.long), short: count(l.short) })}
-                  </td>
-                  <td className={tdR}>
-                    <Avg v={l.avgPct} />
-                  </td>
-                  <td className={tdR}>
-                    <RandomDiff avg={l.avgPct} random={l.randomPct} diff={l.diffPct} />
-                  </td>
-                  <td className={`${tdW} min-w-[160px]`}>
-                    {l.status === "collecting" && l.needMore !== null
-                      ? tr("needsClosed", { n: count(l.needMore) })
-                      : t(`status.${l.status}`)}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </ScrollTable>
-    </div>
-  );
-}
-
-function Avg({ v }: { v: number | null }) {
-  if (v === null) return <NotEnough />;
-  return <span className={`font-bold ${tone(v)}`}>{pctSigned(v)}</span>;
-}
-
-/** "Random entry · difference": "—" khi chưa có trung bình (như mockup), "Not available" khi có trung bình mà thiếu so sánh. */
-function RandomDiff({
-  avg,
-  random,
-  diff,
-}: {
-  avg: number | null;
-  random: number | null;
-  diff: number | null;
-}) {
-  const t = useTranslations("signalAnalysis.research.summary");
-  if (avg === null) return <Dash />;
-  if (random === null || diff === null) return <Na />;
-  return (
-    <>
-      {t.rich(diff > 0 ? "randomBetter" : "randomDiff", {
-        random: pctSigned(random),
-        diff: pctSigned(diff),
-        b: (c) => <b>{c}</b>,
-      })}
-    </>
-  );
-}
-
-/* ---------------------------------------------------------------- Summary + risk filter */
-
-function Needs({ n }: { n: ResearchSummaryRow["needs"] }) {
-  const t = useTranslations("signalAnalysis.research.summary.needs");
-  switch (n.kind) {
-    case "pooled":
-      return (
-        <>
-          {n.weeks === null
-            ? t("pooledNoWeeks", { more: count(n.more) })
-            : t("pooled", { more: count(n.more), weeks: n.weeks })}
-        </>
-      );
-    case "rangeBelowZero":
-      return <>{t("rangeBelowZero", { needed: n.needed })}</>;
-    case "moreTrades":
-      return (
-        <>
-          {n.fundingDays === null
-            ? t("moreTrades", { more: n.more })
-            : t("moreTradesFunding", { more: n.more, days: n.fundingDays })}
-        </>
-      );
-    case "losesAfterFees":
-      return <>{t("losesAfterFees")}</>;
-    case "passed":
-      return <>{t("passed")}</>;
-  }
-}
-
-function cardLine(r: ResearchSummaryRow, t: Tr): string {
-  const label = t(`labels.${r.label}`);
-  const n = r.closed;
-  if (r.avgPct === null) {
-    const more = r.needs.kind === "pooled" || r.needs.kind === "moreTrades" ? r.needs.more : null;
-    return more === null
-      ? t("summary.cardPlain", { label, n })
-      : t("summary.cardNeeds", { label, n, more: count(more) });
-  }
-  return r.range === null
-    ? t("summary.cardAvg", { label, n, avg: pctSigned(r.avgPct) })
-    : t("summary.cardAvgRange", {
-        label,
-        n,
-        avg: pctSigned(r.avgPct),
-        lo: pctSigned(r.range.lo),
-        hi: pctSigned(r.range.hi),
-      });
-}
-
-/** "Likely range" + số ngày (cụm) dùng cho khoảng 95%. "—" khi chưa có trung bình (như mockup). */
-function RangeCell({
-  avg,
-  range,
-  clusters,
-}: {
-  avg: number | null;
-  range: { lo: number; hi: number } | null;
-  clusters: number;
-}) {
-  const ts = useTranslations("signalAnalysis.research.summary");
-  if (avg === null) return <Dash />;
-  if (range === null) return <Na />;
-  return (
-    <>
-      {ts("range", { lo: pctSigned(range.lo), hi: pctSigned(range.hi) })}
-      <span className="ml-1.5 text-xs text-muted">{ts("clusters", { n: clusters })}</span>
-    </>
-  );
-}
-
-function dirLine(d: ResearchDirectionRow, t: Tr): string {
-  const side = t(`sides.${d.side}`);
-  const n = d.closed;
-  if (d.avgPct === null) return t("summary.cardDirNone", { side, n });
-  return d.range === null
-    ? t("summary.cardDirAvg", { side, n, avg: pctSigned(d.avgPct) })
-    : t("summary.cardDir", {
-        side,
-        n,
-        avg: pctSigned(d.avgPct),
-        lo: pctSigned(d.range.lo),
-        hi: pctSigned(d.range.hi),
-      });
-}
-
-/** Long / Short của News · live paper (#269 v3.4 điểm 5): một tuần tăng giá không được trông như có edge. */
-function Directions({ rows }: { rows: readonly ResearchDirectionRow[] }) {
-  const t = useTranslations("signalAnalysis.research");
-  const ts = useTranslations("signalAnalysis.research.summary");
-  if (rows.length === 0) return null;
-  const cols = ["colSide", "colClosed", "colAvg", "colRandom", "colRange"] as const;
-  return (
-    <div className="mt-3 rounded-tile bg-surface-2 px-2 py-1">
-      <table className="w-full border-collapse">
-        <caption className="sr-only">{ts("dirTable")}</caption>
-        <thead>
-          <tr>
-            {cols.map((k) => (
-              <th key={k} scope="col" className={thR}>
-                {ts(k)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((d) => (
-            <tr key={d.side}>
-              <th scope="row" className={`${tdR} border-b-0 font-normal`}>
-                <Pill tone={SIDE_TONE[d.side]}>{t(`sides.${d.side}`)}</Pill>
-              </th>
-              <td className={`${tdR} border-b-0`}>{count(d.closed)}</td>
-              <td className={`${tdR} border-b-0`}>
-                <Avg v={d.avgPct} />
-              </td>
-              <td className={`${tdR} border-b-0`}>
-                <RandomDiff avg={d.avgPct} random={d.randomPct} diff={d.diffPct} />
-              </td>
-              <td className={`${tdR} border-b-0`}>
-                <RangeCell avg={d.avgPct} range={d.range} clusters={d.clusters} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Summary({
-  rows,
-  directions,
-  levels,
-  costPct,
-  risk,
-  tz,
-}: {
-  rows: ResearchSummaryRow[];
-  directions: readonly ResearchDirectionRow[];
-  levels: ResearchLevelRow[];
-  costPct: number | null;
-  risk: ResearchRisk | null;
-  tz: string;
-}) {
-  const t = useTranslations("signalAnalysis.research");
-  const ts = useTranslations("signalAnalysis.research.summary");
-  const na = t("na");
-  return (
-    <Block
-      id="sr-sum"
-      title={ts("title")}
-      right={
-        <span className="max-md:hidden">
-          {ts("sub", { cost: costPct === null ? na : pctPlain(costPct) })}
-        </span>
-      }
-    >
-      {rows.length === 0 ? (
-        <p className="m-0 text-sm text-muted">{ts("none")}</p>
-      ) : (
-        <>
-          <div className="max-md:hidden">
-            <ScrollTable label={ts("table")}>
-              <table className="w-full border-collapse">
-                <caption className="sr-only">{ts("table")}</caption>
-                <thead>
-                  <tr>
-                    {(
-                      [
-                        "colType",
-                        "colTested",
-                        "colClosed",
-                        "colAvg",
-                        "colRandom",
-                        "colRange",
-                        "colStatus",
-                        "colNeeds",
-                      ] as const
-                    ).map((k) => (
-                      <th key={k} scope="col" className={thR}>
-                        {ts(k)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={`${r.type}-${r.label}`}>
-                      <th scope="row" className={`${tdR} font-normal`}>
-                        <span className="block font-bold">{t(`types.${r.type}`)}</span>
-                        <Sub>
-                          {t("rulesV", { v: r.rulesVersion })}
-                          <HelpButton tab="news" />
-                        </Sub>
-                      </th>
-                      <td className={tdR}>
-                        <LabelPill label={r.label} />
-                      </td>
-                      <td className={tdR}>
-                        {count(r.closed)}
-                        {r.opened === null ? null : (
-                          <Sub>{ts("opened", { n: count(r.opened) })}</Sub>
-                        )}
-                      </td>
-                      <td className={tdR}>
-                        <Avg v={r.avgPct} />
-                      </td>
-                      <td className={tdR}>
-                        <RandomDiff avg={r.avgPct} random={r.randomPct} diff={r.diffPct} />
-                      </td>
-                      <td className={tdR}>
-                        <RangeCell avg={r.avgPct} range={r.range} clusters={r.clusters} />
-                      </td>
-                      <td className={tdR}>
-                        <Pill tone={STATUS_TONE[r.status]}>{t(`status.${r.status}`)}</Pill>
-                      </td>
-                      <td className={`${tdW} min-w-[150px]`}>
-                        <Needs n={r.needs} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </ScrollTable>
-            <Directions rows={directions} />
-          </div>
-          <ul className="m-0 flex list-none flex-col gap-2.5 p-0 md:hidden">
-            {rows.map((r) => (
-              <li
-                key={`${r.type}-${r.label}`}
-                className="flex flex-col gap-1.5 rounded-tile border border-border p-3"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <b>{t(`types.${r.type}`)}</b>
-                  <Pill tone={STATUS_TONE[r.status]}>{t(`status.${r.status}`)}</Pill>
-                </div>
-                <span className="text-xs text-muted">{cardLine(r, t)}</span>
-              </li>
-            ))}
-            {directions.length === 0 ? null : (
-              <li className="flex flex-col gap-1 rounded-tile bg-surface-2 p-3 text-xs text-ink-2">
-                {directions.map((d) => (
-                  <span key={d.side}>{dirLine(d, t)}</span>
-                ))}
-              </li>
-            )}
-          </ul>
-        </>
+      {older.trades === 0 ? null : (
+        <p className="m-0 text-[13px] text-muted">
+          {t("olderRules", { n: older.trades, versions: rulesList(older.versions, tn) })}
+        </p>
       )}
-      <Levels levels={levels} />
-      <Risk risk={risk} tz={tz} />
     </Block>
-  );
-}
-
-function Risk({ risk, tz }: { risk: ResearchRisk | null; tz: string }) {
-  const t = useTranslations("signalAnalysis.research.risk");
-  const b = (c: ReactNode) => <b>{c}</b>;
-  const cost = risk?.costChangePct ?? null;
-  const vol = risk?.volumeChangePct ?? null;
-  const known = risk !== null && cost !== null && vol !== null;
-  const next = risk?.next ?? null;
-  const dir = (v: number) => (v <= 0 ? "lower" : "higher");
-  return (
-    <>
-      <div className="flex flex-wrap items-start gap-3 rounded-tile bg-surface-2 px-4 py-3.5 max-md:hidden">
-        <div className="flex flex-[1_1_380px] flex-col gap-1">
-          <h3 className="m-0 text-[15px] font-extrabold">{t("title")}</h3>
-          <p className="m-0 text-sm leading-normal text-ink-2">
-            {known ? (
-              t("body", {
-                windows: risk.windows,
-                days: risk.days,
-                cost: Math.abs(cost).toFixed(0),
-                costDir: dir(cost),
-                volume: Math.abs(vol).toFixed(0),
-                volumeDir: dir(vol),
-              })
-            ) : (
-              <Na />
-            )}
-          </p>
-        </div>
-        <div className="flex min-w-[220px] flex-col gap-1">
-          <span className="text-xs font-bold text-muted">{t("next")}</span>
-          <span className="font-bold">
-            {next === null ? (
-              <Na />
-            ) : (
-              t("nextValue", {
-                event: next.event,
-                day: monthDay(next.from, tz),
-                from: clock(next.from, tz, false),
-                to: clock(next.to, tz, false),
-              })
-            )}
-          </span>
-        </div>
-      </div>
-      <p className="m-0 rounded-[14px] bg-surface-2 px-3 py-2.5 text-[13px] leading-normal text-ink-2 md:hidden">
-        {!known
-          ? t.rich("shortNa", { b })
-          : next === null
-            ? t.rich("shortNoNext", {
-                b,
-                dir: dir(cost),
-                cost: Math.abs(cost).toFixed(0),
-              })
-            : t.rich("short", {
-                b,
-                dir: dir(cost),
-                cost: Math.abs(cost).toFixed(0),
-                event: next.event,
-                day: monthDay(next.from, tz),
-                time: clock(next.from, tz, false),
-              })}
-      </p>
-    </>
   );
 }

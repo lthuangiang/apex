@@ -414,14 +414,20 @@ export const researchContextQuestionSchema = z.object({
 
 export const researchContextSummarySchema = z.object({
   contextVersion: z.string().min(1),
-  /** Nhóm so sánh chỉ dùng snapshot `live` (backfilled tách riêng, chưa có ở giai đoạn này). */
-  source: z.literal("live"),
+  /**
+   * Nguồn snapshot của khối này (#344): `live` (chụp lúc chạy) và `backfilled` (dựng lại sau) không bao giờ trộn vào một
+   * nhóm; tổng kết trả hai khối riêng (`context`, `contextBackfilled`).
+   */
+  source: contextSource,
   /** Mỗi nhóm cần ≥ ngần này lệnh đóng mới có kết luận. */
   minClosedPerGroup: int,
   questions: z.array(researchContextQuestionSchema).length(3),
-  /** Lệnh đóng được tính nhưng không có snapshot `live` (mở trước khi có bước Context, hoặc chỉ có bản backfilled). */
-  closedWithoutLiveSnapshot: int,
-  /** Độ phủ trên mọi tín hiệu có snapshot `live` (từ lúc version được lưu; Baseline: mọi lúc). */
+  /** Lệnh đóng được tính nhưng không có snapshot của nguồn này (mở trước khi có bước Context, hoặc chỉ có nguồn kia). */
+  closedWithoutSnapshot: int,
+  /**
+   * Độ phủ trên mọi tín hiệu có snapshot của nguồn này (từ lúc version được lưu; Baseline: mọi lúc). `backfilled` luôn là
+   * số snapshot dựng lại, dù khối là nguồn nào.
+   */
   coverage: z.object({
     signals: int,
     whale: int,
@@ -451,8 +457,21 @@ export const researchSummarySchema = z.object({
   directions: z.array(researchDirectionRowSchema),
   risk: researchRiskSchema.nullable(),
   assets: z.array(z.string()),
-  /** #329: Does context help? (theo version của tổng kết); null khi lane chưa chạy. */
+  /** #329: Does context help? (theo version của tổng kết), snapshot `live`; null khi lane chưa chạy. */
   context: researchContextSummarySchema.nullable(),
+  /** #344: như `context` nhưng chỉ snapshot `backfilled` (nút "Backfilled"); null khi lane chưa chạy. */
+  contextBackfilled: researchContextSummarySchema.nullable(),
+  /**
+   * #321: lúc quy tắc News hiện tại (`newsRulesVersion`) bắt đầu (bài đầu tiên thu theo quy tắc đó); phễu theo khoảng chỉ
+   * đếm từ mốc này ("since rules v3 started …"). null khi lane chưa chạy.
+   */
+  newsRulesSince: iso.nullable(),
+  /**
+   * #321 / #344: lệnh News · live của các quy tắc cũ (ví dụ v2) còn trong danh sách của version này (chỉ Baseline có); không
+   * bao giờ tính cổng. `versions` = số version quy tắc cũ có lệnh, tăng dần. Danh sách lệnh chỉ hiện chúng khi
+   * `olderRules=true`.
+   */
+  olderRules: z.object({ trades: int, versions: z.array(int) }),
 });
 
 export const researchWhatSchema = z.discriminatedUnion("type", [
@@ -580,6 +599,11 @@ export const researchTradeSchema = z.object({
   shadow: researchTradeShadowSchema.nullable(),
   /** #305: tin ngược chiều trên lệnh này; null khi chưa có (hoặc với tín hiệu bị bỏ). */
   opposite: researchTradeOppositeSchema.nullable(),
+  /**
+   * #321: số version quy tắc của lệnh / tín hiệu (3 = news-v3). Khác `newsRulesVersion` của tổng kết → lệnh quy tắc cũ, web
+   * gắn nhãn "Rules v2 · not counted" (không bao giờ tính cổng).
+   */
+  rulesVersion: int,
 });
 
 export const researchTradesPageSchema = z.object({
@@ -1177,6 +1201,11 @@ export const researchTradesQuerySchema = z.object({
   tz: z.string().max(64).optional(),
   /** #305: News bot version; không có = Baseline (gồm lịch sử trước version, như #298). */
   versionId: z.uuid().optional(),
+  /**
+   * #344: "true" thì thêm lệnh / tín hiệu của quy tắc cũ (news-v2, chỉ Baseline có); mặc định chỉ quy tắc hiện tại, đúng
+   * tập của version đang chọn.
+   */
+  olderRules: z.enum(["true", "false"]).optional(),
 });
 export type ResearchTradesQuery = z.infer<typeof researchTradesQuerySchema>;
 

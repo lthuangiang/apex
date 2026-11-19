@@ -106,14 +106,17 @@ export function useResearchTrades(
   f: ResearchFilters,
   enabled: boolean,
   versionId: VersionId = null,
+  /** #344: "Show older rules (v2)": thêm lệnh / tín hiệu của quy tắc cũ (mặc định chỉ quy tắc hiện tại). */
+  olderRules = false,
 ) {
   return useInfiniteQuery({
-    queryKey: [...KEY, "trades", f, versionId],
+    queryKey: [...KEY, "trades", f, versionId, olderRules],
     queryFn: ({ pageParam }) =>
       api(
         "GET",
         `${RESEARCH_PATHS.trades}?${query(f, {
           ...ver(versionId),
+          ...(olderRules ? { olderRules: "true" } : {}),
           ...(pageParam === null ? {} : { cursor: pageParam }),
         })}`,
         researchTradesPageSchema,

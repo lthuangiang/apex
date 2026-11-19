@@ -74,6 +74,12 @@ export function randomResult(longPct: Decimal, shortPct: Decimal, longShare: Dec
 /** Mức sàn số lệnh đã đóng của cổng. */
 export const GATE_MIN_CLOSED = 100;
 
+/**
+ * #344: trang "Is it working?" chỉ hiện trung bình sau phí (và so với ngẫu nhiên) của một loại tín hiệu khi đã có ngần này
+ * lệnh đóng được tính ("Average shows at 30 closed"); ít hơn thì một hai lệnh may / rủi trông như kết quả.
+ */
+export const AVG_SHOWN_AT_CLOSED = 30;
+
 export type GateStatus = "collecting" | "failing" | "passing";
 
 /**

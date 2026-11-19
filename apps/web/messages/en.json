@@ -2845,7 +2845,22 @@
     "signalAnalysis.research.trace.sub",
     "signalAnalysis.research.trace.subShort",
     "signalAnalysis.research.summary.title",
-    "signalAnalysis.research.trades.title"
+    "signalAnalysis.research.trades.title",
+    "signalAnalysis.research.judge.closedLineDone",
+    "signalAnalysis.research.judge.labelsLineDone",
+    "signalAnalysis.research.judge.labelsShortNoPct",
+    "signalAnalysis.research.judge.closedShortNoWeeks",
+    "signalAnalysis.research.judge.labelsTitleNa",
+    "signalAnalysis.research.judge.rangeSub",
+    "signalAnalysis.research.judge.costNaYet",
+    "signalAnalysis.research.context.status.better_with",
+    "signalAnalysis.research.context.noSnapshots",
+    "signalAnalysis.research.context.leftOut",
+    "signalAnalysis.research.context.groupAria",
+    "signalAnalysis.research.page.progress.contextAnswered",
+    "signalAnalysis.research.bots.olderRules",
+    "signalAnalysis.research.trace.rulesSince",
+    "signalAnalysis.research.trace.rulesSinceDay"
   ],
   "beta": {
     "label": "Beta",
@@ -7854,7 +7869,8 @@
         "priceBalance": "Price patterns balance",
         "pause": "Pause",
         "pauseReplays": "Pause replays",
-        "unrealized": "{pnl} unrealized"
+        "unrealized": "{pnl} unrealized",
+        "olderRules": "{n, plural, one {# trade} other {# trades}} from older rules ({versions}) still tracked below"
       },
       "trace": {
         "title": "From headline to trade",
@@ -8161,7 +8177,9 @@
         "traceAria": "Trace: {title}",
         "unitNote": "Every step counts the same articles, collected in the {range}: in − out = next step.",
         "sub": "Every article, what happened to it, and why. Pick one to watch it go through.",
-        "subShort": "Every article, what happened to it, and why."
+        "subShort": "Every article, what happened to it, and why.",
+        "rulesSince": "Since rules v{v} started at {time}",
+        "rulesSinceDay": "Since rules v{v} started {day}, {time}"
       },
       "reasons": {
         "notCatalyst": "Not a catalyst on the list",
@@ -8384,7 +8402,10 @@
         "opposite": "opposite news",
         "oppositeTip": "Opposite news at {time} · {action, select, closed {closed} other {kept}} · closing then: {usd} ({pct})",
         "shadow": "Would have: {outcome}",
-        "shadowPnl": "Would have: {outcome} · {pnl}"
+        "shadowPnl": "Would have: {outcome} · {pnl}",
+        "olderRules": "Show older rules ({versions}) · {n}",
+        "olderRulesShort": "Older rules",
+        "olderTag": "Rules v{v} · not counted"
       },
       "detail": {
         "close": "Close",
@@ -8921,7 +8942,9 @@
           "labelsNa": "Classifier: Not available",
           "contextNa": "Context: Not available",
           "open": "{n, plural, one {# open trade} other {# open trades}}",
-          "openNa": "Open trades: Not available"
+          "openNa": "Open trades: Not available",
+          "context": "Context: collecting",
+          "contextAnswered": "Context: {n, plural, one {# question} other {# questions}} compared"
         },
         "howItWorks": "How it works",
         "help": "How it works: {tab}",
@@ -8950,7 +8973,105 @@
           "context3": "<b>Later: a version can use it.</b> If one check proves itself, a new version can turn it on, e.g. \"Require whales agree\". Then step 4 becomes solid for that version and signals that fail it drop here with that reason.",
           "versionNow": "<b>{name}:</b> {config}"
         }
-      }
+      },
+      "judge": {
+        "tabsLabel": "Results",
+        "tabs": {
+          "overall": "Overall",
+          "levels": "By level",
+          "context": "Does context help?"
+        },
+        "closedTitle": "Closed trades for the gate",
+        "closedAria": "Closed trades",
+        "weeksToGo": "~{weeks, plural, one {# week} other {# weeks}} to go",
+        "closedLine": "<b>{n} / {gate}</b> · needs {more} more",
+        "closedLineDone": "<b>{n} / {gate}</b>",
+        "closedShort": "{n} / {gate} · needs {more} more · ~{weeks, plural, one {# week} other {# weeks}}",
+        "closedShortNoWeeks": "{n} / {gate} · needs {more} more",
+        "labelsTitle": "Classifier {name} labels",
+        "labelsTitleNa": "Classifier labels",
+        "labelsAria": "Labels",
+        "labelsRight": "{pct}% right so far",
+        "labelsLine": "<b>{n} / {min}</b> · needs {more} more · <a>Label a random signal</a>",
+        "labelsLineDone": "<b>{n} / {min}</b> · <a>Label a random signal</a>",
+        "labelsShort": "{n} / {min} · {pct}% right · <a>Label a random signal</a>",
+        "labelsShortNoPct": "{n} / {min} · <a>Label a random signal</a>",
+        "contextTitle": "Context (H1 whales)",
+        "contextNeeds": "each group needs {min}",
+        "groupOf": "{n} / {min}",
+        "colType": "Signal type",
+        "colClosed": "Closed trades",
+        "colAvg": "Average after fees",
+        "colRandom": "vs random entry",
+        "colStatus": "Status",
+        "typeLabel": "{type} · {label}",
+        "avgAt": "Average shows at {at} closed ({more} more); the gate needs {gate}",
+        "randomAt": "Shown at {at} closed",
+        "rangeSub": "{lo} to {hi} · {n, plural, one {# day} other {# days}}",
+        "costNaYet": "Not available yet · no v{v} trade has reached the cost check"
+      },
+      "context": {
+        "title": "Does context make news signals better?",
+        "intro": "News is the only thing that opens a trade. For every news signal we also save three facts about the market at that moment, then compare trades with and without each one. Nothing here changes what the bot does yet.",
+        "baseline": "{name} · from the page's version picker",
+        "dataLabel": "Data",
+        "sources": {
+          "live": "Live",
+          "backfilled": "Backfilled"
+        },
+        "slow": "<b>Slower than the main gate.</b> At about 30 news trades a week, each group below gets 10 to 15. A group needs 30 closed trades before it is compared, so expect the first answer in roughly 3 to 6 weeks.",
+        "table": "Does context make news signals better?",
+        "colQuestion": "Question, fixed in advance",
+        "colGroup": "Group",
+        "colClosed": "Closed",
+        "colAvg": "Average after fees",
+        "colDiff": "Difference (with − without)",
+        "colRange": "Likely range",
+        "colStatus": "Status",
+        "groups": {
+          "with": "With",
+          "without": "Without"
+        },
+        "groupAria": "{question} · {group} · closed trades",
+        "q": {
+          "h1": {
+            "title": "H1 · Whales agree",
+            "body": "At least one wallet DeskLabs tracks (followed, and already on the leaderboard before then) opened or added a position in the same direction on that asset in the 60 min before the decision."
+          },
+          "h2": {
+            "title": "H2 · Funding against the crowd",
+            "body": "Long when funding is in the lowest 20% of the last 30 days, or Short when it is in the highest 20%."
+          },
+          "h3": {
+            "title": "H3 · Price already moved",
+            "body": "Before entry the price had moved at least one typical 1-hour move in the signal's direction, so we may be late."
+          }
+        },
+        "notEnough": "Not enough trades",
+        "notEnoughCompare": "Not enough trades to compare",
+        "range": "{lo} to {hi}",
+        "status": {
+          "collecting": "Collecting",
+          "no_clear_difference": "No clear difference",
+          "better_with": "Better with it",
+          "worse_with": "Worse with it"
+        },
+        "moreWith": "{n} more with",
+        "moreWithout": "{n} more without",
+        "includesZero": "The range still includes 0",
+        "candidateH3": "Candidate option: \"Skip if price already moved\"",
+        "footnote": "Average after fees per trade, as a % of size. Likely range: 95% by day blocks. A question gets a verdict only when both groups have 30 or more closed trades. Only these three questions can become a version option; their thresholds do not change after the fact. H1 \"Without\" counts only signals on assets with whale data; assets without whale data are left out of both groups (shown under Coverage), so \"unknown\" is never mixed with \"no\".",
+        "optionTitle": "What turns a question into an option",
+        "optionBody": "The whole likely range is on one side of 0, with 30+ closed trades in each group. Then the team can save a version with that option (for example \"Skip if price already moved\") and A/B it against Baseline. With three questions, one can look good by luck, so an option still has to beat Baseline in an A/B before it counts.",
+        "coverageTitle": "Coverage",
+        "coverage": "Whale data: {whale} of {signals} signals (assets not on Hyperliquid, or with no tracked wallet that has data, show \"Not available\"). Funding: {funding} of {signals}. Price run: {price} of {signals}. Open interest: not available on SoDEX, not used.",
+        "noSnapshots": "{source, select, backfilled {No backfilled signals yet.} other {No live signals yet.}}",
+        "leftOut": "{n, plural, one {# closed trade has} other {# closed trades have}} no {source, select, backfilled {backfilled} other {live}} context and {n, plural, one {is} other {are}} left out.",
+        "exploratory": "Exploratory · other measures we save (not used for options)",
+        "exploratoryBody": "Whale size in USDC, number of agreeing wallets, funding value, volume vs 24 h average, range breakout, volatility squeeze. Looking at many measures will always find one that looks good by luck, so these stay here for ideas only.",
+        "moreBoth": "{with} more with · {without} more without"
+      },
+      "rulesShort": "v{v}"
     },
     "pricesMainnet": "Prices from mainnet"
   }

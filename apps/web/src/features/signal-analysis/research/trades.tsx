@@ -1,6 +1,11 @@
 "use client";
 
-import { RESEARCH_LABELS, RESEARCH_TYPES, type ResearchTrade } from "@drift/shared";
+import {
+  RESEARCH_LABELS,
+  RESEARCH_TYPES,
+  type ResearchSummary,
+  type ResearchTrade,
+} from "@drift/shared";
 import { RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, type ReactNode } from "react";
@@ -9,12 +14,12 @@ import { useMarketNames } from "@/lib/markets";
 
 import { FilterSelect, ScrollTable, Seg } from "../components/bits";
 import type { PageCtx } from "../components/signal-analysis-page";
-import { clock, monthDay } from "../format";
+import { clock, count, monthDay } from "../format";
 
 import { RESEARCH_DEFAULT, useResearchTrades, type ResearchFilters } from "./api";
 import { ResearchTradeDetail } from "./detail";
 import { delay, hold, pctSigned, priceText, tickPrice, tone, usdSigned } from "./format";
-import { skipText, sourcesText, tradeTitle, type Tr } from "./text";
+import { rulesList, skipText, sourcesText, tradeTitle, type Tr } from "./text";
 import { Block, Dash, Na, Pill, RetryTag, SIDE_TONE, Sub, tdR, tdW, thR, thW } from "./ui";
 
 // Danh sách lệnh của Signal research: lệnh live paper (News) và lệnh replay (Whales / Funding / Price patterns) chung
@@ -178,6 +183,17 @@ function TypeLabel({ x }: { x: ResearchTrade }) {
   );
 }
 
+/** #321: lệnh / tín hiệu của quy tắc cũ (chỉ hiện khi bật "Show older rules"): "Rules v2 · not counted". */
+function OlderTag({ x, older }: { x: ResearchTrade; older: readonly number[] }) {
+  const t = useTranslations("signalAnalysis.research.trades");
+  if (!older.includes(x.rulesVersion)) return null;
+  return (
+    <span className="mt-1 inline-block rounded-full bg-bg px-2 py-0.5 text-xs font-bold text-ink-2">
+      {t("olderTag", { v: x.rulesVersion })}
+    </span>
+  );
+}
+
 const linkBtn =
   "cursor-pointer border-0 bg-transparent p-0 text-left text-sm font-bold text-accent-ink underline hover:text-accent";
 
@@ -186,11 +202,14 @@ export function ResearchTrades({
   assets,
   onTrace,
   versionId = null,
+  older = { trades: 0, versions: [] },
 }: {
   ctx: PageCtx;
   assets: readonly string[];
   /** #306: News bot version của danh sách; null = Baseline. */
   versionId?: string | null;
+  /** #344: lệnh của quy tắc cũ (v2) của version này; có thì hiện "Show older rules (v2) · n". */
+  older?: ResearchSummary["olderRules"];
   /** Nút Trace (#292): mở phễu ở trên trên bài của dòng này. */
   onTrace: (articleId: string) => void;
 }) {
@@ -199,7 +218,10 @@ export function ResearchTrades({
   const [f, setF] = useState<ResearchFilters>(RESEARCH_DEFAULT);
   const [open, setOpen] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const q = useResearchTrades(f, true, versionId);
+  const [showOlder, setShowOlder] = useState(false);
+  const hasOlder = older.trades > 0;
+  const q = useResearchTrades(f, true, versionId, hasOlder && showOlder);
+  const olderVersions = hasOlder && showOlder ? older.versions : [];
   const items = q.data?.pages.flatMap((p) => p.items) ?? [];
   const set = (p: Partial<ResearchFilters>) => {
     setF((x) => ({ ...x, ...p }));
@@ -213,17 +235,38 @@ export function ResearchTrades({
       // rỗng / "Load more" ở cuối trang không bị che.
       className="max-lg:mb-6"
       right={
-        <button
-          type="button"
-          aria-expanded={showFilters}
-          aria-controls="sr-trade-filters"
-          onClick={() => {
-            setShowFilters((x) => !x);
-          }}
-          className={`${linkBtn} inline-flex min-h-11 items-center md:hidden`}
-        >
-          {t("trades.filters")}
-        </button>
+        <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {hasOlder ? (
+            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-bold text-ink md:text-[13px]">
+              <input
+                type="checkbox"
+                checked={showOlder}
+                onChange={(e) => {
+                  setShowOlder(e.target.checked);
+                }}
+                className="size-5 accent-accent"
+              />
+              <span className="md:hidden">{t("trades.olderRulesShort")}</span>
+              <span className="max-md:hidden">
+                {t("trades.olderRules", {
+                  versions: rulesList(older.versions, t),
+                  n: count(older.trades),
+                })}
+              </span>
+            </label>
+          ) : null}
+          <button
+            type="button"
+            aria-expanded={showFilters}
+            aria-controls="sr-trade-filters"
+            onClick={() => {
+              setShowFilters((x) => !x);
+            }}
+            className={`${linkBtn} inline-flex min-h-11 items-center md:hidden`}
+          >
+            {t("trades.filters")}
+          </button>
+        </span>
       }
     >
       <div
@@ -320,9 +363,21 @@ export function ResearchTrades({
       ) : (
         <div aria-busy={q.isPlaceholderData} className={q.isPlaceholderData ? "opacity-50" : ""}>
           <div className="max-md:hidden">
-            <TradesTable items={items} tz={ctx.tz} onOpen={setOpen} onTrace={onTrace} />
+            <TradesTable
+              items={items}
+              tz={ctx.tz}
+              older={olderVersions}
+              onOpen={setOpen}
+              onTrace={onTrace}
+            />
           </div>
-          <TradeCards items={items} tz={ctx.tz} onOpen={setOpen} onTrace={onTrace} />
+          <TradeCards
+            items={items}
+            tz={ctx.tz}
+            older={olderVersions}
+            onOpen={setOpen}
+            onTrace={onTrace}
+          />
         </div>
       )}
       {q.hasNextPage ? (
@@ -393,11 +448,14 @@ function TraceButton({
 function TradesTable({
   items,
   tz,
+  older,
   onOpen,
   onTrace,
 }: {
   items: ResearchTrade[];
   tz: string;
+  /** Version quy tắc cũ đang hiện (bật "Show older rules"); rỗng khi tắt. */
+  older: readonly number[];
   onOpen: (id: string) => void;
   onTrace: (articleId: string) => void;
 }) {
@@ -453,6 +511,7 @@ function TradesTable({
                   <Sub>
                     <TypeLabel x={x} />
                   </Sub>
+                  <OlderTag x={x} older={older} />
                 </td>
                 <td className={tdW}>
                   {clock(x.seenAt, tz)}
@@ -552,11 +611,14 @@ function TradesTable({
 function TradeCards({
   items,
   tz,
+  older,
   onOpen,
   onTrace,
 }: {
   items: ResearchTrade[];
   tz: string;
+  /** Version quy tắc cũ đang hiện (bật "Show older rules"); rỗng khi tắt. */
+  older: readonly number[];
   onOpen: (id: string) => void;
   onTrace: (articleId: string) => void;
 }) {
@@ -597,6 +659,7 @@ function TradeCards({
               <>
                 <span className="text-xs font-bold text-warn">{skip}</span>
                 <ShadowSub x={x} />
+                <OlderTag x={x} older={older} />
               </>
             ) : (
               <>
@@ -621,6 +684,7 @@ function TradeCards({
                   })}
                 </span>
                 <OppositeTag x={x} tz={tz} />
+                <OlderTag x={x} older={older} />
               </>
             )}
           </>

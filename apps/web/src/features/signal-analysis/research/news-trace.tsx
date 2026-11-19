@@ -20,7 +20,7 @@ import { ApiError } from "@/lib/api";
 import { useMarketNames } from "@/lib/markets";
 
 import type { PageCtx } from "../components/signal-analysis-page";
-import { clock, count } from "../format";
+import { clock, count, monthDay } from "../format";
 
 import { useResearchArticles, useResearchTrace, type ArticleFilters } from "./api";
 import { delay, delayLong } from "./format";
@@ -192,12 +192,15 @@ export function NewsTrace({
   onRange,
   request,
   versionId = null,
+  rulesSince = null,
 }: {
   ctx: PageCtx;
   funnel: ResearchFunnel | null;
   range: ResearchRange;
   onRange: (r: ResearchRange) => void;
   request: TraceRequest | null;
+  /** #321: quy tắc hiện tại chạy chưa hết khoảng đã chọn → ghi rõ phễu chỉ đếm từ lúc đó. */
+  rulesSince?: { v: number; at: string; sameDay: boolean } | null;
   /** #306: News bot version (bước Filter / Decide, story và lệnh của version); null = Baseline. */
   versionId?: string | null;
 }) {
@@ -315,6 +318,20 @@ export function NewsTrace({
             <span className="md:hidden">{t("trace.subShort")}</span>
             <span className="max-md:hidden">{t("trace.sub")}</span>
           </p>
+          {rulesSince === null ? null : (
+            <p className="m-0 text-xs font-bold text-ink-2">
+              {rulesSince.sameDay
+                ? t("trace.rulesSince", {
+                    v: rulesSince.v,
+                    time: clock(rulesSince.at, ctx.tz, false),
+                  })
+                : t("trace.rulesSinceDay", {
+                    v: rulesSince.v,
+                    day: monthDay(rulesSince.at, ctx.tz),
+                    time: clock(rulesSince.at, ctx.tz, false),
+                  })}
+            </p>
+          )}
         </div>
         <div
           role="group"

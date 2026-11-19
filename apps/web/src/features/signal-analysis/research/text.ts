@@ -65,3 +65,10 @@ export function reasonText(t: Tr, reason: ResearchDropReason, limit: number | nu
     return t(`reasonsN.${reason}`, { n: limit });
   return t(`reasons.${reason}`);
 }
+
+/** #321 / #344: version quy tắc cũ từ API ([2] → "v2"; [1, 2] → "v1 and v2"). */
+export function rulesList(versions: readonly number[], t: Tr): string {
+  return new Intl.ListFormat("en", { type: "conjunction" }).format(
+    versions.map((v) => t("rulesShort", { v })),
+  );
+}
