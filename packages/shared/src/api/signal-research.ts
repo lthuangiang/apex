@@ -702,6 +702,8 @@ export const researchTraceCheckSchema = z.object({
 /** Nhãn của người đang xem cho một bài. */
 export const researchMyLabelSchema = z.object({
   classifierVersion: z.string(),
+  /** #306: 4 ký tự hex cuối id người gắn ("··a91f" của thiết kế, như `createdBy` của version); không lộ gì thêm. */
+  labeledBy: z.string().regex(/^[0-9a-f]{4}$/),
   verdict: z.enum(CLASSIFICATION_VERDICTS),
   /** Chỉ khi `verdict = wrong`. */
   reason: z.enum(CLASSIFICATION_WRONG_REASONS).nullable(),

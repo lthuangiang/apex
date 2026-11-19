@@ -6,6 +6,7 @@ import {
   RESEARCH_DROP_REASONS,
   RESEARCH_RANGES,
   type ResearchArticle,
+  type ResearchArticleTrace,
   type ResearchDropReason,
   type ResearchFunnel,
   type ResearchRange,
@@ -13,7 +14,7 @@ import {
 } from "@drift/shared";
 import { RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api";
 import { useMarketNames } from "@/lib/markets";
@@ -23,6 +24,7 @@ import { clock, count } from "../format";
 
 import { useResearchArticles, useResearchTrace, type ArticleFilters } from "./api";
 import { delay, delayLong } from "./format";
+import { LabelForm } from "./labels";
 import type { Tr } from "./text";
 import {
   articleTitle,
@@ -450,6 +452,7 @@ export function NewsTrace({
               key={`${sel}:${String(run)}`}
               steps={view?.steps ?? []}
               states={STAGES.map((_, i) => bandState(i))}
+              scoreExtra={labelBox(data, ctx.tz)}
             />
           ) : (
             <TotalsPanel
@@ -832,7 +835,31 @@ function Token({
 
 /* ---------------------------------------------------------------- Step cards */
 
-function Steps({ steps, states }: { steps: StepView[]; states: BandState[] }) {
+/** #306: hộp gắn nhãn trên thẻ Score khi bài gắn nhãn được (trace không ẩn kết quả lệnh, DEC-333). */
+function labelBox(data: ResearchArticleTrace | null, tz: string): ReactNode {
+  const score = data?.steps.find((x) => x.key === "score");
+  if (data === null || score?.key !== "score" || score.detail?.labelable !== true) return null;
+  return (
+    <LabelForm
+      key={`${data.article.id}:${score.detail.label?.updatedAt ?? ""}`}
+      articleId={data.article.id}
+      initial={score.detail.label}
+      hidden={false}
+      tz={tz}
+    />
+  );
+}
+
+function Steps({
+  steps,
+  states,
+  scoreExtra = null,
+}: {
+  steps: StepView[];
+  states: BandState[];
+  /** Thêm vào cuối thẻ Score (hộp gắn nhãn, #306). */
+  scoreExtra?: ReactNode;
+}) {
   const t = useTranslations("signalAnalysis.research");
   const visible = steps
     .map((s, i) => ({ s, i, state: states[i] }))
@@ -893,6 +920,9 @@ function Steps({ steps, states }: { steps: StepView[]; states: BandState[] }) {
                 ))}
               </dl>
             )}
+            {s.key === "score" && scoreExtra !== null ? (
+              <div className="mt-3 md:ml-[38px]">{scoreExtra}</div>
+            ) : null}
           </li>
         );
       })}
