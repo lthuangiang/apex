@@ -149,6 +149,10 @@ export function FunnelBands({
           </button>
         );
       })}
+      {/* Hàng trống dưới Decide khi trace: chip đã vào lệnh / gộp đỗ ở đây, không bao giờ che chữ trên tầng. */}
+      {tracing ? (
+        <div aria-hidden="true" data-testid="sr-token-dock" className="h-9 max-md:hidden" />
+      ) : null}
       {token === null ? null : <Token token={token} />}
     </div>
   );
@@ -156,7 +160,13 @@ export function FunnelBands({
 
 function Token({ token }: { token: FunnelToken }) {
   const dropped = token.tone === "dropped";
-  const top = token.pos === 0 ? -40 : (token.pos - 1) * BAND_ROW + 4;
+  // Đã vào lệnh / gộp: chip xuống hàng trống dưới tầng cuối thay vì nằm trên chữ kết quả của Decide.
+  const docked = token.tone === "traded" || token.tone === "merged";
+  const top = docked
+    ? BANDS.length * BAND_ROW + 4
+    : token.pos === 0
+      ? -40
+      : (token.pos - 1) * BAND_ROW + 4;
   const style: CSSProperties = {
     top: `${String(dropped ? top + 26 : top)}px`,
     left: dropped ? "calc(50% + 40px)" : "50%",
