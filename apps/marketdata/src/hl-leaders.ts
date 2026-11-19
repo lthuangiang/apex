@@ -42,6 +42,8 @@ export interface HlLeaderTrackerDeps {
   /** Fill mới nhất đã đọc (ms UTC); null = chưa đọc lần nào. */
   getCursor(address: string): Promise<number | null>;
   setCursor(address: string, ms: number): Promise<void>;
+  /** Ghi lần đọc ví thành công (`leader_wallets.last_polled_at`); không gọi khi đọc lỗi. */
+  markPolled(address: string, ms: number): Promise<void>;
   /** Ghi sự kiện đã khép (bỏ trùng theo `lastTid`) rồi chạy kiểm tra big move. */
   onEvents(address: string, events: LeaderEvent[], seenAt: number): Promise<void>;
   now(): number;
@@ -82,6 +84,8 @@ export class HlLeaderTracker {
     for (const address of copied) {
       try {
         await this.refreshPositions(address);
+        // Ví đang stream: đọc REST thành công ở vòng sync là lần "poll" của ví (fill tới qua WS).
+        if (next.includes(address)) await this.#d.markPolled(address, this.#d.now());
       } catch (error) {
         this.#d.warn({ err: error, address }, "hyperliquid leader read failed");
       }
@@ -148,13 +152,17 @@ export class HlLeaderTracker {
       try {
         const cursor = await this.#d.getCursor(address);
         if (cursor === null) {
-          await this.#d.setCursor(address, this.#d.now());
+          const now = this.#d.now();
+          await this.#d.setCursor(address, now);
+          await this.#d.markPolled(address, now);
           continue;
         }
         const fills = await this.#d.hl.userFillsByTime(address, cursor + 1, "realtime");
         for (const f of fills) this.#buffer(address, toLeaderFill(f, address));
         const last = fills.at(-1);
         if (last !== undefined) await this.#d.setCursor(address, last.time);
+        // Poll thành công, kể cả không có fill mới.
+        await this.#d.markPolled(address, this.#d.now());
       } catch (error) {
         this.#d.warn({ err: error, address }, "hyperliquid follow poll failed");
       }

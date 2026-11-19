@@ -1118,6 +1118,11 @@ export const leaderWallets = pgTable(
     lastOnLeaderboardAt: tstz("last_on_leaderboard_at"),
     /** Fill mới nhất đã đọc (ms UTC) cho T0 / T1, để lần poll sau chỉ đọc phần mới. */
     fillCursor: bigint("fill_cursor", { mode: "number" }),
+    /**
+     * Lần marketdata đọc ví THÀNH CÔNG gần nhất (T1: poll fill, kể cả khi không có fill mới hay lần đầu chỉ đặt con trỏ; T0:
+     * đọc lại vị thế ở vòng sync). Đọc lỗi thì không đổi. H1 của ngữ cảnh tín hiệu (#349) chỉ đếm ví có mốc này trong 60 phút.
+     */
+    lastPolledAt: tstz("last_polled_at"),
     ...timestamps,
   },
   (t) => [primaryKey({ columns: [t.source, t.address] })],
@@ -1187,6 +1192,8 @@ export const leaderEvents = pgTable(
   },
   (t) => [
     index("leader_events_addr_at_idx").on(t.source, t.address, t.at),
+    // Ngữ cảnh tín hiệu H1 (#331): sự kiện của một market SoDEX trong 60 phút trước quyết định.
+    index("leader_events_market_at_idx").on(t.source, t.market, t.at),
     uniqueIndex("leader_events_dedupe").on(t.source, t.address, t.lastTid),
   ],
 );
@@ -2060,3 +2067,75 @@ export const signalSourceHealth = pgTable("signal_source_health", {
   lastCycleAt: tstz("last_cycle_at"),
   updatedAt: tstz("updated_at").notNull().defaultNow(),
 });
+
+/**
+ * Ngữ cảnh của tín hiệu tin (#329, #330–#332; giai đoạn 1 chỉ ghi, không chặn lệnh). Một dòng mỗi bài qua Score (tín hiệu),
+ * chụp ở bước 4 (sau Score, trước Filter của mọi version) đúng lúc quyết định, chỉ từ dữ liệu có timestamp < `decided_at`.
+ * Ngữ cảnh chỉ phụ thuộc (tài sản, chiều, thời điểm) nên giống nhau cho mọi News bot version: lưu một lần mỗi bài, lệnh của
+ * mọi version nối qua `article_id`. Không bao giờ tính lại: trigger DB chặn UPDATE. `source` = `live` (chụp lúc chạy) hoặc
+ * `backfilled` (dựng lại sau cho lệnh cũ, tách riêng). OI không có cột: SoDEX không có lịch sử OI trong dữ liệu của DeskLabs.
+ */
+export const signalContexts = pgTable(
+  "signal_contexts",
+  {
+    id: id(),
+    /** Bài (`signal_articles.id`), không FK như các bảng signal khác. */
+    articleId: text("article_id").notNull(),
+    market: text("market").notNull(),
+    direction: text("direction").notNull(),
+    decidedAt: tstz("decided_at").notNull(),
+    /** `live` | `backfilled`. */
+    source: text("source").notNull(),
+    /** `SIGNAL_CONTEXT_VERSION` (ngưỡng / định nghĩa lúc chụp). */
+    contextVersion: text("context_version").notNull(),
+    ruleVersion: text("rule_version").notNull(),
+    /**
+     * H1 cá voi cùng chiều (ví DeskLabs đang theo dõi: được follow, đã có trong leaderboard trước đó): `yes` | `no` |
+     * `against` (chỉ ví ngược chiều, lưu riêng cho phân tích khám phá) | `na` (không có trên Hyperliquid, hoặc N = 0).
+     */
+    h1Status: text("h1_status").notNull(),
+    /** N = số ví theo dõi có dữ liệu thật sự được kiểm lúc quyết định ("N wallets checked"). */
+    h1WalletsChecked: integer("h1_wallets_checked"),
+    /** Tài sản có trên Hyperliquid theo dữ liệu đã lưu trước quyết định; null với dòng không ghi giá trị này. */
+    h1AssetOnHyperliquid: boolean("h1_asset_on_hyperliquid"),
+    h1AgreeingWallets: integer("h1_agreeing_wallets"),
+    h1OpposingWallets: integer("h1_opposing_wallets"),
+    h1AgreeingUsdc: money("h1_agreeing_usdc"),
+    h1FirstAt: tstz("h1_first_at"),
+    /** H2 funding ngược đám đông: `yes` | `no` | `na`. */
+    h2Status: text("h2_status").notNull(),
+    h2FundingRate: money("h2_funding_rate"),
+    h2FundingTime: tstz("h2_funding_time"),
+    h2Percentile: numeric("h2_percentile", { precision: 10, scale: 4 }),
+    h2Samples: integer("h2_samples"),
+    /** Bên trả funding: `long` | `short` | `none`. */
+    h2Payer: text("h2_payer"),
+    h2IntervalHours: numeric("h2_interval_hours", { precision: 10, scale: 2 }),
+    /** H3 giá đã chạy: `yes` | `no` | `na`. */
+    h3Status: text("h3_status").notNull(),
+    h3MovedPct: money("h3_moved_pct"),
+    h3TypicalMovePct: money("h3_typical_move_pct"),
+    /** Chỉ số khám phá (không bao giờ thành tuỳ chọn version). */
+    volumeVs24h: money("volume_vs_24h"),
+    /** `up` | `down` | `none`. */
+    rangeBreakout: text("range_breakout"),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("signal_contexts_article_uq").on(t.articleId),
+    index("signal_contexts_decided_idx").on(t.decidedAt),
+    check("signal_contexts_source_ck", sql`${t.source} in ('live', 'backfilled')`),
+    check("signal_contexts_direction_ck", sql`${t.direction} in ('long', 'short')`),
+    check("signal_contexts_h1_ck", sql`${t.h1Status} in ('yes', 'no', 'against', 'na')`),
+    check("signal_contexts_h2_ck", sql`${t.h2Status} in ('yes', 'no', 'na')`),
+    check("signal_contexts_h3_ck", sql`${t.h3Status} in ('yes', 'no', 'na')`),
+    check(
+      "signal_contexts_payer_ck",
+      sql`${t.h2Payer} is null or ${t.h2Payer} in ('long', 'short', 'none')`,
+    ),
+    check(
+      "signal_contexts_breakout_ck",
+      sql`${t.rangeBreakout} is null or ${t.rangeBreakout} in ('up', 'down', 'none')`,
+    ),
+  ],
+);

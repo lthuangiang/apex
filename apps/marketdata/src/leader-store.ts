@@ -59,6 +59,23 @@ export async function setCursor(
     });
 }
 
+/** Lần đọc ví thành công gần nhất (`last_polled_at`); tạo dòng ví nếu chưa có. */
+export async function markPolled(
+  db: Db,
+  source: LeaderSource,
+  address: string,
+  ms: number,
+): Promise<void> {
+  const at = new Date(ms);
+  await db
+    .insert(leaderWallets)
+    .values({ source, address, lastPolledAt: at })
+    .onConflictDoUpdate({
+      target: [leaderWallets.source, leaderWallets.address],
+      set: { lastPolledAt: at },
+    });
+}
+
 export interface EventSinkOptions {
   minUsd: string | null;
 }

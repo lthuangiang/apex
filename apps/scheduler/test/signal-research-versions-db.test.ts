@@ -18,6 +18,7 @@ import {
   signalBotVersions,
   signalClassificationLabels,
   signalClassifierVersions,
+  signalContexts,
   signalEvents,
   signalPaperTrades,
   signalStories,
@@ -93,7 +94,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await db.execute(
-    sql`truncate signal_articles, signal_events, signal_stories, signal_paper_trades, signal_research_usage, signal_source_health`,
+    sql`truncate signal_articles, signal_events, signal_stories, signal_paper_trades, signal_research_usage, signal_source_health, signal_contexts`,
   );
   await db.delete(signalBotVersions).where(eq(signalBotVersions.isBaseline, false));
   await db
@@ -583,6 +584,14 @@ describe("level retry for a High-only version", () => {
     expect(t?.eventAt.getTime()).toBe(T0 - 2 * MIN);
     // (100 − 101) ÷ 101: tính từ giá trước bài ĐẦU TIÊN, không phải bài làm story lên High (sẽ là (100 − 105) ÷ 105).
     expect(Number(t?.movedBeforeEntryPct)).toBeCloseTo(-0.990099, 4);
+
+    // H3 của bước 4 (review PR #349): snapshot của bài a2 đo từ bài ĐẦU TIÊN của story (a1), và là CÙNG con số với
+    // `moved_before_entry` của lệnh (đo từ a2 thì version vào muộn sẽ trông như "on time").
+    const ctx = await db.select().from(signalContexts).where(eq(signalContexts.articleId, "a2"));
+    expect(ctx).toHaveLength(1);
+    expect(ctx[0]?.h3MovedPct).not.toBeNull();
+    expect(ctx[0]?.h3MovedPct).toBe(t?.movedBeforeEntryPct);
+    expect(ctx[0]?.decidedAt.getTime()).toBe(now);
   });
 });
 
