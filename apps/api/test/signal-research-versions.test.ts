@@ -567,8 +567,8 @@ describe("News bot versions API (#305)", () => {
     await bulkTrades(failing, 120, "2026-09-02T00:00:00Z", "-1");
     // 50 nhãn Right cho classifier hiện tại → cổng nhãn qua.
     await env.pool.query(
-      `insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict)
-       select gen_random_uuid(), 'lbl-' || g, $1, $2, 'right' from generate_series(1, 50) g`,
+      `insert into signal_classification_labels (id, article_id, classifier_version, labeled_by, verdict, source)
+       select gen_random_uuid(), 'lbl-' || g, $1, $2, 'right', 'random' from generate_series(1, 50) g`,
       [CURRENT, teamId],
     );
     const l = await list();

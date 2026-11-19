@@ -8829,6 +8829,7 @@
         },
         "current": "{v} (current)",
         "range": "likely {lo}–{hi}%",
+        "fromTraces": "from traces: {n}",
         "counts": {
           "passed": "Yes · {n, plural, one {# label} other {# labels}}",
           "underPrecision": "No · under 80% · {n, plural, one {# label} other {# labels}}",
@@ -8836,6 +8837,7 @@
         },
         "floor": "<b>The floor:</b> {min} labels with {pct}% or more right.",
         "floorRange": "<b>The floor:</b> {min} labels with {pct}% or more right. With {n, plural, one {# label} other {# labels}} at {p}%, the real share could be anywhere from about {lo}% to {hi}%, so this is a minimum, not proof.",
+        "randomOnly": "Only labels from <b>Label a random signal</b> count toward Labels, Right and the floor. Labels saved from a trace show as “from traces” and still count in the mistakes.",
         "mistakes": "Most common mistakes ({v})",
         "noMistakes": "No wrong labels yet.",
         "none": "No classifier has signals yet.",

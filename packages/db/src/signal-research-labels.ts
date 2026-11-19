@@ -1,13 +1,17 @@
+import { createHash, randomBytes } from "node:crypto";
+
 import {
   AppError,
   articleClaudeUsage,
   articleVerdict,
   CLASSIFICATION_WRONG_REASONS,
   CLASSIFIER_GATE,
+  ClassificationLabelSource,
   classifierGate,
   commonMistakes,
   dec,
   ErrorCode,
+  LABEL_TOKEN_TTL_MIN,
   NEWS_CLASSIFIER,
   sourceTierOf,
   type ClassificationVerdict,
@@ -21,7 +25,7 @@ import {
   type ResearchLabelTradeResult,
   type ResearchMyLabel,
 } from "@drift/shared";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Db } from "./client";
@@ -31,6 +35,7 @@ import {
   signalArticles,
   signalClassificationLabels,
   signalClassifierVersions,
+  signalLabelTokens,
   signalPaperTrades,
 } from "./schema";
 import { newsTypeOrNull } from "./signal-research-keys";
@@ -41,6 +46,13 @@ import { newsTypeOrNull } from "./signal-research-keys";
 // Understand `pass` (qua bước Score). Precision của một classifier = số bài kết luận Right / số bài có ít nhất một nhãn;
 // nhiều người gắn nhãn khác nhau thì theo đa số, hoà tính Wrong (`articleVerdict`). Cổng: ≥ 50 bài có nhãn và ≥ 80%
 // (`classifierGate`). Lệnh chỉ tính cổng khi classifier tạo ra nó (`signal_paper_trades.classifier_version`) đã qua.
+//
+// Nguồn nhãn (#348, DEC-340): precision, khoảng Wilson và cổng CHỈ tính nhãn `random`. Nhãn là `random`
+// khi PUT kèm token do `GET /labels/next` cấp cho đúng người và đúng bài (bài server chọn ngẫu nhiên, chưa thấy kết quả
+// lệnh): token 32 byte ngẫu nhiên, chỉ lưu sha256 trong `signal_label_tokens`, hết hạn sau LABEL_TOKEN_TTL_MIN phút, dùng
+// một lần, và chỉ nhận khi người gọi CHƯA có nhãn cho bài. Sửa một nhãn `random` mà giữ nguyên Right / Wrong (đổi lý do,
+// ghi chú) thì vẫn `random`; đổi Right / Wrong thì thành `trace` (có thể đã thấy kết quả lệnh). Mọi trường hợp khác (không
+// token, token sai / hết hạn / đã dùng / của bài khác) vẫn lưu, nhưng là `trace`. "Most common mistakes" đếm cả hai.
 
 type Q = Db | DbTx;
 type Exec = Pick<Db, "select" | "execute">;
@@ -101,6 +113,7 @@ function labelOut(r: typeof signalClassificationLabels.$inferSelect): ResearchMy
     verdict: r.verdict === "wrong" ? "wrong" : "right",
     reason: reasonOf(r.reason),
     note: r.note,
+    source: r.source === "random" ? "random" : "trace",
     createdAt: iso(r.createdAt),
     updatedAt: iso(r.updatedAt),
   };
@@ -137,7 +150,10 @@ export async function loadMyLabel(
  * độc lập nên mọi bài có cùng xác suất; quét toàn bộ tập ứng viên, chấp nhận được vì tín hiệu chỉ vài trăm / vài nghìn
  * bài). `count(*) over ()` tính trước `limit` nên ra đúng số bài còn lại. Không trả bất kỳ trường kết quả nào.
  */
-export async function loadNextLabelArticle(q: Exec, userId: string): Promise<ResearchLabelNext> {
+export async function loadNextLabelArticle(
+  q: Exec,
+  userId: string,
+): Promise<Omit<ResearchLabelNext, "labelToken">> {
   const r = await q.execute<{ id: string; remaining: string | number; u_detail: unknown }>(sql`
     select a.id, count(*) over () as remaining,
       (select e.detail from signal_events e
@@ -191,6 +207,53 @@ export async function loadNextLabelArticle(q: Exec, userId: string): Promise<Res
   };
 }
 
+const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+/**
+ * Cấp token gắn nhãn ngẫu nhiên cho bài `labels/next` vừa chọn (#348). Trả token thô (chỉ có trong response); DB chỉ giữ
+ * sha256. Xoá luôn các token đã hết hạn quá 1 ngày (của mọi người) để bảng không phình.
+ */
+export async function issueLabelToken(
+  db: Db,
+  input: { userId: string; articleId: string; now: Date },
+): Promise<string> {
+  const token = randomBytes(32).toString("base64url");
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(signalLabelTokens)
+      .where(lt(signalLabelTokens.expiresAt, new Date(input.now.getTime() - 86_400_000)));
+    await tx.insert(signalLabelTokens).values({
+      tokenHash: hashToken(token),
+      userId: input.userId,
+      articleId: input.articleId,
+      expiresAt: new Date(input.now.getTime() + LABEL_TOKEN_TTL_MIN * 60_000),
+      createdAt: input.now,
+    });
+  });
+  return token;
+}
+
+/** Dùng token (một lần): true khi đúng người, đúng bài, chưa hết hạn và chưa dùng. */
+async function consumeLabelToken(
+  tx: DbTx,
+  input: { token: string; userId: string; articleId: string; now: Date },
+): Promise<boolean> {
+  const used = await tx
+    .update(signalLabelTokens)
+    .set({ usedAt: input.now })
+    .where(
+      and(
+        eq(signalLabelTokens.tokenHash, hashToken(input.token)),
+        eq(signalLabelTokens.userId, input.userId),
+        eq(signalLabelTokens.articleId, input.articleId),
+        isNull(signalLabelTokens.usedAt),
+        gt(signalLabelTokens.expiresAt, input.now),
+      ),
+    )
+    .returning({ id: signalLabelTokens.id });
+  return used.length > 0;
+}
+
 const outcomeOf = (r: string | null): ResearchLabelTradeResult["outcome"] =>
   r === "take_profit"
     ? "tp"
@@ -240,6 +303,8 @@ export async function saveSignalClassificationLabel(
     verdict: ClassificationVerdict;
     reason: ClassificationWrongReason | null;
     note: string | null;
+    /** #348: token của `labels/next`; chỉ token hợp lệ mới cho nhãn `random`. */
+    labelToken?: string | null;
     ip?: string | null;
     now?: Date;
   },
@@ -263,6 +328,20 @@ export async function saveSignalClassificationLabel(
         },
       );
     const before = await loadMyLabel(tx, input.articleId, input.userId);
+    // Token chỉ được tiêu khi lần lưu này tạo nhãn mới; bài đã có nhãn của người này thì không thể "nâng" thành random.
+    const tokenOk =
+      before === null && input.labelToken != null
+        ? await consumeLabelToken(tx, {
+            token: input.labelToken,
+            userId: input.userId,
+            articleId: input.articleId,
+            now,
+          })
+        : false;
+    const source =
+      tokenOk || (before?.source === "random" && before.verdict === input.verdict)
+        ? ClassificationLabelSource.random
+        : ClassificationLabelSource.trace;
     const [row] = await tx
       .insert(signalClassificationLabels)
       .values({
@@ -272,12 +351,13 @@ export async function saveSignalClassificationLabel(
         verdict: input.verdict,
         reason,
         note,
+        source,
         createdAt: now,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [signalClassificationLabels.articleId, signalClassificationLabels.labeledBy],
-        set: { classifierVersion, verdict: input.verdict, reason, note, updatedAt: now },
+        set: { classifierVersion, verdict: input.verdict, reason, note, source, updatedAt: now },
       })
       .returning();
     if (row === undefined) throw new AppError(ErrorCode.internal, "Label not saved.");
@@ -291,7 +371,13 @@ export async function saveSignalClassificationLabel(
         verdict: input.verdict,
         reason,
         hasNote: note !== null,
-        previous: before === null ? null : { verdict: before.verdict, reason: before.reason },
+        source,
+        // Có gửi token mà không được nhận (sai / hết hạn / đã dùng / bài đã có nhãn): để soi khi cần.
+        tokenRejected: input.labelToken != null && !tokenOk,
+        previous:
+          before === null
+            ? null
+            : { verdict: before.verdict, reason: before.reason, source: before.source },
       },
       ip: input.ip ?? null,
     });
@@ -303,13 +389,17 @@ export async function saveSignalClassificationLabel(
   });
 }
 
-/** Số bài có nhãn và số bài kết luận Right, theo classifier (đa số; hoà tính Wrong). */
+/**
+ * Số bài có nhãn `random` và số bài kết luận Right, theo classifier (đa số trong các nhãn random; hoà tính Wrong). Nhãn
+ * `trace` không bao giờ vào đây (#348).
+ */
 async function labelTallies(q: Exec): Promise<Map<string, { labeled: number; right: number }>> {
   const r = await q.execute<{ v: string; r: string | number; w: string | number }>(sql`
     select classifier_version as v,
       count(*) filter (where verdict = 'right') as r,
       count(*) filter (where verdict = 'wrong') as w
     from signal_classification_labels
+    where source = 'random'
     group by classifier_version, article_id`);
   const out = new Map<string, { labeled: number; right: number }>();
   for (const x of r.rows) {
@@ -345,10 +435,16 @@ export async function loadSignalClassifiers(
 ): Promise<ResearchClassifiers> {
   const tallies = await labelTallies(q);
   check();
+  // Lý do sai: cả nhãn random lẫn trace (#348).
   const mistakes = await q.execute<{ v: string; reason: string; n: string | number }>(sql`
     select classifier_version as v, reason, count(*) as n
     from signal_classification_labels where verdict = 'wrong'
     group by classifier_version, reason`);
+  check();
+  const traced = await q.execute<{ v: string; n: string | number }>(sql`
+    select classifier_version as v, count(distinct article_id) as n
+    from signal_classification_labels where source = 'trace'
+    group by classifier_version`);
   check();
   const signals = await q.execute<{ v: string; n: string | number }>(sql`
     select a.claude_prompt_version as v, count(*) as n from signal_articles a
@@ -357,11 +453,13 @@ export async function loadSignalClassifiers(
   const started = await q.select().from(signalClassifierVersions);
   const startedAt = new Map(started.map((s) => [s.promptVersion, s.startedAt]));
   const signalsOf = new Map(signals.rows.map((s) => [s.v, Number(s.n)]));
+  const tracedOf = new Map(traced.rows.map((s) => [s.v, Number(s.n)]));
   const current = NEWS_CLASSIFIER.promptVersion;
   const versions = new Set<string>([
     current,
     ...startedAt.keys(),
     ...tallies.keys(),
+    ...tracedOf.keys(),
     ...signalsOf.keys(),
   ]);
   const items = [...versions].map((v) => {
@@ -379,6 +477,7 @@ export async function loadSignalClassifiers(
       signals: signalsOf.get(v) ?? 0,
       labeled: g.labeled,
       right: g.right,
+      traceLabeled: tracedOf.get(v) ?? 0,
       precisionPct: g.precisionPct,
       interval: g.interval,
       passes: g.passes,

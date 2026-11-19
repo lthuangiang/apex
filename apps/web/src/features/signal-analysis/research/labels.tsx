@@ -27,7 +27,8 @@ import { classifierShort } from "./version-text";
 // Nhãn phân loại (#306; thiết kế docs/mockups/signal-research/bot-versions-labels.html, API #304 / DEC-333): Right /
 // Wrong trên thẻ Score, bảng chất lượng theo version classifier, "Label a random signal" (`labels/next`). Trong luồng
 // gắn nhãn ngẫu nhiên, kết quả lệnh ẩn tới khi lưu (API chỉ trả kết quả trong response của lần lưu). Trace không ẩn
-// kết quả lệnh (DEC-333).
+// kết quả lệnh (DEC-333). #348: luồng ngẫu nhiên gửi `labelToken` của `labels/next` ở lần lưu đầu (server mới tính nhãn
+// là `random`, chỉ nhãn random tính cổng); bảng chất lượng hiện riêng số bài gắn từ trace ("from traces: n").
 
 type Reason = ClassificationWrongReason;
 
@@ -49,19 +50,22 @@ export function labelBody(
 
 /**
  * Hộp "Is this classification right?": Right / Wrong, lý do khi Wrong, ghi chú, Save label. `hidden` = luồng gắn nhãn
- * ngẫu nhiên (ghi câu "The trade result stays hidden until you save…").
+ * ngẫu nhiên (ghi câu "The trade result stays hidden until you save…"). `labelToken` (chỉ luồng ngẫu nhiên) đi kèm lần
+ * lưu đầu; các lần sửa sau không gửi (server giữ `random` khi Right / Wrong không đổi).
  */
 export function LabelForm({
   articleId,
   initial,
   hidden,
   tz,
+  labelToken = null,
   onSaved,
 }: {
   articleId: string;
   initial: ResearchMyLabel | null;
   hidden: boolean;
   tz: string;
+  labelToken?: string | null;
   onSaved?: (r: ResearchLabelSaved) => void;
 }) {
   const t = useTranslations("signalAnalysis.research.labeling");
@@ -156,7 +160,10 @@ export function LabelForm({
             if (body === null) return;
             setErr(null);
             save.mutate(
-              { articleId, body },
+              {
+                articleId,
+                body: saved === null && labelToken !== null ? { ...body, labelToken } : body,
+              },
               {
                 onError: (e) => {
                   setErr(
@@ -244,6 +251,9 @@ export function ClassifierQuality({ tz }: { tz: string }) {
           ) : (
             <>
               <QualityTable rows={data.items} />
+              <p className="m-0 text-xs leading-normal text-muted">
+                {t.rich("randomOnly", { b: (c: ReactNode) => <b className="text-ink">{c}</b> })}
+              </p>
               <p className="m-0 rounded-tile bg-surface-2 p-3.5 text-[13px] leading-normal text-ink-2">
                 {cur?.interval != null && cur.precisionPct !== null
                   ? t.rich("floorRange", {
@@ -304,7 +314,14 @@ function QualityTable({ rows }: { rows: readonly ResearchClassifierRow[] }) {
                 <th scope="row" className={`${td} font-bold`}>
                   {r.current ? t("current", { v }) : v}
                 </th>
-                <td className={td}>{r.labeled}</td>
+                <td className={td}>
+                  {r.labeled}
+                  {r.traceLabeled > 0 ? (
+                    <span className="block text-xs text-muted">
+                      {t("fromTraces", { n: r.traceLabeled })}
+                    </span>
+                  ) : null}
+                </td>
                 <td className={td}>
                   {r.precisionPct === null ? (
                     <Na />
@@ -409,6 +426,7 @@ function LabelFlow({ tz, onClose }: { tz: string; onClose: () => void }) {
             initial={null}
             hidden={saved === null}
             tz={tz}
+            labelToken={data.labelToken}
             onSaved={setSaved}
           />
           <div className="flex flex-col gap-1.5 rounded-tile border border-border p-3.5">
