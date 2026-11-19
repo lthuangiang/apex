@@ -98,7 +98,7 @@ export interface ArticleUsageValues {
 }
 
 /**
- * Usage của MỘT bài từ kết quả classify của bài đó (#290, DEC-TBD-sr-article-usage). Mỗi request chỉ chứa một bài nên
+ * Usage của MỘT bài từ kết quả classify của bài đó (#290, DEC-326). Mỗi request chỉ chứa một bài nên
  * gán thẳng, không chia; thử lại cộng vào cùng bài. Không biết token của một lần gọi (`usageKnown` false) → mọi cột token
  * null, không ghi một phần. Model / prompt version là giá trị đã gửi trong request.
  */

@@ -2,7 +2,7 @@ import { dec, Decimal } from "../money";
 
 import { NEWS_CLASSIFIER } from "./rules";
 
-// Chi phí Claude của lane tin tức theo từng bài (#290, DEC-TBD-sr-article-usage). Hàm thuần, Decimal; không làm tròn
+// Chi phí Claude của lane tin tức theo từng bài (#290, DEC-326). Hàm thuần, Decimal; không làm tròn
 // (UI tự định dạng). Thiếu số thì trả null, không bao giờ coi là 0.
 
 export interface ClaudeTokens {

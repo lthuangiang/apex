@@ -1716,7 +1716,7 @@ export const signalArticles = pgTable(
     classification: jsonb("classification"),
     classifiedAt: tstz("classified_at"),
     /**
-     * Usage Claude của riêng bài này (#290, DEC-TBD-sr-article-usage): mỗi lần classify là một bài, cộng mọi lần gọi
+     * Usage Claude của riêng bài này (#290, DEC-326): mỗi lần classify là một bài, cộng mọi lần gọi
      * (kể cả thử lại). Null hết = bài không qua Claude hoặc bài cũ trước migration 0045 ("Not available", không bao giờ 0).
      * `claude_calls` có số mà token null = có lần gọi không nhận được phản hồi (lỗi mạng / timeout), không biết token.
      */
