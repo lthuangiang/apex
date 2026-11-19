@@ -464,6 +464,11 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     ]);
     for (const el of bandsBox.querySelectorAll("[data-band] span"))
       expect(el.getAttribute("class") ?? "").not.toMatch(/truncate|text-ellipsis|line-clamp/);
+    // Chip "Paper trade · ETH" đỗ ở hàng trống dưới Decide, không che "Long 500 USDC".
+    const chip = within(f).getByTestId("sr-token");
+    expect(chip).toHaveTextContent("Paper trade · ETH");
+    expect(chip.style.top).toBe("268px");
+    expect(within(f).getByTestId("sr-token-dock")).toBeInTheDocument();
     expect(bandsBox.querySelector("[data-band='normalize'] > span:last-child")).toHaveClass(
       "whitespace-normal",
     );
