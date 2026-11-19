@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live new article drop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+.token{transition:top .5s cubic-bezier(.65,0,.35,1),left .5s,transform .5s,background .3s,color .3s,opacity .3s}
+.newrow{animation:newrow .6s cubic-bezier(.2,.8,.2,1) both}
+@keyframes newrow{0%{opacity:0;transform:translateY(-12px);background:#e6ecfe}100%{opacity:1;transform:none;background:#fff}}
+.bump{animation:bump .5s ease both}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.08)}100%{transform:scale(1)}}
+.dot{animation:dot 1.6s ease-in-out infinite}
+@keyframes dot{0%,100%{opacity:1}50%{opacity:.3}}
+@media (prefers-reduced-motion: reduce){.token{transition:none}.newrow,.bump{animation:none}.dot{animation:none}}
+</style>
+<script>window.DC_PROPS = {"$preview":{"width":1440,"height":860}};</script>
+<script src="./dc-shim.js"></script>
+<script>
+window.Component = class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { live: true, tracing: false, queue: [], pending: 0, extra: 0, cur: null, step: 0, feed: [], counts: [136, 21, 5, 5, 2, 2], bumped: -1, n: 0 };
+    this._t = null;
+  }
+  componentDidMount() { this._d = setTimeout(() => this.arrive(1), 1200); }
+  componentWillUnmount() { if (this._t) clearTimeout(this._t); if (this._d) clearTimeout(this._d); }
+  pool() {
+    return [
+      { title: 'Binance will list the PUMP perpetual', asset: 'PUMP', stop: 6, side: 'Long', drop: false, reached: 'Long PUMP · paper trade' },
+      { title: 'Spot gold breaks above 3,800', asset: '—', stop: 1, drop: true, reached: 'Dropped at Collect' },
+      { title: 'Upbit lists the KNTQ/KRW pair', asset: 'KNTQ', stop: 2, drop: true, reached: 'Dropped at Normalize' },
+      { title: 'Analyst: SOL could reach $500', asset: 'SOL', stop: 3, drop: true, reached: 'Dropped at Score' },
+      { title: 'Protocol Q drained of $40M; Q falls', asset: 'Q', stop: 6, side: 'Short', drop: false, reached: 'Short Q · paper trade' }
+    ];
+  }
+  arrive(k) {
+    const p = this.pool();
+    let n = this.state.n;
+    const items = [];
+    for (let i = 0; i < k; i++) { items.push({ ...p[n % p.length], id: 'a' + n }); n++; }
+    const queue = this.state.queue.concat(items);
+    const keep = queue.slice(0, 3);
+    const extra = this.state.extra + Math.max(0, queue.length - 3);
+    this.setState({ n, queue: keep, extra });
+    if (extra > 0) this.bumpSilently(queue.slice(3));
+    if (!this.state.live || this.state.tracing) { this.setState({ pending: keep.length + (this.state.cur ? 0 : 0) }); if (!this.state.live) this.flushSilently(); return; }
+    if (!this.state.cur) this.next();
+  }
+  bumpSilently(items) {
+    const counts = this.state.counts.slice();
+    items.forEach((it) => { for (let i = 0; i < it.stop; i++) counts[i]++; });
+    const feed = items.map((it) => ({ ...it, fresh: true })).concat(this.state.feed);
+    this.setState({ counts, feed: feed.slice(0, 5), bumped: 0 });
+  }
+  flushSilently() {
+    const q = this.state.queue;
+    this.setState({ queue: [], pending: 0 });
+    this.bumpSilently(q);
+  }
+  next() {
+    const q = this.state.queue;
+    if (q.length === 0) { this.setState({ cur: null, step: 0, extra: 0 }); return; }
+    const cur = q[0];
+    this.setState({ cur, queue: q.slice(1), step: 0, pending: 0 });
+    const tick = () => {
+      const s = this.state.step + 1;
+      const counts = this.state.counts.slice();
+      if (s <= cur.stop) counts[s - 1]++;
+      this.setState({ step: s, counts, bumped: s <= cur.stop ? s - 1 : -1 });
+      if (s <= cur.stop) this._t = setTimeout(tick, 380);
+      else {
+        this.setState({ feed: [{ ...cur, fresh: true }].concat(this.state.feed).slice(0, 5) });
+        this._t = setTimeout(() => this.next(), 700);
+      }
+    };
+    this._t = setTimeout(tick, 300);
+  }
+  renderVals() {
+    const { live, tracing, cur, step, counts, feed, bumped, queue, extra } = this.state;
+    const names = ['Collect', 'Normalize', 'Score', 'Context', 'Filter', 'Decide'];
+    const fills = ['#1d47b8', '#2e62e8', '#7fa2ff', '#ffffff', '#c9d4ff', '#16a05a'];
+    const inks = ['#fff', '#fff', '#141a33', '#141a33', '#141a33', '#fff'];
+    const widths = [74, 66, 58, 54, 46, 38];
+    const ROW = 44, TOP = 2;
+    const bands = names.map((n, i) => ({ label: (i + 1) + ' · ' + n, count: i === 5 ? 'Long ' + counts[5] + ' · Short 0' : String(counts[i]), cls: bumped === i ? 'bump' : '',
+      style: 'position: absolute; left: 50%; top: ' + (TOP + i * ROW) + 'px; width: ' + widths[i] + '%; height: 36px; transform: translateX(-50%); box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 5%; font-size: 13px; font-weight: 800; ' + (i === 3 ? 'border: 2px dashed #2e62e8; border-radius: 6px;' : 'clip-path: polygon(0 0,100% 0,97% 100%,3% 100%);') + ' background: ' + fills[i] + '; color: ' + inks[i] }));
+    const pos = cur ? Math.min(step, cur.stop) : 0;
+    const done = cur && step > cur.stop;
+    const top = pos === 0 ? -40 : TOP + (pos - 1) * ROW + 4;
+    const token = cur ? { label: cur.asset === '—' ? 'News' : cur.asset, style: 'position: absolute; z-index: 2; top: ' + (done && cur.drop ? top + 24 : top) + 'px; left: ' + (done && cur.drop ? 'calc(50% + 40px)' : '50%') + '; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; box-shadow: 0 4px 14px rgba(20,26,51,.25); border: 2px solid ' + (done ? (cur.drop ? '#9aa3c2' : '#7be0a6') : '#2e62e8') + '; background: ' + (done ? (cur.drop ? '#eef1fa' : '#16a05a') : '#fff') + '; color: ' + (done && !cur.drop ? '#fff' : '#141a33') + '; opacity: ' + (step === 0 ? 0 : 1) } : { label: '', style: '' };
+    const base = [{ title: 'SEC delays the spot ETH ETF decision again', meta: '14:20', reached: 'Short ETH · paper trade', drop: false }, { title: 'Bithumb will list the KNTQ/KRW pair', meta: '10:01', reached: 'Dropped at Normalize', drop: true }];
+    const all = feed.map((f) => ({ ...f, meta: 'just now · live', badge: 'NEW' })).concat(base.map((b) => ({ ...b, badge: '' }))).slice(0, 5);
+    const feedOut = all.map((f) => ({ ...f, cls: f.badge ? 'newrow' : '', chip: 'display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: ' + (f.drop ? '#eef1fa' : '#ddf4e7') + '; color: ' + (f.drop ? '#3b4262' : '#0f7a43') }));
+    const waiting = queue.length + (tracing && cur ? 0 : 0);
+    const pend = tracing ? queue.length : 0;
+    const status = !live ? 'Live off: new articles appear in the feed, no animation.' : tracing ? 'You are watching a trace; new articles wait above the feed.' : cur ? (done ? (cur.drop ? 'New article stopped at ' + names[cur.stop - 1] : 'New article reached Decide: ' + cur.side + ' ' + cur.asset) : 'New article · step ' + Math.max(pos, 1) + ' · ' + names[Math.max(pos, 1) - 1] + '…') + (queue.length ? ' · ' + queue.length + ' waiting' : '') + (extra ? ' · +' + extra + ' more counted' : '') : 'Listening for new articles…';
+    return {
+      bands, token, showToken: !!cur && live && !tracing, status, feed: feedOut,
+      feedCount: (20 + feed.length) + ' of ' + counts[0] + ' articles', countCls: bumped === 0 ? 'bump' : '',
+      showPending: pend > 0, pendingLabel: pend + ' new article' + (pend > 1 ? 's' : '') + ' · play', playPending: () => { this.setState({ tracing: false }); this.next(); },
+      liveStr: String(live), switchBg: live ? '#2e62e8' : '#c9d4ff', switchJustify: live ? 'flex-end' : 'flex-start', liveDot: live ? '#16a05a' : '#9aa3c2',
+      toggleLive: () => this.setState({ live: !live }),
+      tracingStr: String(tracing), traceBg: tracing ? '#e6ecfe' : '#fff', toggleTrace: () => this.setState({ tracing: !tracing }),
+      sim1: () => this.arrive(1), sim5: () => this.arrive(5)
+    };
+  }
+}
+
+</script>
+</head>
+<body>
+<template id="dc-tpl">
+
+<div style="box-sizing: border-box; width: 100%; max-width: 1440px; margin: 0 auto; padding: 24px; font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; display: flex; flex-direction: column; gap: 14px">
+  <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; border: 1px dashed #d5dcf2; border-radius: 12px; background: #fff; font-size: 12px; color: #5f6684">
+    <strong style="color: #141a33">Mockup controls (not in the product):</strong>
+    <button type="button" onClick="{{sim1}}" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer">1 new article arrives</button>
+    <button type="button" onClick="{{sim5}}" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer">5 arrive at once</button>
+    <button type="button" onClick="{{toggleTrace}}" aria-pressed="{{tracingStr}}" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #d5dcf2; background: {{traceBg}}; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer">User is viewing a trace</button>
+  </div>
+
+  <section style="background: #fff; border: 1px solid #e3e7f5; border-radius: 18px; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap">
+      <div>
+        <h2 style="margin: 0; font-size: 20px; font-weight: 800">From headline to trade</h2>
+        <p style="margin: 2px 0 0; font-size: 13px; color: #5f6684">Every article, what happened to it, and why. Pick one to watch it go through.</p>
+      </div>
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; min-height: 44px; cursor: pointer">
+        <span class="dot" style="width: 8px; height: 8px; border-radius: 50%; background: {{liveDot}}"></span>
+        Live
+        <button type="button" role="switch" aria-checked="{{liveStr}}" aria-label="Animate new articles" onClick="{{toggleLive}}" style="width: 44px; height: 26px; border-radius: 999px; border: 0; padding: 3px; background: {{switchBg}}; cursor: pointer; display: flex; justify-content: {{switchJustify}}"><span style="width: 20px; height: 20px; border-radius: 50%; background: #fff; display: block"></span></button>
+      </label>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+      <div style="min-width: 0; display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; justify-content: space-between; font-size: 13px"><strong>News feed</strong><span class="{{countCls}}" style="color: #5f6684">{{feedCount}}</span></div>
+        <sc-if value="{{showPending}}" hint-placeholder-val="{{false}}">
+          <button type="button" onClick="{{playPending}}" style="min-height: 40px; border-radius: 999px; border: 1px solid #2e62e8; background: #e6ecfe; color: #1d47b8; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer">{{pendingLabel}}</button>
+        </sc-if>
+        <sc-for list="{{feed}}" as="f" hint-placeholder-count="4">
+          <div class="{{f.cls}}" style="border: 1px solid #e3e7f5; border-radius: 12px; padding: 8px 12px">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #5f6684"><span>{{f.meta}}</span><span style="font-weight: 800; color: #1d47b8">{{f.badge}}</span></div>
+            <div style="font-size: 14px; font-weight: 700">{{f.title}}</div>
+            <span style="{{f.chip}}">{{f.reached}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="grid-column: span 2; min-width: 0; background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 14px; padding: 14px 12px; display: flex; flex-direction: column; gap: 6px">
+        <div aria-hidden="true" style="position: relative; height: 270px">
+          <sc-for list="{{bands}}" as="b" hint-placeholder-count="6">
+            <div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0">
+              <div style="{{b.style}}"><span>{{b.label}}</span><span class="{{b.cls}}" style="font-weight: 800">{{b.count}}</span></div>
+            </div>
+          </sc-for>
+          <sc-if value="{{showToken}}" hint-placeholder-val="{{false}}">
+            <div class="token" style="{{token.style}}">{{token.label}}</div>
+          </sc-if>
+        </div>
+        <p role="status" style="margin: 0; text-align: center; font-size: 13px; font-weight: 800; color: #3b4262">{{status}}</p>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+      <div style="border: 1px solid #e3e7f5; border-radius: 12px; padding: 12px 14px; font-size: 13px; color: #3b4262; line-height: 1.5"><strong style="color: #141a33">One at a time.</strong> A new article drops in at the top, runs the steps fast (about 2.5 s) and stops where it stopped for real. More than 3 waiting: the rest are counted ("+2 more") and only bump the totals.</div>
+      <div style="border: 1px solid #e3e7f5; border-radius: 12px; padding: 12px 14px; font-size: 13px; color: #3b4262; line-height: 1.5"><strong style="color: #141a33">Never interrupts you.</strong> While you watch a trace, new articles wait in "2 new articles · play". Nothing moves until you press it or close the trace.</div>
+      <div style="border: 1px solid #e3e7f5; border-radius: 12px; padding: 12px 14px; font-size: 13px; color: #3b4262; line-height: 1.5"><strong style="color: #141a33">Only when you can see it.</strong> Hidden tab or funnel scrolled away: counts update silently. Live switch off, or reduced motion: the new row just appears in the feed and the totals change, no drop.</div>
+    </div>
+  </section>
+</div>
+</template>
+<div id="dc-root"></div>
+</body>
+</html>
