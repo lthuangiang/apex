@@ -64,8 +64,17 @@ export const SIGNATURE_REQUEST_TTL_MS = 10 * 60 * 1000;
  */
 export const SIGNATURE_REQUEST_REUSE_MIN_MS = 2 * 60 * 1000;
 
-/** `sodex_error` của request `pending` bị thay bằng request mới vì sắp hết hạn (#318). */
+/**
+ * `sodex_error` của request `pending` bị thay bằng request mới: cùng loại mà sắp hết hạn (#318), hoặc ý định
+ * builder-fee ngược chiều (#327).
+ */
 export const SIGNATURE_REQUEST_SUPERSEDED = "superseded";
+
+/** `details.reason` khi approve / revoke builder fee ngược chiều còn đang chờ SoDEX xác nhận (#327). */
+export const BUILDER_FEE_IN_FLIGHT = "builder_fee_in_flight";
+
+/** SoDEX chỉ nhận nonce trong (T − 2 ngày, T + 1 ngày) (SODEX.md mục 5.6): quá 2 ngày thì request không còn áp được. */
+export const SODEX_NONCE_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
 
 export interface SignerClient {
   createApiKey(input: { sodexAccountId: string; name: string; expiresAt: string }): Promise<{
@@ -316,7 +325,9 @@ export async function startBuilderFee(
       sessionId === undefined ? {} : { sessionId },
     );
   const action = approve ? SignatureAction.approveBuilderFee : SignatureAction.revokeBuilderFee;
+  const opposite = approve ? SignatureAction.revokeBuilderFee : SignatureAction.approveBuilderFee;
   return withAccountLock(deps, account.id, async (tx) => {
+    await replaceOppositeIntent(deps, tx, account.id, opposite);
     const open = await reusePending(deps, tx, account.id, action);
     if (open !== null) return open;
     const request = approveBuilderFeeRequest({
@@ -407,6 +418,10 @@ export async function submitSignature(
   if (row.status !== SignatureRequestStatus.pending) {
     throw new AppError(ErrorCode.stateConflict, "Signature request is not pending.", {
       status: row.status,
+      // Bị request mới hơn thay (#318, #327): web mở lại request còn hiệu lực thay vì báo lỗi chung.
+      ...(row.sodexError === SIGNATURE_REQUEST_SUPERSEDED
+        ? { reason: SIGNATURE_REQUEST_SUPERSEDED }
+        : {}),
     });
   }
   if (row.expiresAt <= deps.now()) {
@@ -448,7 +463,19 @@ export async function submitSignature(
     )
     .returning({ id: sodexSignatureRequests.id });
   if (claimed.length === 0) {
-    throw new AppError(ErrorCode.stateConflict, "Signature request is not pending.");
+    // Vừa bị thay (#327) hoặc vừa được gửi bởi lần bấm khác: đọc lại để báo đúng lý do.
+    const [now] = await deps.db
+      .select({ sodexError: sodexSignatureRequests.sodexError })
+      .from(sodexSignatureRequests)
+      .where(eq(sodexSignatureRequests.id, id))
+      .limit(1);
+    throw new AppError(
+      ErrorCode.stateConflict,
+      "Signature request is not pending.",
+      now?.sodexError === SIGNATURE_REQUEST_SUPERSEDED
+        ? { reason: SIGNATURE_REQUEST_SUPERSEDED }
+        : {},
+    );
   }
 
   // Universal cần X-API-Chain; xoá key là action engine (domain spot/futures), gửi DELETE.
@@ -743,6 +770,60 @@ async function reusePending(
         .where(and(eq(apiKeys.id, row.apiKeyId), eq(apiKeys.status, "pending")));
   }
   return reuse === null ? null : toView(reuse);
+}
+
+/**
+ * Mỗi account chỉ có MỘT ý định builder-fee chờ ký (#327, bổ sung DEC-336): tạo approve thì revoke còn `pending`
+ * chuyển `failed` (`superseded`), và ngược lại, dưới cùng khoá advisory và trong cùng transaction với request mới.
+ * Đổi trước rồi mới kiểm request đang gửi: claim `pending` → `unknown` của `submitSignature` là UPDATE có điều kiện
+ * nên hoặc nó thắng (dòng đã `unknown`, không bị đổi và lần SELECT sau thấy nó), hoặc UPDATE này thắng (claim không
+ * còn dòng `pending`, người ký nhận `STATE_CONFLICT`).
+ *
+ * Request ngược chiều đã gửi SoDEX mà chưa rõ kết quả (`unknown`) thì không thay: nó vẫn có thể được SoDEX áp dụng
+ * SAU ý định mới và đè lên ý định đó. Trả `STATE_CONFLICT` (`builder_fee_in_flight`) tới khi đối soát xong (quy tắc
+ * 1.7), hoặc tới khi nonce của nó ra khỏi cửa sổ SoDEX nhận (SODEX.md mục 5.6) và không thể được áp dụng nữa.
+ */
+async function replaceOppositeIntent(
+  deps: SodexDeps,
+  tx: DbTx,
+  sodexAccountId: string,
+  opposite: SignatureAction,
+): Promise<void> {
+  const now = deps.now();
+  await tx
+    .update(sodexSignatureRequests)
+    .set({
+      status: SignatureRequestStatus.failed,
+      sodexError: SIGNATURE_REQUEST_SUPERSEDED,
+      resolvedAt: now,
+    })
+    .where(
+      and(
+        eq(sodexSignatureRequests.sodexAccountId, sodexAccountId),
+        eq(sodexSignatureRequests.action, opposite),
+        eq(sodexSignatureRequests.status, SignatureRequestStatus.pending),
+      ),
+    );
+  const oldestAcceptedNonce = now.getTime() - SODEX_NONCE_WINDOW_MS;
+  const [inFlight] = await tx
+    .select({ id: sodexSignatureRequests.id })
+    .from(sodexSignatureRequests)
+    .where(
+      and(
+        eq(sodexSignatureRequests.sodexAccountId, sodexAccountId),
+        eq(sodexSignatureRequests.action, opposite),
+        eq(sodexSignatureRequests.status, SignatureRequestStatus.unknown),
+        sql`(${sodexSignatureRequests.message}->>'nonce')::numeric > ${oldestAcceptedNonce}`,
+      ),
+    )
+    .limit(1);
+  if (inFlight !== undefined) {
+    throw new AppError(
+      ErrorCode.stateConflict,
+      "The previous builder fee change is still being confirmed with SoDEX.",
+      { reason: BUILDER_FEE_IN_FLIGHT, requestId: inFlight.id },
+    );
+  }
 }
 
 /**

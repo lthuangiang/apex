@@ -5,7 +5,12 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api";
-import { sendWithSameKey, uncertainOutcome, useFinancialMutation } from "../financial-action";
+import {
+  builderFeeConflict,
+  sendWithSameKey,
+  uncertainOutcome,
+  useFinancialMutation,
+} from "../financial-action";
 
 // Thao tác tài chính không rõ kết quả (#318): không cho bấm lại ngay, đọc lại trạng thái từ backend, và mọi lần gửi lại
 // tự động dùng CÙNG Idempotency-Key.
@@ -25,6 +30,28 @@ function deferred<T>() {
 }
 
 afterEach(cleanup);
+
+describe("builderFeeConflict (#327)", () => {
+  it("names a superseded request and an opposite change still in flight", () => {
+    expect(builderFeeConflict(new ApiError("STATE_CONFLICT", 409, { reason: "superseded" }))).toBe(
+      "superseded",
+    );
+    expect(
+      builderFeeConflict(
+        new ApiError("STATE_CONFLICT", 409, { reason: "builder_fee_in_flight", requestId: "r1" }),
+      ),
+    ).toBe("inFlight");
+  });
+
+  it("leaves every other error to the generic handling", () => {
+    expect(builderFeeConflict(new ApiError("STATE_CONFLICT", 409, { status: "succeeded" }))).toBe(
+      null,
+    );
+    expect(builderFeeConflict(stateConflict())).toBeNull();
+    expect(builderFeeConflict(network())).toBeNull();
+    expect(builderFeeConflict(new Error("superseded"))).toBeNull();
+  });
+});
 
 describe("uncertainOutcome", () => {
   it("treats network errors, 5xx and 409 unknown / in_progress as unknown outcomes", () => {

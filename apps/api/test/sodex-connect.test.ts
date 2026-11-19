@@ -565,3 +565,109 @@ describe("same SoDEX action twice with two Idempotency-Keys (#318)", () => {
     expect(await requests(t, "revoke_api_key_perps")).toHaveLength(1);
   });
 });
+
+describe("one builder-fee intent awaiting signature per account (#327)", () => {
+  const parse = (res: { json: () => unknown }) => signatureRequestSchema.parse(res.json());
+  const feeRequests = async (t: Trader) =>
+    (
+      await env.pool.query<{ action: string; status: string; sodex_error: string | null }>(
+        `select r.action, r.status, r.sodex_error from sodex_signature_requests r
+         join sodex_accounts a on a.id = r.sodex_account_id
+         where a.sodex_account_id = $1 and r.action in ('approve_builder_fee', 'revoke_builder_fee')
+         order by r.created_at, r.action`,
+        [t.accountID],
+      )
+    ).rows;
+  const approve = (t: Trader) => t.client.request("POST", "/api/v1/sodex/builder-fee/approval");
+  const revoke = (t: Trader) =>
+    t.client.request("POST", "/api/v1/sodex/builder-fee/revocation", { body: {} });
+  const connected = async () => {
+    const t = await newTrader();
+    await signAndSubmit(
+      t,
+      await t.client.request("POST", "/api/v1/sodex/connection", {
+        body: { address: t.wallet.address },
+      }),
+    );
+    return t;
+  };
+  const conflict = (res: { body: string }) => errorResponseSchema.parse(JSON.parse(res.body)).error;
+
+  it("a new revoke supersedes the pending approve, which can no longer be signed", async () => {
+    const t = await connected();
+    const a = await approve(t);
+    env.clock.now = new Date(env.clock.now.getTime() + 1000);
+    const v = await revoke(t);
+    expect(v.statusCode).toBe(201);
+    expect(await feeRequests(t)).toEqual([
+      { action: "approve_builder_fee", status: "failed", sodex_error: "superseded" },
+      { action: "revoke_builder_fee", status: "pending", sodex_error: null },
+    ]);
+    const stale = await signAndSubmit(t, a);
+    expect(conflict(stale)).toMatchObject({
+      code: "STATE_CONFLICT",
+      details: { reason: "superseded" },
+    });
+    // Request cũ không tới SoDEX: phí vẫn chưa approve; chỉ revoke còn ký được.
+    expect((await connection(t))?.builderFee?.approved).not.toBe(true);
+    expect(parse(await signAndSubmit(t, v)).status).toBe("succeeded");
+  });
+
+  it("a new approve supersedes the pending revoke", async () => {
+    const t = await connected();
+    await signAndSubmit(t, await approve(t));
+    const v = await revoke(t);
+    env.clock.now = new Date(env.clock.now.getTime() + 1000);
+    const a = await approve(t);
+    expect(a.statusCode).toBe(201);
+    expect((await feeRequests(t)).slice(1)).toEqual([
+      { action: "revoke_builder_fee", status: "failed", sodex_error: "superseded" },
+      { action: "approve_builder_fee", status: "pending", sodex_error: null },
+    ]);
+    expect(conflict(await signAndSubmit(t, v)).code).toBe("STATE_CONFLICT");
+    // Revoke bị thay không được gửi: phí vẫn approve.
+    expect((await connection(t))?.builderFee).toMatchObject({ approved: true });
+    expect(parse(await signAndSubmit(t, a)).status).toBe("succeeded");
+  });
+
+  it("refuses the opposite intent while an approve sent to SoDEX is still unconfirmed", async () => {
+    const t = await connected();
+    const a = parse(await approve(t));
+    // Đã gửi SoDEX, chưa rõ kết quả (rule 1.7).
+    await env.pool.query(
+      `update sodex_signature_requests set status = 'unknown', submitted_at = now() where id = $1`,
+      [a.id],
+    );
+    const v = await revoke(t);
+    expect(v.statusCode).toBe(409);
+    expect(conflict(v)).toMatchObject({
+      code: "STATE_CONFLICT",
+      details: { reason: "builder_fee_in_flight", requestId: a.id },
+    });
+    // Không đụng request đang gửi, không tạo revoke.
+    expect(await feeRequests(t)).toEqual([
+      { action: "approve_builder_fee", status: "unknown", sodex_error: null },
+    ]);
+
+    // Đối soát xong (SoDEX không áp dụng → nonce ra khỏi cửa sổ 2 ngày) thì revoke tạo được.
+    env.clock.now = new Date(env.clock.now.getTime() + 2 * 24 * 60 * 60 * 1000 + 60_000);
+    expect((await revoke(t)).statusCode).toBe(201);
+  });
+
+  it("lets an opposite intent through once the in-flight request is reconciled", async () => {
+    const t = await connected();
+    await signAndSubmit(t, await approve(t));
+    const v = parse(await revoke(t));
+    await env.pool.query(
+      `update sodex_signature_requests set status = 'unknown', submitted_at = now() where id = $1`,
+      [v.id],
+    );
+    expect(conflict(await approve(t)).details).toMatchObject({ reason: "builder_fee_in_flight" });
+    // Đối soát kết luận xong (ở đây: SoDEX đã từ chối) thì approve tạo được.
+    await env.pool.query(
+      `update sodex_signature_requests set status = 'failed', resolved_at = now() where id = $1`,
+      [v.id],
+    );
+    expect((await approve(t)).statusCode).toBe(201);
+  });
+});
