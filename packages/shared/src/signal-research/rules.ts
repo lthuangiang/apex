@@ -119,7 +119,8 @@ export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitRea
  * Quy tắc tin tức v3 (#269 Design v3.3 mục 1 + mục 7, v3.4; #298). Mọi con số là giả thuyết của nghiên cứu, không phải
  * tham số đã kiểm chứng. v3 so với v2: tài sản phải có trong tiêu đề / nội dung bài (`ASSET_NOT_IN_TEXT`), treasury không
  * giao dịch BTC / ETH (`TREASURY_MAJOR_ASSET`), prompt classifier `news-classifier-v2`. Lệnh của version cũ vẫn hiện ở
- * danh sách lệnh (lịch sử) nhưng không tính vào tổng kết và cổng.
+ * danh sách lệnh (lịch sử) nhưng không tính vào tổng kết và cổng. Danh sách tài sản (market cổ phiếu, alias) có version
+ * riêng `NEWS_ASSET_MAP_VERSION` (#309): đổi danh sách không đổi version này và không reset cổng.
  */
 export const NEWS_RULES = {
   version: "news-v3",
@@ -275,42 +276,77 @@ export const SOURCE_TIERS: Readonly<Record<string, SourceTier>> = {
 export const SOSO_OFFICIAL_CATEGORY = 7;
 
 /**
- * Mã cổ phiếu (SoSoValue `symbol`) → market SoDEX. Chỉ cổ phiếu có ở đây mới thành ứng viên; xStock (token hoá, tên kết
- * thúc bằng "XSTOCK", mã có thêm "X") map về cổ phiếu gốc.
+ * Version của danh sách tài sản lane tin tức (#309): `STOCK_MARKET_SET`, `STOCK_SYMBOL_ALIASES`, `STOCK_BRAND_ALIASES`.
+ * Đổi một trong ba bảng = đổi chuỗi này (dạng `assets-<ngày><chữ>`), **không** đổi `NEWS_RULES.version`: danh sách tài
+ * sản chỉ mở rộng phạm vi, không đổi cách giao dịch một tín hiệu, nên không reset cổng. Ghi vào detail của event
+ * normalize / understand và cột `asset_map_version` của lệnh giấy để truy được.
  */
-export const STOCK_MARKETS: Readonly<Record<string, string>> = {
-  AAPL: "AAPL-USD",
-  AMD: "AMD-USD",
-  AMZN: "AMZN-USD",
-  COIN: "COIN-USD",
-  CRCL: "CRCL-USD",
-  CRWD: "CRWD-USD",
-  CRWV: "CRWV-USD",
-  GOOGL: "GOOGL-USD",
+export const NEWS_ASSET_MAP_VERSION = "assets-2026-11-19a";
+
+/**
+ * Market cổ phiếu trên SoDEX (cổ phiếu niêm yết, ETF cổ phiếu, cổ phiếu pre-IPO): kind `stock`, nhãn "outside market
+ * hours", và tag công ty của SoSoValue chỉ map vào market trong danh sách này (#309). SoDEX `/perps/markets/symbols`
+ * không có trường loại tài sản (kiểm 2026-11-19: chỉ có `name`, `baseCoin`, phí, bậc margin, funding…), nên danh sách
+ * viết tay và phải bổ sung khi SoDEX mở market cổ phiếu mới (thêm mã = tăng `NEWS_ASSET_MAP_VERSION`). Coin không bao giờ map vào
+ * market ở đây (coin "COIN" không phải Coinbase). Market chỉ số / hàng hoá (US500, USTECH100, XAUT, CL, SILVER…)
+ * không nằm ở đây. DRAM-USD chưa rõ loại nên chưa thêm.
+ */
+export const STOCK_MARKET_SET: ReadonlySet<string> = new Set([
+  "AAPL-USD",
+  "AMD-USD",
+  "AMZN-USD",
+  "COIN-USD",
+  "CRCL-USD",
+  "CRWD-USD",
+  "CRWV-USD",
+  "CXMT-USD",
+  "EWY-USD",
+  "GOOGL-USD",
+  "HOOD-USD",
+  "INTC-USD",
+  "KIOXIA-USD",
+  "KORU-USD",
+  "LITE-USD",
+  "MCD-USD",
+  "META-USD",
+  "MINIMAX-USD",
+  "MRNA-USD",
+  "MRVL-USD",
+  "MSFT-USD",
+  "MSTR-USD",
+  "MU-USD",
+  "NBIS-USD",
+  "NKE-USD",
+  "NVDA-USD",
+  "ORCL-USD",
+  "PLTR-USD",
+  "PONS-USD",
+  "SAMSUNG-USD",
+  "SKHX-USD",
+  "SKHY-USD",
+  "SMCI-USD",
+  "SNDK-USD",
+  "SPCX-USD",
+  "TSLA-USD",
+  "TSM-USD",
+  "UNITREE-USD",
+  "ZHIPU-USD",
+]);
+
+/**
+ * Mã / tên SoSoValue của tag công ty khác mã SoDEX (#309). Tag công ty khác dùng thẳng `<SYMBOL>-USD`; xStock (tên kết
+ * thúc bằng "XSTOCK", mã có thêm "X") bỏ chữ "X" cuối trước khi tra.
+ */
+export const STOCK_SYMBOL_ALIASES: Readonly<Record<string, string>> = {
   GOOG: "GOOGL-USD",
-  HOOD: "HOOD-USD",
-  INTC: "INTC-USD",
-  MCD: "MCD-USD",
-  META: "META-USD",
-  MRNA: "MRNA-USD",
-  MRVL: "MRVL-USD",
-  MSFT: "MSFT-USD",
-  MSTR: "MSTR-USD",
-  MU: "MU-USD",
-  NBIS: "NBIS-USD",
-  NKE: "NKE-USD",
-  NVDA: "NVDA-USD",
-  ORCL: "ORCL-USD",
-  PLTR: "PLTR-USD",
-  SMCI: "SMCI-USD",
-  SNDK: "SNDK-USD",
-  TSLA: "TSLA-USD",
-  TSM: "TSM-USD",
+  SPACEX: "SPCX-USD",
 };
 
 /**
  * Tên thương hiệu của cổ phiếu khác tên SoSoValue / mã SoDEX (#298): dùng cho kiểm "tài sản có trong bài" của news-v3.
- * Danh sách nhỏ, tường minh; thêm tên = tăng version quy tắc.
+ * Danh sách nhỏ, tường minh; thêm tên = tăng `NEWS_ASSET_MAP_VERSION` (#309, sửa DEC-329). #309 thêm tên của vài market mới (SpaceX,
+ * Samsung, Lumentum, Kioxia, MiniMax, Unitree, Zhipu). Market cổ phiếu không có ở đây (SKHX, SKHY, CXMT, EWY, KORU,
+ * PONS) chỉ khớp bằng mã ("CXMT") và tên SoSoValue ≥ 2 từ (DEC-329).
  */
 export const STOCK_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = {
   "AAPL-USD": ["Apple"],
@@ -321,8 +357,11 @@ export const STOCK_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = 
   "GOOGL-USD": ["Google", "Alphabet"],
   "HOOD-USD": ["Robinhood"],
   "INTC-USD": ["Intel"],
+  "KIOXIA-USD": ["Kioxia"],
+  "LITE-USD": ["Lumentum"],
   "MCD-USD": ["McDonald's"],
   "META-USD": ["Meta", "Facebook"],
+  "MINIMAX-USD": ["MiniMax"],
   "MRNA-USD": ["Moderna"],
   "MRVL-USD": ["Marvell"],
   "MSFT-USD": ["Microsoft"],
@@ -333,14 +372,15 @@ export const STOCK_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = 
   "NVDA-USD": ["Nvidia"],
   "ORCL-USD": ["Oracle"],
   "PLTR-USD": ["Palantir"],
+  "SAMSUNG-USD": ["Samsung"],
   "SMCI-USD": ["Supermicro", "Super Micro"],
   "SNDK-USD": ["SanDisk"],
+  "SPCX-USD": ["SpaceX"],
   "TSLA-USD": ["Tesla"],
   "TSM-USD": ["TSMC", "Taiwan Semiconductor"],
+  "UNITREE-USD": ["Unitree"],
+  "ZHIPU-USD": ["Zhipu"],
 };
-
-/** Market SoDEX là cổ phiếu (để gắn nhãn "outside market hours"). */
-export const STOCK_MARKET_SET: ReadonlySet<string> = new Set(Object.values(STOCK_MARKETS));
 
 export const SIGNAL_CATALYSTS = Object.keys(NEWS_RULES.catalysts) as SignalCatalyst[];
 export const NEWS_CATALYSTS: readonly NewsCatalyst[] = [...SIGNAL_CATALYSTS, NewsCatalyst.none];
