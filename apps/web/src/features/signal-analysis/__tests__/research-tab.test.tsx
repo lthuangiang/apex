@@ -28,6 +28,7 @@ import messages from "../../../../messages/en.json";
 import { SignalAnalysisPage } from "../components/signal-analysis-page";
 
 import {
+  JUDGE,
   NEWS_DETAIL,
   NEWS_ONLY_SUMMARY,
   RESEARCH_DETAIL,
@@ -36,6 +37,7 @@ import {
   SKIPPED_DETAIL,
   SKIPPED_ID,
   SKIPPED_TRADE,
+  V2_TRADE,
 } from "./research-fixtures";
 import { BASELINE_ID, CLASSIFIERS, MARKETS, V4_ID, VERSIONS } from "./versions-fixtures";
 
@@ -52,7 +54,8 @@ type Mode =
   | "tradesError"
   | "news"
   | "one"
-  | "noVersions";
+  | "noVersions"
+  | "judge";
 const state = vi.hoisted((): { mode: Mode; paths: string[] } => ({ mode: "ok", paths: [] }));
 
 vi.mock("@/features/account/market-hours-time", async (importOriginal) => {
@@ -165,7 +168,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
                 ? ONE
                 : m === "news"
                   ? NEWS_ONLY_SUMMARY
-                  : RESEARCH_SUMMARY,
+                  : m === "judge"
+                    ? JUDGE
+                    : RESEARCH_SUMMARY,
           ),
         );
       }
@@ -174,6 +179,16 @@ vi.mock("@/lib/api", async (importOriginal) => {
         if (m === "tradesEmpty")
           return Promise.resolve(schema.parse({ items: [], nextCursor: null }));
         if (m === "nulls") return Promise.resolve(schema.parse(NULL_TRADES));
+        if (m === "judge") {
+          // Lệnh rules v2 chỉ khi bật "Show older rules" (olderRules=true).
+          const older = new URL(path, "http://x").searchParams.get("olderRules") === "true";
+          return Promise.resolve(
+            schema.parse({
+              items: older ? [RESEARCH_TRADES.items[0], V2_TRADE] : [RESEARCH_TRADES.items[0]],
+              nextCursor: null,
+            }),
+          );
+        }
         if (m === "news") {
           // #278: chỉ News live có dữ liệu; loại khác hoặc label=replay → trang rỗng.
           const q = new URL(path, "http://x").searchParams;
@@ -317,7 +332,7 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(within(bots).getByText("9,623.4")).toBeInTheDocument();
   });
 
-  it("the per-level table sits under Is it working? and says Not enough trades, never 0", async () => {
+  it("the per-level table sits under Is it working? › By level and says Not enough trades, never 0", async () => {
     wrap();
     await screen.findByRole("region", { name: "Is it working?" });
     // #342: khối "What counts as a news signal" không còn trên trang (nội dung ở drawer How it works).
@@ -326,6 +341,9 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Short the affected token")).not.toBeInTheDocument();
     const r = region("Is it working?");
+    // #344: bảng theo mức ở tab By level.
+    expect(within(r).queryByRole("table", { name: "Results by level at entry" })).toBeNull();
+    await userEvent.click(within(r).getByRole("tab", { name: "By level" }));
     const lv = within(r).getByRole("table", { name: "Results by level at entry" });
     expect(within(lv).getAllByText("Not enough trades")).toHaveLength(3);
     expect(within(lv).getByText("Needs 87 more closed")).toBeInTheDocument();
@@ -333,18 +351,21 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(within(lv).getByText("14 · 10")).toBeInTheDocument();
   });
 
-  it("summary rows per type and label, random-entry difference, status, what it still needs, risk filter", async () => {
+  it("Overall: mockup columns, average after fees with its range, random-entry difference, status, what it still needs, risk filter", async () => {
     wrap();
     const tbl = await screen.findByRole("table", { name: "Where each signal type stands" });
-    const whales = within(tbl).getByRole("row", { name: /Whales/ });
-    expect(within(whales).getByText("Replay")).toBeInTheDocument();
+    expect(
+      within(tbl)
+        .getAllByRole("columnheader")
+        .map((h) => h.textContent),
+    ).toEqual(["Signal type", "Closed trades", "Average after fees", "vs random entry", "Status"]);
+    const whales = within(tbl).getByRole("row", { name: /Whales · Replay/ });
     expect(within(whales).getByText("+0.21%")).toBeInTheDocument();
     expect(within(whales).getByText("+0.19%")).toBeInTheDocument();
     expect(within(whales).getByText(/better/)).toBeInTheDocument();
-    expect(within(whales).getByText("−0.05% to +0.47%")).toBeInTheDocument();
+    expect(within(whales).getByText("−0.05% to +0.47% · 41 days")).toBeInTheDocument();
     expect(within(whales).getByText("Failing")).toBeInTheDocument();
-    const news = within(tbl).getByRole("row", { name: /News/ });
-    expect(within(news).getByText("Live paper")).toBeInTheDocument();
+    const news = within(tbl).getByRole("row", { name: /News · Live paper/ });
     expect(within(news).getByText("41 opened")).toBeInTheDocument();
     expect(
       within(news).getByText("About 70 more closed (all news pooled) · first verdict in ~3 weeks"),
@@ -352,18 +373,22 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(
       within(tbl).getByText("36 more trades. SoDEX funding covers 41 days."),
     ).toBeInTheDocument();
-    expect(within(tbl).getByText("−0.18% to 0.00%")).toBeInTheDocument();
-    expect(within(whales).getByText("41 days")).toBeInTheDocument();
+    expect(within(tbl).getByText("−0.18% to 0.00% · 41 days")).toBeInTheDocument();
     // Long / Short của News · live paper.
     const dir = screen.getByRole("table", { name: "Long and short results for News · Live paper" });
     const [, long, short] = within(dir).getAllByRole("row");
     if (long === undefined || short === undefined) throw new Error("rows");
-    expect(within(long).getByText("+0.18%")).toBeInTheDocument();
-    expect(within(long).getByText("−0.12% to +0.48%")).toBeInTheDocument();
-    expect(within(long).getByText("7 days")).toBeInTheDocument();
-    expect(within(short).getByText("Not enough trades")).toBeInTheDocument();
-    expect(screen.getByText("Long · 21 trades · +0.18% (−0.12% to +0.48%)")).toBeInTheDocument();
-    expect(screen.getByText("Short · 9 trades · Not enough trades")).toBeInTheDocument();
+    // PM (#358): dưới 30 lệnh đóng, Long / Short không hiện trung bình (API có +0.18% cho 21 lệnh Long).
+    expect(within(long).queryByText("+0.18%")).not.toBeInTheDocument();
+    expect(within(long).getByText("Not enough trades · needs 9 more")).toBeInTheDocument();
+    expect(within(long).queryByText("−0.12% to +0.48%")).not.toBeInTheDocument();
+    expect(within(short).getByText("Not enough trades · needs 21 more")).toBeInTheDocument();
+    expect(
+      screen.getByText("Long · 21 trades · Not enough trades · needs 9 more"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Short · 9 trades · Not enough trades · needs 21 more"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/cost of a trade ≈ 0.10%/)).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -842,6 +867,7 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
   it('"?" next to Rules vN and the level chips opens the matching tab', async () => {
     wrap();
     const r = await screen.findByRole("region", { name: "Is it working?" });
+    await userEvent.click(within(r).getByRole("tab", { name: "By level" }));
     const lv = within(r).getByRole("table", { name: "Results by level at entry" });
     const help = within(lv).getAllByRole("button", { name: "How it works: Levels" });
     expect(help).toHaveLength(3);
@@ -858,6 +884,7 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(first).toHaveFocus();
+    await userEvent.click(within(r).getByRole("tab", { name: "Overall" }));
     const sum = within(r).getByRole("table", { name: "Where each signal type stands" });
     const rules = within(sum).getAllByRole("button", { name: "How it works: News types" });
     expect(rules.length).toBeGreaterThan(0);
@@ -887,5 +914,222 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
     expect(
       how.compareDocumentPosition(region("Paper bots")) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+});
+
+describe("Is it working? redesign (#344) and older rules (#321)", { timeout: 30_000 }, () => {
+  beforeEach(() => {
+    state.mode = "judge";
+  });
+
+  it("progress bars: closed trades for the gate, classifier labels, context H1 with / without", async () => {
+    wrap();
+    const r = await screen.findByRole("region", { name: "Is it working?" });
+    const closed = within(r).getByRole("progressbar", { name: "Closed trades" });
+    expect(closed).toHaveAttribute("aria-valuenow", "12");
+    expect(closed).toHaveAttribute("aria-valuemax", "100");
+    expect(within(r).getByText("~3 weeks to go")).toBeInTheDocument();
+    expect(
+      within(r).getByText((_, el) => el?.textContent === "12 / 100 · needs 88 more"),
+    ).toBeInTheDocument();
+    expect(within(r).getByText("12 / 100 · needs 88 more · ~3 weeks")).toBeInTheDocument();
+    const labels = within(r).getByRole("progressbar", { name: "Labels" });
+    expect(labels).toHaveAttribute("aria-valuenow", "37");
+    expect(labels).toHaveAttribute("aria-valuemax", "50");
+    expect(within(r).getByText("Classifier v2 labels")).toBeInTheDocument();
+    expect(within(r).getByText("84% right so far")).toBeInTheDocument();
+    expect(within(r).getAllByRole("link", { name: "Label a random signal" })[0]).toHaveAttribute(
+      "href",
+      "#sr-labels",
+    );
+    expect(within(r).getByText("Context (H1 whales)")).toBeInTheDocument();
+    expect(within(r).getByText("each group needs 30")).toBeInTheDocument();
+    const w = within(r).getByRole("progressbar", {
+      name: "Context (H1 whales) · With · closed trades",
+    });
+    expect(w).toHaveAttribute("aria-valuenow", "12");
+    expect(w).toHaveAttribute("aria-valuemax", "30");
+    expect(within(r).getByText("12 / 30")).toBeInTheDocument();
+    expect(within(r).getByText("21 / 30")).toBeInTheDocument();
+    // Progress ở đầu trang theo khối context.
+    expect(
+      within(screen.getByRole("navigation", { name: "Progress" })).getByRole("link", {
+        name: "Context: collecting",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("Overall hides the average under 30 counted closed trades; cost says no v3 trade reached the cost check", async () => {
+    wrap();
+    const tbl = await screen.findByRole("table", { name: "Where each signal type stands" });
+    const news = within(tbl).getByRole("row", { name: /News · Live paper/ });
+    expect(
+      within(news).getByText("Average shows at 30 closed (18 more); the gate needs 100"),
+    ).toBeInTheDocument();
+    expect(within(news).getByText("Shown at 30 closed")).toBeInTheDocument();
+    // API có trung bình (+0.40%) nhưng chưa đủ 30: không hiện.
+    expect(within(news).queryByText("+0.40%")).not.toBeInTheDocument();
+    expect(within(news).getByText("Collecting")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /cost of a trade ≈ Not available yet · no v3 trade has reached the cost check/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Live paper · 12 trades · needs 88 more")).toBeInTheDocument();
+    // Long / Short: từ 30 lệnh đóng mới hiện trung bình (PM, #358).
+    const dir = screen.getByRole("table", { name: "Long and short results for News · Live paper" });
+    const [, long, short] = within(dir).getAllByRole("row");
+    if (long === undefined || short === undefined) throw new Error("rows");
+    expect(within(long).getByText("+0.18%")).toBeInTheDocument();
+    expect(within(long).getByText("−0.12% to +0.48%")).toBeInTheDocument();
+    expect(within(short).getByText("Not enough trades · needs 21 more")).toBeInTheDocument();
+    expect(screen.getByText("Long · 34 trades · +0.18% (−0.12% to +0.48%)")).toBeInTheDocument();
+  });
+
+  it("tabs switch with click and arrow keys", async () => {
+    wrap();
+    const r = await screen.findByRole("region", { name: "Is it working?" });
+    const overall = within(r).getByRole("tab", { name: "Overall" });
+    expect(overall).toHaveAttribute("aria-selected", "true");
+    overall.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(within(r).getByRole("tab", { name: "By level" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(r).getByRole("tab", { name: "By level" })).toHaveFocus();
+    await userEvent.keyboard("{End}");
+    expect(within(r).getByRole("tab", { name: "Does context help?" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(r).getByRole("tabpanel")).toHaveAttribute(
+      "aria-labelledby",
+      "sr-judge-tab-context",
+    );
+    await noViolations();
+  });
+
+  it("Does context help?: progress under 30 per group, verdicts only when both groups have 30, live and backfilled apart", async () => {
+    wrap();
+    const r = await screen.findByRole("region", { name: "Is it working?" });
+    await userEvent.click(within(r).getByRole("tab", { name: "Does context help?" }));
+    expect(
+      within(r).getByRole("heading", { name: /Does context make news signals better\?/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(r).getByText("Baseline (v3) · from the page's version picker"),
+    ).toBeInTheDocument();
+    expect(within(r).getByText(/Slower than the main gate\./)).toBeInTheDocument();
+    const tbl = within(r).getByRole("table", { name: "Does context make news signals better?" });
+    const rows = (q: string) =>
+      [...tbl.querySelectorAll(`tr[data-question="${q}"]`)] as HTMLElement[];
+    // H1: cả hai nhóm dưới 30 → thanh tiến độ, không có trung bình / chênh / khoảng.
+    const [h1w, h1o] = rows("h1");
+    if (h1w === undefined || h1o === undefined) throw new Error("h1");
+    expect(
+      within(h1w).getByRole("progressbar", { name: "H1 · Whales agree · With · closed trades" }),
+    ).toHaveAttribute("aria-valuenow", "12");
+    expect(
+      within(h1o).getByRole("progressbar", { name: "H1 · Whales agree · Without · closed trades" }),
+    ).toHaveAttribute("aria-valuenow", "21");
+    expect(within(h1w).getByText("12 / 30")).toBeInTheDocument();
+    expect(within(h1w).getByText("Not enough trades")).toBeInTheDocument();
+    expect(within(h1o).getByText("Not enough trades")).toBeInTheDocument();
+    expect(within(h1w).getByText("Not enough trades to compare")).toBeInTheDocument();
+    expect(within(h1w).getByText("Collecting")).toBeInTheDocument();
+    expect(within(h1w).getByText("18 more with · 9 more without")).toBeInTheDocument();
+    expect(within(h1w).queryByText(/%/)).not.toBeInTheDocument();
+    // H2: đủ 30 ở cả hai nhóm → số, chênh, khoảng; khoảng chứa 0.
+    const [h2w, h2o] = rows("h2");
+    if (h2w === undefined || h2o === undefined) throw new Error("h2");
+    expect(within(h2w).queryByRole("progressbar")).toBeNull();
+    expect(within(h2w).getByText("34")).toBeInTheDocument();
+    expect(within(h2w).getByText("+0.21%")).toBeInTheDocument();
+    expect(within(h2o).getByText("+0.04%")).toBeInTheDocument();
+    expect(within(h2w).getByText("+0.17%")).toBeInTheDocument();
+    expect(within(h2w).getByText("−0.06% to +0.41%")).toBeInTheDocument();
+    expect(within(h2w).getByText("No clear difference")).toBeInTheDocument();
+    // PM (#358): chưa có kết luận → số màu trung tính; badge With không xanh lá.
+    expect(within(h2w).getByText("+0.21%")).toHaveClass("text-ink");
+    expect(within(h2w).getByText("+0.17%")).toHaveClass("text-ink");
+    expect(within(h2w).getByText("+0.21%")).not.toHaveClass("text-pos");
+    expect(within(h2w).getByText("With")).toHaveClass("bg-accent-tint");
+    expect(within(h2w).getByText("With")).not.toHaveClass("bg-pos-bg");
+    expect(within(h2o).getByText("Without")).toHaveClass("bg-bg");
+    expect(within(h2w).getByText("The range still includes 0")).toBeInTheDocument();
+    const [h3w] = rows("h3");
+    if (h3w === undefined) throw new Error("h3");
+    expect(within(h3w).getByText("Worse with it")).toBeInTheDocument();
+    // Có kết luận → tô màu theo dấu (Average và Difference).
+    expect(within(h3w).getByText("−0.32%")).toHaveClass("text-neg");
+    expect(within(h3w).getByText("−0.41%")).toHaveClass("text-neg");
+    const [, h3o] = rows("h3");
+    if (h3o === undefined) throw new Error("h3o");
+    expect(within(h3o).getByText("+0.09%")).toHaveClass("text-pos");
+    expect(
+      within(h3w).getByText('Candidate option: "Skip if price already moved"'),
+    ).toBeInTheDocument();
+    expect(
+      within(r).getByText("2 closed trades have no live context and are left out."),
+    ).toBeInTheDocument();
+    expect(
+      within(r).getByText(
+        /^Whale data: 41 of 75 signals .* Funding: 75 of 75\. Price run: 75 of 75\./,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(r).getByText(/H1 "Without" counts only signals on assets with whale data/),
+    ).toBeInTheDocument();
+    expect(within(r).queryByText(/Sample numbers/)).not.toBeInTheDocument();
+
+    // Backfilled: khối riêng, không trộn số live.
+    const live = within(r).getByRole("button", { name: "Live" });
+    const bf = within(r).getByRole("button", { name: "Backfilled" });
+    expect(live).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(bf);
+    expect(bf).toHaveAttribute("aria-pressed", "true");
+    expect(within(r).getByText("No backfilled signals yet.")).toBeInTheDocument();
+    const tbl2 = within(r).getByRole("table", { name: "Does context make news signals better?" });
+    expect(within(tbl2).getAllByText("0 / 30")).toHaveLength(6);
+    expect(within(tbl2).queryByText("+0.21%")).not.toBeInTheDocument();
+    expect(within(tbl2).getAllByText("30 more with · 30 more without")).toHaveLength(3);
+    await noViolations();
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("Paper trades: picked version only by default; Show older rules (v2) · 4 adds v2 trades tagged Rules v2 · not counted", async () => {
+    wrap();
+    const tbl = await screen.findByRole("table", { name: "Signal research trades" });
+    expect(within(tbl).queryByText("Rules v2 · not counted")).not.toBeInTheDocument();
+    const last = () => [...state.paths].reverse().find((p) => p.includes("/trades?")) ?? "";
+    expect(last()).not.toContain("olderRules");
+    const toggle = screen.getByRole("checkbox", { name: /Show older rules \(v2\) · 4/ });
+    expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+    await waitFor(() => {
+      expect(last()).toContain("olderRules=true");
+    });
+    const t2 = await screen.findByRole("table", { name: "Signal research trades" });
+    await waitFor(() => {
+      expect(within(t2).getAllByText("Rules v2 · not counted")).toHaveLength(1);
+    });
+    // Paper bots ghi số lệnh rules cũ còn theo dõi.
+    expect(
+      within(region("Paper bots")).getByText("4 trades from older rules (v2) still tracked below"),
+    ).toBeInTheDocument();
+    // Phễu: rules v3 chạy chưa hết 1 ngày.
+    expect(
+      within(region(/From headline to trade/)).getByText(/^Since rules v3 started at \d\d:\d\d$/),
+    ).toBeInTheDocument();
+    await noViolations();
+  });
+
+  it("no older rules: no toggle, no Paper bots line", async () => {
+    state.mode = "ok";
+    wrap();
+    await screen.findByRole("table", { name: "Signal research trades" });
+    expect(screen.queryByRole("checkbox", { name: /older rules/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/from older rules/)).not.toBeInTheDocument();
   });
 });

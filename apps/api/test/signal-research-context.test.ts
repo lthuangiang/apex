@@ -105,15 +105,19 @@ async function article(id: string) {
   );
 }
 
-async function summary(versionId?: string): Promise<ResearchContextSummary> {
+async function summary(
+  versionId?: string,
+  source: "live" | "backfilled" = "live",
+): Promise<ResearchContextSummary> {
   const r = await team.request(
     "GET",
     `${base}/summary${versionId === undefined ? "" : `?versionId=${versionId}`}`,
   );
   expect(r.statusCode).toBe(200);
   const s = researchSummarySchema.parse(r.json());
-  if (s.context === null) throw new Error("no context block");
-  return s.context;
+  const c = source === "live" ? s.context : s.contextBackfilled;
+  if (c === null) throw new Error("no context block");
+  return c;
 }
 
 beforeAll(async () => {
@@ -230,7 +234,7 @@ describe("summary context block (#329)", () => {
       contextVersion: SIGNAL_CONTEXT_VERSION,
       source: "live",
       minClosedPerGroup: 30,
-      closedWithoutLiveSnapshot: 3,
+      closedWithoutSnapshot: 3,
       // Độ phủ gồm cả snapshot của bài ctx-a1 (trace ở trên).
       coverage: {
         signals: 65,
@@ -284,5 +288,84 @@ describe("summary context block (#329)", () => {
     expect(h1?.clusters).toBeGreaterThan(1);
     expect(q("h2")?.status).toBe("better_with");
     expect(q("h3")?.status).toBe("collecting");
+  });
+});
+
+describe("live and backfilled stay apart (#344)", () => {
+  it("returns a second block from backfilled snapshots only; na leaves both groups, against counts as without", async () => {
+    const versionId = randomUUID();
+    await env.pool.query(
+      `insert into signal_bot_versions (id, number, name, config, status, created_at, updated_at, status_changed_at)
+       select $1, 41, 'Backfill', config, 'stopped', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'
+         from signal_bot_versions where is_baseline`,
+      [versionId],
+    );
+    const from = "2026-10-01T00:00:00Z";
+    const bf = (h1: string, h2: string, h3: string) => ({
+      h1,
+      h2,
+      h3,
+      source: "backfilled" as const,
+    });
+    await bulk(versionId, "bf-w", 30, from, 1, bf("yes", "no", "na"));
+    await bulk(versionId, "bf-a", 12, from, 0, bf("against", "no", "na"));
+    await bulk(versionId, "bf-o", 18, from, 0, bf("no", "na", "na"));
+    await bulk(versionId, "bf-n", 4, from, 3, bf("na", "na", "na"));
+    // Live của cùng version: không bao giờ vào khối backfilled (và ngược lại).
+    await bulk(versionId, "bf-l", 7, from, 9, { h1: "yes", h2: "yes", h3: "yes" });
+
+    const b = await summary(versionId, "backfilled");
+    expect(b).toMatchObject({
+      source: "backfilled",
+      minClosedPerGroup: 30,
+      // 7 lệnh chỉ có snapshot live.
+      closedWithoutSnapshot: 7,
+    });
+    // Độ phủ theo thời gian lưu version (không theo lệnh): gồm cả snapshot backfilled ctx-b-1 của test trên.
+    expect(b.coverage).toMatchObject({
+      signals: 65,
+      whale: 61,
+      funding: 43,
+      priceRun: 1,
+      backfilled: 65,
+    });
+    const q = (k: "h1" | "h2" | "h3") => b.questions.find((x) => x.key === k);
+    // H1: 30 yes / 12 against + 18 no = 30 without → đủ mẫu ở cả hai nhóm, có kết luận.
+    expect(q("h1")).toMatchObject({
+      status: "better_with",
+      with: { closed: 30, avgPct: 1 },
+      without: { closed: 30 },
+      needWith: 0,
+      needWithout: 0,
+    });
+    // H2: 0 yes / 42 no (18 na bị loại): còn thiếu 30 ở nhóm có, không lộ trung bình.
+    expect(q("h2")).toEqual({
+      key: "h2",
+      with: { closed: 0, avgPct: null },
+      without: { closed: 42, avgPct: null },
+      diffPct: null,
+      range: null,
+      clusters: 0,
+      status: "collecting",
+      needWith: 30,
+      needWithout: 0,
+    });
+    // H3: mọi lệnh backfilled là na → cả hai nhóm rỗng.
+    expect(q("h3")).toMatchObject({
+      status: "collecting",
+      with: { closed: 0 },
+      without: { closed: 0 },
+      needWith: 30,
+      needWithout: 30,
+    });
+
+    const live = await summary(versionId, "live");
+    expect(live.source).toBe("live");
+    expect(live.closedWithoutSnapshot).toBe(64);
+    expect(live.questions.find((x) => x.key === "h1")).toMatchObject({
+      with: { closed: 7 },
+      without: { closed: 0 },
+      status: "collecting",
+    });
   });
 });

@@ -1,4 +1,10 @@
-import type { ResearchSummary, ResearchTradeDetail, ResearchTradesPage } from "@drift/shared";
+import type {
+  ResearchContextSummary,
+  ResearchSummary,
+  ResearchTrade,
+  ResearchTradeDetail,
+  ResearchTradesPage,
+} from "@drift/shared";
 
 // Dữ liệu giả của tab Signal research, theo số mẫu của mockup (docs/mockups/signal-research). Giờ ở UTC; trong múi
 // giờ Asia/Ho_Chi_Minh (UTC+7) chúng khớp giờ trên mockup.
@@ -289,6 +295,9 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
   },
   assets: ["BTC", "ETH", "SOL", "NVDA"],
   context: null,
+  contextBackfilled: null,
+  newsRulesSince: "2026-11-01T00:00:00.000Z",
+  olderRules: { trades: 0, versions: [] },
 };
 
 export const TRADE_SOL = "sr-0001";
@@ -329,6 +338,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       result: { pnl: "9.50", unrealized: null, outcome: "tp", leftSecs: null },
       shadow: null,
       opposite: null,
+      rulesVersion: 3,
     },
     {
       id: TRADE_ETH,
@@ -361,6 +371,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       result: { pnl: "-3.01", unrealized: null, outcome: "sl", leftSecs: null },
       shadow: null,
       opposite: null,
+      rulesVersion: 3,
     },
     {
       id: "sr-0003",
@@ -387,6 +398,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       result: null,
       shadow: null,
       opposite: null,
+      rulesVersion: 3,
     },
     {
       id: "sr-0004",
@@ -421,6 +433,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       result: { pnl: null, unrealized: "2.17", outcome: "open", leftSecs: 187_200 },
       shadow: null,
       opposite: null,
+      rulesVersion: 3,
     },
     {
       id: "sr-0005",
@@ -447,6 +460,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       result: null,
       shadow: null,
       opposite: null,
+      rulesVersion: 3,
     },
   ],
   nextCursor: "c2",
@@ -696,6 +710,7 @@ export const SKIPPED_TRADE = {
   result: null,
   shadow: null,
   opposite: null,
+  rulesVersion: 3,
 };
 
 export const SKIPPED_DETAIL: ResearchTradeDetail = {
@@ -722,3 +737,104 @@ export const SKIPPED_DETAIL: ResearchTradeDetail = {
     },
   ],
 };
+
+// #344 / #321: tin News mới 12 lệnh đóng được tính (chưa đủ 30 để hiện trung bình), khối Context live / backfilled riêng,
+// 4 lệnh của rules v2, chưa lệnh v3 nào tới bước kiểm chi phí, rules v3 bắt đầu 5 giờ trước.
+const ctxBlock = (
+  source: "live" | "backfilled",
+  questions: ResearchContextSummary["questions"],
+  signals: number,
+): ResearchContextSummary => ({
+  contextVersion: "context-v1",
+  source,
+  minClosedPerGroup: 30,
+  questions,
+  closedWithoutSnapshot: source === "live" ? 2 : 0,
+  coverage: {
+    signals,
+    whale: Math.min(41, signals),
+    funding: signals,
+    priceRun: signals,
+    backfilled: 0,
+    openInterest: "notAvailable",
+  },
+});
+const LIVE_CTX = ctxBlock(
+  "live",
+  [
+    {
+      key: "h1",
+      with: { closed: 12, avgPct: null },
+      without: { closed: 21, avgPct: null },
+      diffPct: null,
+      range: null,
+      clusters: 0,
+      status: "collecting",
+      needWith: 18,
+      needWithout: 9,
+    },
+    {
+      key: "h2",
+      with: { closed: 34, avgPct: 0.21 },
+      without: { closed: 41, avgPct: 0.04 },
+      diffPct: 0.17,
+      range: { lo: -0.06, hi: 0.41 },
+      clusters: 12,
+      status: "no_clear_difference",
+      needWith: 0,
+      needWithout: 0,
+    },
+    {
+      key: "h3",
+      with: { closed: 31, avgPct: -0.32 },
+      without: { closed: 44, avgPct: 0.09 },
+      diffPct: -0.41,
+      range: { lo: -0.7, hi: -0.12 },
+      clusters: 12,
+      status: "worse_with",
+      needWith: 0,
+      needWithout: 0,
+    },
+  ],
+  75,
+);
+const EMPTY_Q = (key: "h1" | "h2" | "h3") => ({
+  key,
+  with: { closed: 0, avgPct: null },
+  without: { closed: 0, avgPct: null },
+  diffPct: null,
+  range: null,
+  clusters: 0,
+  status: "collecting" as const,
+  needWith: 30,
+  needWithout: 30,
+});
+export const JUDGE: ResearchSummary = {
+  ...RESEARCH_SUMMARY,
+  newsRulesVersion: 3,
+  newsRulesSince: "2026-11-18T10:37:00.000Z",
+  costPct: null,
+  rows: RESEARCH_SUMMARY.rows.map((r) =>
+    r.type === "news"
+      ? {
+          ...r,
+          rulesVersion: 3,
+          closed: 12,
+          opened: 15,
+          avgPct: 0.4,
+          classifiers: { counted: 12, notCounted: [] },
+          needs: { kind: "pooled" as const, more: 88, weeks: 3 },
+        }
+      : r,
+  ),
+  // Long đủ 30 lệnh đóng: trung bình hiện; Short 9: chưa.
+  directions: RESEARCH_SUMMARY.directions.map((d) =>
+    d.side === "long" ? { ...d, closed: 34 } : d,
+  ),
+  context: LIVE_CTX,
+  contextBackfilled: ctxBlock("backfilled", [EMPTY_Q("h1"), EMPTY_Q("h2"), EMPTY_Q("h3")], 0),
+  olderRules: { trades: 4, versions: [2] },
+};
+const FIRST_TRADE = RESEARCH_TRADES.items[0];
+if (FIRST_TRADE === undefined) throw new Error("fixture");
+export const V2_TRADE: ResearchTrade = { ...FIRST_TRADE, id: "sr-v2", rulesVersion: 2 };

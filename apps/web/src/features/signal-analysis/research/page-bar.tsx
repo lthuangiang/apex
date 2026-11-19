@@ -3,6 +3,7 @@
 import {
   GATE_MIN_CLOSED,
   type ResearchClassifiers,
+  type ResearchContextSummary,
   type ResearchSource,
   type ResearchVersion,
   type ResearchVersions,
@@ -18,8 +19,8 @@ import { classifierShort, versionShort } from "./version-text";
 
 // Đầu trang Signal research (#342, thiết kế docs/mockups/signal-research/redesign-full-page*.html): dải "Research only ·
 // fake money" (token cảnh báo) với dòng nguồn, rồi thanh Version (một bộ chọn cho cả trang) · Progress · How it works.
-// Mọi số của Progress đến từ API versions / classifiers; thiếu thì "Not available" (quy tắc 1.8). Context chưa có API
-// (#330–#332) nên luôn "Context: Not available".
+// Mọi số của Progress đến từ API versions / classifiers; thiếu thì "Not available" (quy tắc 1.8). Context (#344) từ khối
+// `context` (live) của tổng kết: còn câu hỏi nào đang thu thập thì "Context: collecting".
 
 /** Câu một nguồn ("SoSoValue news · Live · 1 min ago"); `statusShown` = trạng thái đã có trong câu. */
 function useSourceLine() {
@@ -101,6 +102,7 @@ export function VersionBar({
   versions,
   versionsError,
   classifiers,
+  context,
   current,
   onVersion,
   onHow,
@@ -108,6 +110,8 @@ export function VersionBar({
   versions: ResearchVersions | undefined;
   versionsError: boolean;
   classifiers: ResearchClassifiers | undefined;
+  /** Khối "Does context help?" (live) của tổng kết; null khi chưa tải / lane chưa chạy. */
+  context: ResearchContextSummary | null;
   /** Version đang chọn (đã quy về Baseline khi chưa chọn); null khi chưa có danh sách. */
   current: ResearchVersion | null;
   onVersion: (id: string) => void;
@@ -147,7 +151,16 @@ export function VersionBar({
                 pct: Math.round(c.precisionPct),
               }),
     },
-    { key: "context", href: "#sr-sum", text: p("contextNa") },
+    {
+      key: "context",
+      href: "#sr-sum",
+      text:
+        context === null
+          ? p("contextNa")
+          : context.questions.some((q) => q.status === "collecting")
+            ? p("context")
+            : p("contextAnswered", { n: context.questions.length }),
+    },
     {
       key: "open",
       href: "#sr-trades",

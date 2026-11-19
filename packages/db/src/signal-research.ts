@@ -46,6 +46,7 @@ import {
   inArray,
   lt,
   min,
+  ne,
   or,
   sql,
   sum,
@@ -529,8 +530,36 @@ export async function loadSignalResearchSummary(
       ? null
       : all.reduce((s, t) => s.add(costOf(t)), new Decimal(0)).div(all.length);
   const on = enabledSince !== null;
-  // #329: "Does context help?" trên cùng tập lệnh với cổng chính (lệnh đã đóng được tính).
-  const context = on ? await loadContextSummary(q, scope, counted) : null;
+  // #329: "Does context help?" trên cùng tập lệnh với cổng chính (lệnh đã đóng được tính); #344: live và backfilled riêng.
+  const context = on ? await loadContextSummary(q, scope, counted, "live") : null;
+  const contextBackfilled = on ? await loadContextSummary(q, scope, counted, "backfilled") : null;
+  check();
+  // #321: chưa có lệnh nào của quy tắc hiện tại thì chi phí một lệnh lấy từ các tín hiệu đã tới bước kiểm TP vs chi phí
+  // (event Filter có `costPct`, cùng cách tính); vẫn không có → null ("no v3 trade has reached the cost check").
+  let entryCost = avgEntryCost;
+  if (entryCost === null && on) {
+    const [c] = await q
+      .select({
+        avg: sql<string | null>`avg((${signalEvents.detail}->>'costPct')::numeric)`,
+      })
+      .from(signalEvents)
+      .where(
+        and(
+          eq(signalEvents.ruleVersion, v),
+          eq(signalEvents.stage, "filter"),
+          sql`${signalEvents.detail} ? 'costPct'`,
+          versionEventWhere(scope),
+        ),
+      );
+    entryCost = c?.avg == null ? null : dec(c.avg);
+    check();
+  }
+  // #321 / #344: lệnh của quy tắc cũ (news-v2) còn hiện trong danh sách của version này, không bao giờ tính cổng.
+  const older = await q
+    .select({ rule: signalPaperTrades.ruleVersion, n: count() })
+    .from(signalPaperTrades)
+    .where(and(liveNewsHistory(), versionTradeWhere(scope), ne(signalPaperTrades.ruleVersion, v)))
+    .groupBy(signalPaperTrades.ruleVersion);
   check();
 
   return {
@@ -607,7 +636,7 @@ export async function loadSignalResearchSummary(
       : null,
     newsRulesVersion: on ? NEWS_RULES.versionNumber : null,
     levels: on ? levels : [],
-    costPct: num(avgEntryCost),
+    costPct: num(entryCost),
     rows: on
       ? [
           {
@@ -666,6 +695,12 @@ export async function loadSignalResearchSummary(
     risk: null,
     assets: [...new Set(all.map((t) => t.market))].sort(),
     context,
+    contextBackfilled,
+    newsRulesSince: enabledSince === null ? null : iso(enabledSince),
+    olderRules: {
+      trades: older.reduce((acc, r) => acc + r.n, 0),
+      versions: [...new Set(older.map((r) => versionNumberOf(r.rule)))].sort((a, b) => a - b),
+    },
   };
 }
 
@@ -913,6 +948,7 @@ function tradeItem(t: TradeRow, ctx: Ctx, now: number, px: SrQuotesSnapshot = {}
     },
     shadow: shadowOf(t, ctx),
     opposite: oppositeOf(t),
+    rulesVersion: versionNumberOf(t.ruleVersion),
   };
 }
 
@@ -972,6 +1008,7 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
     result: null,
     shadow: null,
     opposite: null,
+    rulesVersion: versionNumberOf(e.ruleVersion),
   };
 }
 
@@ -1011,6 +1048,7 @@ export async function loadSignalResearchTrades(
   if ((query.type !== undefined && query.type !== "news") || query.label === "replay")
     return { items: [], nextCursor: null };
   const cur = query.cursor === undefined ? null : decodeCursor(query.cursor);
+  const older = query.olderRules === "true";
   const take = query.limit + 1;
   interface Row {
     t: Date;
@@ -1020,7 +1058,12 @@ export async function loadSignalResearchTrades(
   }
   const rows: Row[] = [];
   if (query.show !== "skipped") {
-    const where: (SQL | undefined)[] = [liveNewsHistory(), versionTradeWhere(scope)];
+    const where: (SQL | undefined)[] = [
+      liveNewsHistory(),
+      versionTradeWhere(scope),
+      // #344: mặc định chỉ quy tắc hiện tại; lệnh news-v2 chỉ khi bật "Show older rules".
+      older ? undefined : eq(signalPaperTrades.ruleVersion, NEWS_RULES.version),
+    ];
     if (query.asset !== undefined) where.push(eq(signalPaperTrades.market, query.asset));
     if (cur !== null)
       where.push(
@@ -1042,6 +1085,7 @@ export async function loadSignalResearchTrades(
       eq(signalEvents.stage, "filter"),
       eq(signalEvents.outcome, "drop"),
       versionEventWhere(scope),
+      older ? undefined : eq(signalEvents.ruleVersion, NEWS_RULES.version),
     ];
     if (query.asset !== undefined)
       where.push(

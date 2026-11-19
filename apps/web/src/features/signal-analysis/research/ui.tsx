@@ -4,6 +4,8 @@ import type { ResearchLabel } from "@drift/shared";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
+import { count } from "../format";
+
 // Thành phần nhỏ của tab Signal research (docs/mockups/signal-research).
 
 export function Block({
@@ -130,6 +132,56 @@ export function Note({ children }: { children: ReactNode }) {
   return (
     <div className="rounded-tile bg-surface-2 p-3.5 text-sm leading-normal text-ink-2">
       {children}
+    </div>
+  );
+}
+
+/** Thanh tiến độ (#344): `now` / `max`, phần vượt `max` không vẽ thêm. */
+export function Bar({
+  label,
+  now,
+  max,
+  thin = false,
+}: {
+  label: string;
+  now: number;
+  max: number;
+  thin?: boolean;
+}) {
+  const pct = max <= 0 ? 0 : Math.min(100, (now / max) * 100);
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuenow={Math.min(now, max)}
+      aria-valuemin={0}
+      aria-valuemax={max}
+      className={`${thin ? "h-2" : "h-2.5"} w-full min-w-0 flex-auto overflow-hidden rounded-full bg-bg`}
+    >
+      <div className="h-full bg-accent" style={{ width: `${pct.toString()}%` }} />
+    </div>
+  );
+}
+
+/** Một thanh With / Without (theo ngưỡng 30 mỗi nhóm). */
+export function GroupBar({
+  label,
+  aria,
+  n,
+  min,
+}: {
+  /** Chữ trước thanh ("With" / "Without"); không có khi cột đã ghi nhóm. */
+  label?: string;
+  aria: string;
+  n: number;
+  min: number;
+}) {
+  const t = useTranslations("signalAnalysis.research.judge");
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      {label === undefined ? null : <span className="w-[52px] flex-none">{label}</span>}
+      <Bar label={aria} now={n} max={min} thin />
+      <span className="flex-none">{t("groupOf", { n: count(n), min })}</span>
     </div>
   );
 }
