@@ -8887,7 +8887,7 @@
         "hidden": "The trade result stays hidden until you save, so it can’t sway the label.",
         "save": "Save label",
         "saving": "Saving…",
-        "saved": "Labelled at {time} · one label per person per article · change it any time",
+        "saved": "Labelled by ··{who} at {time} · one label per person per article · change it any time",
         "rule": "One label per person per article · change it any time",
         "saveError": "Couldn’t save the label. Nothing changed.",
         "notSignal": "This article is not a signal of a classifier, so it can’t be labelled.",

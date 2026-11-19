@@ -260,7 +260,10 @@ describe("classification labels (#304)", () => {
       verdict: "right",
       reason: null,
       note: "looks fine",
+      // #306: chỉ 4 ký tự hex cuối id người gắn ("··a91f"), không lộ id đầy đủ.
+      labeledBy: teamId.replace(/-/g, "").slice(-4),
     });
+    expect(JSON.stringify(first.json())).not.toContain(teamId);
     // Sau khi lưu mới có kết quả lệnh.
     expect(saved.trades).toEqual([
       expect.objectContaining({
@@ -337,7 +340,11 @@ describe("classification labels (#304)", () => {
     };
     expect(await score(team, "s1")).toMatchObject({
       labelable: true,
-      label: { verdict: "wrong", reason: "wrong_asset" },
+      label: {
+        verdict: "wrong",
+        reason: "wrong_asset",
+        labeledBy: teamId.replace(/-/g, "").slice(-4),
+      },
     });
     expect(await score(team2, "s1")).toMatchObject({ labelable: true, label: null });
     expect(await score(team, "n-none")).toMatchObject({ labelable: false, label: null });

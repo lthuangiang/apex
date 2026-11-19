@@ -96,6 +96,8 @@ const reasonOf = (r: string | null): ClassificationWrongReason | null =>
 function labelOut(r: typeof signalClassificationLabels.$inferSelect): ResearchMyLabel {
   return {
     classifierVersion: r.classifierVersion,
+    // 4 ký tự hex cuối id người gắn (như `createdBy` của version), không lộ id đầy đủ.
+    labeledBy: r.labeledBy.replace(/-/g, "").slice(-4).toLowerCase(),
     verdict: r.verdict === "wrong" ? "wrong" : "right",
     reason: reasonOf(r.reason),
     note: r.note,
