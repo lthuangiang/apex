@@ -31,9 +31,12 @@ export const vbSignalSnapshotSchema = z.object({
   /** Spread lúc quyết định (bp); null khi không có sổ, sổ chéo hoặc bằng giá (spread ≤ 0). */
   spreadBps: z.number().positive().nullable(),
   reason: z.string().max(200),
-  /** "Reverse the signal" bật lúc vào. */
+  /**
+   * "Reverse the signal" bật lúc vào (cấu hình, không phải hướng đã bị đảo). Từ #285 Reverse không đảo lượt `balanced`,
+   * nên lượt bị đảo thật là `reversed && !balanced`.
+   */
   reversed: z.boolean(),
-  /** Hướng bị buộc bởi cân khối lượng long / short (DEC-80), không theo tín hiệu. */
+  /** Hướng bị buộc bởi cân khối lượng long / short (DEC-80; từ #285 luôn là hướng làm giảm lệch), không theo tín hiệu. */
   balanced: z.boolean(),
   /** Bối cảnh giá lúc quyết định. */
   price: z.object({
