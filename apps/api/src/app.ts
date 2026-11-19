@@ -84,6 +84,11 @@ export interface AppDeps {
   prices: (markets: readonly string[]) => Promise<Record<string, string>>;
   /** #305: Redis `sr:markets` (danh sách perps SoDEX do scheduler ghi) cho Signal research; không có → null. */
   srMarkets?: () => Promise<string | null>;
+  /**
+   * #308: Redis `sr:quotes` (bid / ask SoDEX do scheduler ghi) cho lãi / lỗ chưa chốt của Signal research; không có →
+   * null.
+   */
+  srQuotes?: () => Promise<string | null>;
   rateLimiter: RateLimiter;
   /** Nhà cung cấp bản đồ thanh lý (IMP-05). Không có / null: tab Liquidation map ẩn. */
   liquidations?: LiquidationProvider | null;
@@ -211,7 +216,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerSignalResearchRoutes(app, {
     db: deps.db,
     now,
-    prices: deps.prices,
+    srQuotes: deps.srQuotes ?? (() => Promise.resolve(null)),
     srMarkets: deps.srMarkets ?? (() => Promise.resolve(null)),
   });
   const oauth = deps.oauth ?? {

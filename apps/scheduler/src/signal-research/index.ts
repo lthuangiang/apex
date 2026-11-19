@@ -1,10 +1,17 @@
 import { randomUUID } from "node:crypto";
 
 import type { Db } from "@drift/db";
-import { NEWS_LIMIT_DEFAULTS, NEWS_RULES } from "@drift/shared";
+import {
+  NEWS_LIMIT_DEFAULTS,
+  NEWS_RULES,
+  SR_QUOTES_KEY,
+  SR_QUOTES_TTL_MS,
+  type SrQuotesSnapshot,
+} from "@drift/shared";
 import { z } from "zod";
 
 import { anthropicClassifier, type NewsClassifier } from "./classifier";
+import { runContextBackfill } from "./context-backfill";
 import { runNewsCycle, type MarketInfo, type PipelineConfig } from "./pipeline";
 import { LiveBooks, QuoteSource } from "./prices";
 import { sosoClient, type SosoClient } from "./soso";
@@ -119,6 +126,8 @@ export interface Logger {
 
 export interface RedisLike {
   mget: (...keys: string[]) => Promise<(string | null)[]>;
+  /** Ghi bản chụp `sr:quotes` (#308); không có → không ghi (api không có lãi / lỗ chưa chốt). */
+  set?: (key: string, value: string, px: "PX", ms: number) => Promise<unknown>;
 }
 
 export interface PerpsSymbolInfo {
@@ -182,10 +191,25 @@ export function createSignalResearch(input: {
     spreadHists: (m, since) => spreadHists(input.db, m, since),
     tickSize: (m) => tickSizes().get(m) ?? null,
   });
-  const watcher = new PaperWatcher({ db: input.db, quotes, now, log: input.log });
+  const redisSet = input.redis.set?.bind(input.redis);
+  const watcher = new PaperWatcher({
+    db: input.db,
+    quotes,
+    now,
+    log: input.log,
+    ...(redisSet === undefined
+      ? {}
+      : {
+          publishQuotes: async (snap: SrQuotesSnapshot) => {
+            await redisSet(SR_QUOTES_KEY, JSON.stringify(snap), "PX", SR_QUOTES_TTL_MS);
+          },
+        }),
+  });
   const soso = input.soso ?? sosoClient(input.env.SOSO_API_KEY);
   const classifier = input.classifier ?? anthropicClassifier(input.env.DESK_AI_API_KEY, input.log);
   let cycleBusy = false;
+  let backfillBusy = false;
+  let backfillDay: string | null = null;
 
   return {
     books,
@@ -216,6 +240,27 @@ export function createSignalResearch(input: {
         );
       } finally {
         cycleBusy = false;
+      }
+    },
+    /**
+     * Backfill ngữ cảnh cho tín hiệu cũ (#333): một lượt mỗi ngày UTC (lượt đầu khi nhận lease); lượt trước chưa xong thì bỏ
+     * qua. Lượt chạm giới hạn bài thì lần gọi sau trong cùng ngày chạy tiếp. Chỉ đọc DB, ghi `signal_contexts` backfilled.
+     */
+    async runContextBackfill(): Promise<void> {
+      const day = new Date(now()).toISOString().slice(0, 10);
+      if (backfillBusy || backfillDay === day) return;
+      backfillBusy = true;
+      const log = input.log.child({ traceId: randomUUID(), job: "signal-context-backfill" });
+      try {
+        const r = await runContextBackfill({ db: input.db, log, now });
+        if (!r.more && r.failed === 0) backfillDay = day;
+      } catch (e) {
+        log.error(
+          { err: e instanceof Error ? { name: e.name, message: e.message } : String(e) },
+          "signal context backfill failed",
+        );
+      } finally {
+        backfillBusy = false;
       }
     },
   };
