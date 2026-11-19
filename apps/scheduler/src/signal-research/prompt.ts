@@ -18,6 +18,7 @@ Each request contains one article: its source, its publish time (UTC), its title
 Pick the catalyst by the event itself, never by tone or by how the price moved. If several events are reported, pick the one that is the headline of the article.
 
 hack_exploit: funds were stolen or put at risk through a hack, exploit, private key compromise, bridge drain, smart-contract bug, rug pull, or a confirmed security breach at an exchange or protocol, affecting that asset's own protocol, chain, issuer or holders. Do not use for phishing warnings in general, for data leaks of customer addresses without funds at risk, or for a hack of an unrelated platform that merely held the asset.
+The affected token of a hack is never the asset that was stolen or used as the unit of the loss. In "12,000 ETH stolen from protocol X" or "$21M in BTC drained from exchange Y", ETH and BTC only measure the loss: the affected token is the hacked protocol's or exchange's own token if it is a candidate; otherwise answer market "NONE" and catalyst "none". Never name ETH, BTC or a stablecoin merely because it was stolen.
 
 listing: a major centralized exchange (for example Binance, Coinbase, Upbit, OKX, Bybit, Robinhood, Kraken) announces it will list or has listed spot or perpetual trading for the asset, or adds a new trading pair that opens the asset to a large new market. The asset must itself be the token being listed, and its name or symbol must be written in the title or text. Do not use for small exchanges, DEX pools, launchpad sales, or rumors that a listing "may" happen. Do not use for a candidate that is only the quote side of a new pair (a "XYZ/ETH" pair is a listing of XYZ, not of ETH), the chain or network the listed token runs on, a token the listed project integrates or uses (for example an oracle), or a coin the news provider tagged although the article never names it.
 
@@ -39,16 +40,18 @@ treasury_buy: a company, fund or government announces that it bought the asset f
 
 treasury_sell: a company, fund or government announces that it sold, or moved to sell, the asset from its treasury or reserve, or a large known holder (a government, a bankrupt estate, a defunct exchange) begins distributing or selling it. The market is the coin sold. Put the amount in treasury_amount exactly as written, or "unknown". Classify the event as it is, whatever its size; do not drop a treasury event because the amount looks small.
 
-earnings_beat: for a stock market only: the company reports quarterly or annual results that beat expectations, or raises its guidance or outlook.
+earnings_beat: for a stock market only: the company itself reports quarterly or annual results that beat expectations, or raises its guidance or outlook.
 
-earnings_miss: for a stock market only: the company reports results that miss expectations, or cuts its guidance or outlook, or warns about results.
+earnings_miss: for a stock market only: the company itself reports results that miss expectations, or cuts its guidance or outlook, or warns about results.
+
+For earnings_beat and earnings_miss, only the company's own reported results or its own guidance count. A forecast, estimate, rating or price target from an analyst, bank, broker or research firm (for example "JPMorgan: Nvidia's revenue is expected to grow…", "Morgan Stanley raises NVDA price target") is "none", even when it raises or cuts its numbers for the company.
 
 token_unlock: a scheduled token unlock or vesting release of more than 2% of the asset's circulating supply happens within the next 7 days. Use only when the article states the size or it is clearly a large unlock; otherwise use "none".
 
 none: anything else. This includes: partnerships, integrations, product launches, upgrades, roadmaps, mainnet dates, fundraising rounds of other companies, price analysis, technical analysis, market recaps, price predictions, opinions and interviews, on-chain flow statistics, whale transfers, ETF daily flow numbers, macroeconomic data (CPI, jobs, rate decisions, Fed speeches), general regulation that is not aimed at that asset, political news, and anything about an asset that is not in the candidate list.
 
 # Choosing the market
-- Name the candidate that the event directly affects. For a hack of a protocol, name the protocol's own token if it is a candidate. For an ETF, name the coin the ETF holds. For a treasury purchase, name the coin bought. For earnings, name the company's stock.
+- Name the candidate that the event directly affects. For a hack of a protocol, name the protocol's own token if it is a candidate, never the coin that was stolen. For an ETF, name the coin the ETF holds. For a treasury purchase, name the coin bought. For earnings, name the company's stock.
 - If the directly affected asset is not among the candidates, answer market "NONE" (and usually catalyst "none").
 - Never name a market that is not in the candidate list for this request, even if it appears in the tool's list of allowed values. The tool lists every market of the exchange; this request's candidates are a small subset.
 - Only name a market whose asset is written in the title or the article text, by its symbol or its name. Being a candidate (a tag from the news provider) is not enough: if the article never names the asset, answer market "NONE".
@@ -112,6 +115,14 @@ none: anything else. This includes: partnerships, integrations, product launches
 52. "Small listed company F sells 12 BTC to cover operating costs" — candidates BTC-USD → treasury_sell, BTC-USD, direct, treasury_amount "12 BTC". Classify what happened; the size is checked later, not by you.
 53. "Company G says it has bought DOGE for its treasury" and the text gives no amount — candidates DOGE-USD → treasury_buy, DOGE-USD, direct, treasury_amount "unknown" (never guess an amount).
 54. "Analyst says company H should buy SOL for its treasury" — none (an opinion, not an announcement).
+55. "12,000 ETH (≈ $21.6M) stolen from lending protocol X in exploit" — candidates ETH-USD, and X has no candidate market → none, market NONE. ETH is only the asset that was stolen, the unit of the loss; it is not the affected token.
+56. "$21M in BTC drained from exchange Y's hot wallet" — candidates BTC-USD → none, market NONE. Do not short BTC because it was stolen; only exchange Y's own token could be affected, and it is not a candidate.
+57. "Hackers steal $5M in USDT from bridge W" — candidates USDT-USD, ETH-USD → none, market NONE (the stolen stablecoin is not the affected token).
+58. "Protocol Q drained of 12,000 ETH; Q token falls" — candidates Q-USD, ETH-USD → hack_exploit, Q-USD, direct. The hacked protocol's own token is the affected token, not ETH (compare with 55).
+59. "JPMorgan report: Nvidia's revenue is expected to grow 50% next year" — candidates NVDA-USD → none, market NONE. A bank's forecast is not the company's own results or guidance.
+60. "Morgan Stanley raises NVDA price target to $250" — candidates NVDA-USD → none (an analyst price target, not a results report).
+61. "Goldman cuts Tesla delivery estimates for Q4" — candidates TSLA-USD → none (an analyst estimate cut is not the company warning about results).
+62. "NVIDIA raises its own revenue guidance for next quarter" — candidates NVDA-USD → earnings_beat, NVDA-USD, direct. The company's own guidance counts (compare with 59 and 60).
 
 # Edge cases
 - A headline that is a question or a rumor ("Will Binance list X?", "Sources say…") is not an announcement: use "none" unless the article confirms the event.
@@ -121,6 +132,8 @@ none: anything else. This includes: partnerships, integrations, product launches
 - If the event is about a different asset with a similar ticker (a stock and a coin sharing a symbol), choose the candidate whose kind (crypto or stock) matches the subject; if none matches, answer market "NONE".
 - When a stock company buys a coin for its treasury, the catalyst is about the coin (treasury_buy on the coin), not an earnings event for the stock.
 - For regulatory_action, ask: who is the target? Only the project or company of the candidate (or its leaders acting for it) counts; a staff member's personal case or a civil suit by investors does not.
+- For hack_exploit, ask: whose protocol or exchange was hacked? Only that project's own token counts; the coin that was stolen (ETH, BTC, a stablecoin) is just the unit of the loss.
+- For earnings_beat and earnings_miss, ask: who is speaking? Only the company's own results or guidance count; an analyst, bank or research forecast or price target does not.
 - For listing and delisting, ask: which token is being listed? Only that token counts; quote coins, chains and tagged-but-unnamed coins do not.
 - When an article is not in English, classify it the same way.
 
