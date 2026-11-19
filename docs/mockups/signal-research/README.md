@@ -32,3 +32,32 @@ Câu chữ, số liệu và màu giữ nguyên như canvas. Số liệu là dữ
 | `bot-versions-picker-mobile.html`, `bot-versions-picker-mobile-390.png` | Picker tài sản trên điện thoại (bottom sheet) |
 
 HTML tĩnh, không có tương tác. Số liệu là dữ liệu mẫu. Ghi chú khi code (PM): ẩn checkbox Crypto / Stocks ở chế độ Only these; Max open trades lớn hơn số mã trong whitelist thì ghi "Effectively N: one trade per asset".
+
+## Trang Signal research làm lại (#340, người dùng duyệt 2026-11-19)
+
+Mở thẳng file HTML trong trình duyệt. Các trang có tương tác dùng `dc-shim.js` (runtime nhỏ chỉ để xem mockup, không phải code sản phẩm). Số liệu là dữ liệu mẫu.
+
+| File | Nội dung |
+|---|---|
+| `redesign-full-page.html`, `-1440.png` | Toàn trang: Version, Progress, How it works, Paper bots, From headline to trade (phễu sáng 6 bước, bước 4 Context viền đứt, feed rộng bằng ô giải thích đầu), Is it working? (thanh tiến độ), Paper trades |
+| `redesign-full-page-mobile.html`, `-390.png` | Toàn trang trên điện thoại (thanh tab cuộn ngang) |
+| `redesign-trace-live.html`, `-1440.png` | Trace chạy thật: bấm một bài, chip chạy qua 6 bước, khung Context cạnh phễu chạy hiệu ứng theo dữ liệu bài đó (5 bài mẫu: cả ba Yes, không cá voi + giá chạy sớm, META không có dữ liệu cá voi, cả ba No, bị loại trước bước 4) |
+| `redesign-trace-no-signal.html`, `-at-context-1440.png` | Như trên, tự chạy bài "cả ba No": sonar + 2 cá voi lội dưới nước ("214 wallets checked · quiet"), bập bênh lắc rồi cân bằng, giá "on time" |
+| `redesign-context-effects.html`, `-1440.png` | Từng hiệu ứng H1 / H2 / H3 với nút ví dụ (Yes, No, Whales disagree, No whale data) |
+| `redesign-live-new-article.html`, `-1440.png`, `-dropping-1440.png` | Bài mới tới khi đang ở trang: rơi xuống phễu, chạy nhanh qua các bước, số đếm nhảy (#345) |
+| `redesign-does-context-help.html`, `-1440.png` | Tab "Does context help?": 3 câu hỏi đăng ký trước, With / Without, khoảng theo khối ngày, ≥ 30 mỗi nhóm |
+| `redesign-context-card.html`, `-760.png` | Thẻ Context trong trace (giữa Score và Filter) |
+
+**Quy tắc hiệu ứng (PM chốt):**
+- Hiệu ứng mang thông tin chạy một lần, ≤ 1.2 s; không lặp; cuộn trang không chạy lại; chỉ chạy lại khi bấm Replay.
+- Cá voi lội nền: 2.6 s, một lượt, không che chữ, tắt hẳn khi reduced motion.
+- Reduced motion: hiện khung cuối.
+- Badge Yes màu trung tính; xanh lá chỉ cho lệnh đã vào / lời; H3 màu hổ phách (cảnh báo).
+
+**Bài mới live (#345):**
+- Mỗi lần một bài, nhịp nhanh khoảng 2.5 s. Hơn 3 bài chờ thì phần còn lại chỉ cộng số đếm ("+N more").
+- Không cắt ngang trace đang xem: bài mới chờ ở chip "N new articles · play".
+- Tab ẩn hoặc phễu ngoài màn hình: chỉ cập nhật số, không chạy hiệu ứng.
+- Công tắc "Live" (tắt thì bài mới chỉ hiện trong feed, không rơi). Nên nhớ lựa chọn theo người xem.
+- Ở mockup có hàng nút "Mockup controls" để giả lập, sản phẩm không có hàng nút này.
+- Sửa câu H3 so với canvas: "The line runs to the entry mark in the signal's direction".

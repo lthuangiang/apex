@@ -37,6 +37,7 @@ import {
   SKIPPED_ID,
   SKIPPED_TRADE,
 } from "./research-fixtures";
+import { BASELINE_ID, CLASSIFIERS, MARKETS, V4_ID, VERSIONS } from "./versions-fixtures";
 
 // Tab Signal research (team, #273): mọi số từ API team (#271); ở đây API giả trả fixture đã qua đúng zod schema.
 
@@ -50,7 +51,8 @@ type Mode =
   | "tradesEmpty"
   | "tradesError"
   | "news"
-  | "one";
+  | "one"
+  | "noVersions";
 const state = vi.hoisted((): { mode: Mode; paths: string[] } => ({ mode: "ok", paths: [] }));
 
 vi.mock("@/features/account/market-hours-time", async (importOriginal) => {
@@ -135,6 +137,13 @@ vi.mock("@/lib/api", async (importOriginal) => {
       const m = state.mode;
       if (m === "forbidden") return Promise.reject(new real.ApiError("FORBIDDEN", 403));
       if (m === "pending") return new Promise(() => undefined);
+      // #306: News bot versions (thẻ, bảng) có test riêng ở versions.test.tsx.
+      if (m === "noVersions" && (p.endsWith("/versions") || p.endsWith("/classifiers")))
+        return Promise.reject(new real.ApiError("INTERNAL_ERROR", 500));
+      if (p.endsWith("/signal-research/versions")) return Promise.resolve(schema.parse(VERSIONS));
+      if (p.endsWith("/signal-research/classifiers"))
+        return Promise.resolve(schema.parse(CLASSIFIERS));
+      if (p.endsWith("/signal-research/markets")) return Promise.resolve(schema.parse(MARKETS));
       if (p.endsWith("/signal-research/summary")) {
         if (m === "error") return Promise.reject(new real.ApiError("INTERNAL_ERROR", 500));
         if (m === "empty")
@@ -265,10 +274,14 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     const tab = await screen.findByRole("tab", { name: "Signal research" });
     expect(tab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Team only.")).toBeInTheDocument();
-    expect(screen.getAllByText(/Research only, fake money\./).length).toBeGreaterThan(0);
-    expect(
-      screen.getByText(/Nothing is sent to SoDEX\. A signal type gets a page/),
-    ).toBeInTheDocument();
+    // #342: dải cảnh báo nổi (token warn) và chip "Prices from mainnet" thay "Read only" ở tab này.
+    const note = screen.getByText("Research only · fake money").closest("[role=note]");
+    if (!(note instanceof HTMLElement)) throw new Error("banner");
+    expect(note).toHaveClass("bg-warn-bg", "text-warn", "border-warn-border");
+    expect(within(note).getByText("Research only · fake money")).toBeInTheDocument();
+    expect(within(note).getByText("Nothing here is sent to SoDEX.")).toBeInTheDocument();
+    expect(screen.getByText("Prices from mainnet")).toBeInTheDocument();
+    expect(screen.queryByText("Read only")).not.toBeInTheDocument();
     expect(screen.getByText(/Times in your time zone: Asia\/Ho_Chi_Minh/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: /Volume Builder/ }));
     expect(window.location.search).toBe("?tab=vb");
@@ -276,7 +289,9 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
 
   it("sources show Live / Delayed / Down with the replay gap left out", async () => {
     wrap();
-    const src = await screen.findByRole("region", { name: "Sources" });
+    // #342: nguồn nằm trong dải "Research only · fake money" (ẩn dưới 768px như mockup 390).
+    const src = await screen.findByRole("list", { name: "Sources" });
+    expect(src).toHaveClass("max-md:hidden");
     expect(within(src).getByText("SoSoValue news · Live · 2 min ago")).toBeInTheDocument();
     expect(within(src).getByText("Macro calendar · Live")).toBeInTheDocument();
     expect(
@@ -284,34 +299,33 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     ).toBeInTheDocument();
     expect(within(src).getByText("Status: Delayed.")).toBeInTheDocument();
     expect(within(src).getByText(/Funding rates · replayed 01:00/)).toBeInTheDocument();
-    // #297: Claude có chấm trạng thái như các nguồn khác; khối Sources hiện cả trên điện thoại.
-    const claude = within(src).getByText(/^Claude · Delayed · /);
-    expect(claude.querySelector("span[aria-hidden]")).toHaveClass("bg-warn-bar");
-    expect(src).not.toHaveClass("max-md:hidden");
+    expect(within(src).getByText(/^Claude · Delayed · /)).toBeInTheDocument();
   });
 
-  it("paper bots: balance, open trades, rule version and last run", async () => {
+  it("paper bots: News bot versions, replay bots with balance, last run and rule version", async () => {
     wrap();
     await screen.findByRole("region", { name: "Paper bots" });
     const bots = region("Paper bots");
-    expect(within(bots).getByText("Running · live")).toBeInTheDocument();
-    // #297: 10,000 + kết quả đã chốt; "+$3.25 unrealized" khi có giá SoDEX cho mọi lệnh mở.
-    expect(within(bots).getByText("10,024.6")).toBeInTheDocument();
-    expect(within(bots).getByText("+$3.25 unrealized")).toBeInTheDocument();
-    expect(within(bots).getByText("2 trades")).toBeInTheDocument();
+    // #306: lane News là các News bot version; Baseline có balance của API versions.
+    const baseline = await within(bots).findByRole("article", { name: "News bot v3 · Baseline" });
+    expect(within(baseline).getByText("10,024.6")).toBeInTheDocument();
+    // #297: "+$3.25 unrealized" của tổng kết, chỉ trên thẻ của version mà tổng kết mô tả.
+    expect(within(baseline).getByText("+$3.25 unrealized")).toBeInTheDocument();
+    const v4 = within(bots).getByRole("article", { name: "News bot v4 · Strict subject" });
+    expect(within(v4).queryByText(/unrealized/)).not.toBeInTheDocument();
     expect(within(bots).getByText("01:00 · 23 trades")).toBeInTheDocument();
     expect(within(bots).getByText("9,623.4")).toBeInTheDocument();
-    expect(within(bots).getByRole("link", { name: "Rules" })).toHaveAttribute("href", "#sr-rules");
   });
 
-  it("news signal rules and the per-level table say Not enough trades, never 0", async () => {
+  it("the per-level table sits under Is it working? and says Not enough trades, never 0", async () => {
     wrap();
-    await screen.findByRole("region", { name: "What counts as a news signal" });
-    const r = region("What counts as a news signal");
+    await screen.findByRole("region", { name: "Is it working?" });
+    // #342: khối "What counts as a news signal" không còn trên trang (nội dung ở drawer How it works).
     expect(
-      within(r).getByText("Rules v2 · a starting guess that the results prove or drop"),
-    ).toBeInTheDocument();
-    expect(within(r).getByText("Short the affected token")).toBeInTheDocument();
+      screen.queryByRole("region", { name: "What counts as a news signal" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Short the affected token")).not.toBeInTheDocument();
+    const r = region("Is it working?");
     const lv = within(r).getByRole("table", { name: "Results by level at entry" });
     expect(within(lv).getAllByText("Not enough trades")).toHaveLength(3);
     expect(within(lv).getByText("Needs 87 more closed")).toBeInTheDocument();
@@ -440,12 +454,13 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
   it("with the #278 data (News live only): Not available where the API has nothing, empty replay lists", async () => {
     state.mode = "news";
     wrap();
-    const src = await screen.findByRole("region", { name: "Sources" });
+    const src = await screen.findByRole("list", { name: "Sources" });
     expect(within(src).getAllByRole("listitem")).toHaveLength(2);
     const bots = region("Paper bots");
-    expect(within(bots).getByText("News bot")).toBeInTheDocument();
+    expect(
+      await within(bots).findByRole("article", { name: "News bot v3 · Baseline" }),
+    ).toBeInTheDocument();
     expect(within(bots).queryByText("Whales bot")).not.toBeInTheDocument();
-    expect(within(bots).getByText("Not available")).toBeInTheDocument();
     const tbl = screen.getByRole("table", { name: "Where each signal type stands" });
     expect(within(tbl).getAllByRole("row")).toHaveLength(2);
     // Risk filter null → Not available (dải desktop, cửa sổ kế tiếp, dòng mobile).
@@ -570,9 +585,12 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     wrap();
     await screen.findByRole("region", { name: "Paper bots" });
     const bots = region("Paper bots");
-    expect(within(bots).getAllByText("Not available").length).toBeGreaterThanOrEqual(4);
-    expect(within(bots).queryByText(/^0(\.0)?$/)).not.toBeInTheDocument();
-    const f = region(/How news becomes a paper trade/);
+    // Whales balance, Funding balance, Price patterns balance (lane News: News bot versions).
+    expect(within(bots).getAllByText("Not available").length).toBeGreaterThanOrEqual(3);
+    // Số dư thiếu không bao giờ thành "0.0". (Số đếm 0 thật của API versions, như Closed 0, vẫn hiện: từ #342 danh sách
+    // version tải ngay ở đầu trang.)
+    expect(within(bots).queryByText(/^0\.0$/)).not.toBeInTheDocument();
+    const f = region(/From headline to trade/);
     expect(within(f).getAllByText("Not available")).toHaveLength(2);
     const tbl = screen.getByRole("table", { name: "Where each signal type stands" });
     const whales = within(tbl).getByRole("row", { name: /Whales/ });
@@ -611,7 +629,9 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     c.unmount();
     state.mode = "tradesEmpty";
     const d = wrap();
-    expect(await screen.findByText("No trades match these filters")).toBeInTheDocument();
+    expect(
+      await screen.findByText("No trades match these filters", {}, { timeout: 5_000 }),
+    ).toBeInTheDocument();
     d.unmount();
     state.mode = "tradesError";
     wrap();
@@ -659,5 +679,213 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     has(r.status, RESEARCH_STATUSES);
     has(r.sources.status, RESEARCH_SOURCE_STATUSES);
     has(r.trades.shows, RESEARCH_SHOWS);
+  });
+});
+
+// #342: đầu trang mới (bộ chọn Version cho cả trang, Progress, How it works). Thiết kế
+// docs/mockups/signal-research/redesign-full-page*.html.
+describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
+  const picker = () => screen.findByRole("combobox", { name: "Version" });
+  const progress = () => screen.getByRole("navigation", { name: "Progress" });
+
+  it("one Version picker drives the page and lives in ?version=", async () => {
+    wrap();
+    const sel = await picker();
+    expect(sel).toHaveValue(BASELINE_ID);
+    expect(
+      within(sel)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["v6 · Wider stops", "v5 · Majors only", "v4 · Strict subject", "Baseline (v3)"]);
+    expect(window.location.search).toBe("?tab=research");
+    state.paths = [];
+    await userEvent.selectOptions(sel, V4_ID);
+    expect(new URLSearchParams(window.location.search).get("version")).toBe(V4_ID);
+    await waitFor(() => {
+      for (const p of ["/summary?", "/articles?", "/trades?"])
+        expect(state.paths.some((x) => x.includes(p) && x.includes(`versionId=${V4_ID}`))).toBe(
+          true,
+        );
+    });
+    // Thẻ version vẫn chọn được, và đổi cả bộ chọn lẫn URL.
+    const bots = region("Paper bots");
+    const base = await within(bots).findByRole("article", { name: "News bot v3 · Baseline" });
+    await userEvent.click(within(base).getByRole("button", { name: "News bot v3 · Baseline" }));
+    expect(await picker()).toHaveValue(BASELINE_ID);
+    expect(new URLSearchParams(window.location.search).get("version")).toBe(BASELINE_ID);
+    await noViolations();
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("opens on the version from the URL; an unknown id falls back to Baseline", async () => {
+    window.history.replaceState(null, "", `/admin/signal-analysis?tab=research&version=${V4_ID}`);
+    const a = wrap();
+    expect(await picker()).toHaveValue(V4_ID);
+    await waitFor(() => {
+      expect(state.paths.some((x) => x.includes(`/summary?`) && x.includes(V4_ID))).toBe(true);
+    });
+    a.unmount();
+    const gone = "00000000-0000-4000-8000-0000000000ff";
+    window.history.replaceState(null, "", `/admin/signal-analysis?tab=research&version=${gone}`);
+    wrap();
+    expect(await picker()).toHaveValue(BASELINE_ID);
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get("version")).toBeNull();
+    });
+  });
+
+  it("Progress: closed trades, classifier labels, context and open trades, each a link", async () => {
+    wrap();
+    await picker();
+    const p = progress();
+    const links = within(p).getAllByRole("link");
+    expect(links.map((l) => [l.textContent, l.getAttribute("href")])).toEqual([
+      ["0 of ~100 closed trades", "#sr-sum"],
+      ["Classifier v2: 37 of 50 labels · 84% right", "#sr-labels"],
+      ["Context: Not available", "#sr-sum"],
+      ["7 open trades", "#sr-trades"],
+    ]);
+    // Theo version đang chọn.
+    await userEvent.selectOptions(await picker(), V4_ID);
+    expect(within(progress()).getByRole("link", { name: "0 open trades" })).toBeInTheDocument();
+  });
+
+  it("Progress says Not available when the versions and classifier APIs fail, never 0", async () => {
+    state.mode = "noVersions";
+    wrap();
+    await screen.findByRole("region", { name: "Is it working?" });
+    await waitFor(() => {
+      expect(
+        within(progress())
+          .getAllByRole("link")
+          .map((l) => l.textContent),
+      ).toEqual([
+        "Closed trades: Not available",
+        "Classifier: Not available",
+        "Context: Not available",
+        "Open trades: Not available",
+      ]);
+    });
+    expect(screen.queryByRole("combobox", { name: "Version" })).not.toBeInTheDocument();
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("How it works: never opens by itself, tabs follow the picked version, Esc closes and returns focus", async () => {
+    wrap();
+    await picker();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const btn = screen.getByRole("button", { name: "How it works" });
+    await userEvent.click(btn);
+    const dlg = await screen.findByRole("dialog", { name: "How it works" });
+    expect(dlg).toHaveAccessibleDescription("Rules of Baseline (v3).");
+    const tabs = within(dlg).getAllByRole("tab");
+    expect(tabs.map((x) => x.textContent)).toEqual([
+      "News types",
+      "Levels",
+      "Take profit / Stop loss",
+      "The gate",
+      "Context questions",
+      "Versions",
+    ]);
+    expect(within(dlg).getByRole("tab", { name: "News types" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const types = within(dlg).getByRole("table", { name: "News types, direction and max hold" });
+    expect(within(types).queryByText("Off")).not.toBeInTheDocument();
+    // Focus giữ trong drawer.
+    for (let i = 0; i < 12; i++) {
+      await userEvent.tab();
+      expect(dlg.contains(document.activeElement)).toBe(true);
+    }
+    // Phím mũi tên đổi tab.
+    within(dlg).getByRole("tab", { name: "News types" }).focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(within(dlg).getByRole("tab", { name: "Levels" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(dlg).getByText(/This version trades level/)).toHaveTextContent(
+      "This version trades level Low and up.",
+    );
+    await noViolations();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(btn).toHaveFocus();
+
+    // Version khác: luật của version đó (v4 tắt Treasury, level Medium trở lên).
+    await userEvent.selectOptions(await picker(), V4_ID);
+    await userEvent.click(btn);
+    const d2 = await screen.findByRole("dialog", { name: "How it works" });
+    expect(d2).toHaveAccessibleDescription("Rules of v4 · Strict subject.");
+    expect(within(d2).getAllByText("Off")).toHaveLength(2);
+    await userEvent.click(within(d2).getByRole("tab", { name: "Take profit / Stop loss" }));
+    expect(within(d2).getByText(/the asset’s typical move/)).toHaveTextContent(
+      "TP = 1.5 × and SL = 0.75 × the asset’s typical move over the max hold (from its last 30 days). If TP is under 2× the cost of a trade, the signal is skipped.",
+    );
+    await userEvent.click(within(d2).getByRole("tab", { name: "The gate" }));
+    // Cổng nêu đủ điều kiện đã chốt, gồm so với vào lệnh ngẫu nhiên và cùng dấu ở hai nửa.
+    expect(within(d2).getByText(/passes the gate/)).toHaveTextContent(
+      "A signal type gets a page for users only after it passes the gate: 100 trades or more, average result after fees at least 2× the cost of a trade, a likely range that stays above 0, it beats random entries at the same moments, and the result has the same sign in both halves.",
+    );
+    await userEvent.click(within(d2).getByRole("tab", { name: "Context questions" }));
+    expect(within(d2).getByText(/Where the other signals go/)).toBeInTheDocument();
+    await userEvent.click(within(d2).getByRole("button", { name: "Close" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(intlErrors).toEqual([]);
+  });
+
+  it('"?" next to Rules vN and the level chips opens the matching tab', async () => {
+    wrap();
+    const r = await screen.findByRole("region", { name: "Is it working?" });
+    const lv = within(r).getByRole("table", { name: "Results by level at entry" });
+    const help = within(lv).getAllByRole("button", { name: "How it works: Levels" });
+    expect(help).toHaveLength(3);
+    const first = help[0];
+    if (first === undefined) throw new Error("help");
+    await userEvent.click(first);
+    let dlg = await screen.findByRole("dialog", { name: "How it works" });
+    expect(within(dlg).getByRole("tab", { name: "Levels" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(first).toHaveFocus();
+    const sum = within(r).getByRole("table", { name: "Where each signal type stands" });
+    const rules = within(sum).getAllByRole("button", { name: "How it works: News types" });
+    expect(rules.length).toBeGreaterThan(0);
+    await userEvent.click(rules[0] ?? first);
+    dlg = await screen.findByRole("dialog", { name: "How it works" });
+    expect(within(dlg).getByRole("tab", { name: "News types" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      within(dlg).getByText("Rules v2 · a starting guess that the results prove or drop"),
+    ).toBeInTheDocument();
+  });
+
+  it("section titles follow the redesign; on phones the tab row scrolls with a fade edge", async () => {
+    wrap();
+    await screen.findByRole("region", { name: "Is it working?" });
+    expect(region("Paper bots")).toBeInTheDocument();
+    expect(region(/From headline to trade/)).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Paper trades" })).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "Strategy" })).toHaveClass(
+      "overflow-x-auto",
+      "max-md:mask-r-from-85%",
+    );
+    // Thanh Version + How it works đứng trước Paper bots (thứ tự của mockup 390).
+    const how = screen.getByRole("button", { name: "How it works" });
+    expect(
+      how.compareDocumentPosition(region("Paper bots")) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

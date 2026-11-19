@@ -150,6 +150,7 @@ export function emailText(
     case "team_invariant":
     case "team_incident":
     case "team_incident_digest":
+    case "team_sr_new_market":
       // Nhóm `teamOps` chỉ đi Telegram (DEC-184), không bao giờ email; nhánh này chỉ để switch đủ.
       return { subject: "DeskLabs: team update", text: "Open Users in DeskLabs." };
   }

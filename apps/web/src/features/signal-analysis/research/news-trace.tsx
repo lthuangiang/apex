@@ -6,6 +6,7 @@ import {
   RESEARCH_DROP_REASONS,
   RESEARCH_RANGES,
   type ResearchArticle,
+  type ResearchArticleTrace,
   type ResearchDropReason,
   type ResearchFunnel,
   type ResearchRange,
@@ -13,7 +14,7 @@ import {
 } from "@drift/shared";
 import { RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api";
 import { useMarketNames } from "@/lib/markets";
@@ -23,6 +24,7 @@ import { clock, count } from "../format";
 
 import { useResearchArticles, useResearchTrace, type ArticleFilters } from "./api";
 import { delay, delayLong } from "./format";
+import { LabelForm } from "./labels";
 import type { Tr } from "./text";
 import {
   articleTitle,
@@ -189,12 +191,15 @@ export function NewsTrace({
   range,
   onRange,
   request,
+  versionId = null,
 }: {
   ctx: PageCtx;
   funnel: ResearchFunnel | null;
   range: ResearchRange;
   onRange: (r: ResearchRange) => void;
   request: TraceRequest | null;
+  /** #306: News bot version (bước Filter / Decide, story và lệnh của version); null = Baseline. */
+  versionId?: string | null;
 }) {
   const t = useTranslations("signalAnalysis.research");
   const ts = useTranslations("signalAnalysis.states");
@@ -205,7 +210,7 @@ export function NewsTrace({
   const [run, setRun] = useState(0);
   const [step, setStep] = useState(DONE);
 
-  const trace = useResearchTrace(sel);
+  const trace = useResearchTrace(sel, versionId);
   const names = useMarketNames();
   const data = (trace.data?.article.id === sel ? trace.data : undefined) ?? null;
   const view: TraceView | null =
@@ -301,10 +306,16 @@ export function NewsTrace({
       className="flex min-w-0 scroll-mt-4 flex-col gap-3 rounded-card bg-surface p-4 shadow-card md:gap-[18px] md:p-6"
     >
       <div className="flex flex-col items-start gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
-        <h2 id="sr-fn-title" className="m-0 text-[17px] font-extrabold md:text-xl">
-          <span className="md:hidden">{t("trace.titleShort")}</span>
-          <span className="max-md:hidden">{t("trace.title", { range: rangeLabel })}</span>
-        </h2>
+        {/* #342: "From headline to trade" + phụ đề; khoảng thời gian nằm ở nhóm nút 1 day / 7 days bên cạnh. */}
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h2 id="sr-fn-title" className="m-0 text-[17px] font-extrabold md:text-xl">
+            {t("trace.title")}
+          </h2>
+          <p className="m-0 text-xs text-muted md:text-[13px]">
+            <span className="md:hidden">{t("trace.subShort")}</span>
+            <span className="max-md:hidden">{t("trace.sub")}</span>
+          </p>
+        </div>
         <div
           role="group"
           aria-label={t("trace.period")}
@@ -335,6 +346,7 @@ export function NewsTrace({
         <Feed
           ctx={ctx}
           filters={{ range, show, stage, reason }}
+          versionId={versionId}
           sel={sel}
           onShow={setShow}
           onClear={() => {
@@ -446,6 +458,7 @@ export function NewsTrace({
               key={`${sel}:${String(run)}`}
               steps={view?.steps ?? []}
               states={STAGES.map((_, i) => bandState(i))}
+              scoreExtra={labelBox(data, ctx.tz)}
             />
           ) : (
             <TotalsPanel
@@ -471,9 +484,11 @@ function Feed({
   onShow,
   onClear,
   onPick,
+  versionId,
 }: {
   ctx: PageCtx;
   filters: ArticleFilters;
+  versionId: string | null;
   sel: string | null;
   onShow: (s: Show) => void;
   onClear: () => void;
@@ -481,7 +496,7 @@ function Feed({
 }) {
   const t = useTranslations("signalAnalysis.research");
   const ts = useTranslations("signalAnalysis.states");
-  const q = useResearchArticles(filters);
+  const q = useResearchArticles(filters, versionId);
   const pages = q.data?.pages ?? [];
   const items = pages.flatMap((p) => p.items);
   const first = pages[0];
@@ -826,7 +841,31 @@ function Token({
 
 /* ---------------------------------------------------------------- Step cards */
 
-function Steps({ steps, states }: { steps: StepView[]; states: BandState[] }) {
+/** #306: hộp gắn nhãn trên thẻ Score khi bài gắn nhãn được (trace không ẩn kết quả lệnh, DEC-333). */
+function labelBox(data: ResearchArticleTrace | null, tz: string): ReactNode {
+  const score = data?.steps.find((x) => x.key === "score");
+  if (data === null || score?.key !== "score" || score.detail?.labelable !== true) return null;
+  return (
+    <LabelForm
+      key={`${data.article.id}:${score.detail.label?.updatedAt ?? ""}`}
+      articleId={data.article.id}
+      initial={score.detail.label}
+      hidden={false}
+      tz={tz}
+    />
+  );
+}
+
+function Steps({
+  steps,
+  states,
+  scoreExtra = null,
+}: {
+  steps: StepView[];
+  states: BandState[];
+  /** Thêm vào cuối thẻ Score (hộp gắn nhãn, #306). */
+  scoreExtra?: ReactNode;
+}) {
   const t = useTranslations("signalAnalysis.research");
   const visible = steps
     .map((s, i) => ({ s, i, state: states[i] }))
@@ -887,6 +926,9 @@ function Steps({ steps, states }: { steps: StepView[]; states: BandState[] }) {
                 ))}
               </dl>
             )}
+            {s.key === "score" && scoreExtra !== null ? (
+              <div className="mt-3 md:ml-[38px]">{scoreExtra}</div>
+            ) : null}
           </li>
         );
       })}

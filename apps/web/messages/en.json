@@ -2832,7 +2832,20 @@
     "signalAnalysis.research.trace.reasonLabelsN",
     "common.errors.unconfirmed",
     "onboarding.connect.errors.feeSuperseded",
-    "onboarding.connect.errors.feeInFlight"
+    "onboarding.connect.errors.feeInFlight",
+    "signalAnalysis.research.versions",
+    "signalAnalysis.research.labeling",
+    "signalAnalysis.research.trades.opposite",
+    "signalAnalysis.research.trades.oppositeTip",
+    "signalAnalysis.research.trades.shadow",
+    "signalAnalysis.research.trades.shadowPnl",
+    "signalAnalysis.pricesMainnet",
+    "signalAnalysis.research.page",
+    "signalAnalysis.research.trace.title",
+    "signalAnalysis.research.trace.sub",
+    "signalAnalysis.research.trace.subShort",
+    "signalAnalysis.research.summary.title",
+    "signalAnalysis.research.trades.title"
   ],
   "beta": {
     "label": "Beta",
@@ -4276,7 +4289,8 @@
       "team_mcp_daily_limit": "MCP daily limit reached",
       "team_invariant": "Money invariant check",
       "team_incident": "Real-money incident",
-      "team_incident_digest": "Daily incidents"
+      "team_incident_digest": "Daily incidents",
+      "team_sr_new_market": "New SoDEX market"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
@@ -7039,8 +7053,7 @@
     "past": {
       "all": "<b>Analysis of past trades, not a forecast.</b> It shows what fills on live bots cost. This page never changes a bot or a setting.",
       "vb": "<b>Analysis of past trades, not a forecast.</b> It shows what happened on these entries. This page never changes a bot; any change to VB logic is made and approved separately.",
-      "mm": "<b>Analysis of past trades, not a forecast.</b> It shows what happened after these fills. This page never changes a bot; any change to Market Making defaults or logic is made and approved separately.",
-      "research": "<b>Research only, fake money.</b> News signals are traded on paper as they happen. Whales, funding and price patterns are replayed every night from stored data. Nothing is sent to SoDEX. A signal type gets a page for users only after it passes the gate: 100 trades or more, average result after fees at least 2× the cost of a trade, and a likely range that stays above 0."
+      "mm": "<b>Analysis of past trades, not a forecast.</b> It shows what happened after these fills. This page never changes a bot; any change to Market Making defaults or logic is made and approved separately."
     },
     "na": "Not available",
     "thin": "Thin sample",
@@ -7751,9 +7764,6 @@
       "partialNote": "Prices cover the first 24 hours of the hold only."
     },
     "loading": "Loading…",
-    "pastShort": {
-      "research": "<b>Research only, fake money.</b> News is traded on paper live; whales, funding and price patterns are replayed nightly. Nothing is sent to SoDEX."
-    },
     "research": {
       "states": {
         "emptyTitle": "No signal research data yet",
@@ -7847,8 +7857,7 @@
         "unrealized": "{pnl} unrealized"
       },
       "trace": {
-        "title": "How news becomes a paper trade · {range}",
-        "titleShort": "How news becomes a paper trade",
+        "title": "From headline to trade",
         "range": {
           "1d": "last 1 day",
           "7d": "last 7 days"
@@ -8106,7 +8115,10 @@
           "size": "Size",
           "entry": "Entry",
           "tpSl": "Take profit / Stop loss",
-          "maxHold": "Max hold"
+          "maxHold": "Max hold",
+          "opposite": "Opposite news",
+          "oppositeArticle": "Opposite news",
+          "shadow": "Would-have trade"
         },
         "values": {
           "collected": "{time} ({d} later)",
@@ -8139,12 +8151,17 @@
           "size": "{size} USDC (fake money)",
           "entry": "{price} at {time}",
           "tpSl": "{tp} ({tpPct}) / {sl} ({slPct})",
-          "levelNow": "{level} at entry · now {n, plural, one {# source} other {# sources}}"
+          "levelNow": "{level} at entry · now {n, plural, one {# source} other {# sources}}",
+          "opposite": "{time} · {action, select, closed {closed} other {kept}} · closing then: {usd} ({pct})",
+          "oppositeArticle": "{action, select, closed {Closed the open trade} other {Kept the open trade}}",
+          "shadow": "Followed outside the balance"
         },
         "traceCol": "Trace",
         "traceBtn": "Trace",
         "traceAria": "Trace: {title}",
-        "unitNote": "Every step counts the same articles, collected in the {range}: in − out = next step."
+        "unitNote": "Every step counts the same articles, collected in the {range}: in − out = next step.",
+        "sub": "Every article, what happened to it, and why. Pick one to watch it go through.",
+        "subShort": "Every article, what happened to it, and why."
       },
       "reasons": {
         "notCatalyst": "Not a catalyst on the list",
@@ -8175,7 +8192,6 @@
         "limitDay": "Limit: {n} per day"
       },
       "rules": {
-        "title": "What counts as a news signal",
         "sub": "Rules v{v} · a starting guess that the results prove or drop",
         "intro": "A signal is <b>one story</b> about one SoDEX asset, of a type on the list below. The <b>type sets the direction</b>; Claude only names the type and the asset. The bot decides on the <b>first article</b> and locks the confidence level at that moment. Articles that arrive later don’t open more trades; if they would have raised the level, the trade is tagged “later High” for analysis.",
         "typesTable": "News types, direction and max hold",
@@ -8220,8 +8236,7 @@
         "noLevels": "No news signals yet."
       },
       "summary": {
-        "title": "Where each signal type stands",
-        "titleShort": "Where each type stands",
+        "title": "Is it working?",
         "sub": "Closed trades opened after the rules were fixed · cost of a trade ≈ {cost} (SoDEX taker fee and builder fee, in and out, plus spread)",
         "table": "Where each signal type stands",
         "colType": "Signal type",
@@ -8267,7 +8282,7 @@
         "shortNa": "<b>Risk filter:</b> Not available"
       },
       "trades": {
-        "title": "Trades",
+        "title": "Paper trades",
         "filters": "Filters",
         "filtersLabel": "Trade filters",
         "type": "Signal type",
@@ -8365,7 +8380,11 @@
         "retry": "Retry",
         "retryTip": "Opened on a later article of the same story, within 2 hours of the first one.",
         "unrealized": "{pnl} unrealized",
-        "openCard": "Open"
+        "openCard": "Open",
+        "opposite": "opposite news",
+        "oppositeTip": "Opposite news at {time} · {action, select, closed {closed} other {kept}} · closing then: {usd} ({pct})",
+        "shadow": "Would have: {outcome}",
+        "shadowPnl": "Would have: {outcome} · {pnl}"
       },
       "detail": {
         "close": "Close",
@@ -8556,7 +8575,381 @@
             "value": "{price} · we paid {pct} more"
           }
         }
+      },
+      "versions": {
+        "intro": "Only the current classifier runs (one Claude read per article), and every running version trades on it. Each version has its own 10,000 USDC of fake money and its own gate. Trades count toward a gate only while the classifier that made them has passed its labels.",
+        "new": "New version",
+        "running": "<b>Running {n} of {max}</b> · at most {max} versions run at once",
+        "tried": "Versions tried: {n}",
+        "classifier": "Classifier <b>{name}</b> · precision {pct} on {n, plural, one {# label} other {# labels}}",
+        "labelMore": "Label more",
+        "extraCheck": "<b>Extra check is on.</b> More than 3 versions have been tried, so one can pass the gate by luck. A version that passes must repeat the result on its next {n} closed trades before it counts.",
+        "showing": "Summary, news feed and trades below show <b>{name}</b>.",
+        "show": "Show {name} below",
+        "cardTitle": "News bot v{n} · {name}",
+        "short": "v{n} · {name}",
+        "savedBaseline": "Saved {date}, {time} · locked, the reference for later versions",
+        "savedBy": "Saved {date}, {time} by ··{who} · counts trades opened after that",
+        "saved": "Saved {date}, {time} · counts trades opened after that",
+        "savedAt": "{date}, {time}",
+        "state": {
+          "running": "Running",
+          "paused": "Paused",
+          "stopped": "Stopped",
+          "retired": "Retired"
+        },
+        "summary": {
+          "allTypes": "All {n} news types",
+          "types": "{n, plural, =0 {No news types} one {# news type} other {# news types}}",
+          "level": "{level, select, high {level High only} medium {level Medium and up} other {level Low and up}}",
+          "size": "{size} USDC",
+          "tp": "TP {x}×",
+          "sl": "SL {x}×",
+          "only": "only {list}",
+          "except": "all except {list}",
+          "cryptoOnly": "crypto only",
+          "stocksOnly": "stocks on SoDEX only",
+          "classifier": "classifier {v}",
+          "classifierNow": "now on classifier {v}",
+          "unreadable": "Rules not available"
+        },
+        "closed": "Closed trades",
+        "count": "Count for the gate",
+        "waitsForLabels": "Waits for labels",
+        "openLine": "<b>Open {open} / {max}</b> · today {today} / {limit} · blocked by limit {blocked}",
+        "noLimit": "no limit",
+        "effectively": "Effectively {n}: one trade per asset",
+        "gate": {
+          "collecting": "Collecting",
+          "stoppedEarly": "Stopped early",
+          "waits_for_labels": "Waits for labels",
+          "passes": "Passes",
+          "fails": "Fails",
+          "needs_repeat": "Passed once · repeat {closed} / {needed}",
+          "notCounted": "Not counted",
+          "notCountedUnder": "Not counted · classifier {v} under 80%",
+          "notCountedUnderN": "Not counted · classifier {v} under 80% · {n, plural, one {# label} other {# labels}}",
+          "notCountedWaits": "Not counted · classifier {v} waits for labels ({n} to go)"
+        },
+        "line": {
+          "oldUnder": "{n, plural, one {# trade} other {# trades}} not counted · classifier {v} under 80%.",
+          "oldWaits": "{n, plural, one {# trade} other {# trades}} not counted · classifier {v} waits for labels ({k} to go).",
+          "oldUnknown": "{n, plural, one {# trade} other {# trades}} not counted · classifier not recorded.",
+          "newCount": "Classifier {v} started a new count on {date}, {time}; it waits for labels ({k} to go).",
+          "waits": "Trades count once classifier {v} has {min} labels at {pct}% or better ({k} to go).",
+          "under": "Not counted · classifier {v} under 80% · {n, plural, one {# label} other {# labels}}.",
+          "repeat": "Passed on its first {first} closed trades. It must repeat the result on the next {needed}: {closed} so far."
+        },
+        "pause": "Pause",
+        "resume": "Resume",
+        "stop": "Stop",
+        "copy": "Copy to new version",
+        "edit": "Edit as new version",
+        "rules": "Rules",
+        "stopTitle": "Stop v{n} · {name}?",
+        "stopWhat": "What happens",
+        "stopNoNew": "It opens no new trades from now on.",
+        "stopFinal": "A stopped version can’t run again. Copy it to a new version to run its rules again.",
+        "stopConfirm": "Stop v{n}",
+        "cancel": "Cancel",
+        "slots": "{n, plural, one {One more slot} other {# more slots}}",
+        "slotsBody": "Start a version from scratch or copy a running one and change a few rules.",
+        "all": "All versions",
+        "allTable": "All News bot versions",
+        "cols": {
+          "version": "Version",
+          "state": "State",
+          "saved": "Saved",
+          "changed": "Changed from the one before",
+          "classifier": "Classifier",
+          "closed": "Closed",
+          "blocked": "Blocked by limit",
+          "avg": "Average after fees",
+          "gate": "Gate"
+        },
+        "closedCounted": "{closed} · {counted} counted",
+        "notCopied": "Not copied from a version",
+        "noChanges": "No changes",
+        "allNote": "Saved versions never change. A new classifier starts a new count for every running version. Every save, pause and stop is in the audit log with who did it.",
+        "error": "Couldn’t load the News bot versions.",
+        "loading": "Loading versions…",
+        "savedNotice": "Saved v{n} · {name}.",
+        "staleNotice": "Saved v{n} · {name}. The market list was out of date when the assets were checked.",
+        "errors": {
+          "maxRunning": "Pause or stop a version first.",
+          "generic": "Couldn’t change this version."
+        },
+        "change": {
+          "newsTypeOn": "{type} on",
+          "newsTypeOff": "{type} off",
+          "newsTypeHold": "{type} max hold {from} → {to}",
+          "minLevel": "Lowest level {from} → {to}",
+          "maxSourceDelayMinutes": "Skip after {from} → {to} min",
+          "sizeUsdc": "Size {from} → {to} USDC",
+          "tpMultiple": "TP {from}× → {to}×",
+          "slMultiple": "SL {from}× → {to}×",
+          "minTpCostMultiple": "Take profit at least {from}× → {to}× the cost",
+          "maxOpenTrades": "Max open trades {from} → {to}",
+          "maxNewTradesPerDay": "Max new trades per day {from} → {to}",
+          "off": "Off",
+          "onOppositeNews": "Opposite news {from} → {to}",
+          "policy": {
+            "keep": "Keep",
+            "close": "Close at market"
+          },
+          "assetMode": "Assets {from} → {to}",
+          "assetKinds": "Asset kinds {from} → {to}",
+          "kinds": "{crypto, select, true {{stocks, select, true {Crypto and stocks} other {Crypto}}} other {{stocks, select, true {Stocks} other {None}}}}",
+          "assetsOnly": "Only {list}",
+          "assetsExcept": "All except {list}",
+          "assetsAdded": "added {list}",
+          "assetsRemoved": "removed {list}"
+        },
+        "sheet": {
+          "titleFrom": "New version · from v{n}",
+          "titleNew": "New version",
+          "descFrom": "Saving creates v{next}. v{n} keeps running unchanged.",
+          "descFromIdle": "Saving creates v{next}. v{n} stays as it is.",
+          "descNew": "Saving creates v{next}.",
+          "rulesTitle": "Rules · News bot v{n} · {name}",
+          "rulesDesc": "Saved versions never change.",
+          "close": "Close",
+          "name": "Name",
+          "newsTypes": "News types",
+          "newsTable": "News types this version trades",
+          "colTrade": "Trade it",
+          "colType": "News type",
+          "colDir": "Direction",
+          "colHold": "Max hold",
+          "tradeType": "Trade {type}",
+          "holdOf": "Max hold, {type}",
+          "treasuryNote": "Never on BTC or ETH in rules v3",
+          "directionNote": "Direction comes from the type and cannot be flipped here",
+          "quality": "Quality",
+          "minLevel": "Lowest level to trade",
+          "levelOpt": {
+            "high": "High only",
+            "medium": "Medium and up",
+            "low": "Low and up"
+          },
+          "maxDelay": "Skip news seen more than",
+          "maxDelayUnit": "min after release",
+          "orders": "Orders",
+          "size": "Size per trade (USDC, fake money)",
+          "minTp": "Skip if take profit is under",
+          "minTpUnit": "× the cost of a trade",
+          "minTpHint": "At least 1. Below 1 the fees are bigger than the take profit.",
+          "tp": "Take profit",
+          "sl": "Stop loss",
+          "moveUnit": "× typical move over the max hold",
+          "maxOpen": "Max open trades",
+          "maxOpenUnit": "at the same time",
+          "maxOpenHint": "Default {n} = balance 10,000 ÷ size {size}. One open trade per asset at most.",
+          "maxDay": "Max new trades per day",
+          "off": "Off",
+          "limit": "Limit",
+          "maxDayHint": "Off by default · UTC day",
+          "perDay": "Trades per day",
+          "opposite": "When opposite news arrives on an open trade",
+          "keep": "Keep the trade",
+          "closeMarket": "Close at market",
+          "oppositeHint": "Opposite news = a new story on the same asset, the other direction, at or above \"Lowest level to trade\". Every version also records what closing at that moment would have made, so Keep and Close can be compared.",
+          "shadowNote": "A signal stopped by a limit, or by too little fake balance, is not traded. It is still followed as a \"would have\" trade (reason \"Limit: {n} open\" or \"Limit: N per day\"), outside the balance, so no data is lost.",
+          "assets": "Assets",
+          "crypto": "Crypto",
+          "stocks": "Stocks on SoDEX",
+          "which": "Which assets",
+          "modes": {
+            "all": "All",
+            "only": "Only these",
+            "except": "All except"
+          },
+          "whichHint": "One list at a time. Switching mode keeps the picked assets for the new list.",
+          "changed": "Changed from v{n}: <b>{list}</b>.",
+          "noChanges": "No changes from v{n} yet.",
+          "countNote": "Only trades opened after you save count for v{next}. The classifier prompt is the same for every version and is changed in code, not here.",
+          "footer": "Running {n} of {max} · saving starts v{next} now · written to the audit log",
+          "full": "Pause or stop a version first.",
+          "cancel": "Cancel",
+          "save": "Save and start v{next}",
+          "saving": "Saving…",
+          "errors": {
+            "required": "Required.",
+            "number": "Use a number like 1.5, with a dot for decimals.",
+            "whole": "Use a whole number.",
+            "range": "Between {min} and {max}.",
+            "positive": "Must be above 0.",
+            "atLeastOne": "At least 1. Below 1 the fees are bigger than the take profit.",
+            "aboveBalance": "Can’t be more than the 10,000 balance.",
+            "pickAsset": "Pick at least one asset.",
+            "pickKind": "Pick crypto, stocks or both.",
+            "pickType": "Turn on at least one news type.",
+            "notListed": "Not listed on SoDEX now: {list}.",
+            "marketsMissing": "The SoDEX market list isn’t available yet. Try again in a few minutes.",
+            "fix": "Fix the fields marked above.",
+            "generic": "Couldn’t save this version. Nothing was saved."
+          }
+        },
+        "picker": {
+          "search": "Search SoDEX markets",
+          "list": "SoDEX markets",
+          "groups": {
+            "crypto": "Crypto",
+            "stock": "Stocks"
+          },
+          "perps": "Perps",
+          "halted": "Halted",
+          "noMatch": {
+            "crypto": "No crypto matches \"{q}\"",
+            "stock": "No stock matches \"{q}\""
+          },
+          "remove": "Remove {m}",
+          "clear": "Clear all",
+          "hint": "Markets listed on SoDEX now · ↑ ↓ to move · Enter to pick · Esc to close",
+          "stale": "Market list may be out of date",
+          "missing": "The SoDEX market list isn’t available yet, so assets can’t be picked. Try again in a few minutes.",
+          "error": "Couldn’t load the SoDEX market list.",
+          "loading": "Loading SoDEX markets…",
+          "titleOnly": "Only these assets",
+          "titleExcept": "All except these assets",
+          "done": "Done · {n} picked",
+          "open": "Pick assets",
+          "picked": "{n, plural, =0 {No assets picked} one {# asset picked} other {# assets picked}}"
+        }
+      },
+      "labeling": {
+        "title": "Classifier quality",
+        "intro": "Measured per classifier version, because every News bot version uses the same classifier. <b>Right</b> = of the articles Claude called a signal, the share a person marked right. Signals Claude missed are measured later.",
+        "table": "Classifier quality by classifier version",
+        "cols": {
+          "classifier": "Classifier",
+          "labels": "Labels",
+          "right": "Right",
+          "counts": "Trades count?"
+        },
+        "current": "{v} (current)",
+        "range": "likely {lo}–{hi}%",
+        "counts": {
+          "passed": "Yes · {n, plural, one {# label} other {# labels}}",
+          "underPrecision": "No · under 80% · {n, plural, one {# label} other {# labels}}",
+          "needsLabels": "Not yet · {k, plural, one {# more label} other {# more labels}}"
+        },
+        "floor": "<b>The floor:</b> {min} labels with {pct}% or more right.",
+        "floorRange": "<b>The floor:</b> {min} labels with {pct}% or more right. With {n, plural, one {# label} other {# labels}} at {p}%, the real share could be anywhere from about {lo}% to {hi}%, so this is a minimum, not proof.",
+        "mistakes": "Most common mistakes ({v})",
+        "noMistakes": "No wrong labels yet.",
+        "none": "No classifier has signals yet.",
+        "random": "Label a random signal",
+        "randomNote": "Picks at random from articles the current classifier called a signal, so the share isn’t skewed by which ones people choose.",
+        "loading": "Loading…",
+        "error": "Couldn’t load the classifier quality.",
+        "nextError": "Couldn’t load a signal to label.",
+        "empty": "No signals of the current classifier are left for you to label.",
+        "remaining": "{n, plural, one {# signal} other {# signals}} of {v} left to label",
+        "next": "Label another",
+        "close": "Done labelling",
+        "article": "Article",
+        "claudeSaid": "Claude said",
+        "said": "News type <b>{type}</b> · asset <b>{asset}</b> · relevance <b>{relevance}</b> · {promo}",
+        "relevance": {
+          "direct": "main subject",
+          "passingMention": "passing mention"
+        },
+        "promo": {
+          "yes": "promotional",
+          "no": "not promotional",
+          "na": "promotional: Not available"
+        },
+        "meta": "{v} · {cost}",
+        "metaNoCost": "{v}",
+        "question": "Is this classification right?",
+        "verdictGroup": "Label",
+        "verdict": {
+          "right": "Right",
+          "wrong": "Wrong"
+        },
+        "whatWrong": "What is wrong",
+        "pickReason": "Pick what is wrong",
+        "reasons": {
+          "person_not_company": "The subject is a person, not the company",
+          "wrong_type": "Wrong news type",
+          "wrong_asset": "Wrong asset",
+          "passing_mention": "Not news about the asset (passing mention)",
+          "promotional": "Promotional",
+          "other": "Other"
+        },
+        "reasonsShort": {
+          "person_not_company": "The subject is a person, not the company",
+          "wrong_type": "Wrong news type",
+          "wrong_asset": "Wrong asset",
+          "passing_mention": "Not news about the asset",
+          "promotional": "Promotional",
+          "other": "Other"
+        },
+        "note": "Note (optional)",
+        "hidden": "The trade result stays hidden until you save, so it can’t sway the label.",
+        "save": "Save label",
+        "saving": "Saving…",
+        "saved": "Labelled by ··{who} at {time} · one label per person per article · change it any time",
+        "rule": "One label per person per article · change it any time",
+        "saveError": "Couldn’t save the label. Nothing changed.",
+        "notSignal": "This article is not a signal of a classifier, so it can’t be labelled.",
+        "decide": "Decide",
+        "resultHidden": "Result hidden while labelling",
+        "noTrades": "No trade was opened from this article.",
+        "trade": "{side} · {outcome}",
+        "tradeOpen": "{side} · open"
+      },
+      "page": {
+        "banner": {
+          "title": "Research only · fake money",
+          "titleShort": "Research only · fake money.",
+          "body": "Nothing here is sent to SoDEX.",
+          "sourcesLabel": "Sources"
+        },
+        "version": "Version",
+        "baselineOption": "Baseline (v{n})",
+        "versionLoading": "Loading versions…",
+        "progress": {
+          "label": "Progress",
+          "closed": "{n} of ~{gate} closed trades",
+          "closedNa": "Closed trades: Not available",
+          "labels": "Classifier {name}: {n} of {min} labels · {pct}% right",
+          "labelsNoPct": "Classifier {name}: {n} of {min} labels",
+          "labelsNa": "Classifier: Not available",
+          "contextNa": "Context: Not available",
+          "open": "{n, plural, one {# open trade} other {# open trades}}",
+          "openNa": "Open trades: Not available"
+        },
+        "howItWorks": "How it works",
+        "help": "How it works: {tab}",
+        "drawer": {
+          "title": "How it works",
+          "desc": "Rules of {name}.",
+          "descNa": "No version picked. Rules of the picked version are not available.",
+          "close": "Close",
+          "tabsLabel": "How it works sections",
+          "tabs": {
+            "news": "News types",
+            "levels": "Levels",
+            "tpsl": "Take profit / Stop loss",
+            "gate": "The gate",
+            "context": "Context questions",
+            "versions": "Versions"
+          },
+          "off": "Off",
+          "minLevel": "This version trades level <b>{level}</b> and up.",
+          "tpsl": "TP = <b>{tp} ×</b> and SL = <b>{sl} ×</b> the asset’s typical move over the max hold (from its last 30 days). If TP is under <b>{min}×</b> the cost of a trade, the signal is skipped.",
+          "size": "Each trade is <b>{size} USDC</b> of fake money.",
+          "gate": "A signal type gets a page for users only after it passes the gate: <b>100 trades or more</b>, average result after fees at least <b>2× the cost of a trade</b>, a likely range that stays above 0, it <b>beats random entries at the same moments</b>, and the result has the <b>same sign in both halves</b>.",
+          "classifierGate": "A trade counts only when the classifier that made it has <b>{min} labels</b> and is at least <b>{pct}% right</b>.",
+          "context1": "<b>Where the other signals go: step 4 · Context.</b> After Claude names the news type and the asset (Score), DeskLabs checks three things about that asset at that moment: did whales on the leaderboard just trade the same way, is funding against the crowd, has the price already run.",
+          "context2": "<b>Now: records only (dashed).</b> Every signal passes step 4; the answers are saved on the signal and the trade. \"Is it working? › Does context help?\" compares trades with and without each one.",
+          "context3": "<b>Later: a version can use it.</b> If one check proves itself, a new version can turn it on, e.g. \"Require whales agree\". Then step 4 becomes solid for that version and signals that fail it drop here with that reason.",
+          "versionNow": "<b>{name}:</b> {config}"
+        }
       }
-    }
+    },
+    "pricesMainnet": "Prices from mainnet"
   }
 }

@@ -157,7 +157,7 @@ async function noViolations() {
   expect(r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.html).join(" | ")}`)).toEqual([]);
 }
 
-const funnel = () => screen.getByRole("region", { name: /How news becomes a paper trade/ });
+const funnel = () => screen.getByRole("region", { name: /From headline to trade/ });
 const verdict = () => within(funnel()).getByRole("status");
 const lastPath = (part: string) => [...state.paths].reverse().find((p) => p.includes(part)) ?? "";
 const card = (title: string) =>
@@ -165,7 +165,7 @@ const card = (title: string) =>
 
 async function ready() {
   wrap();
-  await screen.findByRole("region", { name: /How news becomes a paper trade/ });
+  await screen.findByRole("region", { name: /From headline to trade/ });
   await within(funnel()).findByRole("button", { name: /SEC approves in-kind creations/ });
 }
 
@@ -187,7 +187,13 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(scroll).toHaveClass("overflow-y-auto", "max-h-[420px]", "md:max-h-[470px]");
     expect(within(scroll).getAllByRole("listitem").length).toBeGreaterThan(0);
     const f = funnel();
-    expect(within(f).getByText("How news becomes a paper trade · last 1 day")).toBeInTheDocument();
+    // #342: tên mới + phụ đề; khoảng thời gian chỉ ở nhóm nút 1 day / 7 days.
+    expect(within(f).getAllByText("From headline to trade").length).toBeGreaterThan(0);
+    expect(
+      within(f).getByText(
+        "Every article, what happened to it, and why. Pick one to watch it go through.",
+      ),
+    ).toBeInTheDocument();
     expect(within(f).getByRole("button", { name: "1 day" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -248,9 +254,10 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
 
     await userEvent.click(within(f).getByRole("button", { name: "7 days" }));
     await waitFor(() => {
-      expect(
-        within(funnel()).getByText("How news becomes a paper trade · last 7 days"),
-      ).toBeInTheDocument();
+      expect(within(funnel()).getByRole("button", { name: "7 days" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
     expect(lastPath("/summary")).toContain("range=7d");
     expect(lastPath("/articles?")).toContain("range=7d");
