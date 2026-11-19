@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Asset picker, mobile</title>
+
+</head>
+<body>
+
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#8a90a8}
+</style>
+
+<div style="width: 390px; height: 844px; box-sizing: border-box; position: relative; overflow: hidden; font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; background: #8a90a8">
+  <div style="padding: 20px 16px; color: #fff; font-size: 14px; font-weight: 700; opacity: .8">New version · from v4</div>
+  <div role="dialog" aria-labelledby="pk-t" style="position: absolute; left: 0; right: 0; bottom: 0; height: 700px; box-sizing: border-box; background: #fff; border-radius: 20px 20px 0 0; padding: 10px 16px 16px; display: flex; flex-direction: column; gap: 12px">
+    <div aria-hidden="true" style="width: 40px; height: 4px; border-radius: 2px; background: #d5dcf2; align-self: center"></div>
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <h2 id="pk-t" style="margin: 0; font-size: 18px; font-weight: 800">Only these assets</h2>
+      <button type="button" aria-label="Close" style="width: 44px; height: 44px; border: 0; border-radius: 50%; background: #f5f7fd; font: inherit; font-weight: 800">×</button>
+    </div>
+    <input type="search" value="sol" aria-label="Search SoDEX markets" style="min-height: 44px; padding: 0 12px; border: 2px solid #2e62e8; border-radius: 10px; font: inherit; font-size: 15px">
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center">
+      <span style="display: inline-flex; align-items: center; gap: 2px; padding: 2px 2px 2px 10px; border-radius: 999px; background: #e6ecfe; font-size: 13px; font-weight: 700">BTC-USD<button type="button" aria-label="Remove BTC-USD" style="width: 36px; height: 36px; border: 0; border-radius: 50%; background: transparent; font: inherit; font-weight: 800; color: #1d47b8">×</button></span>
+      <span style="display: inline-flex; align-items: center; gap: 2px; padding: 2px 2px 2px 10px; border-radius: 999px; background: #e6ecfe; font-size: 13px; font-weight: 700">ETH-USD<button type="button" aria-label="Remove ETH-USD" style="width: 36px; height: 36px; border: 0; border-radius: 50%; background: transparent; font: inherit; font-weight: 800; color: #1d47b8">×</button></span>
+      <button type="button" style="min-height: 36px; padding: 0 6px; border: 0; background: transparent; font: inherit; font-size: 13px; font-weight: 700; color: #1d47b8; text-decoration: underline">Clear all</button>
+    </div>
+    <div role="listbox" aria-label="SoDEX markets" aria-multiselectable="true" style="flex: 1; overflow: auto; display: flex; flex-direction: column">
+      <div style="padding: 8px 4px; font-size: 11px; font-weight: 800; color: #5f6684; letter-spacing: .04em">CRYPTO</div>
+      <div role="option" aria-selected="true" style="display: flex; justify-content: space-between; align-items: center; min-height: 52px; padding: 0 8px; border-bottom: 1px solid #eef1fa; font-size: 15px"><span><strong>SOL</strong>-USD · Solana</span><span style="width: 22px; height: 22px; border-radius: 6px; background: #2e62e8; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800">✓</span></div>
+      <div role="option" aria-selected="false" style="display: flex; justify-content: space-between; align-items: center; min-height: 52px; padding: 0 8px; border-bottom: 1px solid #eef1fa; font-size: 15px"><span><strong>SOL</strong>V-USD · Solv Protocol</span><span style="width: 22px; height: 22px; border-radius: 6px; border: 2px solid #d5dcf2"></span></div>
+      <div style="padding: 8px 4px; font-size: 11px; font-weight: 800; color: #5f6684; letter-spacing: .04em">STOCKS</div>
+      <div style="padding: 8px; font-size: 14px; color: #5f6684">No stock matches "sol"</div>
+    </div>
+    <button type="button" style="min-height: 48px; border: 0; border-radius: 12px; background: #2e62e8; color: #fff; font: inherit; font-size: 15px; font-weight: 800">Done · 3 picked</button>
+  </div>
+</div>
+
+
+</body>
+</html>

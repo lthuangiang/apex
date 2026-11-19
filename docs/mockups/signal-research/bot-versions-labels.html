@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Label a classification</title>
+
+</head>
+<body>
+
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+</style>
+
+<div style="box-sizing: border-box; width: 100%; max-width: 1440px; margin: 0 auto; padding: 32px 24px 48px; font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+
+  <section aria-labelledby="sc" style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+    <p style="margin: 0; font-size: 13px; color: #5f6684">Trace of one article (as in the news trace design). The Score card gets a label control.</p>
+    <article style="border: 1px solid #e3e7f5; border-radius: 14px; padding: 16px; background: #fff; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; background: #2e62e8">3</span>
+        <h2 id="sc" style="margin: 0; flex: 1; font-size: 15px; font-weight: 800">Score</h2>
+        <span style="padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; background: #ddf4e7; color: #0f7a43">Passed</span>
+      </div>
+      <div style="padding: 12px 14px; border-radius: 12px; background: #f5f7fd; font-size: 13px; line-height: 1.5">
+        <div style="font-size: 12px; font-weight: 800; color: #5f6684">Article</div>
+        <div style="font-weight: 700">A former Google software engineer accused of making an illegal bet on Polymarket may face additional charges</div>
+        <div style="font-size: 12px; font-weight: 800; color: #5f6684; margin-top: 8px">Claude said</div>
+        <div>News type <strong>Regulator acts against a project</strong> · asset <strong>GOOGL</strong> · relevance <strong>main subject</strong> · not promotional</div>
+        <div style="font-size: 12px; color: #5f6684; margin-top: 4px">news-classifier-v2 · $0.0021</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid #d5dcf2; border-radius: 12px">
+        <div style="font-size: 14px; font-weight: 800">Is this classification right?</div>
+        <div role="group" aria-label="Label" style="display: flex; gap: 8px; flex-wrap: wrap">
+          <button type="button" aria-pressed="false" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #d5dcf2; background: #fff; font: inherit; font-size: 14px; font-weight: 800">Right</button>
+          <button type="button" aria-pressed="true" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #c2312f; background: #fde4e1; color: #a72826; font: inherit; font-size: 14px; font-weight: 800">Wrong</button>
+        </div>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">What is wrong
+          <select style="min-height: 44px; border: 1px solid #d5dcf2; border-radius: 10px; padding: 0 10px; font: inherit; font-weight: 500">
+            <option>The subject is a person, not the company</option>
+            <option>Wrong news type</option>
+            <option>Wrong asset</option>
+            <option>Not news about the asset (passing mention)</option>
+            <option>Promotional</option>
+            <option>Other</option>
+          </select>
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700">Note (optional)
+          <input type="text" value="Charges against an ex-employee, not Alphabet" style="min-height: 44px; padding: 0 12px; border: 1px solid #d5dcf2; border-radius: 10px; font: inherit; font-weight: 500">
+        </label>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap">
+          <span style="font-size: 12px; color: #5f6684">The trade result stays hidden until you save, so it can't sway the label.</span>
+          <button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: #2e62e8; color: #fff; font: inherit; font-size: 14px; font-weight: 800">Save label</button>
+        </div>
+      </div>
+      <p style="margin: 0; font-size: 12px; color: #5f6684">Labelled by ··a91f at 13:22 · one label per person per article · change it any time</p>
+    </article>
+
+    <article style="border: 1px solid #e3e7f5; border-radius: 14px; padding: 16px; background: #fff; display: flex; align-items: center; gap: 10px">
+      <span style="width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; background: #16a05a">5</span>
+      <h3 style="margin: 0; flex: 1; font-size: 15px; font-weight: 800">Decide</h3>
+      <span style="font-size: 13px; color: #5f6684">Short GOOGL-USD · result hidden while labelling · <a href="#">Show result</a></span>
+    </article>
+  </section>
+
+  <aside aria-labelledby="cq" style="flex: 1 1 380px; min-width: 0; background: #fff; border: 1px solid #e3e7f5; border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+    <h2 id="cq" style="margin: 0; font-size: 18px; font-weight: 800">Classifier quality</h2>
+    <p style="margin: 0; font-size: 13px; color: #3b4262">Measured per classifier version, because every News bot version uses the same classifier. <strong>Right</strong> = of the articles Claude called a signal, the share a person marked right. Signals Claude missed are measured later.</p>
+    <div style="overflow-x: auto">
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px">
+        <thead><tr style="color: #5f6684; text-align: left"><th scope="col" style="padding: 6px 4px">Classifier</th><th scope="col" style="padding: 6px 4px">Labels</th><th scope="col" style="padding: 6px 4px">Right</th><th scope="col" style="padding: 6px 4px">Trades count?</th></tr></thead>
+        <tbody>
+          <tr style="border-top: 1px solid #eef1fa"><td style="padding: 8px 4px; font-weight: 800">v2 (current)</td><td style="padding: 8px 4px">37</td><td style="padding: 8px 4px">84%</td><td style="padding: 8px 4px; color: #7a3e00; font-weight: 700">Not yet · 13 more labels</td></tr>
+          <tr style="border-top: 1px solid #eef1fa"><td style="padding: 8px 4px; font-weight: 800">v1</td><td style="padding: 8px 4px">24</td><td style="padding: 8px 4px">50%</td><td style="padding: 8px 4px; color: #a72826; font-weight: 700">No · under 80%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="padding: 12px 14px; border-radius: 12px; background: #f5f7fd; font-size: 12px; line-height: 1.5; color: #3b4262">
+      <strong style="color: #141a33">The floor:</strong> 50 labels with 80% or more right. With 50 labels, 80% could really be anywhere from about 69% to 91%, so this is a minimum, not proof.
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <h3 style="margin: 0; font-size: 14px; font-weight: 800">Most common mistakes (v2)</h3>
+      <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #3b4262; display: flex; flex-direction: column; gap: 4px">
+        <li>The subject is a person, not the company · 3</li>
+        <li>Wrong asset · 2</li>
+        <li>Not news about the asset · 1</li>
+      </ul>
+    </div>
+    <a href="#" style="min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid #2e62e8; color: #1d47b8; font-size: 14px; font-weight: 800; text-decoration: none">Label a random signal</a>
+    <span style="font-size: 12px; color: #5f6684">Picks at random from articles the current classifier called a signal, so the share isn't skewed by which ones people choose.</span>
+  </aside>
+</div>
+
+
+</body>
+</html>

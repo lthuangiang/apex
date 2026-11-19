@@ -21,3 +21,14 @@ Bản chép từ canvas đã duyệt, dùng làm nguồn thiết kế cho tab **
 - Tự chạy demo bài ETH sau 1,5 s. Thêm `?demo=0` để tắt, `?speed=slow|normal|fast` để đổi tốc độ.
 
 Câu chữ, số liệu và màu giữ nguyên như canvas. Số liệu là dữ liệu mẫu, không phải số thật.
+
+## News bot versions và gắn nhãn phân loại (#299)
+
+| File | Nội dung |
+|---|---|
+| `bot-versions.html`, `bot-versions-main-1440.png` | Khối Paper bots: các version đang chạy (tối đa 3), số version đã thử, kiểm tra thêm khi > 3, bảng mọi version (có cột Blocked by limit) |
+| `bot-versions-editor.html`, `bot-versions-editor-1440.png` | Sheet tạo version mới: loại tin, level, size / TP / SL, Max open trades, Max new trades per day, tin ngược chiều (Keep / Close), Assets (All / Only these / All except + picker) |
+| `bot-versions-labels.html`, `bot-versions-labels-1440.png` | Gắn nhãn Right / Wrong trên thẻ Score (ẩn kết quả lệnh), bảng chất lượng classifier theo version classifier |
+| `bot-versions-picker-mobile.html`, `bot-versions-picker-mobile-390.png` | Picker tài sản trên điện thoại (bottom sheet) |
+
+HTML tĩnh, không có tương tác. Số liệu là dữ liệu mẫu. Ghi chú khi code (PM): ẩn checkbox Crypto / Stocks ở chế độ Only these; Max open trades lớn hơn số mã trong whitelist thì ghi "Effectively N: one trade per asset".
