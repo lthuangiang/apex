@@ -10,6 +10,7 @@ import {
   SOSO_OFFICIAL_CATEGORY,
   SOURCE_TIERS,
   SourceTier,
+  STOCK_BRAND_ALIASES,
   STOCK_MARKET_SET,
   STOCK_MARKETS,
   TradeDirection,
@@ -125,7 +126,7 @@ function stripSuffixes(name: string): string {
 /**
  * Các cách viết của một ứng viên để kiểm "tài sản có trong bài" (news-v3, #298): ký hiệu SoSoValue, gốc của market SoDEX
  * ("1000PEPE-USD" → "1000PEPE", "PEPE"), tên SoSoValue gắn với ký hiệu đó và tên đã bỏ đuôi pháp lý; cổ phiếu thêm chữ
- * đầu của tên ("META PLATFORMS" → "META"). Không có danh sách tên thương hiệu tự bịa.
+ * đầu của tên ("META PLATFORMS" → "META") và tên thương hiệu trong `STOCK_BRAND_ALIASES` (Google, Facebook…).
  */
 export function assetAliases(
   candidate: Candidate,
@@ -153,6 +154,8 @@ export function assetAliases(
     const first = short.split(" ")[0] ?? "";
     if (candidate.kind === AssetKind.stock && first.length >= 3) add(first, false);
   }
+  if (candidate.kind === AssetKind.stock)
+    for (const brand of STOCK_BRAND_ALIASES[candidate.market] ?? []) add(brand, false);
   return [...out.values()];
 }
 

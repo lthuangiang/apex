@@ -111,8 +111,12 @@ describe("asset must be written in the article (news-v3, #298)", () => {
     expect(assetInText("Meta investors sue", null, meta, m)).toBe(true);
     const g = [{ symbol: "GOOGL", name: '{"EN": "ALPHABET INC. CLASS A"}' }];
     expect(assetAliases(googl, g).map((a) => a.text)).toContain("ALPHABET");
-    // "Google" is not GOOGL (word boundary) and not Alphabet: no invented brand names.
-    expect(assetInText("Former Google engineer charged", null, googl, g)).toBe(false);
+    // "Google" is not the ticker GOOGL (word boundary) but is in the explicit brand map.
+    expect(assetInText("Former Google engineer charged", null, googl, g)).toBe(true);
+    expect(assetInText("Googleplex tour", null, googl, g)).toBe(false);
+    expect(assetInText("Facebook parent fined", null, meta, m)).toBe(true);
+    // Brand aliases are for stocks only, and only for their own market.
+    expect(assetInText("Google invests in AI", null, nvda, n)).toBe(false);
   });
 
   it("matches 1–2 letter symbols only in capitals", () => {

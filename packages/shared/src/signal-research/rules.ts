@@ -308,6 +308,18 @@ export const STOCK_MARKETS: Readonly<Record<string, string>> = {
   TSM: "TSM-USD",
 };
 
+/**
+ * Tên thương hiệu của cổ phiếu khác tên SoSoValue / mã SoDEX (#298): dùng cho kiểm "tài sản có trong bài" của news-v3.
+ * Danh sách nhỏ, tường minh; thêm tên = tăng version quy tắc.
+ */
+export const STOCK_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  "GOOGL-USD": ["Google", "Alphabet"],
+  "META-USD": ["Meta", "Facebook"],
+  "TSM-USD": ["TSMC", "Taiwan Semiconductor"],
+  "MSTR-USD": ["MicroStrategy"],
+  "SMCI-USD": ["Supermicro", "Super Micro"],
+};
+
 /** Market SoDEX là cổ phiếu (để gắn nhãn "outside market hours"). */
 export const STOCK_MARKET_SET: ReadonlySet<string> = new Set(Object.values(STOCK_MARKETS));
 
