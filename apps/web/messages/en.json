@@ -8855,7 +8855,7 @@
         "promo": {
           "yes": "promotional",
           "no": "not promotional",
-          "na": "promotional Not available"
+          "na": "promotional: Not available"
         },
         "meta": "{v} · {cost}",
         "metaNoCost": "{v}",
