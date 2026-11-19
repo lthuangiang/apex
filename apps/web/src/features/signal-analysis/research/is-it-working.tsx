@@ -410,6 +410,9 @@ function RangeCell({
 function dirLine(d: ResearchDirectionRow, t: Tr): string {
   const side = t(`sides.${d.side}`);
   const n = d.closed;
+  // PM (#358): như các dòng khác, trung bình chỉ hiện từ 30 lệnh đóng.
+  if (n < AVG_SHOWN_AT_CLOSED)
+    return t("summary.cardDirNeeds", { side, n, more: count(AVG_SHOWN_AT_CLOSED - n) });
   if (d.avgPct === null) return t("summary.cardDirNone", { side, n });
   return d.range === null
     ? t("summary.cardDirAvg", { side, n, avg: pctSigned(d.avgPct) })
@@ -442,23 +445,34 @@ function Directions({ rows }: { rows: readonly ResearchDirectionRow[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((d) => (
-            <tr key={d.side}>
-              <th scope="row" className={`${tdR} border-b-0 font-normal`}>
-                <Pill tone={SIDE_TONE[d.side]}>{t(`sides.${d.side}`)}</Pill>
-              </th>
-              <td className={`${tdR} border-b-0`}>{count(d.closed)}</td>
-              <td className={`${tdR} border-b-0`}>
-                <Avg v={d.avgPct} />
-              </td>
-              <td className={`${tdR} border-b-0`}>
-                <RandomDiff avg={d.avgPct} random={d.randomPct} diff={d.diffPct} />
-              </td>
-              <td className={`${tdR} border-b-0`}>
-                <RangeCell avg={d.avgPct} range={d.range} clusters={d.clusters} />
-              </td>
-            </tr>
-          ))}
+          {rows.map((d) => {
+            // PM (#358): dưới 30 lệnh đóng không hiện trung bình (cũng như so với ngẫu nhiên và khoảng).
+            const hidden = d.closed < AVG_SHOWN_AT_CLOSED;
+            const avg = hidden ? null : d.avgPct;
+            return (
+              <tr key={d.side}>
+                <th scope="row" className={`${tdR} border-b-0 font-normal`}>
+                  <Pill tone={SIDE_TONE[d.side]}>{t(`sides.${d.side}`)}</Pill>
+                </th>
+                <td className={`${tdR} border-b-0`}>{count(d.closed)}</td>
+                <td className={`${tdR} border-b-0`}>
+                  {hidden ? (
+                    <span className="text-muted">
+                      {ts("notEnoughNeeds", { more: count(AVG_SHOWN_AT_CLOSED - d.closed) })}
+                    </span>
+                  ) : (
+                    <Avg v={avg} />
+                  )}
+                </td>
+                <td className={`${tdR} border-b-0`}>
+                  <RandomDiff avg={avg} random={d.randomPct} diff={d.diffPct} />
+                </td>
+                <td className={`${tdR} border-b-0`}>
+                  <RangeCell avg={avg} range={d.range} clusters={d.clusters} />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

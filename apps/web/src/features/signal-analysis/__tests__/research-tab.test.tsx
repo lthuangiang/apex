@@ -378,12 +378,17 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     const dir = screen.getByRole("table", { name: "Long and short results for News · Live paper" });
     const [, long, short] = within(dir).getAllByRole("row");
     if (long === undefined || short === undefined) throw new Error("rows");
-    expect(within(long).getByText("+0.18%")).toBeInTheDocument();
-    expect(within(long).getByText("−0.12% to +0.48%")).toBeInTheDocument();
-    expect(within(long).getByText("7 days")).toBeInTheDocument();
-    expect(within(short).getByText("Not enough trades")).toBeInTheDocument();
-    expect(screen.getByText("Long · 21 trades · +0.18% (−0.12% to +0.48%)")).toBeInTheDocument();
-    expect(screen.getByText("Short · 9 trades · Not enough trades")).toBeInTheDocument();
+    // PM (#358): dưới 30 lệnh đóng, Long / Short không hiện trung bình (API có +0.18% cho 21 lệnh Long).
+    expect(within(long).queryByText("+0.18%")).not.toBeInTheDocument();
+    expect(within(long).getByText("Not enough trades · needs 9 more")).toBeInTheDocument();
+    expect(within(long).queryByText("−0.12% to +0.48%")).not.toBeInTheDocument();
+    expect(within(short).getByText("Not enough trades · needs 21 more")).toBeInTheDocument();
+    expect(
+      screen.getByText("Long · 21 trades · Not enough trades · needs 9 more"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Short · 9 trades · Not enough trades · needs 21 more"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/cost of a trade ≈ 0.10%/)).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -971,6 +976,14 @@ describe("Is it working? redesign (#344) and older rules (#321)", { timeout: 30_
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Live paper · 12 trades · needs 88 more")).toBeInTheDocument();
+    // Long / Short: từ 30 lệnh đóng mới hiện trung bình (PM, #358).
+    const dir = screen.getByRole("table", { name: "Long and short results for News · Live paper" });
+    const [, long, short] = within(dir).getAllByRole("row");
+    if (long === undefined || short === undefined) throw new Error("rows");
+    expect(within(long).getByText("+0.18%")).toBeInTheDocument();
+    expect(within(long).getByText("−0.12% to +0.48%")).toBeInTheDocument();
+    expect(within(short).getByText("Not enough trades · needs 21 more")).toBeInTheDocument();
+    expect(screen.getByText("Long · 34 trades · +0.18% (−0.12% to +0.48%)")).toBeInTheDocument();
   });
 
   it("tabs switch with click and arrow keys", async () => {
@@ -1037,10 +1050,23 @@ describe("Is it working? redesign (#344) and older rules (#321)", { timeout: 30_
     expect(within(h2w).getByText("+0.17%")).toBeInTheDocument();
     expect(within(h2w).getByText("−0.06% to +0.41%")).toBeInTheDocument();
     expect(within(h2w).getByText("No clear difference")).toBeInTheDocument();
+    // PM (#358): chưa có kết luận → số màu trung tính; badge With không xanh lá.
+    expect(within(h2w).getByText("+0.21%")).toHaveClass("text-ink");
+    expect(within(h2w).getByText("+0.17%")).toHaveClass("text-ink");
+    expect(within(h2w).getByText("+0.21%")).not.toHaveClass("text-pos");
+    expect(within(h2w).getByText("With")).toHaveClass("bg-accent-tint");
+    expect(within(h2w).getByText("With")).not.toHaveClass("bg-pos-bg");
+    expect(within(h2o).getByText("Without")).toHaveClass("bg-bg");
     expect(within(h2w).getByText("The range still includes 0")).toBeInTheDocument();
     const [h3w] = rows("h3");
     if (h3w === undefined) throw new Error("h3");
     expect(within(h3w).getByText("Worse with it")).toBeInTheDocument();
+    // Có kết luận → tô màu theo dấu (Average và Difference).
+    expect(within(h3w).getByText("−0.32%")).toHaveClass("text-neg");
+    expect(within(h3w).getByText("−0.41%")).toHaveClass("text-neg");
+    const [, h3o] = rows("h3");
+    if (h3o === undefined) throw new Error("h3o");
+    expect(within(h3o).getByText("+0.09%")).toHaveClass("text-pos");
     expect(
       within(h3w).getByText('Candidate option: "Skip if price already moved"'),
     ).toBeInTheDocument();

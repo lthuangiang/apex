@@ -827,6 +827,10 @@ export const JUDGE: ResearchSummary = {
         }
       : r,
   ),
+  // Long đủ 30 lệnh đóng: trung bình hiện; Short 9: chưa.
+  directions: RESEARCH_SUMMARY.directions.map((d) =>
+    d.side === "long" ? { ...d, closed: 34 } : d,
+  ),
   context: LIVE_CTX,
   contextBackfilled: ctxBlock("backfilled", [EMPTY_Q("h1"), EMPTY_Q("h2"), EMPTY_Q("h3")], 0),
   olderRules: { trades: 4, versions: [2] },

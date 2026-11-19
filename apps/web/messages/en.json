@@ -8315,7 +8315,9 @@
         "colSide": "Long / Short",
         "cardDir": "{side} · {n, plural, one {# trade} other {# trades}} · {avg} ({lo} to {hi})",
         "cardDirAvg": "{side} · {n, plural, one {# trade} other {# trades}} · {avg}",
-        "cardDirNone": "{side} · {n, plural, one {# trade} other {# trades}} · Not enough trades"
+        "cardDirNone": "{side} · {n, plural, one {# trade} other {# trades}} · Not enough trades",
+        "notEnoughNeeds": "Not enough trades · needs {more} more",
+        "cardDirNeeds": "{side} · {n, plural, one {# trade} other {# trades}} · Not enough trades · needs {more} more"
       },
       "risk": {
         "title": "Risk filter · pause new entries around big news",

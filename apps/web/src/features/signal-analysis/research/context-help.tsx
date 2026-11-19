@@ -25,6 +25,14 @@ import { versionShort } from "./version-text";
 const KEYS = ["h1", "h2", "h3"] as const;
 const GROUPS = ["with", "without"] as const;
 
+/**
+ * PM (#358): số chỉ tô màu theo dấu khi câu hỏi đã có kết luận (Better / Worse with it); Collecting hay No clear
+ * difference thì màu trung tính, để một con số chưa chắc không trông như lời / lỗ.
+ */
+export function verdictTone(q: Pick<ResearchContextQuestion, "status">, v: number): string {
+  return q.status === "better_with" || q.status === "worse_with" ? tone(v) : "text-ink";
+}
+
 const STATUS_TONE: Record<ResearchContextQuestion["status"], PillTone> = {
   collecting: "warn",
   no_clear_difference: "neutral",
@@ -191,7 +199,7 @@ function Table({ c }: { c: ResearchContextSummary }) {
                         </th>
                       ) : null}
                       <td className={tdR}>
-                        <Pill tone={g === "with" ? "pos" : "neutral"}>{t(`groups.${g}`)}</Pill>
+                        <Pill tone={g === "with" ? "accent" : "neutral"}>{t(`groups.${g}`)}</Pill>
                       </td>
                       <td className={`${tdR} min-w-[150px]`}>
                         {done ? (
@@ -208,7 +216,9 @@ function Table({ c }: { c: ResearchContextSummary }) {
                         {collecting || grp.avgPct === null ? (
                           <span className="text-muted">{t("notEnough")}</span>
                         ) : (
-                          <span className={tone(grp.avgPct)}>{pctSigned(grp.avgPct)}</span>
+                          <span className={verdictTone(q, grp.avgPct)}>
+                            {pctSigned(grp.avgPct)}
+                          </span>
                         )}
                       </td>
                       {i === 0 ? (
@@ -217,7 +227,9 @@ function Table({ c }: { c: ResearchContextSummary }) {
                             {collecting || q.diffPct === null ? (
                               <span className="text-muted">{t("notEnoughCompare")}</span>
                             ) : (
-                              <strong className={tone(q.diffPct)}>{pctSigned(q.diffPct)}</strong>
+                              <strong className={verdictTone(q, q.diffPct)}>
+                                {pctSigned(q.diffPct)}
+                              </strong>
                             )}
                           </td>
                           <td rowSpan={2} className={`${tdR} align-top`}>
