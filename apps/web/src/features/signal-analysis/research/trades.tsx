@@ -134,6 +134,9 @@ export function ResearchTrades({ ctx, assets }: { ctx: PageCtx; assets: readonly
     <Block
       id="sr-trades"
       title={t("trades.title")}
+      // Dưới 1024px: thanh nav cố định cao ~110 px (nút Agent nổi 26 px) mà main chỉ chừa 6rem; thêm lề để trạng thái
+      // rỗng / "Load more" ở cuối trang không bị che.
+      className="max-lg:mb-6"
       right={
         <button
           type="button"
