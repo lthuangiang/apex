@@ -328,17 +328,17 @@ function Funnel({ f }: { f: ResearchFunnel | null }) {
   const steps: { name: string; n: string; sub: string }[] = [
     {
       name: t("collect"),
-      n: t("collectN", { n: count(f.collected) }),
+      n: t("collectN", { n: f.collected }),
       sub: t("collectSub"),
     },
     {
       name: t("normalize"),
-      n: t("normalizeN", { n: count(f.stories) }),
-      sub: t("normalizeSub", { merged: count(f.merged) }),
+      n: t("normalizeN", { n: f.stories }),
+      sub: t("normalizeSub", { merged: f.merged }),
     },
     {
       name: t("score"),
-      n: t("scoreN", { n: count(f.signals) }),
+      n: t("scoreN", { n: f.signals }),
       sub: t("scoreSub", {
         high: count(f.levels.high),
         medium: count(f.levels.medium),
@@ -380,10 +380,10 @@ function Funnel({ f }: { f: ResearchFunnel | null }) {
               {f.articlesRead === null ? (
                 <Na />
               ) : f.soso === null ? (
-                t("costSubNoSoso", { articles: count(f.articlesRead) })
+                t("costSubNoSoso", { articles: f.articlesRead })
               ) : (
                 t("costSub", {
-                  articles: count(f.articlesRead),
+                  articles: f.articlesRead,
                   used: count(f.soso.used),
                   limit: count(f.soso.limit),
                 })
@@ -395,11 +395,11 @@ function Funnel({ f }: { f: ResearchFunnel | null }) {
           <div
             role="img"
             aria-label={t("aria", {
-              collected: count(f.collected),
-              stories: count(f.stories),
+              collected: f.collected,
+              stories: f.stories,
               signals: count(f.signals),
               passed: count(f.passed),
-              trades: count(f.long + f.short),
+              trades: f.long + f.short,
               long: count(f.long),
               short: count(f.short),
             })}
@@ -441,12 +441,14 @@ function Funnel({ f }: { f: ResearchFunnel | null }) {
         <div className="flex flex-[1_1_230px] flex-col gap-2">
           <h3 className="m-0 text-[15px] font-extrabold">{t("drops")}</h3>
           <p className="m-0 rounded-[14px] bg-surface-2 px-3 py-2.5 text-[13px] leading-normal">
-            <b>{t("dropScore", { n: count(f.drops.score.n) })}</b>
+            <b aria-hidden="true">{t("dropScore", { n: f.drops.score.n })}</b>
+            <span className="sr-only">{t("dropScoreSr", { n: f.drops.score.n })}</span>
             <br />
             {drop(f.drops.score)}
           </p>
           <p className="m-0 rounded-[14px] bg-surface-2 px-3 py-2.5 text-[13px] leading-normal">
-            <b>{t("dropFilter", { n: count(f.drops.filter.n) })}</b>
+            <b aria-hidden="true">{t("dropFilter", { n: f.drops.filter.n })}</b>
+            <span className="sr-only">{t("dropFilterSr", { n: f.drops.filter.n })}</span>
             <br />
             {drop(f.drops.filter)}
           </p>
@@ -677,13 +679,13 @@ function Needs({ n }: { n: ResearchSummaryRow["needs"] }) {
         </>
       );
     case "rangeBelowZero":
-      return <>{t("rangeBelowZero", { needed: count(n.needed) })}</>;
+      return <>{t("rangeBelowZero", { needed: n.needed })}</>;
     case "moreTrades":
       return (
         <>
           {n.fundingDays === null
-            ? t("moreTrades", { more: count(n.more) })
-            : t("moreTradesFunding", { more: count(n.more), days: n.fundingDays })}
+            ? t("moreTrades", { more: n.more })
+            : t("moreTradesFunding", { more: n.more, days: n.fundingDays })}
         </>
       );
     case "losesAfterFees":
@@ -929,7 +931,7 @@ function Risk({ risk, tz }: { risk: ResearchRisk | null; tz: string }) {
           <p className="m-0 text-sm leading-normal text-ink-2">
             {known ? (
               t("body", {
-                windows: count(risk.windows),
+                windows: risk.windows,
                 days: risk.days,
                 cost: Math.abs(cost).toFixed(0),
                 costDir: dir(cost),
