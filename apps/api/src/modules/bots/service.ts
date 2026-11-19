@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import {
   apiKeys,
   botEvents,
@@ -14,6 +16,7 @@ import {
   sodexAccounts,
   users,
   type Db,
+  type DbTx,
 } from "@drift/db";
 import {
   AppError,
@@ -297,7 +300,7 @@ export interface CopyClash {
  * trùng (DEC-163 mục 6: luồng tạo copy bỏ các market này và báo ở Review; Start sau này mà trùng thì chặn).
  */
 export async function copyClashes(
-  deps: BotDeps,
+  deps: { db: Db | DbTx },
   sodexAccountId: string,
   strategy: string,
   markets: readonly string[],
@@ -333,7 +336,10 @@ export async function copyClashes(
   return out;
 }
 
-async function assertCopyMarketFree(deps: BotDeps, own: typeof bots.$inferSelect): Promise<void> {
+async function assertCopyMarketFree(
+  deps: { db: Db | DbTx },
+  own: typeof bots.$inferSelect,
+): Promise<void> {
   if (own.mode !== "live") return;
   const [v] = await deps.db
     .select({ config: botVersions.config })
@@ -1417,6 +1423,8 @@ async function command(
   botId: string,
   cmd: BotCommand,
   extra?: Partial<typeof bots.$inferInsert>,
+  /** Chạy dưới khoá dòng bot, sau khi state machine cho phép và trước khi ghi state mới (#318). */
+  underLock?: (tx: DbTx, b: typeof bots.$inferSelect) => Promise<void>,
 ) {
   return deps.db.transaction(async (tx) => {
     const [b] = await tx
@@ -1430,6 +1438,7 @@ async function command(
       throw new AppError(ErrorCode.botStateConflict, "Action not allowed in this state.", {
         state: b.state,
       });
+    if (underLock !== undefined) await underLock(tx, b);
     const [u] = await tx
       .update(bots)
       .set({ state: next, ...extra })
@@ -1493,8 +1502,24 @@ export async function startBot(
   await assertCopyMarketFree(deps, own);
   if (own.strategy === Strategy.copyTrade && own.mode === "live" && active !== undefined)
     await assertCopyLeaderReady(deps, active.config as Record<string, unknown>);
-  if (own.state === BotState.stopped) await newRunVersion(deps, botId);
-  const b = await command(deps, userId, botId, BotCommand.start, { reasonCode: null });
+  // Dưới khoá dòng bot (#318): hai lần Start với hai Idempotency-Key khác nhau chỉ một lần qua state machine, nên chỉ
+  // một version chạy mới. Khoá theo account để hai bot copy cùng market không cùng qua kiểm tra trùng market.
+  const b = await command(
+    deps,
+    userId,
+    botId,
+    BotCommand.start,
+    { reasonCode: null },
+    async (tx, locked) => {
+      if (locked.mode === "live") {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`bot_start:${locked.sodexAccountId}`}))`,
+        );
+        await assertCopyMarketFree({ db: tx }, locked);
+      }
+      if (locked.state === BotState.stopped) await newRunVersion(deps, tx, botId);
+    },
+  );
   await audit(deps.db, { userId, action: AuditAction.botStarted, target: botId, ip });
   return summary(b, null, null);
 }
@@ -1621,38 +1646,35 @@ export async function newestPendingConfig(
  * Chạy lại bot đã dừng (DEC-86): tạo version mới cùng cấu hình trong chính bot đó. Version mới cho clOrdID mới
  * (clOrdID theo version, không trùng lệnh của lần chạy trước) và state mới; fill và Decisions cũ vẫn giữ.
  */
-async function newRunVersion(deps: BotDeps, botId: string): Promise<void> {
-  // Version chạy mới thay version cũ: lỗi từ đây là kết quả không rõ (#316).
-  markSideEffect();
-  await deps.db.transaction(async (tx) => {
-    const [last] = await tx
-      .select()
-      .from(botVersions)
-      .where(eq(botVersions.botId, botId))
-      .orderBy(desc(botVersions.version))
-      .limit(1);
-    if (last === undefined) throw new AppError(ErrorCode.botNotFound, "Bot not found.");
-    // Cả version còn `pending` lúc bot dừng (DEC-304): lần chạy mới dùng config mới nhất (`last`).
-    await tx
-      .update(botVersions)
-      .set({ status: "superseded" })
-      .where(and(eq(botVersions.botId, botId), inArray(botVersions.status, ["active", "pending"])));
-    const [next] = await tx
-      .insert(botVersions)
-      .values({
-        botId,
-        version: last.version + 1,
-        config: last.config,
-        paramSource: last.paramSource,
-        status: "active",
-        appliedAt: deps.now(),
-      })
-      .returning({ id: botVersions.id });
-    await tx
-      .update(bots)
-      .set({ activeVersionId: next?.id ?? null, closeOnStop: false })
-      .where(eq(bots.id, botId));
-  });
+async function newRunVersion(deps: BotDeps, tx: DbTx, botId: string): Promise<void> {
+  // Chạy trong transaction của `command` (#318): lỗi ở đây rollback cả lệnh Start, không để version mới nằm lại.
+  const [last] = await tx
+    .select()
+    .from(botVersions)
+    .where(eq(botVersions.botId, botId))
+    .orderBy(desc(botVersions.version))
+    .limit(1);
+  if (last === undefined) throw new AppError(ErrorCode.botNotFound, "Bot not found.");
+  // Cả version còn `pending` lúc bot dừng (DEC-304): lần chạy mới dùng config mới nhất (`last`).
+  await tx
+    .update(botVersions)
+    .set({ status: "superseded" })
+    .where(and(eq(botVersions.botId, botId), inArray(botVersions.status, ["active", "pending"])));
+  const [next] = await tx
+    .insert(botVersions)
+    .values({
+      botId,
+      version: last.version + 1,
+      config: last.config,
+      paramSource: last.paramSource,
+      status: "active",
+      appliedAt: deps.now(),
+    })
+    .returning({ id: botVersions.id });
+  await tx
+    .update(bots)
+    .set({ activeVersionId: next?.id ?? null, closeOnStop: false })
+    .where(eq(bots.id, botId));
 }
 
 /** Sửa bot: tạo version mới `pending`; engine áp dụng rồi mới chuyển `active` (DOMAIN.md mục 7.4). */
@@ -1766,12 +1788,31 @@ export async function newVersion(
   const b = await ownBot(deps.db, userId, botId);
   const config = await checkVersionConfig(deps, userId, b, input.config);
   return deps.db.transaction(async (tx) => {
+    // Khoá dòng bot (#318): hai lần Apply cùng lúc (hai Idempotency-Key khác nhau) lần lượt chạy, lần sau thấy
+    // version `pending` của lần trước.
+    await tx.select({ id: bots.id }).from(bots).where(eq(bots.id, botId)).for("update");
     const [{ v } = { v: 0 }] = await tx
       .select({ v: max(botVersions.version) })
       .from(botVersions)
       .where(eq(botVersions.botId, botId));
-    const version = (v ?? 0) + 1;
     const draft = b.state === BotState.draft || b.state === BotState.stopped;
+    if (!draft) {
+      // Version mới nhất đang chờ engine áp đã có đúng cấu hình này: trả lại nó, không tạo version thứ hai (#318).
+      const [newest] = await tx
+        .select()
+        .from(botVersions)
+        .where(eq(botVersions.botId, botId))
+        .orderBy(desc(botVersions.version))
+        .limit(1);
+      if (
+        newest?.status === "pending" &&
+        newest.paramSource === input.paramSource &&
+        // So như sau khi lưu jsonb (field `undefined` bị bỏ).
+        isDeepStrictEqual(newest.config, JSON.parse(JSON.stringify(config)))
+      )
+        return { version: newest.version, status: newest.status };
+    }
+    const version = (v ?? 0) + 1;
     const [row] = await tx
       .insert(botVersions)
       .values({

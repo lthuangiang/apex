@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  botDetailSchema,
+  BotState,
   botSummarySchema,
   dec,
   DECIMAL_STRING_PATTERN,
@@ -18,6 +20,7 @@ import { MmFeeCatalog, mmFeeView, mmTierArgs } from "@/components/mm-fee-tiers";
 import { NotConnected, useSodexMissing } from "@/components/not-connected";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { api, ApiError } from "@/lib/api";
+import { uncertainOutcome, useFinancialMutation } from "@/lib/financial-action";
 import { feeLabels, formatMoney } from "@/lib/format";
 import { useMarketLast, useMarketNames, useMarkets } from "@/lib/markets";
 import { ME_KEY, useBuilderFeeRate, useFeatures, useMe, useTwoFactorNeeded } from "@/lib/queries";
@@ -74,6 +77,7 @@ export function CreateBot({
 }) {
   const t = useTranslations("createBot");
   const tb = useTranslations("common.badges");
+  const tc = useTranslations("common.errors");
   const qc = useQueryClient();
   const me = useMe();
   // Builder fee riêng của user nếu team đặt (DEC-159).
@@ -95,7 +99,7 @@ export function CreateBot({
   const [started, setStarted] = useState(false);
   // Lỗi đỏ chỉ hiện sau khi người dùng sửa một ô hoặc bấm Save / Start (báo cáo test E23), không ngay khi mở.
   const [touched, setTouched] = useState(false);
-  const keys = useRef({ save: crypto.randomUUID(), start: crypto.randomUUID() });
+  const keys = useRef({ save: crypto.randomUUID() });
   const s = (k: string) => t(`strategies.${strategy}.${k}`);
   const marketList = useMarkets().data?.items ?? [];
   const defaultName = defaultBotName(s("name"), values, marketList);
@@ -179,18 +183,26 @@ export function CreateBot({
   const dry = useDryRunChecks(strategy, values);
   const checks = dry.query;
 
-  const start = useMutation({
-    mutationFn: (id: string) =>
+  // Start không rõ kết quả: đọc lại bot trước khi cho bấm lại, gửi lại chỉ với cùng key (#318).
+  const startBody = () => ({ acknowledged: true, ...(code === "" ? {} : { twoFactorCode: code }) });
+  const start = useFinancialMutation({
+    mutationFn: (id: string, idempotencyKey: string) =>
       api("POST", `/api/v1/bots/${id}/actions/start`, botSummarySchema, {
-        idempotencyKey: keys.current.start,
-        body: { acknowledged: true, ...(code === "" ? {} : { twoFactorCode: code }) },
+        idempotencyKey,
+        body: startBody(),
       }),
+    identity: (id) => [id, startBody()],
+    refetch: (id) => [["bot", id], ["bots"]],
     onSuccess: () => {
       setStarted(true);
       void qc.invalidateQueries({ queryKey: ME_KEY });
     },
-    onError: () => {
-      keys.current.start = crypto.randomUUID();
+    // Màn này không giữ query của bot: đọc trực tiếp; bot đã rời draft nghĩa là Start đã được nhận.
+    onError: async (e, id) => {
+      if (uncertainOutcome(e) === null) return;
+      const read = await api("GET", `/api/v1/bots/${id}`, botDetailSchema).catch(() => null);
+      if (read !== null && read.bot.state !== BotState.draft && read.bot.state !== BotState.stopped)
+        setStarted(true);
     },
   });
 
@@ -714,7 +726,9 @@ export function CreateBot({
                           })
                           .join(", "),
                       })
-                    : errorText(save.error ?? start.error)}
+                    : start.checking
+                      ? tc("unconfirmed")
+                      : errorText(save.error ?? start.error)}
                 </p>
               )}
               <p className="m-0 text-xs text-muted">{t("notForecast")}</p>

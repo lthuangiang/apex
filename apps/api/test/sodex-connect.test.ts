@@ -473,3 +473,95 @@ describe("connect flag", () => {
     }
   });
 });
+
+describe("same SoDEX action twice with two Idempotency-Keys (#318)", () => {
+  const parse = (res: { json: () => unknown }) => signatureRequestSchema.parse(res.json());
+  const pendingKeys = async (t: Trader) =>
+    (
+      await env.pool.query(
+        `select k.id from api_keys k join sodex_accounts a on a.id = k.sodex_account_id
+         where a.sodex_account_id = $1 and k.status = 'pending'`,
+        [t.accountID],
+      )
+    ).rowCount;
+  const requests = async (t: Trader, action: string) =>
+    (
+      await env.pool.query<{ status: string; sodex_error: string | null }>(
+        `select r.status, r.sodex_error from sodex_signature_requests r
+         join sodex_accounts a on a.id = r.sodex_account_id
+         where a.sodex_account_id = $1 and r.action = $2 order by r.expires_at`,
+        [t.accountID, action],
+      )
+    ).rows;
+  const connect = (t: Trader) =>
+    t.client.request("POST", "/api/v1/sodex/connection", { body: { address: t.wallet.address } });
+
+  it("connects with one key and one signature request when Connect arrives twice at once", async () => {
+    const t = await newTrader();
+    // Tạo account trước (lần đầu thì hai request cùng lúc đụng unique index của sodex_accounts).
+    const first = parse(await connect(t));
+    const [a, b] = await Promise.all([connect(t), connect(t)]);
+    expect(parse(a).id).toBe(first.id);
+    expect(parse(b).id).toBe(first.id);
+    expect(await pendingKeys(t)).toBe(1);
+    expect(await requests(t, "add_api_key")).toHaveLength(1);
+
+    // Một lần ký là xong; gửi lại cùng request thì bị chặn.
+    expect(parse(await signAndSubmit(t, a)).status).toBe("succeeded");
+    const again = await signAndSubmit(t, b);
+    expect(errorCode(again.body)).toBe("STATE_CONFLICT");
+  });
+
+  it("replaces a request about to expire, so two requests are never signable at once", async () => {
+    const t = await newTrader();
+    const old = await connect(t);
+    // Còn dưới 2 phút để ký: tạo request mới, request cũ thành `failed` (superseded) và key chờ của nó bị xoá.
+    env.clock.now = new Date(env.clock.now.getTime() + 9 * 60_000);
+    const fresh = await connect(t);
+    expect(parse(fresh).id).not.toBe(parse(old).id);
+    expect(await requests(t, "add_api_key")).toEqual([
+      { status: "failed", sodex_error: "superseded" },
+      { status: "pending", sodex_error: null },
+    ]);
+    expect(await pendingKeys(t)).toBe(1);
+    expect(errorCode((await signAndSubmit(t, old)).body)).toBe("STATE_CONFLICT");
+    expect(parse(await signAndSubmit(t, fresh)).status).toBe("succeeded");
+  });
+
+  it("reuses the pending approve, renew and revoke requests", async () => {
+    const t = await newTrader();
+    await signAndSubmit(t, await connect(t));
+
+    const approve = () => t.client.request("POST", "/api/v1/sodex/builder-fee/approval");
+    const [a1, a2] = await Promise.all([approve(), approve()]);
+    expect(parse(a1).id).toBe(parse(a2).id);
+    expect(await requests(t, "approve_builder_fee")).toHaveLength(1);
+    expect(parse(await signAndSubmit(t, a1)).status).toBe("succeeded");
+    // Request đã xong thì lần bấm sau tạo request mới.
+    expect(parse(await approve()).id).not.toBe(parse(a1).id);
+
+    const renew = () => t.client.request("POST", "/api/v1/sodex/connection/renewal");
+    const [r1, r2] = await Promise.all([renew(), renew()]);
+    expect(parse(r1).id).toBe(parse(r2).id);
+    expect(await pendingKeys(t)).toBe(1);
+
+    const revoke = () =>
+      t.client.request("POST", "/api/v1/sodex/builder-fee/revocation", { body: {} });
+    const [v1, v2] = await Promise.all([revoke(), revoke()]);
+    expect(parse(v1).id).toBe(parse(v2).id);
+    expect(await requests(t, "revoke_builder_fee")).toHaveLength(1);
+  });
+
+  it("reuses the pending Spot and Perps revoke requests on a second Disconnect", async () => {
+    const t = await newTrader();
+    await signAndSubmit(t, await connect(t));
+    const disconnect = () => t.client.request("POST", "/api/v1/sodex/disconnection", { body: {} });
+    const [d1, d2] = (await Promise.all([disconnect(), disconnect()])).map((r) =>
+      disconnectResponseSchema.parse(r.json()),
+    );
+    expect(d2?.spot.id).toBe(d1?.spot.id);
+    expect(d2?.perps.id).toBe(d1?.perps.id);
+    expect(await requests(t, "revoke_api_key_spot")).toHaveLength(1);
+    expect(await requests(t, "revoke_api_key_perps")).toHaveLength(1);
+  });
+});

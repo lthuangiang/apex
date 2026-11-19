@@ -44,7 +44,7 @@ afterAll(async () => {
   await env.close();
 });
 
-async function connectedUser(email: string) {
+async function connectedUser(email: string, twoFactor = true) {
   const client = new TestClient(env.app);
   const me = meSchema.parse((await signIn(env, client, email)).json());
   const accountID = Math.floor(Math.random() * 1e9);
@@ -57,6 +57,7 @@ async function connectedUser(email: string) {
     "insert into api_keys (id, sodex_account_id, name, public_key, ciphertext, kms_key_ref, last4, permissions_mask, expires_at, status) values (gen_random_uuid(), $1, 'DRIFT', $2, 'x', 'x', '5508', 14, now() + interval '100 days', 'active')",
     [rows[0]?.id, ADDRESS],
   );
+  if (!twoFactor) return { client, secret: "" };
   const setup = twoFactorSetupSchema.parse(
     (await client.request("POST", "/api/v1/security/2fa/setup")).json(),
   );
@@ -1814,5 +1815,80 @@ describe("Funding Arb asset stats (DEC-160)", () => {
     // (20 × 0.01% − 0.01%) / 21 kỳ.
     expect(Number(btc?.avg7dPct)).toBeCloseTo(0.009048, 6);
     expect(body.spotVolume24h).toEqual({ vBTC_vUSDC: "500" });
+  });
+});
+
+describe("same action twice with two Idempotency-Keys (#318)", () => {
+  const stopped = async (client: TestClient, name: string) => {
+    const res = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name, paramSource: "manual", config: grid },
+    });
+    const id = res.json<{ id: string }>().id;
+    await env.pool.query("update bots set state = 'stopped' where id = $1", [id]);
+    return id;
+  };
+
+  it("starts a stopped bot once, with one new run version, when Start arrives twice at once", async () => {
+    const { client } = await connectedUser(`twice-start-${randomUUID()}@drift.test`, false);
+    const id = await stopped(client, "Twice");
+    env.sodex.setBuilder(ADDRESS, Number(TEST_BUILDER_ID), 50);
+    env.prices.set("vBTC_vUSDC", { price: "100", at: env.clock.now.getTime() });
+    const start = () =>
+      client.request("POST", `/api/v1/bots/${id}/actions/start`, {
+        body: { acknowledged: true },
+      });
+    const results = await Promise.all([start(), start(), start()]);
+    expect(results.map((r) => r.statusCode).sort()).toEqual([202, 409, 409]);
+    for (const r of results.filter((x) => x.statusCode === 409))
+      expect(errorOf(r.body).code).toBe("BOT_STATE_CONFLICT");
+    const rows = await env.pool.query<{ version: number; status: string }>(
+      "select version, status from bot_versions where bot_id = $1 order by version",
+      [id],
+    );
+    expect(rows.rows).toEqual([
+      { version: 1, status: "superseded" },
+      { version: 2, status: "active" },
+    ]);
+    const events = await env.pool.query(
+      "select id from outbox where payload->>'botId' = $1 and payload->>'state' = 'starting'",
+      [id],
+    );
+    expect(events.rowCount).toBe(1);
+  });
+
+  it("pauses and stops a running bot once when the action arrives twice", async () => {
+    const { client } = await connectedUser(`twice-pause-${randomUUID()}@drift.test`, false);
+    const id = await stopped(client, "Pause twice");
+    await env.pool.query("update bots set state = 'running' where id = $1", [id]);
+    const act = (a: string) => client.request("POST", `/api/v1/bots/${id}/actions/${a}`);
+    const paused = await Promise.all([act("pause"), act("pause")]);
+    expect(paused.map((r) => r.statusCode).sort()).toEqual([202, 409]);
+    await env.pool.query("update bots set state = 'paused' where id = $1", [id]);
+    const stops = await Promise.all([act("stop"), act("stop")]);
+    expect(stops.map((r) => r.statusCode).sort()).toEqual([202, 409]);
+    const events = await env.pool.query<{ state: string }>(
+      "select payload->>'state' as state from outbox where payload->>'botId' = $1 order by created_at, id",
+      [id],
+    );
+    expect(events.rows.map((r) => r.state)).toEqual(["pausing", "stopping"]);
+  });
+
+  it("creates one pending version when the same edit is applied twice", async () => {
+    const { client } = await connectedUser(`twice-apply-${randomUUID()}@drift.test`, false);
+    const id = await stopped(client, "Apply twice");
+    await env.pool.query("update bots set state = 'running' where id = $1", [id]);
+    const apply = (gridLevels: number) =>
+      client.request("POST", `/api/v1/bots/${id}/versions`, {
+        body: { paramSource: "manual", config: { ...grid, gridLevels } },
+      });
+    const both = await Promise.all([apply(7), apply(7)]);
+    expect(both.map((r) => r.json<unknown>())).toEqual([
+      { version: 2, status: "pending" },
+      { version: 2, status: "pending" },
+    ]);
+    // Một thay đổi khác thì vẫn là version mới.
+    expect((await apply(6)).json()).toEqual({ version: 3, status: "pending" });
+    const rows = await env.pool.query("select version from bot_versions where bot_id = $1", [id]);
+    expect(rows.rowCount).toBe(3);
   });
 });

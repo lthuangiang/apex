@@ -7,6 +7,7 @@ import { useConfig, useSignTypedData, useSwitchChain } from "wagmi";
 import { getConnection } from "wagmi/actions";
 
 import { api } from "./api";
+import { sendWithSameKey, uncertainOutcome } from "./financial-action";
 import { valueChain } from "./wagmi";
 
 // Một chữ ký master wallet cho một signature request của api (DEC-30):
@@ -68,25 +69,39 @@ export function useSodexSignature() {
       throw e;
     }
     hooks.onSigned?.();
-    let result = await api(
-      "POST",
-      `/api/v1/sodex/signature-requests/${request.id}/signature`,
-      signatureRequestSchema,
-      {
-        body: { signature },
-        idempotencyKey: crypto.randomUUID(),
-      },
-    );
+    let result: SignatureRequest;
+    try {
+      // Lỗi mạng / 409 in_progress: gửi lại một lần với CÙNG key (#318); server chỉ gửi SoDEX một lần.
+      result = await sendWithSameKey((idempotencyKey) =>
+        api(
+          "POST",
+          `/api/v1/sodex/signature-requests/${request.id}/signature`,
+          signatureRequestSchema,
+          { body: { signature }, idempotencyKey },
+        ),
+      );
+    } catch (e) {
+      // Vẫn không rõ (mạng, 5xx, 409 unknown): đọc lại request. Đã rời `pending` thì chữ ký đã được nhận, chỉ
+      // đối soát tiếp, không bao giờ gửi lại chữ ký.
+      if (uncertainOutcome(e) === null) throw e;
+      const read = await api(
+        "GET",
+        `/api/v1/sodex/signature-requests/${request.id}`,
+        signatureRequestSchema,
+      ).catch(() => null);
+      if (read === null || read.status === "pending") throw e;
+      result = read;
+    }
     while (result.status === "unknown") {
       hooks.onUnknown?.();
       await new Promise((resolve) => setTimeout(resolve, UNKNOWN_POLL_MS));
-      result = await api(
-        "POST",
-        `/api/v1/sodex/signature-requests/${request.id}/reconciliation`,
-        signatureRequestSchema,
-        {
-          idempotencyKey: crypto.randomUUID(),
-        },
+      result = await sendWithSameKey((idempotencyKey) =>
+        api(
+          "POST",
+          `/api/v1/sodex/signature-requests/${request.id}/reconciliation`,
+          signatureRequestSchema,
+          { idempotencyKey },
+        ),
       );
     }
     return result.status === "succeeded"

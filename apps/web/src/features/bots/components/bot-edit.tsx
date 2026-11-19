@@ -2,16 +2,17 @@
 
 import { botDetailSchema, BotState, UserRole } from "@drift/shared";
 import { Button, ConfirmDialog } from "@drift/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 
 import { PageHead } from "@/components/workspace";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { api } from "@/lib/api";
+import { useFinancialMutation } from "@/lib/financial-action";
 import { formatDateTime } from "@/lib/format";
 import { useMe } from "@/lib/queries";
 
@@ -45,6 +46,7 @@ export function BotEdit({
   const t = useTranslations("botEdit");
   const ts = useTranslations("states");
   const tf = useTranslations("createBot");
+  const tc = useTranslations("common.errors");
   const qc = useQueryClient();
   const me = useMe();
   const [waitingFor, setWaitingFor] = useState<number | null>(null);
@@ -63,7 +65,6 @@ export function BotEdit({
   const [values, setValues] = useState<FormValues | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [aiInfo, setAiInfo] = useState<RetuneInfo>({ paramSource: "manual", sources: {} });
-  const key = useRef(crypto.randomUUID());
 
   const bot = detail.data?.bot;
   const active = detail.data?.versions.find((v) => v.status === "active");
@@ -99,26 +100,27 @@ export function BotEdit({
 
   const live = waiting !== null && active !== undefined && active.version >= waiting;
   const note = bot === undefined ? null : pendingNoteOf(bot.strategy, bot.state);
-  const apply = useMutation({
-    mutationFn: () => {
-      if (strategy === undefined || values === null) throw new Error("not ready");
-      return api("POST", `/api/v1/bots/${botId}/versions`, versionAck, {
-        idempotencyKey: key.current,
-        body: {
+  const versionBody = () =>
+    strategy === undefined || values === null
+      ? null
+      : {
           paramSource: aiInfo.paramSource,
           ...(aiInfo.suggestionId === undefined ? {} : { aiSuggestionId: aiInfo.suggestionId }),
           config: toConfig(strategy, values),
-        },
-      });
+        };
+  // Apply không rõ kết quả: đọc lại bot (version đang chờ) trước khi cho bấm lại; gửi lại chỉ với cùng key (#318).
+  const apply = useFinancialMutation({
+    mutationFn: (_: null, idempotencyKey: string) => {
+      const body = versionBody();
+      if (body === null) throw new Error("not ready");
+      return api("POST", `/api/v1/bots/${botId}/versions`, versionAck, { idempotencyKey, body });
     },
+    identity: () => [botId, versionBody()],
+    refetch: [["bot", botId]],
     onSuccess: async (r) => {
-      key.current = crypto.randomUUID();
       setConfirm(false);
       setWaitingFor(r.version);
       await qc.invalidateQueries({ queryKey: ["bot", botId] });
-    },
-    onError: () => {
-      key.current = crypto.randomUUID();
     },
   });
 
@@ -256,7 +258,7 @@ export function BotEdit({
             )}
             {apply.error === null ? null : (
               <p role="alert" className="m-0 text-sm text-neg-ink">
-                {errorText(apply.error)}
+                {apply.checking ? tc("unconfirmed") : errorText(apply.error)}
               </p>
             )}
             <div className="flex flex-wrap gap-2">
@@ -305,7 +307,7 @@ export function BotEdit({
           cancelLabel={t("dialog.keep", { version: active.version })}
           pending={apply.isPending}
           onConfirm={() => {
-            apply.mutate();
+            apply.mutate(null);
           }}
         />
       </div>

@@ -21,6 +21,7 @@ import {
   shortWallet,
   type EventData,
 } from "@/lib/connect-events";
+import { sendWithSameKey, uncertainOutcome } from "@/lib/financial-action";
 import { feeLabels, formatDate, shortAddress } from "@/lib/format";
 import { useMe } from "@/lib/queries";
 import { useSodexSignature } from "@/lib/use-sodex-signature";
@@ -130,6 +131,20 @@ export function ConnectSodex() {
             }
           : errorInfo(e),
       );
+      // Không rõ kết quả (#318): giữ nút khoá, đọc lại kết nối rồi mới cho bấm lại. Bấm lại thì server trả lại
+      // request ký còn chờ, không tạo key thứ hai.
+      if (uncertainOutcome(e) !== null) {
+        setError(tc("unconfirmed"));
+        const read = await api("GET", "/api/v1/sodex/connection", sodexConnectionSchema).catch(
+          () => null,
+        );
+        const now = read?.connection ?? null;
+        if (now?.status === "connected" && now.builderFee?.approved === true) {
+          setError(null);
+          setPhase({ kind: "done", connection: now });
+          return;
+        }
+      }
       setError(describe(e));
     } finally {
       busyRef.current = false;
@@ -139,22 +154,21 @@ export function ConnectSodex() {
 
   async function openKeyRequest(wallet: string) {
     track("key_requested");
-    const request = await api("POST", "/api/v1/sodex/connection", signatureRequestSchema, {
-      body: { address: wallet },
-      idempotencyKey: crypto.randomUUID(),
-    });
+    const request = await sendWithSameKey((idempotencyKey) =>
+      api("POST", "/api/v1/sodex/connection", signatureRequestSchema, {
+        body: { address: wallet },
+        idempotencyKey,
+      }),
+    );
     setPhase({ kind: "review", request, which: "key", rejected: false });
   }
 
   async function openFeeRequest() {
     track("fee_requested");
-    const request = await api(
-      "POST",
-      "/api/v1/sodex/builder-fee/approval",
-      signatureRequestSchema,
-      {
-        idempotencyKey: crypto.randomUUID(),
-      },
+    const request = await sendWithSameKey((idempotencyKey) =>
+      api("POST", "/api/v1/sodex/builder-fee/approval", signatureRequestSchema, {
+        idempotencyKey,
+      }),
     );
     setPhase({ kind: "review", request, which: "fee", rejected: false });
   }

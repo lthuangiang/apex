@@ -22,7 +22,8 @@
       "generic": "Something went wrong. Try again.",
       "network": "Can’t reach DeskLabs. Check your connection and try again.",
       "rateLimited": "Too many attempts. Try again in a minute.",
-      "retry": "Try again"
+      "retry": "Try again",
+      "unconfirmed": "We couldn’t confirm this. Checking the latest state…"
     },
     "nav": {
       "label": "Main",
@@ -2826,7 +2827,8 @@
     "signalAnalysis.research.trace.why.noBalance",
     "signalAnalysis.research.trace.why.oppositeNews",
     "signalAnalysis.research.reasonsN",
-    "signalAnalysis.research.trace.reasonLabelsN"
+    "signalAnalysis.research.trace.reasonLabelsN",
+    "common.errors.unconfirmed"
   ],
   "beta": {
     "label": "Beta",

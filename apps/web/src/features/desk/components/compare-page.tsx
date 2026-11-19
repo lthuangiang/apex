@@ -2,13 +2,14 @@
 
 import { whatIfApplyViewSchema, whatIfViewSchema, type WhatIfView } from "@drift/shared";
 import { Button, ErrorState, PnLValue, Skeleton } from "@drift/ui";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { PageHead, Workspace } from "@/components/workspace";
 import { api, ApiError } from "@/lib/api";
+import { useFinancialMutation } from "@/lib/financial-action";
 import { formatMoney } from "@/lib/format";
 
 import { optionValues, pickGain } from "../bplus";
@@ -139,13 +140,14 @@ export function ComparePage({ id }: { id: string }) {
   useEffect(() => {
     if (selected === null && w?.pick?.key != null) setSelected(w.pick.key);
   }, [selected, w?.pick?.key]);
-  const key = useRef(crypto.randomUUID());
-  const apply = useMutation({
-    mutationFn: (option: FixKey) =>
+  // Apply đổi cấu hình bot: kết quả không rõ thì đọc lại so sánh và bot trước khi cho bấm lại (#318).
+  const apply = useFinancialMutation({
+    mutationFn: (option: FixKey, idempotencyKey: string) =>
       api("POST", `/api/v1/desk/whatifs/${id}/apply`, whatIfApplyViewSchema, {
-        idempotencyKey: key.current,
+        idempotencyKey,
         body: { option },
       }),
+    refetch: [["desk", "whatif", id]],
   });
 
   const back = { href: "/desk", label: t("back") };
@@ -218,7 +220,13 @@ export function ComparePage({ id }: { id: string }) {
               name={current === undefined ? "" : words.name(current)}
               pending={apply.isPending}
               done={apply.data ?? null}
-              error={apply.isError ? applyError(t, apply.error) : null}
+              error={
+                apply.checking
+                  ? te("unconfirmed")
+                  : apply.isError
+                    ? applyError(t, apply.error)
+                    : null
+              }
               onApply={(k) => {
                 apply.mutate(k);
               }}
