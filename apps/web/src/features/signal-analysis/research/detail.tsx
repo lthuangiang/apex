@@ -5,6 +5,8 @@ import { BottomSheet, Skeleton } from "@drift/ui";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
+import { useMarketNames } from "@/lib/markets";
+
 import type { PageCtx } from "../components/signal-analysis-page";
 import { clock, count, monthDay, shortDate, signed } from "../format";
 
@@ -16,6 +18,7 @@ import {
   pctSigned,
   priceText,
   span,
+  tickPrice,
   times,
   tone,
   usdCompact,
@@ -67,8 +70,9 @@ const REQUIRED: Record<FactKey, readonly Field[]> = {
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const given = <T,>(v: T | null | undefined): v is T => v !== null && v !== undefined;
 
-function FactValue({ f, tz }: { f: ResearchFact; tz: string }) {
+function FactValue({ f, tz, trade }: { f: ResearchFact; tz: string; trade: Detail["trade"] }) {
   const t = useTranslations("signalAnalysis.research");
+  const names = useMarketNames();
   // #278: lane News gửi tên nguồn của bài (CoinDesk…) trong `text`, không có chu kỳ đồng bộ.
   if (f.key === "source" && !given(f.secs))
     return given(f.text) && f.text !== "" ? <>{f.text}</> : <Na />;
@@ -103,7 +107,13 @@ function FactValue({ f, tz }: { f: ResearchFact; tz: string }) {
     time: f.at === null || f.at === undefined ? "" : clock(f.at, tz),
     date: f.at === null || f.at === undefined ? "" : monthDay(f.at, tz),
     delay: f.secs === null || f.secs === undefined ? "" : delay(f.secs),
-    price: f.price === null || f.price === undefined ? "" : priceText(f.price),
+    price:
+      f.price === null || f.price === undefined
+        ? ""
+        : // #297: TP / SL theo tick của market (bản ghi cũ lưu 18 chữ số thập phân).
+          f.key === "tp" || f.key === "sl"
+          ? tickPrice(f.price, names.info(trade.asset)?.tickSize ?? null, trade.entry)
+          : priceText(f.price),
     pct,
     usd,
     n: f.n ?? 0,
@@ -184,7 +194,7 @@ function Step({
               <div key={`${f.key}-${String(k)}`} className="min-w-0">
                 <dt className="text-xs font-bold text-muted">{t(`detail.facts.${f.key}.label`)}</dt>
                 <dd className="m-0 text-sm font-bold">
-                  <FactValue f={f} tz={tz} />
+                  <FactValue f={f} tz={tz} trade={d.trade} />
                 </dd>
               </div>
             ))}

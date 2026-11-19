@@ -5,6 +5,7 @@ import {
   ErrorCode,
   NEWS_RULES,
   sourceTierOf,
+  tagName,
   type ResearchArticle,
   type ResearchArticlesPage,
   type ResearchArticlesQuery,
@@ -170,9 +171,8 @@ export async function loadArticleStops(q: Q, since: Date | null) {
 
 // ── Đổi dòng → item API ──────────────────────────────────────────────────────────────────────────────────────────────
 
-const matchedList = z.array(
-  z.object({ symbol: z.string(), name: z.string().nullable().optional() }),
-);
+/** `name` của SoSoValue có thể là chuỗi, chuỗi JSON `{"EN": …}` hoặc object: đọc bằng `tagName` (#297). */
+const matchedList = z.array(z.object({ symbol: z.string(), name: z.unknown().optional() }));
 const candidateList = z.array(
   z.object({ symbol: z.string(), market: z.string(), kind: z.enum(["crypto", "stock"]) }),
 );
@@ -483,7 +483,7 @@ function stepsOf(input: {
       url: a.url,
       tagged: parseOr(matchedList, a.matchedCurrencies, []).map((m) => ({
         symbol: m.symbol,
-        name: m.name ?? null,
+        name: tagName(m.name),
       })),
     },
   });

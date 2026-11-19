@@ -181,22 +181,36 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     await ready();
     expect(lastPath("/summary")).toContain("range=1d");
     expect(lastPath("/articles?")).toContain("range=1d");
+    // #297: 20 bài mỗi trang, feed cuộn trong khung cao cố định (không kéo dài trang).
+    expect(lastPath("/articles?")).toContain("limit=20");
+    const scroll = screen.getByTestId("sr-feed-scroll");
+    expect(scroll).toHaveClass("overflow-y-auto", "max-h-[420px]", "md:max-h-[470px]");
+    expect(within(scroll).getAllByRole("listitem").length).toBeGreaterThan(0);
     const f = funnel();
     expect(within(f).getByText("How news becomes a paper trade · last 1 day")).toBeInTheDocument();
     expect(within(f).getByRole("button", { name: "1 day" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    // Số trong tầng (desktop) và trong tầng điện thoại.
+    // Số trong tầng (desktop) và trong tầng điện thoại. #297: mọi tầng đếm BÀI thu trong khoảng (articleStops), vào − ra
+    // = tầng sau: 58 − 36 = 22, 22 − 19 = 3, 3 − 2 = 1 (1 TP dưới chi phí, 1 gộp), 1 bài mở lệnh = Long 1 · Short 0.
     expect(within(f).getAllByText("58 articles").length).toBeGreaterThan(0);
-    expect(within(f).getAllByText("25 stories").length).toBeGreaterThan(0);
+    expect(within(f).getAllByText("22 articles on SoDEX").length).toBeGreaterThan(0);
     expect(within(f).getAllByText("3 signals").length).toBeGreaterThan(0);
     expect(within(f).getAllByText("1 left").length).toBeGreaterThan(0);
     expect(within(f).getAllByText("Long 1 · Short 0").length).toBeGreaterThan(0);
     expect(within(f).getByText("every SoSoValue article")).toBeInTheDocument();
-    expect(within(f).getByText("33 out · 31 not on SoDEX, 2 duplicate")).toBeInTheDocument();
+    // "No coin tagged" bị Normalize loại (event NO_SODEX_MARKET): trừ ở Normalize.
+    expect(within(f).getByText("36 out · 31 not on SoDEX, 3 no coin tagged")).toBeInTheDocument();
     expect(within(f).getByText("19 out · 15 not a catalyst, 4 promo")).toBeInTheDocument();
-    expect(within(f).getByText("1 out · 1 TP under cost")).toBeInTheDocument();
+    expect(
+      within(f).getByText("2 out · 1 TP under cost, 1 merged into a story"),
+    ).toBeInTheDocument();
+    expect(
+      within(f).getByText(
+        "Every step counts the same articles, collected in the last 1 day: in − out = next step.",
+      ),
+    ).toBeInTheDocument();
     expect(within(f).getByText("500 USDC each · TP / SL from volatility")).toBeInTheDocument();
     expect(within(f).getByText("4 min 20 s")).toBeInTheDocument();
     expect(within(f).getByText("$0.03 today")).toBeInTheDocument();
@@ -242,6 +256,13 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(lastPath("/articles?")).toContain("range=7d");
     expect(await within(funnel()).findByText("$0.42 / day")).toBeInTheDocument();
     expect(within(funnel()).getAllByText("1,240 articles").length).toBeGreaterThan(0);
+    expect(within(funnel()).getAllByText("340 articles on SoDEX").length).toBeGreaterThan(0);
+    expect(within(funnel()).getAllByText("108 signals").length).toBeGreaterThan(0);
+    expect(within(funnel()).getAllByText("41 left").length).toBeGreaterThan(0);
+    expect(within(funnel()).getAllByText("Long 29 · Short 12").length).toBeGreaterThan(0);
+    expect(
+      within(funnel()).getByText("900 out · 808 duplicate, 52 not on SoDEX"),
+    ).toBeInTheDocument();
     expect(intlErrors).toEqual([]);
   });
 
