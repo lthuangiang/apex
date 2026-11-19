@@ -235,6 +235,31 @@ const skip = (reason: string, regime: FarmRegime = "UNKNOWN"): FarmSignal => ({
 });
 
 /**
+ * Bộ chặn ngược xu hướng của apex (ngưỡng 0.70): TREND_UP chặn short khi score > 0.30, TREND_DOWN chặn long khi
+ * score < 0.70 (tức chỉ cho đi ngược xu hướng khi tín hiệu rất mạnh). Tách ra để công cụ nghiên cứu #282 áp cùng công
+ * thức lên hướng cuối cùng của lượt vào.
+ */
+export function counterTrendBlocked(
+  regime: FarmRegime,
+  direction: FarmDirection,
+  score: number,
+): boolean {
+  const t = FARM_SIGNAL.trendCounterThreshold;
+  return (
+    (regime === "TREND_UP" && direction === "short" && score > 1 - t) ||
+    (regime === "TREND_DOWN" && direction === "long" && score < t)
+  );
+}
+
+export interface FarmSignalOptions {
+  /**
+   * Chỉ cho mô phỏng nghiên cứu (#282): `false` bỏ bước COUNTER_TREND_BLOCKED bên trong `farmSignal`. Thiếu = chặn như
+   * bot thật. Engine không bao giờ truyền tuỳ chọn này.
+   */
+  counterTrend?: boolean;
+}
+
+/**
  * Điểm tổng hợp và hướng (FARM luôn giao dịch: score ≥ 0.5 → long, < 0.5 → short), trừ khi regime chặn ngược
  * xu hướng, spread vượt `maxSpreadBps`, nến cũ quá 120 s hoặc không đủ nến.
  */
@@ -243,6 +268,7 @@ export function farmSignal(
   book: BookTop | null,
   now: number,
   maxSpreadBps: number,
+  opts: FarmSignalOptions = {},
 ): FarmSignal {
   const candles = validCandles(raw, now);
   if (candles.length < FARM_SIGNAL.minCandles)
@@ -282,11 +308,7 @@ export function farmSignal(
 
   let direction: FarmDirection = score >= 0.5 ? "long" : "short";
   let reason = `${direction.toUpperCase()}: score ${score.toFixed(3)}, regime ${regime}`;
-  const t = FARM_SIGNAL.trendCounterThreshold;
-  if (
-    (regime === "TREND_UP" && direction === "short" && score > 1 - t) ||
-    (regime === "TREND_DOWN" && direction === "long" && score < t)
-  ) {
+  if (opts.counterTrend !== false && counterTrendBlocked(regime, direction, score)) {
     direction = "skip";
     reason = `COUNTER_TREND_BLOCKED: ${regime} blocked ${score >= 0.5 ? "long" : "short"} (score ${score.toFixed(3)})`;
   }

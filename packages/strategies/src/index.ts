@@ -69,6 +69,7 @@ export {
   farmStopFraction,
   farmRandom,
   stepVolumeFarm,
+  VB_FADE_MOVE_MINS,
   volumeFarm,
   type VolumeFarmState,
 } from "./volume-farm";
@@ -96,7 +97,13 @@ export {
   type FillGroup,
 } from "./volume-farm/review";
 export { volumeFarmSchema, type VolumeFarmConfig } from "./volume-farm/schema";
-export { FARM_SIGNAL, FARM_WEIGHTS, farmSignal, type FarmSignal } from "./volume-farm/signal";
+export {
+  counterTrendBlocked,
+  FARM_SIGNAL,
+  FARM_WEIGHTS,
+  farmSignal,
+  type FarmSignal,
+} from "./volume-farm/signal";
 export {
   VM_DEFAULTS,
   VM_LEVERAGE_MAX,

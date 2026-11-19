@@ -14,6 +14,7 @@ export const BOOTSTRAP_RESAMPLES = 2_000;
 export const BOOTSTRAP_SEED = 274;
 /** Nhóm dưới ngần này lệnh là "mỏng" (#269: chỉ tách nhóm khi ≥ 30). */
 export const THIN_SAMPLE = 30;
+const num = (x: number) => new Decimal(x.toPrecision(12));
 
 /** Một quan sát: giá trị và giờ vào lệnh (ms) để gom cụm theo ngày. */
 export interface DayObs {
@@ -77,17 +78,85 @@ function dayBootstrap(obs: readonly DayObs[]): { lo: number; hi: number; se: num
     }
     means.push(sum / n);
   }
-  means.sort((a, b) => a - b);
-  const m = means.reduce((s, x) => s + x, 0) / means.length;
-  const se = Math.sqrt(means.reduce((s, x) => s + (x - m) ** 2, 0) / (means.length - 1));
+  return percentile95(means);
+}
+
+/**
+ * Khoảng 95% theo phân vị của các giá trị bootstrap (quy ước chung cho mọi khoảng tin cậy dùng hàm này: 2.5% lấy `floor`,
+ * 97.5% lấy `ceil`) và sai số chuẩn (sd của các giá trị). Cần ≥ 2 giá trị.
+ */
+function percentile95(values: number[]): { lo: number; hi: number; se: number } {
+  values.sort((a, b) => a - b);
+  const m = values.reduce((s, x) => s + x, 0) / values.length;
+  const se = Math.sqrt(values.reduce((s, x) => s + (x - m) ** 2, 0) / (values.length - 1));
   return {
-    lo: means[Math.floor(0.025 * (means.length - 1))] ?? m,
-    hi: means[Math.ceil(0.975 * (means.length - 1))] ?? m,
+    lo: values[Math.floor(0.025 * (values.length - 1))] ?? m,
+    hi: values[Math.ceil(0.975 * (values.length - 1))] ?? m,
     se,
   };
 }
 
-const num = (x: number) => new Decimal(x.toPrecision(12));
+export interface DayDiff {
+  /** Trung bình nhóm a − trung bình nhóm b (mỗi nhóm là trung bình mọi quan sát); thiếu một nhóm → null. */
+  diff: Decimal | null;
+  ciLow: Decimal | null;
+  ciHigh: Decimal | null;
+  /** Số ngày (UTC) có ít nhất một quan sát ở một trong hai nhóm. */
+  clusters: number;
+}
+
+/**
+ * Chênh hai trung bình (a − b) với khoảng 95% bằng block bootstrap theo ngày GHÉP CẶP (#282): mỗi lần lấy mẫu lại cùng một
+ * tập ngày cho cả hai nhóm (cùng thị trường cùng ngày tương quan), rồi lấy chênh hai trung bình (tổng ÷ số quan sát của
+ * mỗi nhóm). Cùng PRNG, seed, số lần lấy mẫu và quy ước phân vị với `summarizeByDay`. < 2 ngày → không có khoảng.
+ */
+export function diffByDayBootstrap(a: readonly DayObs[], b: readonly DayObs[]): DayDiff {
+  const mean = (xs: readonly DayObs[]) =>
+    xs.length === 0 ? null : xs.reduce((s, o) => s.add(o.v), new Decimal(0)).div(xs.length);
+  const ma = mean(a);
+  const mb = mean(b);
+  const diff = ma === null || mb === null ? null : ma.sub(mb);
+  const days = new Map<number, { sa: number; na: number; sb: number; nb: number }>();
+  const put = (o: DayObs, first: boolean) => {
+    const k = Math.floor(o.at / DAY);
+    const d = days.get(k) ?? { sa: 0, na: 0, sb: 0, nb: 0 };
+    if (first) {
+      d.sa += o.v.toNumber();
+      d.na += 1;
+    } else {
+      d.sb += o.v.toNumber();
+      d.nb += 1;
+    }
+    days.set(k, d);
+  };
+  for (const o of a) put(o, true);
+  for (const o of b) put(o, false);
+  const blocks = [...days.values()];
+  const k = blocks.length;
+  const none = { diff, ciLow: null, ciHigh: null, clusters: k };
+  if (diff === null || k < 2) return none;
+  const next = rng(BOOTSTRAP_SEED);
+  const ds: number[] = [];
+  for (let r = 0; r < BOOTSTRAP_RESAMPLES; r++) {
+    let sa = 0;
+    let na = 0;
+    let sb = 0;
+    let nb = 0;
+    for (let i = 0; i < k; i++) {
+      const x = blocks[Math.floor(next() * k)];
+      if (x === undefined) continue;
+      sa += x.sa;
+      na += x.na;
+      sb += x.sb;
+      nb += x.nb;
+    }
+    // Lần lấy mẫu không có quan sát của một nhóm thì bỏ (không định nghĩa được chênh).
+    if (na > 0 && nb > 0) ds.push(sa / na - sb / nb);
+  }
+  if (ds.length < 2) return none;
+  const q = percentile95(ds);
+  return { diff, ciLow: num(q.lo), ciHigh: num(q.hi), clusters: k };
+}
 
 export function summarizeByDay(obs: readonly DayObs[], thinSample = THIN_SAMPLE): DaySummary {
   const n = obs.length;
