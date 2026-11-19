@@ -258,6 +258,10 @@ function Bar({ data }: { data: ResearchVersions }) {
           n: c.labeled,
           b,
         })}
+        {tn("trades.sep")}
+        <a href="#sr-labels" className="font-semibold text-accent-ink underline">
+          {t("labelMore")}
+        </a>
       </span>
     </div>
   );

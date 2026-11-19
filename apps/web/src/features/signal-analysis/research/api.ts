@@ -1,6 +1,8 @@
 import {
   researchArticlesPageSchema,
   researchClassifiersSchema,
+  researchLabelNextSchema,
+  researchLabelSavedSchema,
   researchMarketsSchema,
   researchVersionCreatedSchema,
   researchVersionSchema,
@@ -16,6 +18,7 @@ import {
   type ResearchShow,
   type ResearchStage,
   type ResearchType,
+  type ResearchLabelBody,
   type ResearchVersionCreateBody,
   type ResearchVersionStatusBody,
 } from "@drift/shared";
@@ -48,6 +51,8 @@ export const RESEARCH_PATHS = {
   versionStatus: (id: string) => `${RESEARCH_BASE}/versions/${encodeURIComponent(id)}/status`,
   markets: `${RESEARCH_BASE}/markets`,
   classifiers: `${RESEARCH_BASE}/classifiers`,
+  labelNext: `${RESEARCH_BASE}/labels/next`,
+  label: (id: string) => `${RESEARCH_BASE}/articles/${encodeURIComponent(id)}/label`,
 } as const;
 
 export interface ResearchFilters {
@@ -247,6 +252,55 @@ export function useVersionStatus() {
     refetch: versionReads,
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: KEY });
+    },
+  });
+}
+
+// ── Nhãn phân loại (#306, API #304; thiết kế docs/mockups/signal-research/bot-versions-labels.html) ──────────────────
+
+export const LABEL_NEXT_KEY = [...KEY, "labelNext"] as const;
+
+/**
+ * Một bài ngẫu nhiên trong tín hiệu của classifier hiện tại mà người xem chưa gắn nhãn. Không có trường kết quả nào
+ * (DEC-333): kết quả lệnh chỉ có sau khi lưu nhãn.
+ */
+export function useLabelNext(enabled: boolean) {
+  return useQuery({
+    queryKey: LABEL_NEXT_KEY,
+    queryFn: () => api("GET", RESEARCH_PATHS.labelNext, researchLabelNextSchema),
+    enabled,
+    // Mỗi lần "Label another" đọc một bài mới; không dùng lại bài cũ từ cache.
+    gcTime: 0,
+    staleTime: Infinity,
+    retry,
+  });
+}
+
+export interface SaveLabelVars {
+  articleId: string;
+  body: ResearchLabelBody;
+}
+
+/**
+ * Lưu nhãn (`PUT`, Idempotency-Key): cùng key khi tự gửi lại; kết quả không rõ thì đọc lại bảng chất lượng classifier
+ * và trace của bài trước khi mở lại nút (DEC-336).
+ */
+export function useSaveLabel(onSaved: (r: z.output<typeof researchLabelSavedSchema>) => void) {
+  const qc = useQueryClient();
+  return useFinancialMutation({
+    mutationFn: (v: SaveLabelVars, idempotencyKey: string) =>
+      api("PUT", RESEARCH_PATHS.label(v.articleId), researchLabelSavedSchema, {
+        body: v.body,
+        idempotencyKey,
+      }),
+    refetch: (v) => [CLASSIFIERS_KEY, [...KEY, "trace", v.articleId]],
+    onSuccess: async (r) => {
+      onSaved(r);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: CLASSIFIERS_KEY }),
+        qc.invalidateQueries({ queryKey: VERSIONS_KEY }),
+        qc.invalidateQueries({ queryKey: [...KEY, "trace", r.articleId] }),
+      ]);
     },
   });
 }

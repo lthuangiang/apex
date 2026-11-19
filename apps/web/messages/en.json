@@ -2833,7 +2833,12 @@
     "common.errors.unconfirmed",
     "onboarding.connect.errors.feeSuperseded",
     "onboarding.connect.errors.feeInFlight",
-    "signalAnalysis.research.versions"
+    "signalAnalysis.research.versions",
+    "signalAnalysis.research.labeling",
+    "signalAnalysis.research.trades.opposite",
+    "signalAnalysis.research.trades.oppositeTip",
+    "signalAnalysis.research.trades.shadow",
+    "signalAnalysis.research.trades.shadowPnl"
   ],
   "beta": {
     "label": "Beta",
@@ -8107,7 +8112,10 @@
           "size": "Size",
           "entry": "Entry",
           "tpSl": "Take profit / Stop loss",
-          "maxHold": "Max hold"
+          "maxHold": "Max hold",
+          "opposite": "Opposite news",
+          "oppositeArticle": "Opposite news",
+          "shadow": "Would-have trade"
         },
         "values": {
           "collected": "{time} ({d} later)",
@@ -8140,7 +8148,10 @@
           "size": "{size} USDC (fake money)",
           "entry": "{price} at {time}",
           "tpSl": "{tp} ({tpPct}) / {sl} ({slPct})",
-          "levelNow": "{level} at entry · now {n, plural, one {# source} other {# sources}}"
+          "levelNow": "{level} at entry · now {n, plural, one {# source} other {# sources}}",
+          "opposite": "{time} · {action, select, closed {closed} other {kept}} · closing then: {usd} ({pct})",
+          "oppositeArticle": "{action, select, closed {Closed the open trade} other {Kept the open trade}}",
+          "shadow": "Followed outside the balance"
         },
         "traceCol": "Trace",
         "traceBtn": "Trace",
@@ -8366,7 +8377,11 @@
         "retry": "Retry",
         "retryTip": "Opened on a later article of the same story, within 2 hours of the first one.",
         "unrealized": "{pnl} unrealized",
-        "openCard": "Open"
+        "openCard": "Open",
+        "opposite": "opposite news",
+        "oppositeTip": "Opposite news at {time} · {action, select, closed {closed} other {kept}} · closing then: {usd} ({pct})",
+        "shadow": "Would have: {outcome}",
+        "shadowPnl": "Would have: {outcome} · {pnl}"
       },
       "detail": {
         "close": "Close",
@@ -8798,6 +8813,89 @@
           "open": "Pick assets",
           "picked": "{n, plural, =0 {No assets picked} one {# asset picked} other {# assets picked}}"
         }
+      },
+      "labeling": {
+        "title": "Classifier quality",
+        "intro": "Measured per classifier version, because every News bot version uses the same classifier. <b>Right</b> = of the articles Claude called a signal, the share a person marked right. Signals Claude missed are measured later.",
+        "table": "Classifier quality by classifier version",
+        "cols": {
+          "classifier": "Classifier",
+          "labels": "Labels",
+          "right": "Right",
+          "counts": "Trades count?"
+        },
+        "current": "{v} (current)",
+        "range": "likely {lo}–{hi}%",
+        "counts": {
+          "passed": "Yes · {n, plural, one {# label} other {# labels}}",
+          "underPrecision": "No · under 80% · {n, plural, one {# label} other {# labels}}",
+          "needsLabels": "Not yet · {k, plural, one {# more label} other {# more labels}}"
+        },
+        "floor": "<b>The floor:</b> {min} labels with {pct}% or more right.",
+        "floorRange": "<b>The floor:</b> {min} labels with {pct}% or more right. With {n, plural, one {# label} other {# labels}} at {p}%, the real share could be anywhere from about {lo}% to {hi}%, so this is a minimum, not proof.",
+        "mistakes": "Most common mistakes ({v})",
+        "noMistakes": "No wrong labels yet.",
+        "none": "No classifier has signals yet.",
+        "random": "Label a random signal",
+        "randomNote": "Picks at random from articles the current classifier called a signal, so the share isn’t skewed by which ones people choose.",
+        "loading": "Loading…",
+        "error": "Couldn’t load the classifier quality.",
+        "nextError": "Couldn’t load a signal to label.",
+        "empty": "No signals of the current classifier are left for you to label.",
+        "remaining": "{n, plural, one {# signal} other {# signals}} of {v} left to label",
+        "next": "Label another",
+        "close": "Done labelling",
+        "article": "Article",
+        "claudeSaid": "Claude said",
+        "said": "News type <b>{type}</b> · asset <b>{asset}</b> · relevance <b>{relevance}</b> · {promo}",
+        "relevance": {
+          "direct": "main subject",
+          "passingMention": "passing mention"
+        },
+        "promo": {
+          "yes": "promotional",
+          "no": "not promotional",
+          "na": "promotional Not available"
+        },
+        "meta": "{v} · {cost}",
+        "metaNoCost": "{v}",
+        "question": "Is this classification right?",
+        "verdictGroup": "Label",
+        "verdict": {
+          "right": "Right",
+          "wrong": "Wrong"
+        },
+        "whatWrong": "What is wrong",
+        "pickReason": "Pick what is wrong",
+        "reasons": {
+          "person_not_company": "The subject is a person, not the company",
+          "wrong_type": "Wrong news type",
+          "wrong_asset": "Wrong asset",
+          "passing_mention": "Not news about the asset (passing mention)",
+          "promotional": "Promotional",
+          "other": "Other"
+        },
+        "reasonsShort": {
+          "person_not_company": "The subject is a person, not the company",
+          "wrong_type": "Wrong news type",
+          "wrong_asset": "Wrong asset",
+          "passing_mention": "Not news about the asset",
+          "promotional": "Promotional",
+          "other": "Other"
+        },
+        "note": "Note (optional)",
+        "hidden": "The trade result stays hidden until you save, so it can’t sway the label.",
+        "save": "Save label",
+        "saving": "Saving…",
+        "saved": "Labelled at {time} · one label per person per article · change it any time",
+        "rule": "One label per person per article · change it any time",
+        "saveError": "Couldn’t save the label. Nothing changed.",
+        "notSignal": "This article is not a signal of a classifier, so it can’t be labelled.",
+        "decide": "Decide",
+        "resultHidden": "Result hidden while labelling",
+        "noTrades": "No trade was opened from this article.",
+        "trade": "{side} · {outcome}",
+        "tradeOpen": "{side} · open"
       }
     }
   }
