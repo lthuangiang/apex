@@ -1,0 +1,59 @@
+import type { ResearchDropReason, ResearchNewsType } from "@drift/shared";
+
+// Bảng đổi khoá nội bộ của lane tin tức → khoá API (#271, #291). Dùng chung cho tổng kết, danh sách lệnh và feed bài;
+// không export ra ngoài package (index.ts không re-export file này).
+
+const NEWS_TYPE = {
+  hack_exploit: "hack",
+  listing: "listing",
+  delisting: "delisting",
+  etf_approved: "etfApproved",
+  etf_delayed_or_rejected: "etfDelayed",
+  regulatory_action: "regulatorAgainst",
+  favorable_ruling: "regulatorFavour",
+  treasury_buy: "treasuryBuy",
+  treasury_sell: "treasurySell",
+  earnings_beat: "earningsBeat",
+  earnings_miss: "earningsMiss",
+  token_unlock: "unlock",
+} as const satisfies Record<string, ResearchNewsType>;
+const NEWS_TYPE_MAP: ReadonlyMap<string, ResearchNewsType> = new Map(Object.entries(NEWS_TYPE));
+
+/** Loại tin của một lệnh / story (luôn là loại hợp lệ); khoá lạ → "hack" như bản cũ của danh sách lệnh. */
+export const newsTypeOf = (c: string): ResearchNewsType => NEWS_TYPE_MAP.get(c) ?? "hack";
+/** Loại tin của một bài (có thể "none" hoặc lạ) → null khi không phải loại trong danh sách. */
+export const newsTypeOrNull = (c: string | null | undefined): ResearchNewsType | null =>
+  c == null ? null : (NEWS_TYPE_MAP.get(c) ?? null);
+
+/**
+ * Mã lý do nội bộ (`signal_events.reason` của một event `drop`) → lý do API. `DUPLICATE` có lý do riêng từ #291 (feed
+ * bài); tổng kết cũ (`drops`) vẫn không đếm nó là "bị loại". `noTaggedCurrency` không có mã nội bộ riêng: đó là
+ * `NO_SODEX_MARKET` khi SoSoValue không gắn coin nào (`matched_currencies` rỗng), xem `signal-research-articles.ts`.
+ */
+export const DROP: ReadonlyMap<string, ResearchDropReason> = new Map<string, ResearchDropReason>([
+  ["NO_SODEX_MARKET", "notOnSodex"],
+  ["DUPLICATE", "duplicate"],
+  ["NOT_A_SIGNAL_TYPE", "notCatalyst"],
+  ["PASSING_MENTION", "notCatalyst"],
+  ["CATALYST_ASSET_MISMATCH", "notCatalyst"],
+  ["PROMOTIONAL", "promotional"],
+  ["NOT_UNDERSTOOD", "notUnderstood"],
+  ["CLAUDE_BUDGET_REACHED", "notUnderstood"],
+  ["EVENT_TOO_OLD", "eventTooOld"],
+  ["STALE_NEWS", "eventTooOld"],
+  ["CLASSIFIER_LATE", "sourceLate"],
+  ["SOURCE_LATE", "sourceLate"],
+  ["NO_SODEX_PRICE", "noPrice"],
+  ["NO_BOOK_DATA", "noPrice"],
+  ["NOT_ENOUGH_HISTORY", "noPrice"],
+  ["TOO_THIN_TO_TRADE", "tooThin"],
+  ["MOVE_TOO_SMALL_FOR_COST", "tpUnderCost"],
+  ["NEWS_TRADE_ALREADY_OPEN", "alreadyOpen"],
+]);
+
+/** Mã lý do bị loại TRƯỚC khi gọi Claude ở bước Understand (bài không được gửi cho Claude). */
+export const PRE_CLAUDE_REASONS = [
+  "STALE_NEWS",
+  "CLASSIFIER_LATE",
+  "CLAUDE_BUDGET_REACHED",
+] as const;
