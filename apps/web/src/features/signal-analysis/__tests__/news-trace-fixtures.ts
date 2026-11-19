@@ -39,6 +39,8 @@ export const FUNNEL_1D: ResearchFunnel = {
     { stage: "filter", outcome: "merged", reason: null, mergeReason: "sameStory", n: 1 },
     { stage: "decide", outcome: "traded", reason: null, mergeReason: null, n: 1 },
   ],
+  // #358: tầng 4 · Context (snapshot live trong khoảng) như mockup redesign-full-page.html. 7 ngày (BASE): null.
+  context: { reached: 3, h1Yes: 2, h2Yes: 1, h3Yes: 1 },
 };
 
 export const SUMMARY_1D: ResearchSummary = { ...RESEARCH_SUMMARY, funnel: FUNNEL_1D };

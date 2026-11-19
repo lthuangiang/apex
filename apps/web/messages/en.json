@@ -9082,7 +9082,8 @@
           "down": "Down",
           "none": "No"
         },
-        "openInterest": "Open interest"
+        "openInterest": "Open interest",
+        "funnelCounts": "Whales agree {h1} · Funding vs crowd {h2} · Ran early {h3}"
       },
       "judge": {
         "tabsLabel": "Results",

@@ -74,6 +74,8 @@ describe("older rules and cost of a trade (#321, #344)", () => {
     expect(s.newsRulesSince).toBe("2026-11-18T08:00:00.000Z");
     expect(s.costPct).toBeNull();
     expect(s.olderRules).toEqual({ trades: 0, versions: [] });
+    // #358: chưa có snapshot live nào → tầng 4 không có số (web giữ "records only"), không phải 0.
+    expect(s.funnel?.context).toBeNull();
 
     // Một tín hiệu v3 bị bỏ ở bước kiểm TP vs chi phí (event Filter mang `costPct`).
     await article("v3-skip", "news-v3", "2026-11-18T09:00:00Z");

@@ -59,6 +59,7 @@ import type { DbTx } from "./read-only";
 import {
   signalArticles,
   signalBotVersions,
+  signalContexts,
   signalEvents,
   signalPaperTrades,
   signalResearchUsage,
@@ -390,6 +391,29 @@ export async function loadSignalResearchSummary(
   check();
   const articleStops = await loadArticleStops(q, since, scope);
   check();
+  // #358: tầng 4 · Context của phễu: snapshot live của bài thu trong khoảng (cùng đơn vị với `articleStops`).
+  const [ctxRow] = await q
+    .select({
+      reached: count(),
+      h1: sql<number>`count(*) filter (where ${signalContexts.h1Status} = 'yes')::int`,
+      h2: sql<number>`count(*) filter (where ${signalContexts.h2Status} = 'yes')::int`,
+      h3: sql<number>`count(*) filter (where ${signalContexts.h3Status} = 'yes')::int`,
+    })
+    .from(signalContexts)
+    .innerJoin(signalArticles, eq(signalArticles.id, signalContexts.articleId))
+    .where(
+      and(
+        eq(signalContexts.source, "live"),
+        eq(signalContexts.ruleVersion, v),
+        eq(signalArticles.ruleVersion, v),
+        since === null ? undefined : gte(signalArticles.collectedAt, since),
+      ),
+    );
+  const funnelContext =
+    ctxRow === undefined || ctxRow.reached === 0
+      ? null
+      : { reached: ctxRow.reached, h1Yes: ctxRow.h1, h2Yes: ctxRow.h2, h3Yes: ctxRow.h3 };
+  check();
   const all = await q
     .select()
     .from(signalPaperTrades)
@@ -632,6 +656,7 @@ export async function loadSignalResearchSummary(
             opposite: closedInRange.filter((t) => t.exitReason === "opposite_news").length,
             open: inRange.filter((t) => t.status !== "closed").length,
           },
+          context: funnelContext,
         }
       : null,
     newsRulesVersion: on ? NEWS_RULES.versionNumber : null,
