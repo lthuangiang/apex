@@ -27,6 +27,8 @@ export interface FunnelBandView {
   onClick?: (() => void) | undefined;
   pressed?: boolean | undefined;
   ariaLabel?: string | undefined;
+  /** #345: số đếm vừa đổi vì bài mới live: chữ bên phải nảy một lần khi đổi. */
+  bump?: boolean | undefined;
 }
 
 export type TokenTone = "moving" | "traded" | "dropped" | "merged";
@@ -37,6 +39,8 @@ export interface FunnelToken {
   /** Tầng chip đang đứng (0 = chưa vào phễu). */
   pos: number;
   visible: boolean;
+  /** #345: bài mới live chạy nhịp nhanh hơn trace. */
+  fast?: boolean | undefined;
 }
 
 /** Hình học: mỗi tầng cao 36 px, cách 8 px (44 px một hàng). */
@@ -115,7 +119,10 @@ export function FunnelBands({
             </span>
             {/* #343: không cắt "…"; kết quả dài thì xuống tối đa 2 dòng trong tầng (cao cố định). */}
             {b.note === null ? null : (
-              <span className="min-w-0 text-right leading-[1.15] font-bold whitespace-normal">
+              <span
+                key={b.bump === true ? b.note : undefined}
+                className={`min-w-0 text-right leading-[1.15] font-bold whitespace-normal ${b.bump === true ? "motion-safe:animate-[sr-bump_.5s_ease_both]" : ""}`}
+              >
                 {b.note}
               </span>
             )}
@@ -177,7 +184,7 @@ function Token({ token }: { token: FunnelToken }) {
       aria-hidden="true"
       data-testid="sr-token"
       style={style}
-      className={`absolute z-[2] max-w-[200px] -translate-x-1/2 truncate rounded-full border-2 px-3 py-[5px] text-xs font-extrabold whitespace-nowrap shadow-float transition-[top,left,rotate,background-color,border-color,color,opacity] duration-700 ease-[cubic-bezier(.65,0,.35,1)] max-md:hidden ${TOKEN[token.tone]}`}
+      className={`absolute z-[2] max-w-[200px] -translate-x-1/2 truncate rounded-full border-2 px-3 py-[5px] text-xs font-extrabold whitespace-nowrap shadow-float transition-[top,left,rotate,background-color,border-color,color,opacity] ${token.fast === true ? "duration-300" : "duration-700"} ease-[cubic-bezier(.65,0,.35,1)] motion-reduce:transition-none max-md:hidden ${TOKEN[token.tone]}`}
     >
       {token.text}
     </div>

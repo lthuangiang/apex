@@ -6,6 +6,7 @@ import {
   loadSignalClassifiers,
   loadSignalResearchArticles,
   loadSignalResearchArticleTrace,
+  loadSignalResearchNewArticles,
   loadSignalResearchSummary,
   loadSignalResearchTrade,
   loadSignalResearchTrades,
@@ -25,6 +26,8 @@ import {
   researchArticlesPageSchema,
   researchArticlesQuerySchema,
   researchArticleTraceSchema,
+  researchNewArticlesQuerySchema,
+  researchNewArticlesSchema,
   researchClassifiersSchema,
   researchLabelBodySchema,
   researchLabelNextSchema,
@@ -53,6 +56,7 @@ import {
   type ResearchVersions,
   type ResearchArticlesPage,
   type ResearchArticleTrace,
+  type ResearchNewArticles,
   type ResearchClassifiers,
   type ResearchLabelNext,
   type ResearchLabelSaved,
@@ -195,6 +199,18 @@ export async function signalResearchArticles(
   const q = parseOrThrow(researchArticlesQuerySchema, query);
   const out = await tx(deps, (t, check) => loadSignalResearchArticles(t, q, deps.now(), check));
   return researchArticlesPageSchema.parse(out);
+}
+
+/** Bài mới sau con trỏ `since` (#345): hiệu ứng bài rơi xuống phễu, web hỏi mỗi 15 s khi tab hiển thị. */
+export async function signalResearchNewArticles(
+  deps: SignalResearchDeps,
+  userId: string,
+  query: unknown,
+): Promise<ResearchNewArticles> {
+  await requireTeam(deps.db, userId, FORBIDDEN);
+  const q = parseOrThrow(researchNewArticlesQuerySchema, query);
+  const out = await tx(deps, (t, check) => loadSignalResearchNewArticles(t, q, deps.now(), check));
+  return researchNewArticlesSchema.parse(out);
 }
 
 /** Trace một bài qua 5 bước (#291). Bài không có / backlog / version khác → 404. */
@@ -427,6 +443,10 @@ export function registerSignalResearchRoutes(
   app.get(`${base}/articles`, async (request, reply) => {
     void reply.header("cache-control", "no-store");
     return signalResearchArticles(deps, requireAuth(request).userId, request.query);
+  });
+  app.get(`${base}/articles/new`, async (request, reply) => {
+    void reply.header("cache-control", "no-store");
+    return signalResearchNewArticles(deps, requireAuth(request).userId, request.query);
   });
   app.get<{ Params: { id: string } }>(`${base}/articles/:id/trace`, async (request, reply) => {
     void reply.header("cache-control", "no-store");

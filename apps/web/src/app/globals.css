@@ -145,6 +145,25 @@
     transform: none;
   }
 }
+/* #345: số đếm của phễu nảy một lần khi bài mới live làm đổi số. */
+@keyframes sr-bump {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.08);
+  }
+}
+/* #345: bài mới live hiện ở đầu feed. Chỉ trượt (không đổi opacity) để chữ luôn đủ tương phản. */
+@keyframes sr-newrow {
+  from {
+    transform: translateY(-12px);
+  }
+  to {
+    transform: none;
+  }
+}
 @keyframes sr-fade {
   from {
     opacity: 0;

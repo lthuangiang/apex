@@ -8,6 +8,7 @@ import {
   researchVersionSchema,
   researchVersionsSchema,
   researchArticleTraceSchema,
+  researchNewArticlesSchema,
   researchSummarySchema,
   researchTradeDetailSchema,
   researchTradesPageSchema,
@@ -46,6 +47,7 @@ export const RESEARCH_PATHS = {
   trades: `${RESEARCH_BASE}/trades`,
   trade: (id: string) => `${RESEARCH_BASE}/trades/${encodeURIComponent(id)}`,
   articles: `${RESEARCH_BASE}/articles`,
+  newArticles: `${RESEARCH_BASE}/articles/new`,
   trace: (id: string) => `${RESEARCH_BASE}/articles/${encodeURIComponent(id)}/trace`,
   versions: `${RESEARCH_BASE}/versions`,
   versionStatus: (id: string) => `${RESEARCH_BASE}/versions/${encodeURIComponent(id)}/status`,
@@ -183,6 +185,24 @@ export function useResearchTrace(id: string | null, versionId: VersionId = null)
     retry,
   });
 }
+
+/**
+ * #345: bài mới sau con trỏ `since` (null = lần đầu: không có bài, chỉ lấy con trỏ). Không qua react-query: con trỏ đi
+ * tới sau mỗi lần hỏi, nơi gọi (live-drop.ts) giữ con trỏ và hẹn giờ 15 s.
+ */
+export function fetchNewArticles(since: string | null, versionId: VersionId = null) {
+  return api(
+    "GET",
+    `${RESEARCH_PATHS.newArticles}?${query({}, { ...ver(versionId), ...(since === null ? {} : { since }) })}`,
+    researchNewArticlesSchema,
+  );
+}
+
+/** Key của tổng kết và feed: bài mới tới thì làm mới để số đếm và feed khớp API. */
+export const LIVE_REFRESH_KEYS: readonly QueryKey[] = [
+  [...KEY, "summary"],
+  [...KEY, "articles"],
+];
 
 // ── News bot versions (#306, API #305; thiết kế docs/mockups/signal-research/bot-versions*.html) ─────────────────────
 
