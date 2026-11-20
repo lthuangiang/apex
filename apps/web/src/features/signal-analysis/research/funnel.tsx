@@ -70,6 +70,11 @@ const WIDTHS_TOTAL = [70, 62, 54, 50, 46, 38] as const;
 // Trace: khung phễu hẹp hơn (có khung Context bên cạnh) nên tầng rộng hơn mockup để kết quả gọn vừa tối đa 2 dòng.
 const WIDTHS_TRACE = [94, 88, 82, 78, 72, 66] as const;
 const WIDTHS_MOBILE = [100, 92, 86, 80, 72, 64] as const;
+/**
+ * 1280–1399 px: khung 4 · Context nằm cạnh phễu nên khung phễu hẹp nhất; tầng ít thu hẹp hơn để kết quả gọn đỡ xuống
+ * dòng (cả chế độ tổng lẫn trace).
+ */
+export const WIDTHS_NARROW = [100, 96, 92, 88, 84, 80] as const;
 
 // Màu tầng khi đã qua / chế độ tổng (chỉ token): accent-ink → accent → accent nhạt → (Context trắng) → accent rất nhạt →
 // xanh lá (Decide).
@@ -109,7 +114,7 @@ function bandTone(b: FunnelBandView): string {
  * Khi trace (từ 768 px), bên phải các tầng có một rãnh trống rộng ngần này: chip bài bị loại đỗ trong rãnh, cùng hàng với
  * tầng đã loại nó, ngoài thân phễu, nên không bao giờ đè chữ của tầng nào (#343 review).
  */
-export const TOKEN_GUTTER = 112;
+export const TOKEN_GUTTER = 104;
 /** Chip trong rãnh rộng tối đa ngần này (rãnh − 8 px lề). */
 export const DROP_CHIP_MAX = TOKEN_GUTTER - 8;
 const BAND_H = 36;
@@ -125,9 +130,9 @@ export interface Rect {
  * Hình chữ nhật của 6 tầng trong khung rộng `width` px (desktop, trace), theo chiều cao TỐI THIỂU của tầng. Tầng thật cao
  * theo chữ (#345); kiểm bố cục thật ở `layout-tests/funnel.layout.ts` (Playwright).
  */
-export function bandRects(width: number, tracing: boolean): Rect[] {
+export function bandRects(width: number, tracing: boolean, narrow = false): Rect[] {
   const inner = tracing ? width - TOKEN_GUTTER : width;
-  const ws = tracing ? WIDTHS_TRACE : WIDTHS_TOTAL;
+  const ws = narrow ? WIDTHS_NARROW : tracing ? WIDTHS_TRACE : WIDTHS_TOTAL;
   return ws.map((p, i) => {
     const w = (inner * p) / 100;
     return { x: (inner - w) / 2, y: i * BAND_ROW, w, h: BAND_H };
@@ -201,8 +206,9 @@ export function FunnelBands({
           ...(ctx ? {} : CLIP),
           ["--w" as string]: `${String(widths[i] ?? 38)}%`,
           ["--mw" as string]: `${String(WIDTHS_MOBILE[i] ?? 64)}%`,
+          ["--nw" as string]: `${String(WIDTHS_NARROW[i] ?? 80)}%`,
         };
-        const cls = `@container flex min-h-[30px] w-[var(--mw)] min-w-0 items-center justify-between gap-2 border-0 py-1 text-xs font-extrabold whitespace-nowrap transition-[background-color,color,filter] duration-300 md:min-h-9 md:w-[var(--w)] md:text-[13px] ${
+        const cls = `@container flex min-h-[30px] w-[var(--mw)] min-w-0 items-center justify-between gap-2 border-0 py-1 text-xs font-extrabold whitespace-nowrap transition-[background-color,color,filter] duration-300 md:min-h-9 md:w-[var(--w)] md:text-[13px] xl:w-[var(--nw)] min-[1400px]:w-[var(--w)] ${
           ctx
             ? `rounded-md border-2 border-dashed px-[3%] md:px-[4%] ${on ? "border-accent" : "border-[color-mix(in_srgb,var(--accent)_25%,var(--surface))]"}`
             : "px-[5%]"

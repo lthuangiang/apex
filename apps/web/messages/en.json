@@ -2885,6 +2885,9 @@
     "signalAnalysis.research.bots.olderRules",
     "signalAnalysis.research.trace.rulesSince",
     "signalAnalysis.research.trace.rulesSinceDay",
+    "signalAnalysis.research.trace.costIn",
+    "signalAnalysis.research.trace.costWindow",
+    "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort"
   ],
@@ -8036,8 +8039,6 @@
         "delay": "Delay, news out → collected",
         "delaySub": "median · SoSoValue checked every {every}",
         "cost": "Claude cost",
-        "costToday": "${usd} today",
-        "costPerDay": "${usd} / day",
         "costSub": "{articles, plural, one {# article} other {# articles}} read · SoSoValue {used} of {limit} calls this month",
         "costSubNoSoso": "{articles, plural, one {# article} other {# articles}} read",
         "verdict": {
@@ -8086,8 +8087,6 @@
           "traded": "Paper trade · {assets}",
           "merged": "Merged · {assets}"
         },
-        "dropNote": "Dropped · {text}",
-        "mergeNote": "Merged · {text}",
         "out": "Out",
         "status": {
           "pass": "Passed",
@@ -8213,7 +8212,13 @@
           "trade": "{side} {size} USDC"
         },
         "rulesSince": "Since rules v{v} started at {time}",
-        "rulesSinceDay": "Since rules v{v} started {day}, {time}"
+        "rulesSinceDay": "Since rules v{v} started {day}, {time}",
+        "costIn": "${usd} · {window}",
+        "costWindow": {
+          "1d": "last 24 h",
+          "7d": "last 7 days"
+        },
+        "costUnknown": "{n, plural, one {# article} other {# articles}} without cost data"
       },
       "reasons": {
         "notCatalyst": "Not a catalyst on the list",
@@ -9015,9 +9020,8 @@
         "yesOf": "{n} of 3 yes",
         "notRecorded": "Not recorded",
         "waiting": "Waiting for the article to reach step 4…",
-        "never": "This article never reaches step 4, so no context is checked.",
+        "never": "This article stopped before step 4",
         "missing": "This article came before step 4, so no context was recorded.",
-        "mobileHint": "<b>Step 4 · Context</b> records whales, funding and early price run for each signal. It does not block anything yet.",
         "cardTitle": "4 · Context at {time}",
         "cardTag": {
           "live": "Recorded · does not change the trade",
@@ -9102,7 +9106,8 @@
         },
         "openInterest": "Open interest",
         "funnelCounts": "<p>Whales agree {h1}</p> · <p>Funding vs crowd {h2}</p> · <p>Ran early {h3}</p>",
-        "funnelCountsShort": "<p>Whales {h1}</p> · <p>Funding {h2}</p> · <p>Ran early {h3}</p>"
+        "funnelCountsShort": "<p>Whales {h1}</p> · <p>Funding {h2}</p> · <p>Ran early {h3}</p>",
+        "idle": "Waiting for the next signal"
       },
       "judge": {
         "tabsLabel": "Results",

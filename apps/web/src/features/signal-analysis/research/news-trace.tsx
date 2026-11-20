@@ -262,7 +262,12 @@ function totalBands(
       ...(key === "decide" && tot.decide !== null
         ? {
             noteNode: t.rich("trace.counts.decide", { ...tot.decide, p: pair }),
-            noteShort: t.rich("trace.countsShort.decide", { ...tot.decide, p: pair }),
+            // Câu ngắn "L 1 · S 0" luôn trên một dòng (tầng hẹp).
+            noteShort: (
+              <span data-nowrap="" className="whitespace-nowrap">
+                {t.rich("trace.countsShort.decide", { ...tot.decide, p: pair })}
+              </span>
+            ),
           }
         : {}),
       state: "total" as const,
@@ -324,14 +329,9 @@ function traceBandViews(bands: TraceBand[], model: TraceModel | null, t: Tr): Fu
       };
     }
     const short = b.step?.band ?? "";
-    const note =
-      b.state === "drop"
-        ? t("trace.dropNote", { text: short })
-        : b.state === "merge"
-          ? t("trace.mergeNote", { text: short })
-          : b.state === "pass"
-            ? short
-            : null;
+    // Chỉ kết quả gọn: tầng xám + chip "Out · …" đỗ cạnh tầng đã nói bài bị loại (bỏ tiền tố "Dropped ·" để vừa 2 dòng
+    // khi khung Context nằm cạnh phễu từ 1280 px); tầng gộp đã ghi "Merged".
+    const note = b.state === "drop" || b.state === "merge" || b.state === "pass" ? short : null;
     return { key: b.key, label, state: b.state, note: note === "" ? null : note };
   });
 }
@@ -644,7 +644,7 @@ export function NewsTrace({
         <div
           id="sr-trace"
           ref={funnelRef}
-          className="flex min-w-0 scroll-mt-4 flex-col gap-3 max-md:order-1 md:col-span-2 min-[1400px]:flex-row min-[1400px]:items-stretch"
+          className="flex min-w-0 scroll-mt-4 flex-col gap-3 max-md:order-1 md:col-span-2 xl:flex-row xl:items-stretch"
         >
           <div className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-[14px] border border-border bg-surface-2 px-3 py-3.5 md:px-4">
             <div className="flex flex-1 flex-col justify-center">
@@ -684,7 +684,7 @@ export function NewsTrace({
               asset={asset}
               tz={ctx.tz}
               playKey={`${sel}:${String(run)}`}
-              className="min-[1400px]:w-[300px] min-[1400px]:flex-none"
+              className="xl:w-[240px] xl:flex-none min-[1400px]:w-[300px]"
             />
           ) : liveOn ? (
             <ContextPanel
@@ -693,12 +693,18 @@ export function NewsTrace({
               asset={liveData?.article.asset ?? liveData?.context?.market ?? liveView.assets}
               tz={ctx.tz}
               playKey={`live:${liveId}:${String(livePlayer.run)}`}
-              className="min-[1400px]:w-[300px] min-[1400px]:flex-none"
+              className="xl:w-[240px] xl:flex-none min-[1400px]:w-[300px]"
             />
           ) : (
-            <p className="m-0 text-xs leading-normal text-ink-2 md:hidden">
-              {t.rich("context.mobileHint", { b: (c) => <strong>{c}</strong> })}
-            </p>
+            // #343: khung 4 · Context luôn hiện (cạnh phễu từ 1280 px), chế độ tổng chạy hoạt cảnh chờ.
+            <ContextPanel
+              state="idle"
+              context={null}
+              asset=""
+              tz={ctx.tz}
+              playKey="idle"
+              className="xl:w-[240px] xl:flex-none min-[1400px]:w-[300px]"
+            />
           )}
         </div>
       </div>
@@ -1151,6 +1157,16 @@ function Steps({
 
 /* ---------------------------------------------------------------- Totals panel */
 
+/**
+ * Chi phí Claude để hiện (#343): null ("Not available") khi không có dữ liệu, hoặc mọi bài gọi Claude đều không biết chi
+ * phí; không bài nào gọi Claude → "0" (số thật).
+ */
+export function claudeCostShown(cc: ResearchFunnel["claudeCost"] | null): string | null {
+  if (cc === null) return null;
+  if (cc.articles > 0 && cc.unknown === cc.articles) return null;
+  return cc.usd;
+}
+
 function TotalsPanel({
   funnel: f,
   range,
@@ -1166,7 +1182,10 @@ function TotalsPanel({
 }) {
   const t = useTranslations("signalAnalysis.research");
   const card = "rounded-[14px] border border-border px-4 py-3.5";
-  const cost = f?.claudeCostPerDay ?? null;
+  // #343: chi phí trong đúng cửa sổ của phễu (24 giờ / 7 ngày), cùng tập bài với "articles read". Mọi bài gọi Claude
+  // đều không biết chi phí → "Not available"; có bài không biết → cộng bài biết và ghi số bài thiếu.
+  const cc = f?.claudeCost ?? null;
+  const cost = claudeCostShown(cc);
   const median = f?.delayMedianSecs ?? null;
   const read = f?.articlesRead ?? null;
   return (
@@ -1184,11 +1203,15 @@ function TotalsPanel({
           {cost === null ? (
             <Na />
           ) : (
-            t(range === "1d" ? "trace.costToday" : "trace.costPerDay", {
+            t("trace.costIn", {
               usd: Number(cost).toFixed(2),
+              window: t(`trace.costWindow.${range}`),
             })
           )}
         </div>
+        {cc !== null && cost !== null && cc.unknown > 0 ? (
+          <Sub>{t("trace.costUnknown", { n: cc.unknown })}</Sub>
+        ) : null}
         <Sub>
           {f === null || read === null ? (
             <Na />

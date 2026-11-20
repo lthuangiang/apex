@@ -22,6 +22,7 @@ export const FUNNEL_1D: ResearchFunnel = {
   days: 1,
   delayMedianSecs: 260,
   claudeCostPerDay: "0.03",
+  claudeCost: { usd: "0.031", articles: 22, unknown: 0 },
   articlesRead: 58,
   collected: 58,
   stories: 25,

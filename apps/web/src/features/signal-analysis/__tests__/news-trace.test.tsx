@@ -251,7 +251,7 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(ctxBand?.tagName).toBe("DIV");
     expect(ctxBand).toHaveClass("border-dashed");
     expect(
-      within(f)
+      within(within(f).getByTestId("sr-funnel-bands"))
         .getAllByText(/^[1-6] · /)
         .map((x) => x.textContent),
     ).toEqual([
@@ -268,16 +268,17 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     ).toBeInTheDocument();
     expect(within(f).getByText(/Now: records only \(dashed\)\./)).toBeInTheDocument();
     expect(within(f).getByText(/Later: a version can use it\./)).toBeInTheDocument();
-    expect(
-      within(f).getByText(/records whales, funding and early price run for each signal/),
-    ).toBeInTheDocument();
+    // #343: khung 4 · Context luôn hiện; chế độ tổng là hoạt cảnh chờ, không badge, không số.
+    const idle = within(f).getByTestId("sr-ctx-panel");
+    expect(idle).toHaveAttribute("data-state", "idle");
+    expect(idle).toHaveTextContent("Waiting for the next signal");
     expect(
       within(f).getByText(
         "Every step counts the same articles, collected in the last 1 day: in − out = next step.",
       ),
     ).toBeInTheDocument();
     expect(within(f).getByText("4 min 20 s")).toBeInTheDocument();
-    expect(within(f).getByText("$0.03 today")).toBeInTheDocument();
+    expect(within(f).getByText("$0.03 · last 24 h")).toBeInTheDocument();
     expect(verdict()).toHaveTextContent(
       "Pick an article on the left, or click a step to list its articles.",
     );
@@ -314,7 +315,7 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     });
     expect(lastPath("/summary")).toContain("range=7d");
     expect(lastPath("/articles?")).toContain("range=7d");
-    expect(await within(funnel()).findByText("$0.42 / day")).toBeInTheDocument();
+    expect(await within(funnel()).findByText("$2.94 · last 7 days")).toBeInTheDocument();
     expect(within(funnel()).getAllByText("1,240 articles").length).toBeGreaterThan(0);
     expect(within(funnel()).getAllByText("340 articles on SoDEX").length).toBeGreaterThan(0);
     expect(within(funnel()).getAllByText("108 signals").length).toBeGreaterThan(0);
@@ -559,7 +560,7 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(verdict()).toHaveTextContent(
       "Stopped at Filter: take profit under 2× cost · Claude $0.0022",
     );
-    expect(within(f).getByText("Dropped · TP 0.15% < 2× cost")).toBeInTheDocument();
+    expect(within(f).getByText("TP 0.15% < 2× cost")).toBeInTheDocument();
     expect(
       within(within(f).getByTestId("sr-funnel-bands")).getByText("0 of 3 yes"),
     ).toBeInTheDocument();
@@ -606,22 +607,20 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     const chip = within(f).getByTestId("sr-token");
     expect(chip).toHaveAttribute("data-tone", "dropped");
     expect(chip.style.top).toBe("44px");
-    expect(chip.style.left).toBe("calc(100% - 108px)");
+    expect(chip.style.left).toBe("calc(100% - 100px)");
     expect(chip.className).not.toMatch(/rotate/);
     expect(
       within(list).getByText(
         "No SoDEX market for KNTQ, so the article stops here and Claude is not called.",
       ),
     ).toBeInTheDocument();
-    expect(within(f).getByText("Dropped · KNTQ not on SoDEX")).toBeInTheDocument();
+    expect(within(f).getByText("KNTQ not on SoDEX")).toBeInTheDocument();
     // Bài dừng trước bước 4: không kiểm ngữ cảnh.
     expect(within(f).getByTestId("sr-ctx-panel")).toHaveAttribute("data-state", "notReached");
-    expect(
-      within(f).getByText("This article never reaches step 4, so no context is checked."),
-    ).toBeInTheDocument();
+    expect(within(f).getByText("This article stopped before step 4")).toBeInTheDocument();
     // Không có lớp hiệu ứng nào chạy ngoài motion-safe.
     for (const el of f.querySelectorAll("[class*='animate-']"))
-      expect(el.className).not.toMatch(/(^|\s)animate-/);
+      expect(el.getAttribute("class") ?? "").not.toMatch(/(^|\s)animate-/);
     await noViolations();
     expect(intlErrors).toEqual([]);
   });

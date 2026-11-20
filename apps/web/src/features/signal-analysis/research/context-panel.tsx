@@ -6,6 +6,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { clock } from "../format";
 
+import { IdleScenes, useIdlePauseRef } from "./context-idle";
 import {
   answerTone,
   contextYesCount,
@@ -20,15 +21,12 @@ import {
 } from "./context-text";
 import type { ContextReach } from "./trace-player";
 import { Na } from "./ui";
+import { WhaleIcon } from "./whale-icon";
 
 // Khung 4 · Context cạnh phễu + thẻ bước 4 (#343, mockup redesign-trace-live.html, redesign-trace-no-signal.html,
 // redesign-context-effects.html, redesign-context-card.html). Chỉ hiển thị: không hẹn giờ, không đọc API. Hiệu ứng là CSS
 // chạy một lần khi phần tử gắn vào DOM; muốn chạy lại (Replay) thì đổi `playKey`. Trạng thái gốc của mọi phần tử là khung
 // cuối, nên reduced motion (không có lớp motion-safe) hiện ngay khung cuối. Dùng chung với bài mới live (#345).
-
-const WHALE_PATH =
-  "M10 40c10-18 40-26 66-18 10 3 18 8 24 14l12-12-2 18 8 10-14-4c-10 12-30 18-50 16C24 62 6 54 10 40z";
-const SPOUT_PATH = "M44 18c-2-6 0-12 4-14M44 18c0-7 4-11 9-12M44 18c2-6 7-8 12-7";
 
 /** Màu nhạt của phễu / nước (token accent pha với nền). */
 export const ACCENT_SOFT = "bg-[color-mix(in_srgb,var(--accent)_25%,var(--surface))]";
@@ -57,41 +55,7 @@ function Tag({ tone, children }: { tone: AnswerTone | "plain"; children: ReactNo
   );
 }
 
-export function WhaleIcon({
-  className,
-  spout = false,
-  flip = false,
-  style,
-}: {
-  className?: string;
-  spout?: boolean;
-  /** Quay đầu sang trái (cá voi bơi đi). */
-  flip?: boolean;
-  style?: CSSProperties;
-}) {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 120 70" className={className} style={style}>
-      {flip ? (
-        <g transform="translate(120 0) scale(-1 1)">
-          <path d={WHALE_PATH} />
-        </g>
-      ) : (
-        <path d={WHALE_PATH} />
-      )}
-      {spout ? (
-        <>
-          <circle cx="34" cy="36" r="3" className="fill-surface" />
-          <path
-            d={SPOUT_PATH}
-            className="fill-none stroke-[color-mix(in_srgb,var(--accent)_60%,var(--surface))]"
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
-        </>
-      ) : null}
-    </svg>
-  );
-}
+export { WhaleIcon };
 
 /* ---------------------------------------------------------------- Scenes */
 
@@ -255,7 +219,7 @@ export function PriceRunScene({
 export function ContextIcons({ context }: { context: ResearchSignalContext }) {
   const h1 = context.h1.status;
   return (
-    <span aria-hidden="true" className="inline-flex items-center gap-1.5 max-md:hidden">
+    <span aria-hidden="true" className="hidden items-center gap-1.5 min-[1400px]:inline-flex">
       <WhaleIcon
         className={`h-3 w-5 ${
           h1 === "yes"
@@ -299,7 +263,11 @@ export function ContextIcons({ context }: { context: ResearchSignalContext }) {
 
 /* ---------------------------------------------------------------- Panel */
 
-export type ContextPanelState = "waiting" | "shown" | Exclude<ContextReach, "recorded">;
+/**
+ * `idle`: chế độ tổng, chưa có bài nào để xem (hoạt cảnh chờ); `waiting`: chip chưa tới bước 4; `notReached` / `missing`:
+ * bài không có snapshot; `shown`: chạy hiệu ứng có thông tin. Mọi trạng thái trừ `shown` dùng hoạt cảnh chờ.
+ */
+export type ContextPanelState = "idle" | "waiting" | "shown" | Exclude<ContextReach, "recorded">;
 
 export interface ContextAnswers {
   h1: AnswerText;
@@ -340,8 +308,10 @@ export function ContextPanel({
   const t = useTranslations("signalAnalysis.research");
   const answers = useContextAnswers(context, asset, tz);
   const shown = state === "shown" && context !== null && answers !== null;
+  const { ref, paused } = useIdlePauseRef();
   return (
     <div
+      ref={ref}
       role="group"
       aria-labelledby="sr-ctx-panel-title"
       data-testid="sr-ctx-panel"
@@ -367,13 +337,18 @@ export function ContextPanel({
           />
         </div>
       ) : (
-        <p className="m-0 flex flex-1 items-center justify-center p-3 text-center text-xs text-muted">
-          {state === "notReached"
-            ? t("context.never")
-            : state === "missing"
-              ? t("context.missing")
-              : t("context.waiting")}
-        </p>
+        <>
+          <IdleScenes paused={paused} />
+          <p className="m-0 text-center text-xs text-muted">
+            {state === "notReached"
+              ? t("context.never")
+              : state === "missing"
+                ? t("context.missing")
+                : state === "waiting"
+                  ? t("context.waiting")
+                  : t("context.idle")}
+          </p>
+        </>
       )}
     </div>
   );

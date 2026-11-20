@@ -143,3 +143,42 @@ for (const title of ["SEC approves in-kind", "Solana Foundation", "Bithumb will 
     expectFits(await measure(page));
     expectChip(await chip(page));
   });
+
+// #343 (review PM): câu ngắn của Decide ("L 1 · S 0") luôn nằm trên một dòng khi tầng hẹp. Ép tầng Decide hẹp hơn ngưỡng
+// câu ngắn (container query 260 px) để chắc chắn câu ngắn hiện ở mọi độ rộng của project. 140 px là độ rộng nhỏ nhất mà
+// tầng vẫn vừa khi có nowrap; không có nowrap thì ở 140 px câu này xuống 2 dòng (đã kiểm ngược), nên test bắt được lỗi.
+test("totals: the short Decide counts stay on one line when the band is narrow", async ({
+  page,
+  baseURL,
+}) => {
+  await open(page, baseURL);
+  for (const px of [140, 180, 220, 250]) {
+    const r = await page.getByTestId("sr-funnel-bands").evaluate(async (root, w) => {
+      const band = root.querySelector<HTMLElement>("[data-band='decide']");
+      if (band === null) return null;
+      band.style.width = `${String(w)}px`;
+      await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+      const short = band.querySelector<HTMLElement>("[data-nowrap]");
+      if (short === null || short.getClientRects().length === 0)
+        return { shown: false, lines: 0, text: "" };
+      const range = document.createRange();
+      range.selectNodeContents(short);
+      const tops = new Set(
+        [...range.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top)),
+      );
+      return {
+        shown: true,
+        lines: tops.size,
+        text: short.textContent,
+        overflowX: band.scrollWidth - band.clientWidth,
+      };
+    }, px);
+    expect(r, `decide band at ${String(px)} px`).not.toBeNull();
+    expect.soft(r?.shown, `short Decide counts shown at ${String(px)} px`).toBe(true);
+    expect.soft(r?.text).toMatch(/^L \d+ · S \d+$/);
+    expect.soft(r?.lines, `"${r?.text ?? ""}" on one line at ${String(px)} px`).toBe(1);
+    expect
+      .soft(r?.overflowX ?? 0, `decide band at ${String(px)} px does not overflow`)
+      .toBeLessThanOrEqual(0);
+  }
+});
