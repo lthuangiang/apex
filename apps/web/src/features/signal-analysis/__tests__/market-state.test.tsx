@@ -72,18 +72,25 @@ const group = <K extends string>(key: K, closed: number, avgPct: number | null =
   need: Math.max(0, 30 - closed),
 });
 
-/** Số mẫu của mockup: mọi nhóm dưới 30 lệnh, 30 lệnh cũ "Not recorded". */
+/**
+ * Lệnh đóng được tính của Overall cho version này. Review #388: mỗi bảng (BTC trend, volatility) của mỗi nguồn cộng lại,
+ * kể cả "Not recorded" và "Not available", đúng bằng số này (mockup ghi 30 + 30 là số minh hoạ không khớp).
+ */
+const COUNTED = 100;
+
+/** Live: mọi nhóm dưới 30 lệnh. */
 const LIVE: ResearchMarketSplit = researchMarketSplitSchema.parse({
   source: "live",
   minClosedPerGroup: 30,
-  btcTrend: [group("up", 7), group("flat", 11), group("down", 12)],
-  volatility: [group("low", 6), group("normal", 15), group("high", 9)],
-  notRecorded: 30,
+  btcTrend: [group("up", 5), group("flat", 8), group("down", 9)],
+  volatility: [group("low", 4), group("normal", 10), group("high", 8)],
+  // 8 lệnh trước #376 + 70 lệnh chỉ có snapshot backfilled (không có trạng thái của nguồn live).
+  notRecorded: 78,
   btcNotAvailable: 0,
   volNotAvailable: 0,
 });
 
-/** Backfilled: một nhóm đủ 30 lệnh có trung bình; 4 lệnh thiếu nến (volatility Not available). */
+/** Backfilled (cùng version, cùng 100 lệnh): nhóm đủ 30 lệnh có trung bình; 4 lệnh thiếu nến (volatility Not available). */
 const BACKFILLED: ResearchMarketSplit = researchMarketSplitSchema.parse({
   source: "backfilled",
   minClosedPerGroup: 30,
@@ -208,16 +215,16 @@ describe("Is it working? › By market", () => {
       .map((c) => c.textContent);
     expect(cols).toEqual(["Market at decision", "Closed trades", "Average after fees"]);
     expect(rows("By BTC trend")).toEqual([
-      "BTC trend: up7Not enough trades · needs 23 more",
-      "BTC trend: flat11Not enough trades · needs 19 more",
-      "BTC trend: down12Not enough trades · needs 18 more",
-      "Not recorded (before Phase 0)30Not compared",
+      "BTC trend: up5Not enough trades · needs 25 more",
+      "BTC trend: flat8Not enough trades · needs 22 more",
+      "BTC trend: down9Not enough trades · needs 21 more",
+      "Not recorded (before Phase 0)78Not compared",
     ]);
     expect(rows("By volatility of the traded asset")).toEqual([
-      "Volatility: low6Not enough trades · needs 24 more",
-      "Volatility: normal15Not enough trades · needs 15 more",
-      "Volatility: high9Not enough trades · needs 21 more",
-      "Not recorded (before Phase 0)30Not compared",
+      "Volatility: low4Not enough trades · needs 26 more",
+      "Volatility: normal10Not enough trades · needs 20 more",
+      "Volatility: high8Not enough trades · needs 22 more",
+      "Not recorded (before Phase 0)78Not compared",
     ]);
     await noViolations();
   });
@@ -244,6 +251,32 @@ describe("Is it working? › By market", () => {
       "Volatility: high30−0.20%",
       "Not available4Not compared",
     ]);
+  });
+
+  it("every table adds up to Overall's counted closed trades, for each source (review #388)", async () => {
+    // Khoá ở dữ liệu: mỗi bảng của mỗi nguồn cộng lại (kể cả Not recorded / Not available) = lệnh đóng được tính.
+    for (const s of [LIVE, BACKFILLED]) {
+      const sum = (gs: readonly { closed: number }[], na: number) =>
+        gs.reduce((a, g) => a + g.closed, 0) + na + s.notRecorded;
+      expect(sum(s.btcTrend, s.btcNotAvailable)).toBe(COUNTED);
+      expect(sum(s.volatility, s.volNotAvailable)).toBe(COUNTED);
+    }
+    // Và ở màn hình: cột "Closed trades" của mỗi bảng cộng lại đúng số đó, ở cả Live lẫn Backfilled.
+    render(
+      <Wrap>
+        <ByMarket live={LIVE} backfilled={BACKFILLED} />
+      </Wrap>,
+    );
+    const shown = (name: string) =>
+      within(screen.getByRole("table", { name }))
+        .getAllByRole("row")
+        .slice(1)
+        .reduce((a, r) => a + Number(within(r).getAllByRole("cell")[0]?.textContent ?? "NaN"), 0);
+    for (const source of ["Live", "Backfilled"]) {
+      await userEvent.click(screen.getByRole("button", { name: source }));
+      expect(shown("By BTC trend")).toBe(COUNTED);
+      expect(shown("By volatility of the traded asset")).toBe(COUNTED);
+    }
   });
 
   it("no split from the API: Not available, never a table of zeros", () => {

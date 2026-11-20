@@ -66,7 +66,14 @@ async function snapshot(articleId: string, decidedAt: string, m: Mkt) {
 }
 
 /** `n` lệnh đã đóng của version (classifier đã qua cổng), kết quả `pct` %; mỗi lệnh có bài `prefix-g` và snapshot `m`. */
-async function bulk(versionId: string, prefix: string, n: number, pct: number, m: Mkt | null) {
+async function bulk(
+  versionId: string,
+  prefix: string,
+  n: number,
+  pct: number,
+  m: Mkt | null,
+  cls: string = CLS,
+) {
   const from = "2026-09-01T00:00:00Z";
   await env.pool.query(
     `insert into signal_paper_trades (id, lane, label, version_id, article_id, market, token, catalyst, direction, size_usdc, qty,
@@ -77,7 +84,7 @@ async function bulk(versionId: string, prefix: string, n: number, pct: number, m
        0.01, 0.05, 0.25, 1, 1.6, 0.8, 3454, 3372, t + interval '3 days', t, t, t, 'medium', '[]', false, 'book', 'closed', 3450,
        'take_profit', t + interval '30 minutes', 0.25, $5::numeric * 5, $5::numeric, 0, 'news-v3', $3
      from (select g, $4::timestamptz + (g * interval '7 hours') as t from generate_series(1, $6::int) g) s`,
-    [versionId, prefix, CLS, from, pct, n],
+    [versionId, prefix, cls, from, pct, n],
   );
   if (m === null) return;
   for (let g = 1; g <= n; g++)
@@ -241,5 +248,33 @@ describe("live and backfilled market splits stay apart (review #381)", () => {
     ]);
     expect(bf.volatility.find((g) => g.key === "low")).toMatchObject({ closed: 30, avgPct: -1 });
     expect(bf.notRecorded).toBe(30);
+  });
+});
+
+describe("By market adds up to Overall (review #388)", () => {
+  it("each table of each source sums to the counted closed trades of Overall", async () => {
+    const v = await version(52);
+    await bulk(v, "s-up", 12, 1, STATE("up", "high"));
+    await bulk(v, "s-flat-na", 5, 0.5, STATE("flat", null));
+    await bulk(v, "s-btc-na", 3, 0.2, STATE(null, "low"));
+    await bulk(v, "s-bf", 9, -1, { ...STATE("down", "normal"), source: "backfilled" });
+    await bulk(v, "s-old", 4, 2, OLD);
+    await bulk(v, "s-none", 2, 2, null);
+    // Classifier chưa qua cổng nhãn: lệnh đóng nhưng không được tính, ở cả Overall lẫn By market.
+    await bulk(v, "s-uncounted", 6, 3, STATE("up", "high"), "mkt-cls-unlabeled");
+
+    const r = await team.request("GET", `${base}/summary?versionId=${v}`);
+    expect(r.statusCode).toBe(200);
+    const body = researchSummarySchema.parse(r.json());
+    const news = body.rows.find((x) => x.type === "news" && x.label === "live");
+    const counted = news?.classifiers?.counted;
+    expect(counted).toBe(35);
+    for (const s of [body.marketSplit, body.marketSplitBackfilled]) {
+      if (s === null) throw new Error("no market split");
+      const sum = (gs: readonly { closed: number }[], na: number) =>
+        gs.reduce((a, g) => a + g.closed, 0) + na + s.notRecorded;
+      expect(sum(s.btcTrend, s.btcNotAvailable)).toBe(counted);
+      expect(sum(s.volatility, s.volNotAvailable)).toBe(counted);
+    }
   });
 });
