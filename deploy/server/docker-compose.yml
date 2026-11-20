@@ -109,6 +109,8 @@ services:
       SIGNER_CLIENT_CA: /certs/ca.crt
       RECO_URL: http://reco:8095
       SODEX_CONNECT_ENABLED: "true"
+      # Desk AI (DEC-165): key Claude API; trống = câu mẫu.
+      DESK_AI_API_KEY: ${DESK_AI_API_KEY:-}
     depends_on:
       <<: *app-deps
       signer: { condition: service_healthy }
@@ -189,6 +191,23 @@ services:
   scheduler:
     <<: *app
     image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:scheduler-${DRIFT_TAG:-latest}
+    # Signal research, lane tin tức (DEC-322, docs/DEPLOY.md mục 2.15–2.16): key SoSoValue / Claude chỉ tới scheduler,
+    # không qua x-env. NATS_URL (x-env) cho giá md.*.book. Mặc định tắt; tắt nhanh: SIGNAL_RESEARCH_ENABLED=false.
+    environment:
+      <<: *env
+      COPY_LEADERBOARD_ENABLED: ${COPY_LEADERBOARD_ENABLED:-false}
+      COPY_LEADERBOARD_HOUR_UTC: ${COPY_LEADERBOARD_HOUR_UTC:-1}
+      SIGNAL_RESEARCH_ENABLED: ${SIGNAL_RESEARCH_ENABLED:-false}
+      SOSO_API_KEY: ${SOSO_API_KEY:-}
+      DESK_AI_API_KEY: ${DESK_AI_API_KEY:-}
+      SIGNAL_CLAUDE_DAILY_INPUT_TOKENS: ${SIGNAL_CLAUDE_DAILY_INPUT_TOKENS:-2000000}
+      SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE: ${SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE:-50}
+      SIGNAL_SOSO_MONTHLY_LIMIT: ${SIGNAL_SOSO_MONTHLY_LIMIT:-9500}
+      SIGNAL_SOSO_MAX_PAGES: ${SIGNAL_SOSO_MAX_PAGES:-2}
+      SIGNAL_NEWS_START_LOOKBACK_MIN: ${SIGNAL_NEWS_START_LOOKBACK_MIN:-15}
+      SIGNAL_NEWS_MAX_CATCHUP_MIN: ${SIGNAL_NEWS_MAX_CATCHUP_MIN:-30}
+      # Research wallets (#365, chờ merge): số ví K, trần 40, 0 = tắt. Hiện chỉ scheduler đọc biến này.
+      SIGNAL_RESEARCH_WALLETS_K: ${SIGNAL_RESEARCH_WALLETS_K:-30}
 
   jobs:
     <<: *app

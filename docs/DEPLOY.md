@@ -317,6 +317,86 @@ Migration `0044_signal_research` (đã sửa tại chỗ trong PR #278 trước 
 
 **Tắt khẩn cấp:** `SIGNAL_RESEARCH_ENABLED=false` trong `/opt/drift/.env` rồi `docker compose up -d scheduler`. Lệnh giấy đang mở giữ nguyên trong DB; bật lại thì watcher kiểm TP / SL tiếp, còn tin trong lúc tắt không được bắt kịp quá 30 phút. Ngân sách Claude hết trong ngày thì lane tự ngừng phân loại (`CLAUDE_BUDGET_REACHED`) tới 00:00 UTC.
 
+### 2.16 Checklist đưa Signal research lên prod (bản sau v2.12.0)
+
+Gom mọi việc cho lần release đầu tiên có Signal research (từ v2.12.0 tới #361). Mục 2.15 là chi tiết của lane tin tức; mục này là danh sách để làm theo thứ tự. **Không bao giờ dán giá trị key vào đây, vào log, ticket hay PR**: người dùng tự điền trong `/opt/drift/.env`.
+
+**1. Biến môi trường** (`/opt/drift/.env`, rồi khai báo trong `/opt/drift/docker-compose.yml` như khối `scheduler` của mẫu `deploy/server/docker-compose.yml`; compose trên VPS giữ tay nên biến chưa khai báo sẽ không tới container):
+
+| Biến | Service | Ý nghĩa |
+|---|---|---|
+| `SIGNAL_RESEARCH_ENABLED` | scheduler | Bật lane tin tức (`true` / `1`). Mặc định `false`. Đây cũng là công tắc tắt nhanh |
+| `SOSO_API_KEY` | scheduler | Key SoSoValue OpenAPI (bắt buộc khi bật). Thiếu thì log `signal research not started` |
+| `DESK_AI_API_KEY` | scheduler, api | Key Claude API (Claude Console), dùng chung với Desk AI. Thiếu thì lane không chạy |
+| `NATS_URL` | scheduler | Có sẵn trong `x-env` (`nats://nats:4222`). Scheduler nghe `md.*.book` (chỉ đọc) để có giá tốt nhất; thiếu thì chỉ dùng giá Redis |
+| `SIGNAL_CLAUDE_DAILY_INPUT_TOKENS` | scheduler | Ngân sách Claude mỗi ngày UTC, đơn vị token đầu vào quy đổi (mặc định `2000000` ≈ 2 USD/ngày). Hết thì ngừng phân loại tới 00:00 UTC |
+| `SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE` | scheduler | Trần lần gọi Claude mỗi chu kỳ 5 phút, kể cả thử lại (mặc định `50`) |
+| `SIGNAL_SOSO_MONTHLY_LIMIT` | scheduler | Trần request SoSoValue mỗi tháng (mặc định `9500`, gói free 10 000) |
+| `SIGNAL_SOSO_MAX_PAGES` | scheduler | Số trang tin tối đa mỗi chu kỳ (mặc định `2`) |
+| `SIGNAL_NEWS_START_LOOKBACK_MIN` | scheduler | Lần chạy đầu chỉ nhận tin trong ngần này phút (mặc định `15`) |
+| `SIGNAL_NEWS_MAX_CATCHUP_MIN` | scheduler | Sau thời gian ngừng, không bắt kịp quá ngần này phút (mặc định `30`) |
+| `COPY_LEADERBOARD_ENABLED`, `COPY_LEADERBOARD_HOUR_UTC` | scheduler | Không mới, nhưng H1 · Whales agree chỉ có số khi leaderboard Hyperliquid được tính (DEC-163). Tắt thì H1 của mọi tín hiệu là "Not available" (0 ví theo dõi) |
+| `SIGNAL_RESEARCH_WALLETS_K` | scheduler | **Chờ #365 merge** (#353). Số ví nghiên cứu K mà marketdata poll cho H1 (mặc định `30`, trần `40`, `0` = tắt). Trên branch của #365 chỉ `scheduler` đọc biến này (scheduler chụp bộ ví vào DB; marketdata poll theo bộ đã lưu). Compose chỉ cần biến ở `scheduler` |
+
+Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod env của `scheduler`, `api`, `marketdata`, `engine`). `DESK_AI_API_KEY` của `api` là biến cũ, chỉ cần có trong compose nếu muốn Desk AI dùng Claude.
+
+**2. Migration mới** (`build-push.sh` tự chạy `migrate`; đều tương thích ngược, chỉ thêm bảng / cột):
+
+| File | Nội dung |
+|---|---|
+| `0044_signal_research` | Bảng `signal_articles`, `signal_events`, `signal_stories`, `signal_paper_trades`, `signal_research_usage`, `signal_source_health` |
+| `0045_sr_article_usage` | Cột usage Claude theo bài trên `signal_articles` (nullable, chỉ sửa metadata) |
+| `0046_sr_asset_map_version` | Cột `signal_paper_trades.asset_map_version` |
+| `0047_sr_bot_versions` | Bảng News bot versions, seed version Baseline, gắn lệnh / story / event news-v3 vào Baseline (UPDATE trên các bảng `signal_*`, nhỏ) |
+| `0048_sr_classification_labels` | Bảng `signal_classification_labels` |
+| `0049_api_idempotency_outcome` | Cột `idempotency_keys.outcome`, `error_code` (nullable). Không thuộc Signal research (#316) |
+| `0050_sr_label_source` | Bảng `signal_label_tokens`, cột nguồn nhãn (nhãn cũ nhận `trace` qua DEFAULT) |
+| `0051_sr_signal_contexts` | Bảng `signal_contexts` (trigger chặn UPDATE), cột `leader_wallets.last_polled_at` |
+| `0052_sr_research_wallets` | **Chờ #365 merge.** Bảng `research_wallet_sets`, `research_wallet_set_members` |
+
+**3. Service cần pull lại:** cả 11 app. `infra/deploy/changed-apps.sh v2.12.0 <tag mới>` trả cả 11 vì `packages/**` đổi (shared, db). `build-push.sh --deploy-only <tag>` đã pull và `up -d` hết; không cần chọn tay.
+
+**4. Thứ tự làm:**
+1. Thêm biến vào `/opt/drift/.env` (key do người dùng tự điền) và khối `environment` của `scheduler` (và `DESK_AI_API_KEY` của `api` nếu chưa có) vào `/opt/drift/docker-compose.yml`. Kiểm: `cd /opt/drift && docker compose config --quiet`.
+2. Deploy với flag vẫn `false`: `infra/deploy/build-push.sh --deploy-only <tag>`.
+3. Đo prefix cache một lần (mục 2.15 bước 3), rồi bật: `SIGNAL_RESEARCH_ENABLED=true` trong `/opt/drift/.env`, `cd /opt/drift && docker compose up -d scheduler`.
+4. Chạy phần kiểm sau deploy (bên dưới) sau khoảng 15–30 phút.
+
+**5. Tắt nhanh** (không cần image mới): `SIGNAL_RESEARCH_ENABLED=false` trong `/opt/drift/.env`, rồi `cd /opt/drift && docker compose up -d scheduler`. Lệnh giấy đang mở giữ nguyên trong DB; không có gì gửi tới SoDEX ở bất kỳ trạng thái nào.
+
+**6. Chi phí Claude (ước tính, không phải số đo trên prod):** theo số liệu máy local ngày 2026-11-19 (277 lượt Claude; token đầu vào 165 623, ghi cache 30 236, đọc cache 1 480 646, đầu ra 30 187) và giá niêm yết Haiku 4.5 trong `NEWS_CLASSIFIER.pricing` (đầu vào 1 USD / 1M, ghi cache TTL 1 giờ 2×, đọc cache 0.1×, đầu ra 5 USD / 1M): khoảng **0,53 USD / ngày** (≈ 16 USD / tháng). Ngày 2026-11-20 trang hiện 0,55 USD. Số trên prod phụ thuộc lượng tin và số bài qua Claude; ngân sách `SIGNAL_CLAUDE_DAILY_INPUT_TOKENS` mặc định chặn ở khoảng 2 USD / ngày.
+
+**7. Kiểm sau deploy** (mọi lệnh chỉ đọc; chạy trong `/opt/drift`):
+
+- Lane chạy: log scheduler có `signal research enabled`, rồi mỗi 5 phút một dòng `signal research news cycle`:
+  ```bash
+  docker compose logs --since 30m scheduler | grep -E "signal research (enabled|news cycle|not started)"
+  ```
+- Nguồn **Live** (tab Signal research, chấm Sources): `last_ok_at` của `sosovalue` trong vài phút gần nhất, `last_error` trống:
+  ```bash
+  docker compose exec postgres psql -U drift -d drift -c "select source, last_ok_at, last_error_at, last_error, last_cycle_at from signal_source_health order by source;"
+  ```
+- Có bài mới vào phễu:
+  ```bash
+  docker compose exec postgres psql -U drift -d drift -c "select count(*), max(collected_at) from signal_articles where collected_at > now() - interval '1 hour';"
+  ```
+- Có snapshot ngữ cảnh `live` (bước 4 · Context, cần ít nhất một bài qua Score):
+  ```bash
+  docker compose exec postgres psql -U drift -d drift -c "select source, count(*), max(decided_at) from signal_contexts group by source;"
+  ```
+- Có bản chụp giá cho lãi / lỗ chưa chốt (key Redis `sr:quotes`, TTL 60 s, scheduler ghi mỗi chu kỳ giá):
+  ```bash
+  docker compose exec redis redis-cli exists sr:quotes
+  docker compose exec redis redis-cli pttl sr:quotes
+  ```
+  `exists` = 1 và `pttl` dương. Không có thì Paper trades hiện "Not available" thay cho lãi / lỗ chưa chốt.
+- Paper trades có PnL: tab Signal research › Paper trades, lệnh mở có "unrealized", lệnh đóng có "Result after fees". Kiểm DB:
+  ```bash
+  docker compose exec postgres psql -U drift -d drift -c "select status, count(*), sum(result_usdc) from signal_paper_trades where lane = 'news' group by status;"
+  ```
+- Prompt cache và chi phí: mục 2.15 bước 4 (`claude_cache_read_tokens > 0` sau khoảng một giờ).
+- Báo cáo tổng: `docker compose exec scheduler pnpm --filter @drift/scheduler signals:report`.
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push image các app đổi (app không đổi được gắn tag mới vào image của tag trước) → PM trả tag (`docs/RELEASE.md`).
