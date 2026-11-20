@@ -249,6 +249,25 @@ describe("band text (#343)", () => {
   });
 });
 
+describe("no internal codes on the step cards (#343 review)", () => {
+  it("Claude's error code and the drop code go to the tooltip only", () => {
+    const score = ETH_TRACE.steps[2];
+    if (score?.key !== "score" || score.detail === null) throw new Error("fixture");
+    const tr = {
+      ...ETH_TRACE,
+      steps: ETH_TRACE.steps.map((x, i) =>
+        i === 2 && score.detail !== null
+          ? { ...score, detail: { ...score.detail, error: "CLAUDE_BAD_JSON" } }
+          : x,
+      ),
+    };
+    const row = traceView(tr, TZ, t).steps[2]?.rows.find((r) => r.label === "Claude error");
+    expect(row).toMatchObject({ value: "Not understood", title: "CLAUDE_BAD_JSON" });
+    const drop = traceView(KNTQ_TRACE, TZ, t).steps[1]?.rows.find((r) => r.label === "Result");
+    expect(drop).toMatchObject({ value: "Dropped: Not on SoDEX", title: "NO_SODEX_MARKET" });
+  });
+});
+
 describe("trace player and 6-band model", () => {
   it("maps the 5 API steps to 6 bands with Context as band 4", () => {
     const v = (tr: typeof ETH_TRACE) => traceView(tr, TZ, t);

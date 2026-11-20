@@ -205,7 +205,16 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(within(f).getAllByText("22 articles on SoDEX").length).toBeGreaterThan(0);
     expect(within(f).getAllByText("3 signals").length).toBeGreaterThan(0);
     expect(within(f).getAllByText("1 left").length).toBeGreaterThan(0);
-    expect(within(f).getAllByText("Long 1 · Short 0").length).toBeGreaterThan(0);
+    // Decide: câu dài + câu ngắn (container query), mỗi cặp nhãn–số không ngắt dòng.
+    const decide = within(f).getByTestId("sr-funnel-bands").querySelector("[data-band='decide']");
+    expect(decide).toHaveTextContent("Long 1 · Short 0");
+    expect(decide).toHaveTextContent("L 1 · S 0");
+    expect([...(decide?.querySelectorAll("[data-pair]") ?? [])].map((x) => x.textContent)).toEqual([
+      "Long 1",
+      "Short 0",
+      "L 1",
+      "S 0",
+    ]);
     // #343: phễu sáng 6 tầng; ghi chú từng tầng nằm ở chú thích khi rê chuột (title), không cạnh tầng.
     const band = (name: string) =>
       within(f).getByRole("button", { name: `List articles that stopped at ${name}` });
@@ -224,7 +233,20 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     // Tầng 4 · Context: viền đứt, chỉ ghi nhận, không bấm được; #358: số tín hiệu có H1 / H2 / H3 = yes trong khoảng.
     const ctxBand = within(f).getByTestId("sr-funnel-bands").querySelector("[data-band='context']");
     expect(ctxBand).toHaveTextContent("4 · Context");
-    expect(ctxBand).toHaveTextContent("Whales agree 2 · Funding vs crowd 1 · Ran early 1");
+    expect(ctxBand).toHaveAttribute("title", "Whales agree 2 · Funding vs crowd 1 · Ran early 1");
+    // #345: mỗi cặp nhãn–số không ngắt dòng; câu dài khi tầng rộng, câu ngắn khi hẹp (container query).
+    const pairs = [...(ctxBand?.querySelectorAll("[data-pair]") ?? [])];
+    expect(pairs.map((x) => x.textContent)).toEqual([
+      "Whales agree 2",
+      "Funding vs crowd 1",
+      "Ran early 1",
+      "Whales 2",
+      "Funding 1",
+      "Ran early 1",
+    ]);
+    for (const x of pairs) expect(x).toHaveClass("whitespace-nowrap");
+    expect(pairs[0]?.parentElement).toHaveClass("hidden", "@[480px]:inline");
+    expect(pairs[3]?.parentElement).toHaveClass("@[480px]:hidden");
     expect(ctxBand).not.toHaveTextContent("records only");
     expect(ctxBand?.tagName).toBe("DIV");
     expect(ctxBand).toHaveClass("border-dashed");
@@ -297,7 +319,9 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(within(funnel()).getAllByText("340 articles on SoDEX").length).toBeGreaterThan(0);
     expect(within(funnel()).getAllByText("108 signals").length).toBeGreaterThan(0);
     expect(within(funnel()).getAllByText("41 left").length).toBeGreaterThan(0);
-    expect(within(funnel()).getAllByText("Long 29 · Short 12").length).toBeGreaterThan(0);
+    expect(
+      within(funnel()).getByTestId("sr-funnel-bands").querySelector("[data-band='decide']"),
+    ).toHaveTextContent("Long 29 · Short 12");
     expect(
       within(funnel()).getByRole("button", { name: "List articles that stopped at Normalize" }),
     ).toHaveAttribute("title", "900 out · 808 duplicate, 52 not on SoDEX");
@@ -550,7 +574,10 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
       within(list).getByText("The expected move is too small to beat the cost of a trade."),
     ).toBeInTheDocument();
     expect(within(list).getByText("0.15% vs 2 × 0.10% = 0.20%")).toBeInTheDocument();
-    expect(within(list).getByText("Dropped: MOVE_TOO_SMALL_FOR_COST")).toBeInTheDocument();
+    // Mã nội bộ không in ra thẻ: cùng câu với "Why they dropped out", mã chỉ ở tooltip.
+    const result = within(list).getByText("Dropped: Take profit under 2× cost");
+    expect(result).toHaveAttribute("title", "MOVE_TOO_SMALL_FOR_COST");
+    expect(within(list).queryByText(/MOVE_TOO_SMALL_FOR_COST/)).toBeNull();
     expect(within(list).getByText("Hack → Short")).toBeInTheDocument();
     expect(within(list).queryByRole("heading", { name: /Decide/ })).not.toBeInTheDocument();
     expect(within(f).getByText(/SoSoValue · project account \(mid tier\)/)).toBeInTheDocument();
@@ -569,7 +596,18 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     });
     const list = within(f).getByRole("list", { name: "Steps this article went through" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(2);
-    expect(within(list).getByText("Dropped: NO_SODEX_MARKET")).toBeInTheDocument();
+    expect(within(list).getByText("Dropped: Not on SoDEX")).toHaveAttribute(
+      "title",
+      "NO_SODEX_MARKET",
+    );
+    // Không còn mã nội bộ / enum thô nào hiện ra trong phễu, thẻ bước hay feed.
+    expect(f.textContent).not.toMatch(/\b[A-Z]{2,}(_[A-Z]+)+\b/);
+    // Chip bài bị loại đỗ trong rãnh bên phải tầng Normalize, cùng hàng, không xoay.
+    const chip = within(f).getByTestId("sr-token");
+    expect(chip).toHaveAttribute("data-tone", "dropped");
+    expect(chip.style.top).toBe("44px");
+    expect(chip.style.left).toBe("calc(100% - 108px)");
+    expect(chip.className).not.toMatch(/rotate/);
     expect(
       within(list).getByText(
         "No SoDEX market for KNTQ, so the article stops here and Claude is not called.",

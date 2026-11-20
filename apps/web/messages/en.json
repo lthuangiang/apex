@@ -2884,7 +2884,9 @@
     "signalAnalysis.research.page.progress.contextAnswered",
     "signalAnalysis.research.bots.olderRules",
     "signalAnalysis.research.trace.rulesSince",
-    "signalAnalysis.research.trace.rulesSinceDay"
+    "signalAnalysis.research.trace.rulesSinceDay",
+    "signalAnalysis.research.context.funnelCountsShort",
+    "signalAnalysis.research.trace.countsShort"
   ],
   "beta": {
     "label": "Beta",
@@ -7959,7 +7961,12 @@
           "normalize": "{n, plural, one {# article on SoDEX} other {# articles on SoDEX}}",
           "score": "{n, plural, one {# signal} other {# signals}}",
           "filter": "{n} left",
-          "decide": "Long {long} · Short {short}"
+          "decide": "<p>Long {long}</p> · <p>Short {short}</p>"
+        },
+        "countsShort": {
+          "collect": "{n}",
+          "normalize": "{n} on SoDEX",
+          "decide": "<p>L {long}</p> · <p>S {short}</p>"
         },
         "notes": {
           "collect": "every SoSoValue article",
@@ -9094,7 +9101,8 @@
           "none": "No"
         },
         "openInterest": "Open interest",
-        "funnelCounts": "Whales agree {h1} · Funding vs crowd {h2} · Ran early {h3}"
+        "funnelCounts": "<p>Whales agree {h1}</p> · <p>Funding vs crowd {h2}</p> · <p>Ran early {h3}</p>",
+        "funnelCountsShort": "<p>Whales {h1}</p> · <p>Funding {h2}</p> · <p>Ran early {h3}</p>"
       },
       "judge": {
         "tabsLabel": "Results",
