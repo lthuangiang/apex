@@ -2,6 +2,9 @@ import {
   AppError,
   botVersionConfigSchema,
   hypothesisSchema,
+  nextRunPeriods,
+  runPeriodsJson,
+  runPeriodsOf,
   SignalBotVersionStatus,
   ErrorCode,
   MAX_RUNNING_VERSIONS,
@@ -152,6 +155,7 @@ export async function createSignalBotVersion(
         savedFromVersionId: input.savedFromVersionId,
         isBaseline: false,
         hypothesis: hyp.data,
+        runningPeriods: runPeriodsJson(input.start ? [{ from: now, to: null }] : []),
         statusChangedAt: now,
         createdAt: now,
         updatedAt: now,
@@ -216,6 +220,9 @@ export async function setSignalBotVersionStatus(
         number: signalBotVersions.number,
         isBaseline: signalBotVersions.isBaseline,
         finishedAt: signalBotVersions.experimentFinishedAt,
+        runningPeriods: signalBotVersions.runningPeriods,
+        createdAt: signalBotVersions.createdAt,
+        statusChangedAt: signalBotVersions.statusChangedAt,
       })
       .from(signalBotVersions)
       .where(eq(signalBotVersions.id, input.id))
@@ -249,6 +256,18 @@ export async function setSignalBotVersionStatus(
         status: input.status,
         statusChangedAt: now,
         updatedAt: now,
+        runningPeriods: runPeriodsJson(
+          nextRunPeriods(
+            runPeriodsOf({
+              runningPeriods: row.runningPeriods,
+              status: from,
+              createdAt: row.createdAt,
+              statusChangedAt: row.statusChangedAt,
+            }),
+            input.status,
+            now,
+          ),
+        ),
         ...(finish === undefined ? {} : { experimentFinishedAt: now, experimentResult: finish }),
       })
       .where(eq(signalBotVersions.id, input.id));

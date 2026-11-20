@@ -8846,7 +8846,12 @@
             "marketsMissing": "The SoDEX market list isn’t available yet. Try again in a few minutes.",
             "fix": "Fix the fields marked above.",
             "generic": "Couldn’t save this version. Nothing was saved."
-          }
+          },
+          "hypothesis": "Hypothesis (one sentence)",
+          "baselineChanges": "Changes from Baseline (v{n}): <b>{list}</b>",
+          "notClean": "<b>This version changes {n} things from Baseline.</b> If its result differs, you won’t know which change caused it. Keep one change per version.",
+          "saveAnyway": "Save and start anyway",
+          "backToEdit": "Back to edit"
         },
         "picker": {
           "search": "Search SoDEX markets",

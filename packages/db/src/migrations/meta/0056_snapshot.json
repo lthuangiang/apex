@@ -1,5 +1,5 @@
 {
-  "id": "be6f4771-c3ef-481f-9461-e9cd2a527ebc",
+  "id": "bf35dc8d-115a-4149-b47b-c9e3729eabe0",
   "prevId": "20a5ef7c-64f8-4012-98ec-74e6bb64e3b0",
   "version": "7",
   "dialect": "postgresql",
@@ -7020,6 +7020,12 @@
         },
         "experiment_result": {
           "name": "experiment_result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "running_periods": {
+          "name": "running_periods",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

@@ -1986,6 +1986,8 @@ export const signalBotVersions = pgTable(
     experimentFinishedAt: tstz("experiment_finished_at"),
     /** #377: kết quả đóng băng lúc dừng (`experimentResultSchema`): số cặp, trung bình chênh lệch, khoảng 95%, kết luận. */
     experimentResult: jsonb("experiment_result"),
+    /** #377: các khoảng `running` (`runPeriodsSchema`), để ghép cặp chỉ trong lúc version chạy; null = trước #377. */
+    runningPeriods: jsonb("running_periods"),
     ...timestamps,
   },
   (t) => [

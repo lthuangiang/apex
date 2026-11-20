@@ -6,20 +6,21 @@ import {
   experimentResultSchema,
   NEWS_RULES,
   pairWithBaseline,
+  runPeriodsOf,
   SignalBotVersionStatus,
   type BotVersionConfig,
   type ExperimentResult,
   type PairTrade,
   type ResearchExperiment,
 } from "@drift/shared";
-import { and, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 
 import type { Db } from "./client";
 import { signalBotVersions, signalPaperTrades } from "./schema";
 import { setSignalBotVersionStatus } from "./signal-research-versions";
 
 // Sổ thí nghiệm (#377, DEC-TBD-catalyst-p0 / DEC-TBD-sr-experiments): mỗi version (trừ Baseline) so ghép cặp với Baseline
-// CỐ ĐỊNH trên cùng câu chuyện + market. Đủ 100 cặp lệnh đã đóng thì version (có giả thuyết) tự dừng qua state machine của
+// CỐ ĐỊNH trên HỢP các tín hiệu (câu chuyện + market) mà ít nhất một bên đã vào lệnh; bên không vào lệnh tính 0. Đủ 100 cặp lệnh đã đóng thì version (có giả thuyết) tự dừng qua state machine của
 // version (`setSignalBotVersionStatus`, có audit) và kết quả được đóng băng. Không đổi logic giao dịch; Baseline không bao
 // giờ bị dừng ở đây.
 
@@ -31,38 +32,41 @@ export interface ExperimentTrade extends PairTrade {
 interface VersionRow {
   id: string;
   config: unknown;
+  status: string;
   createdAt: Date;
+  statusChangedAt: Date;
   isBaseline: boolean;
   experimentFinishedAt: Date | null;
   experimentResult: unknown;
+  runningPeriods: unknown;
 }
+
+/** Lệnh của version và các khoảng nó chạy, cho `pairWithBaseline`. */
+const sideOf = (v: VersionRow, trades: ReadonlyMap<string, readonly ExperimentTrade[]>) => ({
+  trades: trades.get(v.id) ?? [],
+  running: runPeriodsOf(v),
+});
 
 /**
  * Thí nghiệm của một version so với Baseline. Đã Finished → kết quả đóng băng; chưa → tính từ lệnh hiện có. Baseline → null.
  */
 export function experimentOf(input: {
   version: VersionRow;
-  baseline: { id: string; number: number; config: BotVersionConfig | null } | null;
+  baseline: (VersionRow & { number: number; parsed: BotVersionConfig | null }) | null;
   trades: ReadonlyMap<string, readonly ExperimentTrade[]>;
 }): ResearchExperiment | null {
   const { version: v, baseline } = input;
   if (v.isBaseline || baseline === null) return null;
   const cfg = botVersionConfigSchema.safeParse(v.config);
   const changes =
-    cfg.success && baseline.config !== null ? diffVersionConfig(baseline.config, cfg.data) : null;
+    cfg.success && baseline.parsed !== null ? diffVersionConfig(baseline.parsed, cfg.data) : null;
   const things = changes === null ? null : changedThings(changes).length;
   const frozen =
     v.experimentFinishedAt === null ? null : experimentResultSchema.safeParse(v.experimentResult);
   const result: ExperimentResult =
     frozen?.success === true
       ? frozen.data
-      : experimentResult(
-          pairWithBaseline(
-            input.trades.get(v.id) ?? [],
-            input.trades.get(baseline.id) ?? [],
-            v.createdAt,
-          ),
-        );
+      : experimentResult(pairWithBaseline(sideOf(v, input.trades), sideOf(baseline, input.trades)));
   return {
     control: { id: baseline.id, number: baseline.number },
     changes,
@@ -112,9 +116,9 @@ export async function finishSignalExperiments(
   const trades: ExperimentTrade[] = await db
     .select({
       versionId: signalPaperTrades.versionId,
-      storyId: signalPaperTrades.storyId,
-      articleId: signalPaperTrades.articleId,
       market: signalPaperTrades.market,
+      catalyst: signalPaperTrades.catalyst,
+      eventAt: signalPaperTrades.eventAt,
       status: signalPaperTrades.status,
       resultPct: signalPaperTrades.resultPct,
       openedAt: signalPaperTrades.openedAt,
@@ -124,9 +128,8 @@ export async function finishSignalExperiments(
     .where(
       and(
         eq(signalPaperTrades.lane, NEWS_RULES.lane),
+        // Cả lệnh đang mở: cặp có lệnh chưa đóng thì chưa đếm (không coi là "không vào lệnh").
         eq(signalPaperTrades.label, "live"),
-        eq(signalPaperTrades.status, "closed"),
-        isNotNull(signalPaperTrades.resultPct),
         or(
           inArray(signalPaperTrades.versionId, ids),
           and(
@@ -137,12 +140,10 @@ export async function finishSignalExperiments(
       ),
     );
   const byVersion = tradesByVersion(trades, baseline.id);
-  const baseTrades = byVersion.get(baseline.id) ?? [];
+  const baseSide = sideOf(baseline, byVersion);
   const finished: { id: string; number: number; result: ExperimentResult }[] = [];
   for (const r of due) {
-    const result = experimentResult(
-      pairWithBaseline(byVersion.get(r.id) ?? [], baseTrades, r.createdAt),
-    );
+    const result = experimentResult(pairWithBaseline(sideOf(r, byVersion), baseSide));
     if (result.verdict === "collecting") continue;
     await setSignalBotVersionStatus(db, {
       id: r.id,

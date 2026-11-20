@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { dec, type Decimal } from "../money";
+import { isoDateTimeSchema } from "../schemas";
 import { summarizeByDay, type DayObs } from "../stats/day-bootstrap";
 
 import type { VersionConfigChange } from "./versions";
@@ -55,68 +56,125 @@ export function changedThings(changes: readonly VersionConfigChange[]): string[]
 export const cleanTest = (changes: readonly VersionConfigChange[]): boolean =>
   changedThings(changes).length === 1;
 
-/** Một lệnh giấy news để ghép cặp. `resultPct` = kết quả sau phí (%), null khi chưa đóng. */
+/**
+ * Một lệnh giấy news THẬT (label `live`) để ghép cặp; lệnh shadow (bị giới hạn chặn) không bao giờ đưa vào đây. `resultPct`
+ * = kết quả sau phí (%), null khi chưa đóng. `eventAt` = giờ đăng của bài đầu câu chuyện (cả lệnh thử lại), nên cùng một
+ * tin có cùng `eventAt` ở mọi version (câu chuyện và id của nó thì riêng từng version).
+ */
 export interface PairTrade {
-  storyId: string | null;
-  articleId: string | null;
   market: string;
+  catalyst: string;
+  eventAt: Date;
   status: string;
   resultPct: string | null;
   openedAt: Date;
   exitedAt: Date | null;
 }
 
+/** Một khoảng version ở trạng thái `running`; `to` null = đang chạy. */
+export interface RunPeriod {
+  from: Date;
+  to: Date | null;
+}
+
+/** Cột `signal_bot_versions.running_periods` (ISO UTC). */
+export const runPeriodsSchema = z.array(
+  z.object({ from: isoDateTimeSchema, to: isoDateTimeSchema.nullable() }),
+);
+
+export const runPeriodsJson = (periods: readonly RunPeriod[]) =>
+  periods.map((p) => ({
+    from: p.from.toISOString(),
+    to: p.to === null ? null : p.to.toISOString(),
+  }));
+
+/**
+ * Khoảng chạy của một version. Cột null (version lưu trước #377, hoặc Baseline seed) thì ước theo trạng thái: đang chạy →
+ * từ lúc lưu tới nay; không chạy → từ lúc lưu tới lần đổi trạng thái gần nhất.
+ */
+export function runPeriodsOf(v: {
+  runningPeriods: unknown;
+  status: string;
+  createdAt: Date;
+  statusChangedAt: Date;
+}): RunPeriod[] {
+  if (v.runningPeriods !== null) {
+    const p = runPeriodsSchema.safeParse(v.runningPeriods);
+    if (p.success)
+      return p.data.map((x) => ({
+        from: new Date(x.from),
+        to: x.to === null ? null : new Date(x.to),
+      }));
+  }
+  return [{ from: v.createdAt, to: v.status === "running" ? null : v.statusChangedAt }];
+}
+
+/** Mở / đóng khoảng chạy khi version đổi trạng thái (thuần, có test). */
+export function nextRunPeriods(periods: readonly RunPeriod[], to: string, at: Date): RunPeriod[] {
+  const out = periods.map((p) => ({ ...p }));
+  const open = out.length > 0 && out[out.length - 1]?.to === null;
+  if (to === "running" && !open) out.push({ from: at, to: null });
+  if (to !== "running" && open) {
+    const last = out[out.length - 1];
+    if (last !== undefined) last.to = at;
+  }
+  return out;
+}
+
+const within = (periods: readonly RunPeriod[], at: Date) =>
+  periods.some((p) => p.from <= at && (p.to === null || at < p.to));
+
 export interface ExperimentPair {
   key: string;
-  /** Kết quả sau phí của thí nghiệm − của Baseline (điểm %). */
+  /** Kết quả sau phí của thí nghiệm − của Baseline (điểm %); bên không vào lệnh = 0. */
   diff: Decimal;
-  /** Giờ vào lệnh của thí nghiệm (cụm ngày của bootstrap). */
+  /** Giờ vào lệnh sớm nhất trong cặp (cụm ngày của bootstrap). */
   at: number;
-  /** Lúc cặp đủ (lệnh đóng sau của hai bên): thứ tự để lấy đúng 100 cặp đầu. */
+  /** Lúc cặp đủ (lệnh đóng sau cùng trong cặp): thứ tự để lấy đúng 100 cặp đầu. */
   completeAt: number;
 }
 
-/** "Cùng bài" = cùng câu chuyện (bài thử lại của một câu chuyện vẫn là một tin) và cùng market; không có story thì theo bài. */
-function pairKey(t: PairTrade): string | null {
-  const unit =
-    t.storyId === null ? (t.articleId === null ? null : `a:${t.articleId}`) : `s:${t.storyId}`;
-  return unit === null ? null : `${unit}|${t.market}`;
-}
+/** "Cùng tín hiệu" = cùng market, loại tin và giờ đăng của bài đầu câu chuyện (độc lập với version). */
+const pairKey = (t: PairTrade) => `${t.market}|${t.catalyst}|${String(t.eventAt.getTime())}`;
 
-const closedOk = (t: PairTrade) =>
+const closed = (t: PairTrade) =>
   t.status === "closed" && t.resultPct !== null && t.exitedAt !== null;
 
 /**
- * Ghép lệnh đã đóng của thí nghiệm (mở từ `since` = lúc lưu version) với lệnh đã đóng của Baseline trên cùng bài + market.
- * Mỗi khoá chỉ một cặp (lệnh mở sớm nhất mỗi bên). Thứ tự theo lúc cặp đủ, rồi theo khoá (tất định).
+ * Ghép cặp trên HỢP các tín hiệu mà ít nhất một bên đã vào lệnh, trong lúc CẢ HAI version đang chạy (khoảng `running`, nên
+ * thời gian một bên tạm dừng không bị tính là "không vào lệnh"). Bên không vào lệnh (bỏ qua theo luật của nó, hoặc bị giới
+ * hạn chặn: chỉ có lệnh shadow) tính kết quả 0, nên thí nghiệm lọc được tính cả phần lệnh Baseline vào mà version bỏ. Cặp chỉ
+ * đếm khi mọi lệnh đã vào trong cặp đều đã đóng. Mỗi bên một lệnh mỗi khoá (lệnh mở sớm nhất). Thứ tự theo lúc cặp đủ, rồi
+ * theo khoá (tất định).
  */
 export function pairWithBaseline(
-  experiment: readonly PairTrade[],
-  baseline: readonly PairTrade[],
-  since: Date,
+  experiment: { trades: readonly PairTrade[]; running: readonly RunPeriod[] },
+  baseline: { trades: readonly PairTrade[]; running: readonly RunPeriod[] },
 ): ExperimentPair[] {
   const first = (rows: readonly PairTrade[]) => {
     const m = new Map<string, PairTrade>();
     for (const t of rows) {
-      if (!closedOk(t)) continue;
       const k = pairKey(t);
-      if (k === null) continue;
       const cur = m.get(k);
       if (cur === undefined || t.openedAt < cur.openedAt) m.set(k, t);
     }
     return m;
   };
-  const exp = first(experiment.filter((t) => t.openedAt >= since));
-  const base = first(baseline);
+  const exp = first(experiment.trades);
+  const base = first(baseline.trades);
   const out: ExperimentPair[] = [];
-  for (const [key, e] of exp) {
-    const b = base.get(key);
-    if (b === undefined) continue;
+  for (const key of new Set([...exp.keys(), ...base.keys()])) {
+    const sides = [exp.get(key), base.get(key)];
+    const entered = sides.filter((t): t is PairTrade => t !== undefined);
+    const at = new Date(Math.min(...entered.map((t) => t.openedAt.getTime())));
+    if (!within(experiment.running, at) || !within(baseline.running, at)) continue;
+    if (!entered.every(closed)) continue;
+    const pct = (t: PairTrade | undefined) => dec(t?.resultPct ?? "0");
     out.push({
       key,
-      diff: dec(e.resultPct ?? "0").sub(dec(b.resultPct ?? "0")),
-      at: e.openedAt.getTime(),
-      completeAt: Math.max(e.exitedAt?.getTime() ?? 0, b.exitedAt?.getTime() ?? 0),
+      diff: pct(sides[0]).sub(pct(sides[1])),
+      at: at.getTime(),
+      completeAt: Math.max(...entered.map((t) => t.exitedAt?.getTime() ?? 0)),
     });
   }
   return out.sort(

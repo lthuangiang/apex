@@ -272,8 +272,7 @@ export function useCreateVersion(
 ) {
   const qc = useQueryClient();
   return useFinancialMutation({
-    // #377: `hypothesis` bắt buộc ở API; ô nhập đến ở PR UI (version-sheet `SheetBody`).
-    mutationFn: (body: Omit<ResearchVersionCreateBody, "hypothesis">, idempotencyKey: string) =>
+    mutationFn: (body: ResearchVersionCreateBody, idempotencyKey: string) =>
       api("POST", RESEARCH_PATHS.versions, researchVersionCreatedSchema, { body, idempotencyKey }),
     refetch: versionReads,
     onSuccess: async (v) => {

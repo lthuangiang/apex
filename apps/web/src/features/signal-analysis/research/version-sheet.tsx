@@ -4,9 +4,11 @@ import {
   AssetMode,
   baselineVersionConfig,
   botVersionConfigSchema,
+  changedThings,
   defaultMaxOpenTrades,
   diffVersionConfig,
   ErrorCode,
+  HYPOTHESIS_MAX,
   NEWS_RULES,
   OppositeNewsPolicy,
   SIGNAL_CATALYSTS,
@@ -40,6 +42,8 @@ type Policy = BotVersionConfig["onOppositeNews"];
 
 export interface Draft {
   name: string;
+  /** #377: giả thuyết của thí nghiệm, một câu, bắt buộc. */
+  hypothesis: string;
   news: Record<SignalCatalyst, { enabled: boolean; hold: number }>;
   minLevel: Level;
   maxDelay: string;
@@ -58,7 +62,7 @@ export interface Draft {
   stocks: boolean;
 }
 
-export function draftOf(cfg: BotVersionConfig, name: string): Draft {
+export function draftOf(cfg: BotVersionConfig, name: string, hypothesis = ""): Draft {
   const news = {} as Draft["news"];
   for (const c of SIGNAL_CATALYSTS) {
     const x = cfg.news[c];
@@ -69,6 +73,7 @@ export function draftOf(cfg: BotVersionConfig, name: string): Draft {
   }
   return {
     name,
+    hypothesis,
     news,
     minLevel: cfg.minLevel,
     maxDelay: String(cfg.maxSourceDelayMinutes),
@@ -88,7 +93,17 @@ export function draftOf(cfg: BotVersionConfig, name: string): Draft {
 }
 
 export type FieldKey =
-  "name" | "maxDelay" | "size" | "minTp" | "tp" | "sl" | "maxOpen" | "perDay" | "markets" | "kinds";
+  | "name"
+  | "hypothesis"
+  | "maxDelay"
+  | "size"
+  | "minTp"
+  | "tp"
+  | "sl"
+  | "maxOpen"
+  | "perDay"
+  | "markets"
+  | "kinds";
 
 export type FieldError =
   | { key: "required" | "number" | "whole" | "positive" | "atLeastOne" | "aboveBalance" }
@@ -121,6 +136,11 @@ export function validate(d: Draft): Partial<Record<FieldKey, FieldError>> {
   const name = d.name.trim();
   if (name === "") e.name = { key: "required" };
   else if (name.length > 60) e.name = { key: "range", min: 1, max: 60 };
+  // #377: như `hypothesisSchema` của API (một dòng, 1–200 ký tự).
+  const hyp = d.hypothesis.trim();
+  if (hyp === "") e.hypothesis = { key: "required" };
+  else if (hyp.length > HYPOTHESIS_MAX || /[\r\n]/.test(hyp))
+    e.hypothesis = { key: "range", min: 1, max: HYPOTHESIS_MAX };
   const delay = wholeError(d.maxDelay, 1, NEWS_RULES.maxSourceDelayMinutes);
   if (delay !== null) e.maxDelay = delay;
   const size = decimalError(d.size, "positive");
@@ -143,9 +163,9 @@ export function validate(d: Draft): Partial<Record<FieldKey, FieldError>> {
   return e;
 }
 
-/** Config gửi API; null khi còn lỗi ở một ô của config (tên không thuộc config). */
+/** Config gửi API; null khi còn lỗi ở một ô của config (tên và giả thuyết không thuộc config). */
 export function configOf(d: Draft): BotVersionConfig | null {
-  if (Object.keys(validate(d)).some((k) => k !== "name")) return null;
+  if (Object.keys(validate(d)).some((k) => k !== "name" && k !== "hypothesis")) return null;
   const news: BotVersionConfig["news"] = {};
   for (const c of SIGNAL_CATALYSTS)
     news[c] = { enabled: d.news[c].enabled, maxHoldHours: d.news[c].hold };
@@ -170,20 +190,29 @@ export function configOf(d: Draft): BotVersionConfig | null {
   return parsed.success ? parsed.data : null;
 }
 
-/**
- * Body của `POST /versions` ("Save and start"). #377: API bắt buộc thêm `hypothesis`; ô Hypothesis của sheet đến ở PR UI
- * sau (mockup catalyst-experiments-*), tới lúc đó API trả 400 cho body này.
- */
-export type SheetBody = Omit<ResearchVersionCreateBody, "hypothesis">;
-export function bodyOf(d: Draft, from: ResearchVersion | null): SheetBody | null {
+/** Body của `POST /versions` ("Save and start"), kèm giả thuyết (#377). */
+export function bodyOf(d: Draft, from: ResearchVersion | null): ResearchVersionCreateBody | null {
   const config = configOf(d);
-  if (config === null || validate(d).name !== undefined) return null;
+  const e = validate(d);
+  if (config === null || e.name !== undefined || e.hypothesis !== undefined) return null;
   return {
     name: d.name.trim(),
     config,
     savedFromVersionId: from?.id ?? null,
     start: true,
+    hypothesis: d.hypothesis.trim(),
   };
+}
+
+/**
+ * #377: số "thứ" config đổi so với Baseline CỐ ĐỊNH (không phải version đã chép từ), cùng hàm thuần với API. ≥ 2 thì sheet
+ * cảnh báo "Not a clean test" trước khi lưu (không chặn). null khi không biết config của Baseline.
+ */
+export function baselineThings(
+  baseline: BotVersionConfig | null,
+  config: BotVersionConfig,
+): ReturnType<typeof diffVersionConfig> | null {
+  return baseline === null ? null : diffVersionConfig(baseline, config);
 }
 
 const HOLDS = [6, 12, 24, 48, 72, 120, 168] as const;
@@ -202,6 +231,7 @@ export function VersionSheet({
   error,
   onClose,
   onSave,
+  baseline = null,
 }: {
   mode: SheetMode;
   /** Số của version sẽ được tạo (max + 1, như DB). */
@@ -213,7 +243,9 @@ export function VersionSheet({
   checking: boolean;
   error: string | null;
   onClose: () => void;
-  onSave: (body: SheetBody) => void;
+  onSave: (body: ResearchVersionCreateBody) => void;
+  /** #377: Baseline (đối chứng cố định) để cảnh báo khi đổi hơn một thứ; null khi chưa có. */
+  baseline?: ResearchVersion | null;
 }) {
   const t = useTranslations("signalAnalysis.research.versions");
   const tn = useTranslations("signalAnalysis.research");
@@ -222,8 +254,12 @@ export function VersionSheet({
   const view = mode.kind === "rules";
   const source = mode.kind === "rules" ? mode.of : mode.from;
   const [d, setD] = useState<Draft>(() =>
-    draftOf(source?.config ?? baselineVersionConfig(), mode.kind === "rules" ? mode.of.name : ""),
+    mode.kind === "rules"
+      ? draftOf(mode.of.config ?? baselineVersionConfig(), mode.of.name, mode.of.hypothesis ?? "")
+      : draftOf(source?.config ?? baselineVersionConfig(), ""),
   );
+  // #377: cảnh báo "Not a clean test" đang mở (đổi ≥ 2 thứ so với Baseline); sửa gì trong form thì đóng lại.
+  const [warn, setWarn] = useState(false);
   const [touched, setTouched] = useState<ReadonlySet<FieldKey>>(new Set());
   const [tried, setTried] = useState(false);
   const pickerOpen = useRef(false);
@@ -233,6 +269,7 @@ export function VersionSheet({
   const shown = (k: FieldKey) => (tried || touched.has(k) ? errors[k] : undefined);
   const set = (p: Partial<Draft>, k?: FieldKey) => {
     setD((x) => ({ ...x, ...p }));
+    setWarn(false);
     if (k !== undefined) setTouched((s) => new Set(s).add(k));
   };
   const errText = (e: FieldError | undefined): string | undefined => {
@@ -269,10 +306,16 @@ export function VersionSheet({
           ? t("sheet.descFrom", { next, n: source.number })
           : t("sheet.descFromIdle", { next, n: source.number });
 
-  const save = () => {
+  const vsBaseline = config === null ? null : baselineThings(baseline?.config ?? null, config);
+  const things = vsBaseline === null ? 0 : changedThings(vsBaseline).length;
+  const save = (anyway = false) => {
     setTried(true);
     const body = bodyOf(d, source);
     if (body === null || full || pending) return;
+    if (things >= 2 && !anyway) {
+      setWarn(true);
+      return;
+    }
     onSave(body);
   };
   const formError = tried && Object.keys(errors).length > 0 ? t("sheet.errors.fix") : null;
@@ -297,25 +340,65 @@ export function VersionSheet({
             {t("sheet.close")}
           </Button>
         ) : (
-          <div className="flex w-full flex-col gap-2.5 md:flex-row md:items-center md:justify-between">
-            <p className="m-0 text-xs leading-normal text-muted" id={`${id}-foot`}>
-              {t("sheet.footer", { n: running, max: maxRunning, next })}
-              {full ? (
-                <span className="block font-semibold text-warn">{t("sheet.full")}</span>
-              ) : null}
-            </p>
-            <div className="flex flex-col gap-2 md:flex-row">
-              <Button variant="secondary" disabled={pending} onClick={onClose}>
-                {t("sheet.cancel")}
-              </Button>
-              <Button
-                pending={pending}
-                disabled={full}
-                aria-describedby={`${id}-foot`}
-                onClick={save}
+          <div className="flex w-full flex-col gap-2.5">
+            {warn && config !== null && vsBaseline !== null && baseline !== null ? (
+              <div
+                role="alert"
+                className="flex flex-col gap-2 rounded-tile border border-warn-border bg-warn-bg px-3.5 py-3 text-sm leading-normal text-warn"
               >
-                {pending ? t("sheet.saving") : t("sheet.save", { next })}
-              </Button>
+                <p className="m-0 text-ink-2">
+                  {t.rich("sheet.baselineChanges", {
+                    n: baseline.number,
+                    list: vsBaseline.map((c) => changeText(c, config, t, tn)).join(" · "),
+                    b: (c: ReactNode) => <b className="text-ink">{c}</b>,
+                  })}
+                </p>
+                <p className="m-0">
+                  {t.rich("sheet.notClean", { n: things, b: (c: ReactNode) => <b>{c}</b> })}
+                </p>
+                <div className="flex flex-col gap-2 md:flex-row">
+                  <Button
+                    pending={pending}
+                    onClick={() => {
+                      save(true);
+                    }}
+                  >
+                    {t("sheet.saveAnyway")}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={pending}
+                    onClick={() => {
+                      setWarn(false);
+                    }}
+                  >
+                    {t("sheet.backToEdit")}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            <div className="flex w-full flex-col gap-2.5 md:flex-row md:items-center md:justify-between">
+              <p className="m-0 text-xs leading-normal text-muted" id={`${id}-foot`}>
+                {t("sheet.footer", { n: running, max: maxRunning, next })}
+                {full ? (
+                  <span className="block font-semibold text-warn">{t("sheet.full")}</span>
+                ) : null}
+              </p>
+              <div className="flex flex-col gap-2 md:flex-row">
+                <Button variant="secondary" disabled={pending} onClick={onClose}>
+                  {t("sheet.cancel")}
+                </Button>
+                <Button
+                  pending={pending}
+                  disabled={full}
+                  aria-describedby={`${id}-foot`}
+                  onClick={() => {
+                    save();
+                  }}
+                >
+                  {pending ? t("sheet.saving") : t("sheet.save", { next })}
+                </Button>
+              </div>
             </div>
           </div>
         )
@@ -339,6 +422,26 @@ export function VersionSheet({
           className={input}
         />
         <Err id={`${id}-name-e`} text={errText(shown("name"))} />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${id}-hyp`} className="text-sm font-semibold text-ink">
+          {t("sheet.hypothesis")}
+        </label>
+        <input
+          id={`${id}-hyp`}
+          type="text"
+          value={d.hypothesis}
+          disabled={view}
+          maxLength={HYPOTHESIS_MAX}
+          aria-invalid={shown("hypothesis") === undefined ? undefined : true}
+          aria-describedby={shown("hypothesis") === undefined ? undefined : `${id}-hyp-e`}
+          onChange={(e) => {
+            set({ hypothesis: e.target.value }, "hypothesis");
+          }}
+          className={input}
+        />
+        <Err id={`${id}-hyp-e`} text={errText(shown("hypothesis"))} />
       </div>
 
       <Group legend={t("sheet.newsTypes")}>

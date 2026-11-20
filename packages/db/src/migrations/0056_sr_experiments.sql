@@ -1,6 +1,7 @@
 ALTER TABLE "signal_bot_versions" ADD COLUMN "hypothesis" text;--> statement-breakpoint
 ALTER TABLE "signal_bot_versions" ADD COLUMN "experiment_finished_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "signal_bot_versions" ADD COLUMN "experiment_result" jsonb;--> statement-breakpoint
+ALTER TABLE "signal_bot_versions" ADD COLUMN "running_periods" jsonb;--> statement-breakpoint
 -- #377 (DEC-TBD-sr-experiments): giả thuyết bất biến như config; kết quả thí nghiệm ghi MỘT lần (lúc version tự dừng vì đủ
 -- 100 cặp) và không bao giờ trên Baseline. Phần còn lại của guard giữ nguyên như 0047.
 CREATE OR REPLACE FUNCTION "signal_bot_versions_guard"() RETURNS trigger LANGUAGE plpgsql AS $$
