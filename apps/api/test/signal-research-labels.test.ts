@@ -230,7 +230,9 @@ describe("classification labels (#304)", () => {
           "relevance",
         ].sort(),
       );
-      expect(JSON.stringify(raw)).not.toMatch(/trade|result|outcome|stage|level|pnl/i);
+      // labelToken là chuỗi ngẫu nhiên (base64url) nên có thể tình cờ chứa "pnl" / "level"…; định dạng và tập khoá đã kiểm ở trên, nên chỉ dò trên phần còn lại.
+      const rest = Object.fromEntries(Object.entries(raw).filter(([k]) => k !== "labelToken"));
+      expect(JSON.stringify(rest)).not.toMatch(/trade|result|outcome|stage|level|pnl/i);
     }
     // 30 lần ngẫu nhiên trên 3 bài: gần như chắc chắn thấy đủ (xác suất trượt ≈ 3 × (2/3)^30 < 1e-5).
     expect([...seen].sort()).toEqual(["s1", "s2", "s3"]);
