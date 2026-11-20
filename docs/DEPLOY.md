@@ -355,7 +355,7 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 | `0051_sr_signal_contexts` | Bảng `signal_contexts` (trigger chặn UPDATE), cột `leader_wallets.last_polled_at` |
 | `0052_sr_research_wallets` | Bảng `research_wallet_sets`, `research_wallet_set_members`; cột `signal_contexts.h1_wallet_set_version`, `h1_wallet_set_size` (nullable) |
 
-> **Bản sau v2.13.0** sẽ có thêm migration `0053` (danh sách research wallets, chưa merge, xem `docs/releases/next.md`). Checklist này chỉ đúng tới `0052`; khi bản sau ra, chạy `migrate` như thường và đọc ghi chú của `0053` trong release notes của bản đó.
+> **Bản sau v2.13.0** có thêm migration `0053_sr_context_wallet_addresses` (#372): hai cột nullable `signal_contexts.h1_agreeing_addresses`, `h1_opposing_addresses`, tương thích ngược. Không có biến môi trường mới. Khi deploy bản đó: pull image, chạy `migrate` như thường, rồi `up -d`; xem `docs/releases/next.md`.
 
 **3. Service cần pull lại:** cả 11 app. `infra/deploy/changed-apps.sh v2.12.0 <tag mới>` trả cả 11 vì `packages/**` đổi (shared, db). `build-push.sh --deploy-only <tag>` đã pull và `up -d` hết; không cần chọn tay.
 
