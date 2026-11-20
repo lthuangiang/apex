@@ -119,8 +119,15 @@ interface Totals {
   counts: (string | null)[];
   notes: (string | null)[];
   reasons: { reason: ResearchDropReason; n: number }[];
-  /** #358: tầng 4 · Context ("Whales agree N · …"); null khi API chưa có snapshot live trong khoảng ("records only"). */
-  context: string | null;
+  /**
+   * #358: tầng 4 · Context, số tín hiệu có H1 / H2 / H3 = yes (đã định dạng); null khi API chưa có snapshot live trong
+   * khoảng ("records only").
+   */
+  context: { h1: string; h2: string; h3: string } | null;
+  /** Câu ngắn của số trong tầng khi tầng hẹp (null = dùng câu thường). */
+  countsShort: (string | null)[];
+  /** Tầng Decide: số Long / Short (đã định dạng), để mỗi cặp nhãn–số không ngắt dòng. */
+  decide: { long: string; short: string } | null;
 }
 
 function totals(f: ResearchFunnel | null, t: Tr): Totals {
@@ -130,6 +137,8 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
       notes: STAGES.map(() => null),
       reasons: [],
       context: null,
+      countsShort: STAGES.map(() => null),
+      decide: null,
     };
   const dropped = f.articleStops.filter((s) => s.outcome === "dropped" && s.reason !== null);
   const byReason = new Map<ResearchDropReason, { n: number; stage: number }>();
@@ -176,7 +185,15 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
       t("trace.counts.normalize", { n: passed(1) }),
       t("trace.counts.score", { n: passed(2) }),
       t("trace.counts.filter", { n: count(passed(3)) }),
-      t("trace.counts.decide", { long: count(f.long), short: count(f.short) }),
+      t.markup("trace.counts.decide", { long: count(f.long), short: count(f.short), p: (x) => x }),
+    ],
+    decide: { long: count(f.long), short: count(f.short) },
+    countsShort: [
+      t("trace.countsShort.collect", { n: count(steps[0]?.in ?? 0) }),
+      t("trace.countsShort.normalize", { n: count(passed(1)) }),
+      null,
+      null,
+      null,
     ],
     notes: [
       t("trace.notes.collect"),
@@ -189,15 +206,22 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
     context:
       f.context === null
         ? null
-        : t("context.funnelCounts", {
+        : {
             h1: count(f.context.h1Yes),
             h2: count(f.context.h2Yes),
             h3: count(f.context.h3Yes),
-          }),
+          },
   };
 }
 
 /* ---------------------------------------------------------------- Bands */
+
+/** Một cặp nhãn–số trong tầng: không ngắt dòng giữa nhãn và số. */
+const pair = (chunk: ReactNode) => (
+  <span data-pair="" className="whitespace-nowrap">
+    {chunk}
+  </span>
+);
 
 /**
  * Tầng ở chế độ tổng: số bài trong tầng, chú thích (rê chuột), bấm để lọc feed. Tầng Context: số tín hiệu có H1 / H2 / H3
@@ -212,19 +236,35 @@ function totalBands(
 ): FunnelBandView[] {
   return BANDS.map((key, n) => {
     const label = t("trace.band", { n: n + 1, name: t(`trace.stages.${key}`) });
-    if (key === "context")
+    if (key === "context") {
+      const c = tot.context;
+      if (c === null)
+        return { key, label, note: t("context.recordsOnly"), state: "total" as const };
+      // #345: không ngắt dòng giữa nhãn và số (mỗi cặp nowrap); tầng hẹp dùng câu ngắn (FunnelBands, SHORT_AT).
       return {
         key,
         label,
-        note: tot.context ?? t("context.recordsOnly"),
+        note: null,
+        noteNode: t.rich("context.funnelCounts", { ...c, p: pair }),
+        noteShort: t.rich("context.funnelCountsShort", { ...c, p: pair }),
+        title: t.markup("context.funnelCounts", { ...c, p: (x) => x }),
         state: "total" as const,
       };
+    }
     const i = STAGES.indexOf(key);
     const name = t(`trace.stages.${key}`);
     return {
       key,
       label,
       note: tot.counts[i] ?? t("na"),
+      noteShort: tot.countsShort[i] ?? undefined,
+      // Decide: "Long N" / "Short N" không bao giờ tách nhãn khỏi số.
+      ...(key === "decide" && tot.decide !== null
+        ? {
+            noteNode: t.rich("trace.counts.decide", { ...tot.decide, p: pair }),
+            noteShort: t.rich("trace.countsShort.decide", { ...tot.decide, p: pair }),
+          }
+        : {}),
       state: "total" as const,
       title: tot.notes[i] ?? undefined,
       onClick: () => {
