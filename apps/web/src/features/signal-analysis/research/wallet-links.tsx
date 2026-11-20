@@ -217,12 +217,28 @@ export function ResearchWalletsTable({
   );
 }
 
+/** Không tải được danh sách: tiêu đề khối + "Not available" (quy tắc 1.8, không đoán). */
+function ResearchWalletsUnavailable() {
+  const t = useTranslations("signalAnalysis.research.researchWallets");
+  return (
+    <section aria-labelledby="sr-rw-title" className="flex flex-col gap-2">
+      <h3 id="sr-rw-title" className="m-0 text-base font-extrabold">
+        {t("titleNoK")}
+      </h3>
+      <p className="m-0 text-[13px]">
+        <Na />
+      </p>
+    </section>
+  );
+}
+
 /** Khối trong "Bots & labels": tải khi khu mở. */
 export function ResearchWalletsBlock({ open }: { open: boolean }) {
   const q = useResearchWallets(open);
   const canOpen = useCanOpenTraders();
   if (q.data === undefined) {
-    if (q.isError) return <Na />;
+    // Lỗi tải: vẫn có tiêu đề khối để "Not available" không đứng một mình (review #384).
+    if (q.isError) return <ResearchWalletsUnavailable />;
     return null;
   }
   return <ResearchWalletsTable data={q.data} canOpen={canOpen} now={Date.now()} />;

@@ -243,7 +243,8 @@ export function VersionSheet({
   checking: boolean;
   error: string | null;
   onClose: () => void;
-  onSave: (body: ResearchVersionCreateBody) => void;
+  /** `anyway` = lưu qua cảnh báo "Not a clean test" ("Save and start anyway"). */
+  onSave: (body: ResearchVersionCreateBody, anyway: boolean) => void;
   /** #377: Baseline (đối chứng cố định) để cảnh báo khi đổi hơn một thứ; null khi chưa có. */
   baseline?: ResearchVersion | null;
 }) {
@@ -316,7 +317,7 @@ export function VersionSheet({
       setWarn(true);
       return;
     }
-    onSave(body);
+    onSave(body, anyway);
   };
   const formError = tried && Object.keys(errors).length > 0 ? t("sheet.errors.fix") : null;
 

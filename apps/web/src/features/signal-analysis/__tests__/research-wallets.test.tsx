@@ -19,14 +19,18 @@ import { CTX_AGAINST_LATE, CTX_ETH, CTX_V2 } from "./context-fixtures";
 // thì địa chỉ chữ thường + "Turn on AI Desk to open trader pages" (không bao giờ dẫn tới trang 403).
 
 const state = vi.hoisted(() => {
-  const s: { aiDesk: boolean | undefined; wallets: unknown } = { aiDesk: true, wallets: undefined };
+  const s: { aiDesk: boolean | undefined; wallets: unknown; error: boolean } = {
+    aiDesk: true,
+    wallets: undefined,
+    error: false,
+  };
   return s;
 });
 vi.mock("@/lib/queries", () => ({
   useFeatures: () => ({ data: state.aiDesk === undefined ? undefined : { aiDesk: state.aiDesk } }),
 }));
 vi.mock("../research/api", () => ({
-  useResearchWallets: () => ({ data: state.wallets, isError: false }),
+  useResearchWallets: () => ({ data: state.wallets, isError: state.error }),
 }));
 
 const TZ = "Asia/Ho_Chi_Minh";
@@ -77,6 +81,7 @@ const SET: ResearchWallets = {
 beforeEach(() => {
   state.aiDesk = true;
   state.wallets = SET;
+  state.error = false;
   intlErrors.length = 0;
 });
 afterEach(() => {
@@ -84,6 +89,15 @@ afterEach(() => {
 });
 
 describe("Research wallets list (#353)", () => {
+  it("load error: Not available sits under the block title, never alone (review #384)", async () => {
+    state.wallets = undefined;
+    state.error = true;
+    wrap(<ResearchWalletsBlock open />);
+    const s = screen.getByRole("region", { name: "Research wallets" });
+    expect(s).toHaveTextContent(/^Research walletsNot available$/);
+    await noViolations();
+  });
+
   it("lists the set by rank with one set chip, last read, trader links and Show all", async () => {
     wrap(<ResearchWalletsBlock open />);
     const s = screen.getByRole("region", { name: "Research wallets (top 7)" });

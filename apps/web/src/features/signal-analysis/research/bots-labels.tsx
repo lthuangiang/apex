@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 
 import { clock } from "../format";
 
+import { experimentsMeta } from "./experiments";
 import { balance } from "./format";
 import type { HowTab } from "./how-it-works";
 import { ClassifierQuality } from "./labels";
@@ -63,14 +64,20 @@ export function BotsAndLabels({
     versions === undefined ? (
       <Na />
     ) : (
-      t("meta", {
-        n: versions.running,
-        max: versions.maxRunning,
-        tried: versions.versionsTried,
-        v: classifierShort(versions.classifier.current),
-        labeled: versions.classifier.labeled,
-        min: CLASSIFIER_GATE.minLabels,
-      })
+      // #377 (mockup catalyst-experiments-*): phần thí nghiệm thay "N versions tried"; điện thoại chỉ hiện phần thí nghiệm.
+      <>
+        <span className="max-md:hidden">
+          {t("metaWithExperiments", {
+            n: versions.running,
+            max: versions.maxRunning,
+            experiments: experimentsMeta(versions.items, t),
+            v: classifierShort(versions.classifier.current),
+            labeled: versions.classifier.labeled,
+            min: CLASSIFIER_GATE.minLabels,
+          })}
+        </span>
+        <span className="md:hidden">{experimentsMeta(versions.items, t)}</span>
+      </>
     );
   const link =
     "cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent-ink underline-offset-2 hover:underline focus-visible:underline";
