@@ -352,7 +352,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
   for (const a of pending) {
     const age = now - a.publishedAt.getTime();
     // Usage Claude của riêng bài này (#290); ghi cùng lần cập nhật trạng thái bài. Bài bỏ trước Claude để null.
-    let claude: ArticleUsageValues | null = null;
+    let claude: (ArticleUsageValues & { claudeStartedAt: Date; claudeDoneAt: Date }) | null = null;
     const drop = async (
       reason: SignalReason,
       classification: Record<string, unknown> | null,
@@ -399,6 +399,8 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     }
     const parsed = candidateList.safeParse(a.candidates);
     const candidates: Candidate[] = parsed.success ? parsed.data : [];
+    // #375: đọc lại đồng hồ quanh lần classify (`now` là giờ bắt đầu chu kỳ, dùng chung cả chu kỳ).
+    const claudeStartedAt = deps.now();
     const out = await deps.classifier.classify(
       {
         title: a.title,
@@ -410,8 +412,13 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       },
       Math.min(ATTEMPTS, left),
     );
+    const claudeDoneAt = deps.now();
     calls += Math.max(1, out.usage.calls);
-    claude = articleUsageValues(out);
+    claude = {
+      ...articleUsageValues(out),
+      claudeStartedAt: new Date(claudeStartedAt),
+      claudeDoneAt: new Date(claudeDoneAt),
+    };
     await addClaudeUsage(db, now, out.usage);
     used = { ...used, ...addUsage(used, out.usage) };
     report.claudeCalls += out.usage.calls;
@@ -980,7 +987,16 @@ async function decideStory(
     stage: SignalStage,
     outcome: SignalOutcome,
     extra: Partial<EventInput> = {},
-  ): EventInput => ({ articleId: s.articleId, stage, outcome, at: now, versionId: v.id, ...extra });
+  ): EventInput => ({
+    articleId: s.articleId,
+    stage,
+    outcome,
+    at: now,
+    versionId: v.id,
+    // #375: giờ đồng hồ thật lúc quyết định cho bài này (đo chặng Claude done → decided).
+    decidedClockAt: deps.now(),
+    ...extra,
+  });
 
   // Bộ lọc của version, trước story (giống lỗi của bài đối với version này: không tạo story, không khoá).
   const holdHours = versionHoldHours(cfg, first.catalyst);
@@ -1186,12 +1202,16 @@ async function decideStory(
     });
 
   // ── Decide: mở lệnh giấy (thật hoặc shadow) ──────────────────────────────────────────────────────────────────
+  // #375: lúc đã quyết định mở (qua mọi kiểm). Cùng đồng hồ với `openedClock` ngay trước khi ghi lệnh; `opened_at` vẫn là
+  // giờ bắt đầu chu kỳ như trước (không đổi logic giao dịch).
+  const decidedClock = deps.now();
   const moved = await movedBeforeEntry(db, market, storyStart, plan.entryMid);
   const outside =
     STOCK_MARKET_SET.has(market) &&
     first.candidate.kind === AssetKind.stock &&
     !isUsMarketOpen(now);
   const shadow = blocked !== null;
+  const openedClock = deps.now();
   try {
     await db.transaction(async (tx) => {
       const [t] = await tx
@@ -1225,6 +1245,8 @@ async function decideStory(
           slPrice: slPrice.toFixed(),
           maxHoldUntil: new Date(now + holdHours * HOUR_MS),
           openedAt: new Date(now),
+          decidedClockAt: new Date(decidedClock),
+          openedClockAt: new Date(openedClock),
           movedBeforeEntryPct: moved === null ? null : moved.toFixed(18),
           levelAtEntry,
           sourcesAtEntry: sources,
@@ -1264,6 +1286,7 @@ async function decideStory(
                 storyId,
                 tradeId,
                 reason: blocked,
+                decidedClockAt: decidedClock,
                 detail: {
                   level: levelAtEntry,
                   ...costDetail,
@@ -1282,11 +1305,13 @@ async function decideStory(
               ev(first, SignalStage.filter, SignalOutcome.pass, {
                 storyId,
                 detail: { level: levelAtEntry, ...costDetail },
+                decidedClockAt: decidedClock,
               }),
               ev(first, SignalStage.decide, SignalOutcome.open, {
                 storyId,
                 tradeId,
                 detail: tradeDetail,
+                decidedClockAt: decidedClock,
               }),
             ],
       );

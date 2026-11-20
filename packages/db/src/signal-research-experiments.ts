@@ -19,7 +19,7 @@ import type { Db } from "./client";
 import { signalBotVersions, signalPaperTrades } from "./schema";
 import { setSignalBotVersionStatus } from "./signal-research-versions";
 
-// Sổ thí nghiệm (#377, DEC-TBD-catalyst-p0 / DEC-TBD-sr-experiments): mỗi version (trừ Baseline) so ghép cặp với Baseline
+// Sổ thí nghiệm (#377, DEC-348 / DEC-351): mỗi version (trừ Baseline) so ghép cặp với Baseline
 // CỐ ĐỊNH trên HỢP các tín hiệu (câu chuyện + market) mà ít nhất một bên đã vào lệnh; bên không vào lệnh tính 0. Đủ 100 cặp lệnh đã đóng thì version (có giả thuyết) tự dừng qua state machine của
 // version (`setSignalBotVersionStatus`, có audit) và kết quả được đóng băng. Không đổi logic giao dịch; Baseline không bao
 // giờ bị dừng ở đây.

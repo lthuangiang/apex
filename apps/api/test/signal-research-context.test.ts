@@ -231,6 +231,8 @@ describe("trace step 4 and feed flags (#329)", () => {
       },
       h3: { status: "na", movedPct: 0.2, typicalMovePct: 0.6, thresholdPct: 0.6 },
       exploratory: { volumeVs24h: 1.8, rangeBreakout: "none" },
+      // Snapshot chèn ở đây không có market_version: ghi trước #376 ("Not recorded").
+      marketState: null,
     });
     expect(tr.article.context).toEqual({ source: "live", h1: "yes", h2: "no", h3: "na" });
 

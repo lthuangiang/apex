@@ -1773,6 +1773,12 @@ export const signalArticles = pgTable(
     /** Model đã gửi trong request (`NEWS_CLASSIFIER.model`, khớp bảng giá) và version prompt lúc gọi. */
     claudeModel: text("claude_model"),
     claudePromptVersion: text("claude_prompt_version"),
+    /**
+     * #375: giờ đồng hồ thật (đồng hồ scheduler, `deps.now()` đọc lại ngay lúc đó) khi bắt đầu / xong lần classify của
+     * bài (gồm mọi lần thử lại). Khác `classified_at` (= giờ bắt đầu chu kỳ). Null = bài không qua Claude hoặc bài trước 0054.
+     */
+    claudeStartedAt: tstz("claude_started_at"),
+    claudeDoneAt: tstz("claude_done_at"),
     ruleVersion: text("rule_version").notNull(),
     ...timestamps,
   },
@@ -1841,6 +1847,11 @@ export const signalEvents = pgTable(
     /** News bot version của event Filter / Decide / Watch (#303); null ở Collect / Normalize / Understand (dùng chung). */
     versionId: uuid("version_id"),
     at: tstz("at").notNull().defaultNow(),
+    /**
+     * #375: giờ đồng hồ thật lúc event Filter / Decide được quyết định (cùng đồng hồ scheduler với `claude_done_at`).
+     * `at` là giờ bắt đầu chu kỳ (dùng chung cả chu kỳ) nên không đo được độ trễ. Null ở stage khác và event trước 0054.
+     */
+    decidedClockAt: tstz("decided_clock_at"),
   },
   (t) => [
     index("signal_events_at_idx").on(t.at),
@@ -1905,6 +1916,12 @@ export const signalPaperTrades = pgTable(
     slPrice: money("sl_price").notNull(),
     maxHoldUntil: tstz("max_hold_until").notNull(),
     openedAt: tstz("opened_at").notNull(),
+    /**
+     * #375: giờ đồng hồ thật lúc quyết định mở và lúc ghi lệnh (cùng đồng hồ scheduler). `opened_at` giữ là giờ bắt đầu
+     * chu kỳ như trước (logic giao dịch không đổi), nên không dùng để đo chặng decided → opened. Null ở lệnh trước 0054.
+     */
+    decidedClockAt: tstz("decided_clock_at"),
+    openedClockAt: tstz("opened_clock_at"),
     /** Giá đã chạy (%) từ giờ đăng tới lúc vào (giá giữa); null khi không có giá lúc đăng. */
     movedBeforeEntryPct: money("moved_before_entry_pct"),
     levelAtEntry: text("level_at_entry").notNull(),
@@ -2170,6 +2187,22 @@ export const signalContexts = pgTable(
     volumeVs24h: money("volume_vs_24h"),
     /** `up` | `down` | `none`. */
     rangeBreakout: text("range_breakout"),
+    /**
+     * Trạng thái thị trường lúc quyết định (Catalyst P0, #376): chỉ để tách kết quả, không đổi quyết định. Từ nến 1 phút đã
+     * đóng trước `decided_at`; thiếu dữ liệu → null. Dòng ghi trước #376 có mọi cột này null ("Not recorded").
+     * BTC: % đổi giá BTC-USD trong 24 h và `up` | `flat` | `down` (ngưỡng ±1.5%).
+     */
+    /**
+     * `MARKET_STATE_VERSION` lúc chụp; null = snapshot ghi trước #376 ("Not recorded"). Có version mà trường null = thiếu dữ
+     * liệu lúc đó ("Not available").
+     */
+    marketVersion: text("market_version"),
+    marketBtcChange24hPct: money("market_btc_change_24h_pct"),
+    marketBtcTrend: text("market_btc_trend"),
+    /** Biến động 4 h của chính tài sản (%), phân vị trong 30 ngày, `low` | `normal` | `high` (ngưỡng 33 / 67). */
+    marketVol4hPct: money("market_vol_4h_pct"),
+    marketVolPercentile: numeric("market_vol_percentile", { precision: 10, scale: 4 }),
+    marketVolatility: text("market_volatility"),
     createdAt: tstz("created_at").notNull().defaultNow(),
   },
   (t) => [
@@ -2187,6 +2220,14 @@ export const signalContexts = pgTable(
     check(
       "signal_contexts_breakout_ck",
       sql`${t.rangeBreakout} is null or ${t.rangeBreakout} in ('up', 'down', 'none')`,
+    ),
+    check(
+      "signal_contexts_btc_trend_ck",
+      sql`${t.marketBtcTrend} is null or ${t.marketBtcTrend} in ('up', 'flat', 'down')`,
+    ),
+    check(
+      "signal_contexts_volatility_ck",
+      sql`${t.marketVolatility} is null or ${t.marketVolatility} in ('low', 'normal', 'high')`,
     ),
   ],
 );

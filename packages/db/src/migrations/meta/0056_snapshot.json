@@ -1,6 +1,6 @@
 {
-  "id": "bf35dc8d-115a-4149-b47b-c9e3729eabe0",
-  "prevId": "20a5ef7c-64f8-4012-98ec-74e6bb64e3b0",
+  "id": "dd37b3fd-2111-46d8-b7e8-77ee94ac9fe5",
+  "prevId": "ea531917-23d7-47af-ad9b-0134339f9073",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6865,6 +6865,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "claude_started_at": {
+          "name": "claude_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claude_done_at": {
+          "name": "claude_done_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "rule_version": {
           "name": "rule_version",
           "type": "text",
@@ -7492,6 +7504,42 @@
           "primaryKey": false,
           "notNull": false
         },
+        "market_version": {
+          "name": "market_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_btc_change_24h_pct": {
+          "name": "market_btc_change_24h_pct",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_btc_trend": {
+          "name": "market_btc_trend",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_vol_4h_pct": {
+          "name": "market_vol_4h_pct",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_vol_percentile": {
+          "name": "market_vol_percentile",
+          "type": "numeric(10, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_volatility": {
+          "name": "market_volatility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -7564,6 +7612,14 @@
         "signal_contexts_breakout_ck": {
           "name": "signal_contexts_breakout_ck",
           "value": "\"signal_contexts\".\"range_breakout\" is null or \"signal_contexts\".\"range_breakout\" in ('up', 'down', 'none')"
+        },
+        "signal_contexts_btc_trend_ck": {
+          "name": "signal_contexts_btc_trend_ck",
+          "value": "\"signal_contexts\".\"market_btc_trend\" is null or \"signal_contexts\".\"market_btc_trend\" in ('up', 'flat', 'down')"
+        },
+        "signal_contexts_volatility_ck": {
+          "name": "signal_contexts_volatility_ck",
+          "value": "\"signal_contexts\".\"market_volatility\" is null or \"signal_contexts\".\"market_volatility\" in ('low', 'normal', 'high')"
         }
       },
       "isRLSEnabled": false
@@ -7638,6 +7694,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "decided_clock_at": {
+          "name": "decided_clock_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -8025,6 +8087,18 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "decided_clock_at": {
+          "name": "decided_clock_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "opened_clock_at": {
+          "name": "opened_clock_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "moved_before_entry_pct": {
           "name": "moved_before_entry_pct",

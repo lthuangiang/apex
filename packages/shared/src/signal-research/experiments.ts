@@ -6,7 +6,7 @@ import { summarizeByDay, type DayObs } from "../stats/day-bootstrap";
 
 import type { VersionConfigChange } from "./versions";
 
-// Sổ thí nghiệm (Catalyst Intelligence Phase 0, #377, DEC-TBD-catalyst-p0 / DEC-TBD-sr-experiments). Một giả thuyết, một
+// Sổ thí nghiệm (Catalyst Intelligence Phase 0, #377, DEC-348 / DEC-351). Một giả thuyết, một
 // thí nghiệm, một kết quả: mỗi version (trừ Baseline) so GHÉP CẶP với Baseline cố định trên cùng các bài. Hàm thuần, không
 // I/O; không đổi logic giao dịch của version nào.
 

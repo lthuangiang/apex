@@ -4,13 +4,20 @@ import {
   h1Of,
   h2Of,
   h3Of,
+  btcTrendOf,
+  hourlyMovesPct,
+  MARKET_STATE_RULES,
+  MARKET_STATE_VERSION,
   midOf,
   NEWS_RULES,
+  pctChange,
   rangeBreakoutOf,
   SIGNAL_CONTEXT_RULES,
   SIGNAL_CONTEXT_VERSION,
   typicalMovePct,
+  volatilityOf,
   volumeVs24h,
+  volWindowComplete,
   type Decimal,
   type DecimalInput,
   type Quote,
@@ -145,6 +152,14 @@ async function fundingPoints(db: Exec, market: string, t: number) {
  * dùng cache dùng chung (cache của Decide không đổi gì vì hàm này).
  */
 async function typicalMoveBefore(db: Exec, market: string, t: number): Promise<Decimal | null> {
+  return typicalMovePct(
+    await hourlyClosesBefore(db, market, t),
+    SIGNAL_CONTEXT_RULES.h3TypicalHours,
+  );
+}
+
+/** Giá đóng mỗi giờ (nến cuối của giờ) trong 30 ngày trước `t`, chỉ nến đã đóng trước `t`. */
+async function hourlyClosesBefore(db: Exec, market: string, t: number) {
   const since = new Date(t - NEWS_RULES.volatilityLookbackDays * DAY_MS);
   const rows = rowsOf(
     await db.execute<{ hour: Date | string; close: string }>(sql`
@@ -153,10 +168,65 @@ async function typicalMoveBefore(db: Exec, market: string, t: number): Promise<D
        where market = ${market} and ts >= ${since} and ts < ${closedBefore(t)}
        order by date_trunc('hour', ts), ts desc`),
   );
-  return typicalMovePct(
-    rows.map((r) => ({ hour: toMs(r.hour), close: r.close })),
-    SIGNAL_CONTEXT_RULES.h3TypicalHours,
+  return rows.map((r) => ({ hour: toMs(r.hour), close: r.close }));
+}
+
+/**
+ * Giá "lúc `t`" cho trạng thái thị trường: giá đóng của nến 1 phút cuối cùng ĐÃ ĐÓNG trước `t` (giờ đóng = ts + 1 phút < t),
+ * tìm lùi tối đa `priceMaxAgeMinutes`; không có → null (không bao giờ dùng nến đóng đúng lúc hay sau `t`).
+ */
+/** Số nến 1 phút và tổng khối lượng của cửa sổ 4 h trước `t` (nến đóng trong (t − 4 h, t)). */
+async function volWindow(db: Exec, market: string, t: number) {
+  const end = closedBefore(t);
+  const from = new Date(end.getTime() - MARKET_STATE_RULES.volHours * HOUR_MS);
+  const [r] = rowsOf(
+    await db.execute<{ n: number | string; vol: string | null }>(sql`
+      select count(*) as n, sum(volume)::text as vol from candles_1m
+       where market = ${market} and ts >= ${from} and ts < ${end}`),
   );
+  return { candles: Number(r?.n ?? 0), volume: r?.vol ?? null };
+}
+
+async function closeBefore(db: Exec, market: string, t: number): Promise<string | null> {
+  const end = closedBefore(t);
+  const from = new Date(end.getTime() - MARKET_STATE_RULES.priceMaxAgeMinutes * MIN_MS);
+  const [r] = rowsOf(
+    await db.execute<{ close: string }>(sql`
+      select close::text as close from candles_1m
+       where market = ${market} and ts < ${end} and ts >= ${from}
+       order by ts desc limit 1`),
+  );
+  return r?.close ?? null;
+}
+
+/**
+ * Trạng thái thị trường lúc `t` (Catalyst P0, #376): BTC trend = % đổi BTC-USD trong 24 h; volatility = biến động 4 h của
+ * chính tài sản, xếp phân vị (hạng giữa) trong các biến động 4 h mỗi giờ của 30 ngày trước (cùng chuỗi giờ với biến động
+ * thường gặp của Decide). Chỉ nến đã đóng trước `t`; thiếu → null. Không đổi gì ở Filter / Decide.
+ */
+async function marketStateAt(db: Exec, market: string, t: number) {
+  const r = MARKET_STATE_RULES;
+  const btcChange = pctChange(
+    await closeBefore(db, r.btcMarket, t - r.btcHours * HOUR_MS),
+    await closeBefore(db, r.btcMarket, t),
+  );
+  // Thiếu nến trong cửa sổ 4 h (hổng / không giao dịch) → volatility null, không bao giờ "0%".
+  const win = await volWindow(db, market, t);
+  const move = !volWindowComplete(win)
+    ? null
+    : pctChange(
+        await closeBefore(db, market, t - r.volHours * HOUR_MS),
+        await closeBefore(db, market, t),
+      );
+  const vol = volatilityOf(
+    move === null ? null : move.abs(),
+    hourlyMovesPct(await hourlyClosesBefore(db, market, t), r.volHours),
+  );
+  return {
+    btcChange,
+    btcTrend: btcTrendOf(btcChange),
+    vol,
+  };
 }
 
 /** Chỉ số khám phá từ nến đã đóng trong 24 giờ trước `t`. */
@@ -251,6 +321,7 @@ export async function computeSignalContext(
     typicalMovePct: await typicalMoveBefore(db, s.market, decidedAt),
   });
   const ex = await exploratory(db, s.market, decidedAt);
+  const mk = await marketStateAt(db, s.market, decidedAt);
   return {
     articleId: s.articleId,
     market: s.market,
@@ -272,6 +343,12 @@ export async function computeSignalContext(
     h3TypicalMovePct: fx(h3.typicalMovePct),
     volumeVs24h: fx(ex.volume),
     rangeBreakout: ex.breakout,
+    marketVersion: MARKET_STATE_VERSION,
+    marketBtcChange24hPct: fx(mk.btcChange),
+    marketBtcTrend: mk.btcTrend,
+    marketVol4hPct: mk.vol === null ? null : fx(mk.vol.movePct),
+    marketVolPercentile: mk.vol === null ? null : mk.vol.percentile.toFixed(4),
+    marketVolatility: mk.vol?.state ?? null,
   };
 }
 

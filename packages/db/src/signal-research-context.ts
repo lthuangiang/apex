@@ -3,7 +3,16 @@ import {
   contextGroupOf,
   dec,
   H23_SAME_AS_CURRENT,
+  BTC_TRENDS,
   h2ThresholdOf,
+  marketGroupsOf,
+  MARKET_STATE_RULES,
+  VOLATILITY_STATES,
+  type BtcTrend,
+  type MarketGroup,
+  type ResearchMarketSplit,
+  type ResearchMarketState,
+  type VolatilityState,
   NEWS_RULES,
   SIGNAL_CONTEXT_RULES,
   SIGNAL_CONTEXT_VERSION,
@@ -144,6 +153,78 @@ export function signalContextOf(
       volumeVs24h: numOf(r.volumeVs24h),
       rangeBreakout: breakoutOf(r.rangeBreakout),
     },
+    marketState: marketStateOf(r),
+  };
+}
+
+const btcTrendOf = (v: string | null): BtcTrend | null =>
+  v === "up" || v === "flat" || v === "down" ? v : null;
+const volatilityOf = (v: string | null): VolatilityState | null =>
+  v === "low" || v === "normal" || v === "high" ? v : null;
+
+/**
+ * Trạng thái thị trường đã lưu lúc quyết định (#376). Không có snapshot, hoặc snapshot ghi trước #376 (`market_version`
+ * null) → null ("Not recorded"); có version mà trường null = thiếu dữ liệu lúc đó ("Not available"). Không bao giờ tính lại.
+ */
+export function marketStateOf(r: ContextRow | undefined): ResearchMarketState | null {
+  if (r?.marketVersion === null || r === undefined) return null;
+  const pctl = r.marketVolPercentile === null ? null : Number(r.marketVolPercentile);
+  return {
+    btcChange24hPct: numOf(r.marketBtcChange24hPct),
+    btcTrend: btcTrendOf(r.marketBtcTrend),
+    volMovePct: numOf(r.marketVol4hPct),
+    volPercentile: pctl === null ? null : Math.min(100, Math.max(0, pctl)),
+    volatility: volatilityOf(r.marketVolatility),
+  };
+}
+
+/**
+ * "Is it working? › By market" (#376): `closed` = cùng tập lệnh đóng được tính như cổng chính. Mỗi lệnh lấy trạng thái thị
+ * trường của bài đã mở nó, chỉ khi snapshot đúng nguồn `source` (review #381: live và backfilled tách như "Does context
+ * help?"). Nhóm < 30 lệnh đóng không có trung bình.
+ */
+export async function loadMarketSplit(
+  q: Q,
+  closed: readonly TradeRow[],
+  source: ContextSource = "live",
+): Promise<ResearchMarketSplit> {
+  const ctx = await loadSignalContexts(
+    q,
+    closed.flatMap((t) => (t.articleId === null ? [] : [t.articleId])),
+  );
+  const btc: { key: BtcTrend; obs: DayObs }[] = [];
+  const vol: { key: VolatilityState; obs: DayObs }[] = [];
+  let notRecorded = 0;
+  let btcNa = 0;
+  let volNa = 0;
+  for (const t of closed) {
+    if (t.resultPct === null) continue;
+    const c = t.articleId === null ? undefined : ctx.get(t.articleId);
+    const m = c?.source === source ? marketStateOf(c) : null;
+    if (m === null) {
+      notRecorded += 1;
+      continue;
+    }
+    const obs: DayObs = { v: dec(t.resultPct), at: t.openedAt.getTime() };
+    if (m.btcTrend === null) btcNa += 1;
+    else btc.push({ key: m.btcTrend, obs });
+    if (m.volatility === null) volNa += 1;
+    else vol.push({ key: m.volatility, obs });
+  }
+  const out = <K extends string>(g: MarketGroup<K>) => ({
+    key: g.key,
+    closed: g.closed,
+    avgPct: num(g.avgPct),
+    need: g.need,
+  });
+  return {
+    source,
+    minClosedPerGroup: MARKET_STATE_RULES.minClosedPerGroup,
+    btcTrend: marketGroupsOf(BTC_TRENDS, btc).map(out),
+    volatility: marketGroupsOf(VOLATILITY_STATES, vol).map(out),
+    notRecorded,
+    btcNotAvailable: btcNa,
+    volNotAvailable: volNa,
   };
 }
 

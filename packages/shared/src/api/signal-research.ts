@@ -19,6 +19,7 @@ import {
   ClassificationVerdict,
   LABEL_NOTE_MAX,
 } from "../signal-research/labels";
+import { BTC_TRENDS, VOLATILITY_STATES } from "../signal-research/market-state";
 import { SIGNAL_CATALYSTS, type SignalCatalyst } from "../signal-research/rules";
 import {
   AssetMode,
@@ -338,6 +339,50 @@ export const researchContextFlagsSchema = z.object({
  * Thẻ bước 4 · Context của trace: giá trị lưu đúng lúc quyết định, không bao giờ tính lại; chỉ ghi, không đổi lệnh.
  * Phần trăm theo đơn vị % (0.6 = 0.6%); funding là tỷ lệ thô mỗi kỳ (chuỗi thập phân, 0.0001 = 0.01%).
  */
+/**
+ * Trạng thái thị trường lúc quyết định (Catalyst P0, #376): chỉ để tách kết quả, không đổi quyết định. Trên một lệnh / thẻ:
+ * null = snapshot ghi trước #376 hoặc không có snapshot ("Not recorded (before Phase 0)"); có object mà trường null = thiếu
+ * dữ liệu lúc đó ("Not available"). Phần trăm theo đơn vị % (2.4 = 2.4%).
+ */
+export const researchMarketStateSchema = z.object({
+  /** % đổi giá BTC-USD trong 24 h trước quyết định (có dấu). */
+  btcChange24hPct: z.number().nullable(),
+  /** > +1.5% up, < −1.5% down, còn lại flat. */
+  btcTrend: z.enum(BTC_TRENDS).nullable(),
+  /** Biến động 4 h của chính tài sản (%, trị tuyệt đối). */
+  volMovePct: z.number().nonnegative().nullable(),
+  /** Phân vị (0–100) của biến động đó trong 30 ngày. */
+  volPercentile: z.number().min(0).max(100).nullable(),
+  /** < 33 low, > 67 high, còn lại normal. */
+  volatility: z.enum(VOLATILITY_STATES).nullable(),
+});
+
+const marketGroup = <T extends readonly [string, ...string[]]>(keys: T) =>
+  z.object({
+    key: z.enum(keys),
+    closed: int,
+    /** Trung bình sau phí mỗi lệnh (% của size); null khi nhóm < `minClosedPerGroup` lệnh đóng. */
+    avgPct: z.number().nullable(),
+    /** Còn thiếu bao nhiêu lệnh đóng ("needs 23 more"); 0 khi đủ. */
+    need: int,
+  });
+
+/**
+ * "Is it working? › By market" (#376): cùng tập lệnh đóng được tính như cổng chính, tách theo trạng thái thị trường lúc quyết
+ * định. Nhóm < 30 lệnh đóng không hiện trung bình. `notRecorded` = lệnh không có trạng thái của nguồn này (mở trước #376,
+ * hoặc chỉ có snapshot của nguồn kia); `notAvailable` = có ghi nhưng thiếu dữ liệu lúc đó.
+ */
+export const researchMarketSplitSchema = z.object({
+  /** Nguồn snapshot của khối (review #381): `live` và `backfilled` không bao giờ trộn, như "Does context help?". */
+  source: contextSource,
+  minClosedPerGroup: int,
+  btcTrend: z.array(marketGroup(BTC_TRENDS)),
+  volatility: z.array(marketGroup(VOLATILITY_STATES)),
+  notRecorded: int,
+  btcNotAvailable: int,
+  volNotAvailable: int,
+});
+
 /** Một ví Hyperliquid trong Signal research: địa chỉ (chữ thường) và có trang `/traders/[address]` hay không. */
 export const researchWalletRefSchema = z.object({
   address: z.string().regex(/^0x[0-9a-f]{40}$/),
@@ -419,6 +464,8 @@ export const researchSignalContextSchema = z.object({
     volumeVs24h: z.number().nonnegative().nullable(),
     rangeBreakout: z.enum(RANGE_BREAKOUTS).nullable(),
   }),
+  /** #376: trạng thái thị trường lúc quyết định (chip trên thẻ Decide); null = snapshot ghi trước #376. */
+  marketState: researchMarketStateSchema.nullable(),
 });
 
 const contextGroup = z.object({
@@ -534,6 +581,10 @@ export const researchSummarySchema = z.object({
   context: researchContextSummarySchema.nullable(),
   /** #344: như `context` nhưng chỉ snapshot `backfilled` (nút "Backfilled"); null khi lane chưa chạy. */
   contextBackfilled: researchContextSummarySchema.nullable(),
+  /** #376: tách kết quả theo trạng thái thị trường lúc quyết định, snapshot `live`; null khi lane chưa chạy. */
+  marketSplit: researchMarketSplitSchema.nullable(),
+  /** Như `marketSplit` nhưng chỉ snapshot `backfilled`; null khi lane chưa chạy. */
+  marketSplitBackfilled: researchMarketSplitSchema.nullable(),
   /**
    * #321: lúc quy tắc News hiện tại (`newsRulesVersion`) bắt đầu (bài đầu tiên thu theo quy tắc đó); phễu theo khoảng chỉ
    * đếm từ mốc này ("since rules v3 started …"). null khi lane chưa chạy.
@@ -677,6 +728,11 @@ export const researchTradeSchema = z.object({
    * gắn nhãn "Rules v2 · not counted" (không bao giờ tính cổng).
    */
   rulesVersion: int,
+  /**
+   * #376: trạng thái thị trường lúc quyết định của bài đã mở lệnh / bị bỏ (cột "Market at entry"); null = không có (lệnh
+   * trước #376, replay). Mặc định null để dữ liệu cũ vẫn parse.
+   */
+  marketState: researchMarketStateSchema.nullable().default(null),
 });
 
 export const researchTradesPageSchema = z.object({
@@ -927,6 +983,45 @@ export const researchSummaryQuerySchema = z.object({
 });
 
 /** #305: query của trace một bài. */
+// ── Độ trễ theo chặng (#375, DEC-348 mục 4) ──────────────────────────────────────────────────────────
+
+/**
+ * Các chặng từ tin gốc tới lệnh, theo thứ tự. `sourceToSoso` (nguồn gốc → SoSoValue) không đo được: SoSoValue chỉ trả
+ * `release_time`, nên luôn null ("Not provided").
+ */
+export const RESEARCH_LATENCY_STAGES = [
+  "sourceToSoso",
+  "publishedToCollected",
+  "collectedToClaudeDone",
+  "claudeDoneToDecided",
+  "decidedToOpened",
+] as const;
+
+export const researchLatencyQuerySchema = z.object({
+  range: z.enum(RESEARCH_RANGES).default("1d"),
+  tz: z.string().max(64).optional(),
+  /** News bot version của chặng decided / opened; không có = Baseline. */
+  versionId: z.uuid().optional(),
+});
+
+export const researchLatencyStageSchema = z.object({
+  key: z.enum(RESEARCH_LATENCY_STAGES),
+  /** Median (ms, làm tròn); null = chưa đo được bài nào ("Not measured yet") hoặc không có nguồn ("Not provided"). */
+  medianMs: int.nullable(),
+  /** Số bài đo được ở chặng này; null khi chặng không có nguồn (`sourceToSoso`). */
+  n: int.nullable(),
+});
+
+/**
+ * Median từng chặng trong cửa sổ (bài thu trong 1 ngày / 7 ngày theo `collected_at`, version quy tắc hiện tại). Mỗi chặng
+ * đo trên các bài có đủ hai mốc, nên `n` khác nhau giữa các chặng.
+ */
+export const researchLatencySchema = z.object({
+  range: z.enum(RESEARCH_RANGES),
+  computedAt: iso,
+  stages: z.array(researchLatencyStageSchema).length(RESEARCH_LATENCY_STAGES.length),
+});
+
 export const researchTraceQuerySchema = z.object({
   tz: z.string().max(64).optional(),
   versionId: z.uuid().optional(),
@@ -1253,6 +1348,9 @@ export type ResearchClaudeUsage = z.infer<typeof researchClaudeUsageSchema>;
 export type ResearchArticle = z.infer<typeof researchArticleSchema>;
 export type ResearchArticlesPage = z.infer<typeof researchArticlesPageSchema>;
 export type ResearchArticlesQuery = z.infer<typeof researchArticlesQuerySchema>;
+export type ResearchLatencyStageKey = (typeof RESEARCH_LATENCY_STAGES)[number];
+export type ResearchLatencyQuery = z.infer<typeof researchLatencyQuerySchema>;
+export type ResearchLatency = z.infer<typeof researchLatencySchema>;
 export type ResearchNewArticlesQuery = z.infer<typeof researchNewArticlesQuerySchema>;
 export type ResearchNewArticles = z.infer<typeof researchNewArticlesSchema>;
 export type ResearchSummaryQuery = z.infer<typeof researchSummaryQuerySchema>;
@@ -1351,7 +1449,7 @@ const versionNotCounted = z.object({
 });
 
 /**
- * #377 (DEC-TBD-sr-experiments): thí nghiệm của một version so với Baseline CỐ ĐỊNH (không phải version đã chép từ). Cặp =
+ * #377 (DEC-351): thí nghiệm của một version so với Baseline CỐ ĐỊNH (không phải version đã chép từ). Cặp =
  * lệnh đã đóng của version (mở từ lúc lưu) và của Baseline trên cùng câu chuyện + market; chênh lệch kết quả sau phí (điểm
  * %), khoảng 95% block bootstrap theo ngày (DEC-321) trên đúng 100 cặp đầu. `finishedAt` / kết quả đóng băng khi version tự
  * dừng lúc đủ 100 cặp (Finished).
@@ -1527,6 +1625,8 @@ export type ResearchTradeShadow = z.infer<typeof researchTradeShadowSchema>;
 export type ResearchTraceQuery = z.infer<typeof researchTraceQuerySchema>;
 export type ResearchContextFlags = z.infer<typeof researchContextFlagsSchema>;
 export type ResearchSignalContext = z.infer<typeof researchSignalContextSchema>;
+export type ResearchMarketState = z.infer<typeof researchMarketStateSchema>;
+export type ResearchMarketSplit = z.infer<typeof researchMarketSplitSchema>;
 export type ResearchWalletRef = z.infer<typeof researchWalletRefSchema>;
 export type ResearchWallets = z.infer<typeof researchWalletsSchema>;
 export type ResearchContextQuestion = z.infer<typeof researchContextQuestionSchema>;
