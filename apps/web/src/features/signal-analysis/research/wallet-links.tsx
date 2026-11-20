@@ -155,9 +155,12 @@ export function ResearchWalletsTable({
                 <th scope="col" className={thR}>
                   {t("colRead")}
                 </th>
-                <th scope="col" className={`${thR} text-right`}>
-                  {t("colPage")}
-                </th>
+                {/* Không có AI Desk: ẩn hẳn cột (PM chốt ở review #372), không để trống. */}
+                {canOpen ? (
+                  <th scope="col" className={`${thR} text-right`}>
+                    {t("colPage")}
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -174,21 +177,21 @@ export function ResearchWalletsTable({
                       <Pill tone="warn">{t("notRead", { mins: data.windowMinutes })}</Pill>
                     )}
                   </td>
-                  <td className={`${tdR} text-right`}>
-                    {!w.hasProfile ? (
-                      <span className="text-muted">{t("noPage")}</span>
-                    ) : canOpen ? (
-                      <Link
-                        href={`/traders/${w.address}`}
-                        className="font-bold text-accent-ink underline-offset-2 hover:underline"
-                        aria-label={t("openAria", { wallet: shortAddress(w.address) })}
-                      >
-                        {t("open")}
-                      </Link>
-                    ) : (
-                      <Na />
-                    )}
-                  </td>
+                  {canOpen ? (
+                    <td className={`${tdR} text-right`}>
+                      {w.hasProfile ? (
+                        <Link
+                          href={`/traders/${w.address}`}
+                          className="font-bold text-accent-ink underline-offset-2 hover:underline"
+                          aria-label={t("openAria", { wallet: shortAddress(w.address) })}
+                        >
+                          {t("open")}
+                        </Link>
+                      ) : (
+                        <span className="text-muted">{t("noPage")}</span>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

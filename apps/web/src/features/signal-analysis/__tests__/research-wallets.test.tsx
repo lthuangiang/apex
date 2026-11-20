@@ -131,6 +131,17 @@ describe("Research wallets list (#353)", () => {
     expect(within(s).queryAllByRole("link")).toEqual([]);
     expect(within(s).getByText("0x1111…1111")).toBeInTheDocument();
     expect(within(s).getByText(NO_DESK)).toBeInTheDocument();
+    // Cột "Trader page" ẩn hẳn (không phải cột trống): chỉ 3 cột ở tiêu đề và ở từng dòng.
+    const table = within(s).getByRole("table");
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((h) => h.textContent),
+    ).toEqual(["Rank", "Wallet", "Last read"]);
+    for (const r of within(table).getAllByRole("row").slice(1))
+      expect(within(r).getAllByRole("cell")).toHaveLength(3);
+    expect(within(table).queryByText("No trader page")).toBeNull();
+    expect(within(table).queryByText("Not available")).toBeNull();
     await noViolations();
   });
 
