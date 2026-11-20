@@ -95,9 +95,8 @@ export function LatencyCard({
   const minutes = pollSecs === null ? null : Math.max(1, Math.round(pollSecs / 60));
   const articles = data?.stages.find((s) => s.key === "publishedToCollected")?.n ?? null;
   const measured = rows.filter((r) => r.key !== "sourceToSoso");
-  const sum = measured.every((r) => r.medianMs !== null)
-    ? measured.reduce((a, r) => a + (r.medianMs ?? 0), 0)
-    : null;
+  // Tổng = median của cả quãng published → opened do API tính trên bài đủ mọi chặng (không cộng các median).
+  const full = data?.total ?? null;
   const slow = rows.find((r) => r.slowest) ?? null;
   const total = measured.reduce((a, r) => a + (r.medianMs ?? 0), 0);
   const label = (key: ResearchLatencyStageKey) =>
@@ -191,9 +190,13 @@ export function LatencyCard({
       )}
       {data === null ? null : (
         <p data-testid="sr-latency-total" className="m-0 text-xs leading-normal text-ink-2">
-          {sum === null
-            ? t.rich("latency.totalMissing", { b })
-            : t.rich("latency.total", { duration: durationText(sum, t), b })}
+          {full === null
+            ? t.rich("latency.totalNone", { b })
+            : t.rich("latency.totalMedian", {
+                duration: durationText(full.medianMs, t),
+                n: full.n,
+                b,
+              })}
         </p>
       )}
     </div>

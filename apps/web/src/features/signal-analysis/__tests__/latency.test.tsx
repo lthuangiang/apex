@@ -53,8 +53,12 @@ async function noViolations() {
   expect(r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.html).join(" | ")}`)).toEqual([]);
 }
 
-const withMs = (ms: Record<string, number | null>): ResearchLatency => ({
+const withMs = (
+  ms: Record<string, number | null>,
+  total: ResearchLatency["total"] = null,
+): ResearchLatency => ({
   ...LATENCY_1D,
+  total,
   stages: LATENCY_1D.stages.map((s) =>
     s.key in ms ? { ...s, medianMs: ms[s.key] ?? null, n: ms[s.key] === null ? 0 : 5 } : s,
   ),
@@ -105,16 +109,22 @@ describe("latencyRows", () => {
 });
 
 describe("LatencyCard", () => {
-  it("every leg measured: total of the medians; a slowest leg other than the wait has no wait explanation", async () => {
-    state.latency = withMs({
-      publishedToCollected: 20_000,
-      collectedToClaudeDone: 61_000,
-      claudeDoneToDecided: 2_000,
-      decidedToOpened: 40,
-    });
+  it("total is the API median of the full time with its article count; a slowest leg other than the wait has no wait explanation", async () => {
+    state.latency = withMs(
+      {
+        publishedToCollected: 20_000,
+        collectedToClaudeDone: 61_000,
+        claudeDoneToDecided: 2_000,
+        decidedToOpened: 40,
+      },
+      { medianMs: 95_000, n: 4 },
+    );
     wrap(<LatencyCard range="7d" versionId={null} pollSecs={300} />);
     const card = await screen.findByTestId("sr-latency-total");
-    expect(card).toHaveTextContent("Total, SoSoValue → paper trade opened: 1 min 23 s");
+    // Số của API (1 min 35 s), không phải tổng các median (1 min 23 s).
+    expect(card).toHaveTextContent(
+      "Total, SoSoValue → paper trade opened: 1 min 35 s · median of the full time, 4 articles",
+    );
     const slow = screen.getByTestId("sr-latency-slowest");
     expect(slow).toHaveTextContent("Slowest leg: Collected → Claude done.");
     expect(slow).not.toHaveTextContent("SoSoValue is checked every");
@@ -124,6 +134,19 @@ describe("LatencyCard", () => {
     expect(bar.querySelectorAll("[data-seg]")).toHaveLength(4);
     expect(bar.querySelector("[data-seg='collectedToClaudeDone']")).toHaveClass("bg-warn-bar");
     await noViolations();
+  });
+
+  it("every leg has a median but no article has every leg: the total says Not measured yet (medians are never added)", async () => {
+    state.latency = withMs({
+      publishedToCollected: 20_000,
+      collectedToClaudeDone: 61_000,
+      claudeDoneToDecided: 2_000,
+      decidedToOpened: 40,
+    });
+    wrap(<LatencyCard range="1d" versionId={null} pollSecs={300} />);
+    const total = await screen.findByTestId("sr-latency-total");
+    expect(total).toHaveTextContent("Total, SoSoValue → paper trade opened: Not measured yet");
+    expect(total).not.toHaveTextContent("1 min 23 s");
   });
 
   it("nothing measured: Not measured yet on every leg, Not provided on the source leg, no bar, no slowest, never 0", async () => {

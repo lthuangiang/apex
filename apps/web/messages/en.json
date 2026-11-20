@@ -2890,13 +2890,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "signalAnalysis.research.latency.stages.publishedToCollectedPlain",
-    "signalAnalysis.research.latency.barAria",
-    "signalAnalysis.research.latency.ms",
-    "signalAnalysis.research.latency.underMs",
-    "signalAnalysis.research.latency.timeline.decided",
-    "signalAnalysis.research.latency.ranges"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
@@ -9311,6 +9305,8 @@
         "slowestWaitWhy": "SoSoValue is checked every {n} min, so most of the delay is the wait for the next check.",
         "total": "Total, SoSoValue → paper trade opened: <b>{duration}</b>",
         "totalMissing": "Total, SoSoValue → paper trade opened: <b>Not measured yet</b> (one leg is missing)",
+        "totalMedian": "Total, SoSoValue → paper trade opened: <b>{duration}</b> · median of the full time, {n, plural, one {# article} other {# articles}}",
+        "totalNone": "Total, SoSoValue → paper trade opened: <b>Not measured yet</b>",
         "barAria": "Median time per leg",
         "ms": "{n} ms",
         "underMs": "< 1 ms",

@@ -490,6 +490,8 @@ export const LATENCY_1D: ResearchLatency = {
     { key: "claudeDoneToDecided", medianMs: 1_000, n: 3 },
     { key: "decidedToOpened", medianMs: null, n: 0 },
   ],
+  // Chưa bài nào đủ mọi chặng (chưa đo được lúc mở lệnh).
+  total: null,
 };
 
 /** Chưa đo được chặng nào (cửa sổ trống). */

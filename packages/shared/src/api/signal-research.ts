@@ -1020,6 +1020,12 @@ export const researchLatencySchema = z.object({
   range: z.enum(RESEARCH_RANGES),
   computedAt: iso,
   stages: z.array(researchLatencyStageSchema).length(RESEARCH_LATENCY_STAGES.length),
+  /**
+   * Median của TỔNG thời gian published → opened (giờ đăng SoSoValue → lệnh paper ghi xong), chỉ trên các bài đo đủ mọi
+   * chặng (có Claude done, có quyết định, có lệnh live với mốc đồng hồ); `n` = số bài đó. Không bài nào đủ → null. Không
+   * phải tổng các median.
+   */
+  total: z.object({ medianMs: int, n: z.number().int().positive() }).nullable(),
 });
 
 export const researchTraceQuerySchema = z.object({

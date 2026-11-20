@@ -298,7 +298,7 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
       "Slowest leg: waiting for the 5-min check. SoSoValue is checked every 5 min, so most of the delay is the wait for the next check.",
     );
     expect(within(lat).getByTestId("sr-latency-total")).toHaveTextContent(
-      "Total, SoSoValue → paper trade opened: Not measured yet (one leg is missing)",
+      "Total, SoSoValue → paper trade opened: Not measured yet",
     );
     expect(lat).not.toHaveTextContent(/(^|\D)0 s/);
     expect(within(f).getByText("$0.03 · last 24 h")).toBeInTheDocument();

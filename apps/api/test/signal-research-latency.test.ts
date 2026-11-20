@@ -119,6 +119,7 @@ describe("GET /latency (#375)", () => {
     ]);
     expect(stage(l, "sourceToSoso")).toEqual({ key: "sourceToSoso", medianMs: null, n: null });
     for (const s of l.stages.slice(1)) expect(s).toMatchObject({ medianMs: null, n: 0 });
+    expect(l.total).toBeNull();
   });
 
   it("medians per stage with the number of articles measured; backlog, shadow and old articles are left out", async () => {
@@ -155,12 +156,32 @@ describe("GET /latency (#375)", () => {
     expect(stage(d1, "claudeDoneToDecided")).toMatchObject({ medianMs: 2_500, n: 2 });
     expect(stage(d1, "decidedToOpened")).toMatchObject({ medianMs: 40, n: 1 });
     expect(stage(d1, "sourceToSoso")).toMatchObject({ medianMs: null, n: null });
+    // Tổng published → opened chỉ của bài đủ mọi chặng (bài 1: 60 s chờ + 60.04 s tới lúc ghi lệnh); bài 2 chỉ có shadow.
+    expect(d1.total).toEqual({ medianMs: 120_040, n: 1 });
 
     const d7 = await latency("?range=7d");
     expect(d7.range).toBe("7d");
     // + bài cũ (600 s, Claude 20 s): 4 bài → median 60/120/300/600 = 210 s; Claude 4/8/20 = 8 s.
     expect(stage(d7, "publishedToCollected")).toMatchObject({ medianMs: 210_000, n: 4 });
     expect(stage(d7, "collectedToClaudeDone")).toMatchObject({ medianMs: 8_000, n: 3 });
+  });
+
+  it("total: median of the full time over articles with every leg; an article missing a leg is left out", async () => {
+    // Đủ mọi chặng: chờ 30 s, Claude 2 s, quyết định, lệnh live (ghi 60.1 s sau lúc thu) → tổng 90.1 s.
+    await article({ id: "lat-4", collected: 15, delayMs: 30_000, claudeMs: 2_000 });
+    await decided("lat-4", 15, 2_000, 500);
+    await trade("lat-4", 15, 100);
+    // Thiếu Claude done (bài cũ): có quyết định và lệnh nhưng không tính.
+    await article({ id: "lat-5", collected: 14, delayMs: 1_000, claudeMs: null });
+    await decided("lat-5", 14, 0, 500);
+    await trade("lat-5", 14, 10);
+    // Thiếu mốc quyết định: có Claude và lệnh nhưng không tính.
+    await article({ id: "lat-6", collected: 13, delayMs: 1_000, claudeMs: 1_000 });
+    await trade("lat-6", 13, 10);
+
+    const d1 = await latency("?range=1d");
+    // lat-1 (120.04 s) và lat-4 (90.1 s) → median 105.07 s, n = 2. Không phải tổng các median từng chặng.
+    expect(d1.total).toEqual({ medianMs: 105_070, n: 2 });
   });
 
   it("an unknown version is a 404", async () => {
