@@ -33,7 +33,13 @@ import {
   signalPaperTrades,
   signalStories,
 } from "./schema";
-import { contextFlagsOf, loadSignalContexts, signalContextOf } from "./signal-research-context";
+import {
+  contextFlagsOf,
+  contextWalletAddresses,
+  loadSignalContexts,
+  signalContextOf,
+  walletsWithProfile,
+} from "./signal-research-context";
 import {
   DROP,
   newsTypeOf,
@@ -848,10 +854,14 @@ export async function loadSignalResearchArticleTrace(
   const labelable = (await signalClassifierOf(q, id)) !== null;
   const label = viewerId === null ? null : await loadMyLabel(q, id, viewerId);
   const context = (await loadSignalContexts(q, [id])).get(id);
+  const profiles =
+    context === undefined
+      ? new Set<string>()
+      : await walletsWithProfile(q, contextWalletAddresses(context));
   check();
   return {
     article: articleItem(a, s, scope, context),
-    context: context === undefined ? null : signalContextOf(context),
+    context: context === undefined ? null : signalContextOf(context, profiles),
     steps: stepsOf({
       a,
       s,

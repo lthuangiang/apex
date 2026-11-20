@@ -19,6 +19,8 @@ const BASE: ResearchSignalContext = {
     assetOnHyperliquid: true,
     agreeingWallets: 2,
     opposingWallets: 0,
+    agreeing: null,
+    opposing: null,
     agreeingUsdc: "1400000",
     firstAt: "2026-11-19T02:41:00.000Z",
     windowMinutes: 60,

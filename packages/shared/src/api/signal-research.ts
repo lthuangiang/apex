@@ -337,6 +337,13 @@ export const researchContextFlagsSchema = z.object({
  * Thẻ bước 4 · Context của trace: giá trị lưu đúng lúc quyết định, không bao giờ tính lại; chỉ ghi, không đổi lệnh.
  * Phần trăm theo đơn vị % (0.6 = 0.6%); funding là tỷ lệ thô mỗi kỳ (chuỗi thập phân, 0.0001 = 0.01%).
  */
+/** Một ví Hyperliquid trong Signal research: địa chỉ (chữ thường) và có trang `/traders/[address]` hay không. */
+export const researchWalletRefSchema = z.object({
+  address: z.string().regex(/^0x[0-9a-f]{40}$/),
+  /** Có thống kê leaderboard (`leader_stats_daily`) nên trang trader mở được; false thì web chỉ hiện địa chỉ. */
+  hasProfile: z.boolean(),
+});
+
 export const researchSignalContextSchema = z.object({
   decidedAt: iso,
   source: contextSource,
@@ -363,6 +370,12 @@ export const researchSignalContextSchema = z.object({
     /** Tài sản có trên Hyperliquid (false → "Not available" vì không có trên Hyperliquid); null với dòng không lưu. */
     assetOnHyperliquid: z.boolean().nullable(),
     agreeingWallets: int.nullable(),
+    /**
+     * Ví cùng chiều / ngược chiều lúc chụp (theo địa chỉ). null ở snapshot ghi trước khi lưu địa chỉ (chỉ có số lượng) hoặc khi
+     * H1 không tính; web hiện tối đa 3 ví và "+N more".
+     */
+    agreeing: z.array(researchWalletRefSchema).nullable(),
+    opposing: z.array(researchWalletRefSchema).nullable(),
     opposingWallets: int.nullable(),
     /** Tổng notional (USD) của ví cùng chiều; null khi không có ví cùng chiều. */
     agreeingUsdc: dec.nullable(),
@@ -430,6 +443,37 @@ export const researchContextQuestionSchema = z.object({
   /** Còn thiếu bao nhiêu lệnh đóng ở mỗi nhóm ("Collecting 18 more with · 9 more without"); 0 khi đủ. */
   needWith: int,
   needWithout: int,
+});
+
+/**
+ * Danh sách research wallets (#353, khu "Bots & labels"): tập ví nghiên cứu mới nhất, chỉ đọc từ DB (không gọi Hyperliquid).
+ * `set` null = chưa có tập nào (leaderboard chưa chạy).
+ */
+export const researchWalletsSchema = z.object({
+  set: z
+    .object({
+      version: int,
+      /** Ngày của lần xếp hạng leaderboard đã dùng. */
+      runDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      /** K cấu hình lúc chụp. */
+      k: int,
+      /** Số ví thật sự có trong tập ("Research wallets (top {K})"). */
+      size: int,
+      createdAt: iso,
+    })
+    .nullable(),
+  /** Cửa sổ "đọc được gần đây" của H1 (phút). */
+  windowMinutes: int,
+  items: z.array(
+    researchWalletRefSchema.extend({
+      /** Hạng trong tab Top lúc chụp (1 = cao nhất). */
+      rank: int,
+      /** Lần marketdata đọc ví thành công gần nhất; null = chưa đọc được lần nào. */
+      lastReadAt: iso.nullable(),
+      /** Đọc được trong `windowMinutes` phút trước lúc trả về (tính được bởi H1 lúc này). */
+      readRecently: z.boolean(),
+    }),
+  ),
 });
 
 export const researchContextSummarySchema = z.object({
@@ -1450,5 +1494,7 @@ export type ResearchTradeShadow = z.infer<typeof researchTradeShadowSchema>;
 export type ResearchTraceQuery = z.infer<typeof researchTraceQuerySchema>;
 export type ResearchContextFlags = z.infer<typeof researchContextFlagsSchema>;
 export type ResearchSignalContext = z.infer<typeof researchSignalContextSchema>;
+export type ResearchWalletRef = z.infer<typeof researchWalletRefSchema>;
+export type ResearchWallets = z.infer<typeof researchWalletsSchema>;
 export type ResearchContextQuestion = z.infer<typeof researchContextQuestionSchema>;
 export type ResearchContextSummary = z.infer<typeof researchContextSummarySchema>;

@@ -20,12 +20,12 @@ import {
   type ResearchContextSummary,
   type ResearchSignalContext,
 } from "@drift/shared";
-import { and, count, eq, gte, inArray } from "drizzle-orm";
+import { and, count, eq, gte, inArray, sql } from "drizzle-orm";
 
 import type { Db } from "./client";
 import type { DbTx } from "./read-only";
 import { latestResearchWalletSet } from "./research-wallets";
-import { signalContexts, type signalPaperTrades } from "./schema";
+import { leaderStatsDaily, signalContexts, type signalPaperTrades } from "./schema";
 import type { SignalVersionScope } from "./signal-research-versions";
 
 // Đọc ngữ cảnh tín hiệu (#329) cho API: thẻ bước 4 của trace, cờ gọn của feed, khối "Does context help?" của tổng kết.
@@ -62,7 +62,44 @@ export function contextFlagsOf(r: ContextRow): ResearchContextFlags {
   };
 }
 
-export function signalContextOf(r: ContextRow): ResearchSignalContext {
+/** Ví có thống kê leaderboard Hyperliquid (trang `/traders/[address]` mở được) trong `addresses` (chữ thường). */
+export async function walletsWithProfile(
+  q: Q,
+  addresses: readonly string[],
+): Promise<ReadonlySet<string>> {
+  const list = [...new Set(addresses.map((a) => a.toLowerCase()))];
+  if (list.length === 0) return new Set();
+  const rows = await q
+    .selectDistinct({ address: sql<string>`lower(${leaderStatsDaily.address})` })
+    .from(leaderStatsDaily)
+    .where(
+      and(
+        eq(leaderStatsDaily.source, "hyperliquid"),
+        inArray(sql`lower(${leaderStatsDaily.address})`, list),
+      ),
+    );
+  return new Set(rows.map((r) => r.address));
+}
+
+/** Địa chỉ ví đã lưu trong snapshot (để tra trang trader trước khi dựng thẻ). */
+export const contextWalletAddresses = (r: ContextRow): string[] => [
+  ...(r.h1AgreeingAddresses ?? []),
+  ...(r.h1OpposingAddresses ?? []),
+];
+
+const refsOf = (list: string[] | null, profiles: ReadonlySet<string>) =>
+  list === null
+    ? null
+    : list.map((address) => {
+        const a = address.toLowerCase();
+        return { address: a, hasProfile: profiles.has(a) };
+      });
+
+/** Thẻ bước 4. `profiles` = ví có trang trader (`walletsWithProfile`); thiếu thì mọi ví chỉ hiện địa chỉ. */
+export function signalContextOf(
+  r: ContextRow,
+  profiles: ReadonlySet<string> = new Set(),
+): ResearchSignalContext {
   const side = sideOf(r.direction);
   const typical = r.h3TypicalMovePct === null ? null : dec(r.h3TypicalMovePct);
   const pctl = r.h2Percentile === null ? null : Number(r.h2Percentile);
@@ -80,6 +117,8 @@ export function signalContextOf(r: ContextRow): ResearchSignalContext {
       assetOnHyperliquid: r.h1AssetOnHyperliquid,
       agreeingWallets: r.h1AgreeingWallets,
       opposingWallets: r.h1OpposingWallets,
+      agreeing: refsOf(r.h1AgreeingAddresses, profiles),
+      opposing: refsOf(r.h1OpposingAddresses, profiles),
       agreeingUsdc: decOut(r.h1AgreeingUsdc),
       firstAt: r.h1FirstAt === null ? null : iso(r.h1FirstAt),
       windowMinutes: SIGNAL_CONTEXT_RULES.h1WindowMinutes,

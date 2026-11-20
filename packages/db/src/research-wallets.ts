@@ -1,9 +1,11 @@
 import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 
 import type { Db } from "./client";
+import type { DbTx } from "./read-only";
 import {
   leaderboardRuns,
   leaderStatsDaily,
+  leaderWallets,
   researchWalletSetMembers,
   researchWalletSets,
 } from "./schema";
@@ -120,4 +122,71 @@ export async function latestResearchWalletSet(
     .orderBy(desc(researchWalletSets.version))
     .limit(1);
   return last ?? null;
+}
+
+/** Cửa sổ "đọc được gần đây" (phút), bằng cửa sổ H1 (`SIGNAL_CONTEXT_RULES.h1WindowMinutes`). */
+export const RESEARCH_WALLETS_READ_WINDOW_MIN = 60;
+
+export interface ResearchWalletList {
+  set: { version: number; runDate: string; k: number; size: number; createdAt: string } | null;
+  windowMinutes: number;
+  items: {
+    address: string;
+    rank: number;
+    hasProfile: boolean;
+    lastReadAt: string | null;
+    readRecently: boolean;
+  }[];
+}
+
+/**
+ * Danh sách research wallets cho khu "Bots & labels" (#353): ví của version mới nhất theo hạng, lần marketdata đọc thành công
+ * gần nhất (`leader_wallets.last_polled_at`) và có trang trader hay không (có `leader_stats_daily`). Chỉ đọc DB.
+ */
+export async function loadResearchWallets(q: Db | DbTx, now: Date): Promise<ResearchWalletList> {
+  const windowMinutes = RESEARCH_WALLETS_READ_WINDOW_MIN;
+  const [set] = await q
+    .select()
+    .from(researchWalletSets)
+    .orderBy(desc(researchWalletSets.version))
+    .limit(1);
+  if (set === undefined) return { set: null, windowMinutes, items: [] };
+  const rows = await q
+    .select({
+      address: researchWalletSetMembers.address,
+      rank: researchWalletSetMembers.rank,
+      lastReadAt: leaderWallets.lastPolledAt,
+      hasProfile: sql<boolean>`exists (
+        select 1 from ${leaderStatsDaily}
+         where ${leaderStatsDaily.source} = 'hyperliquid'
+           and lower(${leaderStatsDaily.address}) = lower(${researchWalletSetMembers.address}))`,
+    })
+    .from(researchWalletSetMembers)
+    .leftJoin(
+      leaderWallets,
+      and(
+        eq(leaderWallets.source, "hyperliquid"),
+        sql`lower(${leaderWallets.address}) = lower(${researchWalletSetMembers.address})`,
+      ),
+    )
+    .where(eq(researchWalletSetMembers.setVersion, set.version))
+    .orderBy(asc(researchWalletSetMembers.rank));
+  const from = now.getTime() - windowMinutes * 60_000;
+  return {
+    set: {
+      version: set.version,
+      runDate: set.runDate,
+      k: set.k,
+      size: set.size,
+      createdAt: set.createdAt.toISOString(),
+    },
+    windowMinutes,
+    items: rows.map((r) => ({
+      address: r.address.toLowerCase(),
+      rank: r.rank,
+      hasProfile: r.hasProfile,
+      lastReadAt: r.lastReadAt === null ? null : r.lastReadAt.toISOString(),
+      readRecently: r.lastReadAt !== null && r.lastReadAt.getTime() >= from,
+    })),
+  };
 }
