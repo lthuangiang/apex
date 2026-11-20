@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Db } from "@drift/db";
+import { finishSignalExperiments, type Db } from "@drift/db";
 import {
   NEWS_LIMIT_DEFAULTS,
   NEWS_RULES,
@@ -237,6 +237,20 @@ export function createSignalResearch(input: {
         log.error(
           { err: e instanceof Error ? { name: e.name, message: e.message } : String(e) },
           "signal research cycle failed",
+        );
+      }
+      try {
+        // #377: thí nghiệm đủ 100 cặp với Baseline thì version tự dừng (Finished). Chỉ đổi trạng thái version, có audit;
+        // không đụng lệnh đang mở hay logic giao dịch; Baseline không bao giờ bị dừng ở đây.
+        for (const f of await finishSignalExperiments(input.db, new Date(now())))
+          log.info(
+            { versionId: f.id, number: f.number, verdict: f.result.verdict, pairs: f.result.pairs },
+            "signal experiment finished",
+          );
+      } catch (e) {
+        log.error(
+          { err: e instanceof Error ? { name: e.name, message: e.message } : String(e) },
+          "signal experiments check failed",
         );
       } finally {
         cycleBusy = false;

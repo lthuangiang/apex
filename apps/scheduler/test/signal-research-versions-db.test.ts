@@ -204,6 +204,7 @@ async function newVersion(name: string, over: Partial<BotVersionConfig>, start =
     createdBy: null,
     savedFromVersionId: baselineId,
     start,
+    hypothesis: "One change gives a better result after fees.",
     now: new Date(T0 - HOUR),
   });
 }
@@ -328,6 +329,7 @@ describe("version service", () => {
         createdBy: null,
         savedFromVersionId: null,
         start: false,
+        hypothesis: "One change gives a better result after fees.",
       }),
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
   });

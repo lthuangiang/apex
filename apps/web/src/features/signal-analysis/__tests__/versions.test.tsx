@@ -201,6 +201,9 @@ function newVersion(): HTMLElement {
   return b;
 }
 
+/** #377: giả thuyết bắt buộc của version mới. */
+const HYP = "Trading only High gives a better result after fees.";
+
 describe("News bot versions: cards, gate and table", { timeout: 20_000 }, () => {
   it("summary bar, extra check and version cards follow the mockup", async () => {
     wrap();
@@ -444,7 +447,9 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     ).toHaveLength(2);
     await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     expect(within(dlg).getByRole("alert")).toHaveTextContent("Fix the fields marked above.");
-    expect(within(dlg).getByText("Required.")).toBeInTheDocument();
+    expect(within(dlg).getByRole("textbox", { name: "Name" })).toHaveAccessibleDescription(
+      "Required.",
+    );
     expect(posts()).toHaveLength(0);
 
     await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "High only");
@@ -460,8 +465,34 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     await userEvent.click(within(dlg).getByRole("radio", { name: "Limit" }));
     await userEvent.type(within(dlg).getByRole("textbox", { name: "Trades per day" }), "4");
     await userEvent.click(within(dlg).getByRole("radio", { name: "Close at market" }));
+    // #377: thiếu giả thuyết thì không gửi.
+    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    const hyp = within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" });
+    expect(hyp).toHaveAttribute("aria-invalid", "true");
+    expect(hyp).toHaveAccessibleDescription("Required.");
+    expect(posts()).toHaveLength(0);
+    await userEvent.type(hyp, HYP);
     await noViolations();
     await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    // Đổi 4 thứ so với Baseline (level, Treasury buy, giới hạn ngày, tin ngược chiều): cảnh báo, chưa gửi.
+    const warn = await within(dlg).findByRole("alert");
+    expect(warn).toHaveTextContent(
+      "Changes from Baseline (v3): Treasury buy off · Lowest level Low → High · Max new trades per day Off → 4 · Opposite news Keep → Close at market",
+    );
+    expect(warn).toHaveTextContent(
+      "This version changes 4 things from Baseline. If its result differs, you won’t know which change caused it. Keep one change per version.",
+    );
+    expect(posts()).toHaveLength(0);
+    // Back to edit đóng cảnh báo; lưu lại thì cảnh báo hiện lại; Save and start anyway thì gửi.
+    await userEvent.click(within(warn).getByRole("button", { name: "Back to edit" }));
+    expect(within(dlg).queryByText(/things from Baseline/)).toBeNull();
+    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await noViolations();
+    await userEvent.click(
+      within(await within(dlg).findByRole("alert")).getByRole("button", {
+        name: "Save and start anyway",
+      }),
+    );
     await waitFor(() => {
       expect(posts()).toHaveLength(1);
     });
@@ -477,6 +508,7 @@ describe("New version sheet", { timeout: 20_000 }, () => {
       },
       savedFromVersionId: null,
       start: true,
+      hypothesis: HYP,
     };
     expect(posts()[0]?.body).toEqual(want);
     expect(researchVersionCreateBodySchema.parse(posts()[0]?.body)).toEqual(want);
@@ -525,7 +557,17 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     expect(within(dlg).queryByRole("listbox")).toBeNull();
     expect(screen.getByRole("dialog", { name: "New version · from v4" })).toBeInTheDocument();
     await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "Majors");
+    await userEvent.type(
+      within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" }),
+      HYP,
+    );
     await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    // #377: so với Baseline (không phải v4) đổi nhiều thứ → cảnh báo trước, lưu khi bấm "Save and start anyway".
+    expect(
+      await within(dlg).findByText(/^This version changes \d+ things from Baseline\./),
+    ).toBeInTheDocument();
+    expect(posts()).toHaveLength(0);
+    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start anyway" }));
     await waitFor(() => {
       expect(posts()).toHaveLength(1);
     });
@@ -557,6 +599,10 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     await userEvent.click(newVersion());
     const dlg = await screen.findByRole("dialog", { name: "New version" });
     await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "X");
+    await userEvent.type(
+      within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" }),
+      HYP,
+    );
     await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     expect(
       await screen.findByText(
@@ -572,6 +618,10 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     await userEvent.click(newVersion());
     const dlg = await screen.findByRole("dialog", { name: "New version" });
     await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "X");
+    await userEvent.type(
+      within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" }),
+      HYP,
+    );
     await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     expect(await within(dlg).findByRole("alert")).toHaveTextContent(
       "Not listed on SoDEX now: SOLV-USD.",
@@ -590,6 +640,10 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     await userEvent.click(newVersion());
     const dlg = await screen.findByRole("dialog", { name: "New version" });
     await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "Retry");
+    await userEvent.type(
+      within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" }),
+      HYP,
+    );
     await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     await waitFor(
       () => {
@@ -614,10 +668,17 @@ describe("New version sheet", { timeout: 20_000 }, () => {
 });
 
 describe("sheet helpers", () => {
-  const ok = { ...draftOf(baselineVersionConfig(), "A") };
+  const ok = { ...draftOf(baselineVersionConfig(), "A", HYP) };
   it("validate: required, dot decimals, whole numbers, ranges, balance, assets", () => {
     expect(validate(ok)).toEqual({});
     expect(validate({ ...ok, name: " " }).name).toEqual({ key: "required" });
+    // #377: giả thuyết bắt buộc, một dòng, tối đa 200 ký tự.
+    expect(validate({ ...ok, hypothesis: "  " }).hypothesis).toEqual({ key: "required" });
+    expect(validate({ ...ok, hypothesis: "x".repeat(201) }).hypothesis).toEqual({
+      key: "range",
+      min: 1,
+      max: 200,
+    });
     expect(validate({ ...ok, size: "1,5" }).size).toEqual({ key: "number" });
     expect(validate({ ...ok, size: "0" }).size).toEqual({ key: "positive" });
     expect(validate({ ...ok, size: "10000.01" }).size).toEqual({ key: "aboveBalance" });
@@ -637,11 +698,15 @@ describe("sheet helpers", () => {
     const d = { ...ok, mode: "all" as const, markets: ["SOL-USD"] };
     expect(configOf(d)?.assets.markets).toEqual([]);
     expect(configOf({ ...d, mode: "except" })?.assets.markets).toEqual(["SOL-USD"]);
-    expect(bodyOf({ ...ok, name: "  B " }, V4)).toMatchObject({
+    expect(bodyOf({ ...ok, name: "  B ", hypothesis: ` ${HYP} ` }, V4)).toMatchObject({
       name: "B",
       savedFromVersionId: V4_ID,
       start: true,
+      hypothesis: HYP,
     });
+    expect(bodyOf({ ...ok, hypothesis: "" }, null)).toBeNull();
+    // Giả thuyết trống không chặn phần "Changed from vN" (config vẫn tính được).
+    expect(configOf({ ...ok, hypothesis: "" })).not.toBeNull();
     expect(bodyOf({ ...ok, tp: "x" }, null)).toBeNull();
     expect(bodyOf({ ...ok, name: "" }, null)).toBeNull();
     // Tên trống không chặn phần "Changed from vN" (config vẫn tính được).

@@ -1978,7 +1978,8 @@ export const signalPaperTrades = pgTable(
 
 /**
  * News bot version (#303, DEC-328): config bất biến (trigger DB chặn sửa `config`), tối đa 3 `running` (trigger DB + khoá
- * trong service). Lưu = dòng mới; Pause / Resume / Stop / Retire chỉ đổi `status`, ghi `audit_log`.
+ * trong service). Lưu = dòng mới; Pause / Resume / Stop / Retire chỉ đổi `status`, ghi `audit_log`. #377: giả thuyết bất
+ * biến; kết quả thí nghiệm chỉ ghi một lần khi version tự dừng (Finished), không bao giờ với Baseline (trigger 0056).
  */
 export const signalBotVersions = pgTable(
   "signal_bot_versions",
@@ -1996,6 +1997,14 @@ export const signalBotVersions = pgTable(
     savedFromVersionId: uuid("saved_from_version_id"),
     isBaseline: boolean("is_baseline").notNull().default(false),
     statusChangedAt: tstz("status_changed_at").notNull().defaultNow(),
+    /** #377: giả thuyết của thí nghiệm (một câu); bất biến như config. null với Baseline và version lưu trước #377. */
+    hypothesis: text("hypothesis"),
+    /** #377: lúc version tự dừng vì đủ 100 cặp với Baseline (Finished); null = chưa. */
+    experimentFinishedAt: tstz("experiment_finished_at"),
+    /** #377: kết quả đóng băng lúc dừng (`experimentResultSchema`): số cặp, trung bình chênh lệch, khoảng 95%, kết luận. */
+    experimentResult: jsonb("experiment_result"),
+    /** #377: các khoảng `running` (`runPeriodsSchema`), để ghép cặp chỉ trong lúc version chạy; null = trước #377. */
+    runningPeriods: jsonb("running_periods"),
     ...timestamps,
   },
   (t) => [

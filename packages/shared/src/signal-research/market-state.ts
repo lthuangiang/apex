@@ -4,7 +4,7 @@ import type { DayObs } from "../stats/day-bootstrap";
 import { midRankPercentile } from "./context";
 import { NEWS_RULES } from "./rules";
 
-// Trạng thái thị trường lúc quyết định (Catalyst P0, #376, DEC-TBD-catalyst-p0 mục 1). Chỉ ghi lại để tách kết quả, không
+// Trạng thái thị trường lúc quyết định (Catalyst P0, #376, DEC-348 mục 1). Chỉ ghi lại để tách kết quả, không
 // bao giờ đổi quyết định. Hàm thuần, không I/O; nơi gọi chỉ đưa vào giá của nến 1 phút đã ĐÓNG trước thời điểm quyết định.
 
 /** Version của cách tính trạng thái thị trường; đổi ngưỡng / định nghĩa = version mới, snapshot cũ giữ nguyên. */

@@ -217,6 +217,7 @@ export function NewsVersions({
             loading: markets.isPending && markets.fetchStatus !== "idle",
             error: markets.isError,
           }}
+          baseline={baseline}
           pending={create.isPending}
           checking={create.checking}
           error={saveError}
