@@ -183,6 +183,24 @@ describe("pairWithBaseline", () => {
     expect(pair(exp, base, new Date(T0)).map((x) => x.diff.toFixed())).toEqual(["1"]);
   });
 
+  it("only while both versions run: an experiment trade while Baseline was paused does not count", () => {
+    // Baseline tạm dừng từ T0 + 10 s tới T0 + 20 s; thí nghiệm chạy suốt.
+    const baseRunning: RunPeriod[] = [
+      { from: new Date(0), to: new Date(T0 + 10_000) },
+      { from: new Date(T0 + 20_000), to: null },
+    ];
+    const exp = [
+      t({ story: "b1", pct: "2", at: T0 + 5_000 }), // cả hai chạy: 2 − 0
+      t({ story: "b2", pct: "2", at: T0 + 15_000 }), // Baseline tạm dừng: không tính
+      t({ story: "b3", pct: "2", at: T0 + 25_000 }), // Baseline chạy lại: 2 − 0
+    ];
+    const p = pairWithBaseline(
+      { trades: exp, running: [{ from: new Date(T0), to: null }] },
+      { trades: [], running: baseRunning },
+    );
+    expect(p.map((x) => x.key)).toEqual([keyOf("b1"), keyOf("b3")]);
+  });
+
   it("only while both versions run: a Baseline trade while the version was paused is not a 0 for it", () => {
     const running: RunPeriod[] = [
       { from: new Date(T0), to: new Date(T0 + 10_000) },

@@ -326,6 +326,37 @@ describe("experiments: paired with Baseline, Finished at 100 pairs (#377)", () =
     expect(done.map((d) => [d.id, d.result.verdict])).toEqual([[v.id, "better"]]);
   });
 
+  it("counts only while Baseline runs too: experiment trades while Baseline was paused are left out", async () => {
+    await advance(60);
+    const v = await create(
+      "Skip late news",
+      { ...cfg, maxSourceDelayMinutes: 10 },
+      { start: true },
+    );
+    // Baseline (cột running_periods trong DB) tạm dừng trong ngày 2–3 sau khi version được lưu.
+    const day = 86_400_000;
+    const t0 = env.clock.now.getTime();
+    await env.pool.query("update signal_bot_versions set running_periods = $1 where is_baseline", [
+      JSON.stringify([
+        { from: "2026-01-01T00:00:00.000Z", to: new Date(t0 + day).toISOString() },
+        { from: new Date(t0 + 3 * day).toISOString(), to: null },
+      ]),
+    ]);
+    try {
+      // 8 lệnh mỗi ngày từ lúc lưu: 8 lệnh ngày 1 tính, 16 lệnh ngày 2–3 (Baseline tạm dừng) không tính, 8 lệnh ngày 4 tính.
+      await trades(v.id, "bp", 32, "1", 0, 0);
+      const e = (await item(v.id)).experiment;
+      expect(e?.pairs).toBe(16);
+      expect(e?.meanDiffPct).toBe("1");
+    } finally {
+      await env.pool.query(
+        `update signal_bot_versions set running_periods = '[{"from":"2026-01-01T00:00:00.000Z","to":null}]' where is_baseline`,
+      );
+      // Nhường chỗ chạy (tối đa 3) cho test sau.
+      await setSignalBotVersionStatus(env.db, { id: v.id, status: "stopped", userId: null });
+    }
+  });
+
   it("a version saved before #377 (no hypothesis) is never stopped automatically", async () => {
     await advance(60);
     const id = randomUUID();
