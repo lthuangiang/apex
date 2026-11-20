@@ -335,10 +335,11 @@ Gom mọi việc cho lần release đầu tiên có Signal research (từ v2.12.
 | `SIGNAL_SOSO_MAX_PAGES` | scheduler | Số trang tin tối đa mỗi chu kỳ (mặc định `2`) |
 | `SIGNAL_NEWS_START_LOOKBACK_MIN` | scheduler | Lần chạy đầu chỉ nhận tin trong ngần này phút (mặc định `15`) |
 | `SIGNAL_NEWS_MAX_CATCHUP_MIN` | scheduler | Sau thời gian ngừng, không bắt kịp quá ngần này phút (mặc định `30`) |
-| `COPY_LEADERBOARD_ENABLED`, `COPY_LEADERBOARD_HOUR_UTC` | scheduler | Không mới, nhưng H1 · Whales agree chỉ có số khi leaderboard Hyperliquid được tính (DEC-163). Tắt thì H1 của mọi tín hiệu là "Not available" (0 ví theo dõi) |
+| `COPY_LEADERBOARD_ENABLED`, `COPY_LEADERBOARD_HOUR_UTC` | scheduler | Không mới. **COPY_LEADERBOARD_ENABLED=true để research wallets có dữ liệu.** H1 · Whales agree chỉ có số khi leaderboard Hyperliquid được tính (DEC-163); tắt thì H1 của mọi tín hiệu là "Not available" (0 ví theo dõi) |
+| `MCP_PUBLIC_URL`, `MCP_INTROSPECT_SECRET` | api | Không mới (DEC-167, mục 2.9), nhưng mẫu compose trước đây thiếu ở `api`. Gốc URL của `apps/mcp` và secret introspect nội bộ (người dùng tự điền); secret trống = MCP tắt |
 | `SIGNAL_RESEARCH_WALLETS_K` | scheduler | **Chờ #365 merge** (#353). Số ví nghiên cứu K mà marketdata poll cho H1 (mặc định `30`, trần `40`, `0` = tắt). Trên branch của #365 chỉ `scheduler` đọc biến này (scheduler chụp bộ ví vào DB; marketdata poll theo bộ đã lưu). Compose chỉ cần biến ở `scheduler` |
 
-Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod env của `scheduler`, `api`, `marketdata`, `engine`). `DESK_AI_API_KEY` của `api` là biến cũ, chỉ cần có trong compose nếu muốn Desk AI dùng Claude.
+Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod env của `scheduler`, `api`, `marketdata`, `engine`). `DESK_AI_API_KEY`, `MCP_PUBLIC_URL`, `MCP_INTROSPECT_SECRET` của `api` là biến cũ; kiểm chúng đã có trong khối `api` của compose trên VPS.
 
 **2. Migration mới** (`build-push.sh` tự chạy `migrate`; đều tương thích ngược, chỉ thêm bảng / cột):
 

@@ -111,6 +111,9 @@ services:
       SODEX_CONNECT_ENABLED: "true"
       # Desk AI (DEC-165): key Claude API; trống = câu mẫu.
       DESK_AI_API_KEY: ${DESK_AI_API_KEY:-}
+      # MCP (DEC-167, DEPLOY 2.9): gốc URL của apps/mcp và secret introspect nội bộ; secret trống = MCP tắt.
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+      MCP_INTROSPECT_SECRET: ${MCP_INTROSPECT_SECRET:-}
     depends_on:
       <<: *app-deps
       signer: { condition: service_healthy }
