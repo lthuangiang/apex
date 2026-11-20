@@ -23,21 +23,39 @@ import { CONTEXT_BAND } from "./trace-player";
 // - lần hỏi đầu sau khi dừng (tab ẩn, đang trace, Live tắt): lấy hết bài đã lỡ, thả tối đa 3 bài MỚI NHẤT, phần còn lại
 //   cộng vào "+N more" (sửa lỗi người dùng báo: SoSoValue nạp theo đợt 5 phút, quay lại tab thì cả đợt chỉ cộng số);
 // - không bao giờ cắt ngang trace người dùng đang xem: bài chờ ở chip "N new articles · play".
+// - chỉ SIGNAL (bài đã qua Score: dừng ở Filter / Decide) mới rơi và chạy các bước; bài bị loại ở Collect / Normalize /
+//   Score chỉ có badge NEW và vào số đếm. Mỗi đợt có một dòng tóm tắt "{n} new articles · {s} signals · {d} dropped".
 // Số đếm và feed luôn lấy lại từ API (làm mới query), không tự cộng.
 
 /** Nhịp hỏi bài mới (PM chốt). */
 export const LIVE_POLL_MS = 15_000;
 /** Số bài tối đa chờ rơi; thêm nữa thì chỉ đếm. */
 export const LIVE_QUEUE_MAX = 3;
-/** Mỗi bước của bài rơi (mockup: 380 ms). */
-export const LIVE_STEP_MS = 380;
+/** Mỗi bước của bài rơi (ngắn hơn mockup 380 ms: chỉ signal rơi, nhiều bài chạy lần lượt). */
+export const LIVE_STEP_MS = 260;
 /** Bước 4 khi bài có snapshot: đủ cho hiệu ứng H1 / H2 / H3 (≤ 1.2 s). */
 export const LIVE_CONTEXT_MS = 1300;
 /** Lần hỏi bù sau khi dừng: mỗi trang tối đa (trần của API) và số trang tối đa, để lấy được bài mới nhất của khoảng lỡ. */
 export const LIVE_CATCH_UP_LIMIT = 50;
 export const LIVE_CATCH_UP_PAGES = 5;
 /** Giữ khung cuối trước khi sang bài sau. */
-export const LIVE_HOLD_MS = 900;
+export const LIVE_HOLD_MS = 600;
+
+/** Signal = bài đã qua Score (bước dừng là Filter hoặc Decide). Chỉ signal mới rơi xuống phễu. */
+export const isSignal = (a: ResearchArticle): boolean =>
+  a.stage === "filter" || a.stage === "decide";
+
+/** Tóm tắt một đợt bài mới: tổng, số signal, số bài bị loại trước khi thành signal. */
+export interface LiveBatch {
+  n: number;
+  signals: number;
+  dropped: number;
+}
+
+export function batchOf(items: readonly ResearchArticle[]): LiveBatch {
+  const signals = items.filter(isSignal).length;
+  return { n: items.length, signals, dropped: items.length - signals };
+}
 
 /** Thời gian đứng ở bước `n` của bài rơi; bước 4 giữ lâu hơn chỉ khi có hiệu ứng để xem. */
 export const liveDuration =
@@ -164,6 +182,8 @@ export interface LiveArticles extends LiveQueue {
   listening: boolean;
   /** Bài tới live trong phiên này (badge "NEW" ở feed). */
   fresh: ReadonlySet<string>;
+  /** Đợt bài mới gần nhất (dòng tóm tắt); null khi chưa có đợt nào. */
+  batch: LiveBatch | null;
   /** Bài đang rơi đã xong (hoặc không tải được trace): làm mới số, sang bài sau. */
   finish: () => void;
 }
@@ -188,6 +208,7 @@ export function useLiveArticles({
   const qc = useQueryClient();
   const [state, setState] = useState<LiveQueue>(EMPTY_QUEUE);
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set());
+  const [batch, setBatch] = useState<LiveBatch | null>(null);
   const since = useRef<{ version: VersionId; cursor: string | null }>({
     version: versionId,
     cursor: null,
@@ -237,12 +258,15 @@ export function useLiveArticles({
         for (const a of items) seen.current.add(a.id);
         if (items.length > 0) {
           setFresh((f) => new Set([...f, ...items.map((a) => a.id)]));
-          if (opening || !inViewRef.current) refresh();
-          else if (bulk) {
-            setState((s) => enqueueNewest(s, items));
-            // Bài chỉ đếm ("+N more") vào số đếm ngay.
-            if (items.length > LIVE_QUEUE_MAX) refresh();
-          } else setState((s) => enqueue(s, items));
+          if (!opening) setBatch(batchOf(items));
+          // Chỉ signal rơi; bài bị loại trước Score chỉ vào số đếm (làm mới ngay).
+          const signals = items.filter(isSignal);
+          if (opening || !inViewRef.current || signals.length === 0) refresh();
+          else {
+            setState((s) => (bulk ? enqueueNewest(s, signals) : enqueue(s, signals)));
+            if (signals.length < items.length || (bulk && signals.length > LIVE_QUEUE_MAX))
+              refresh();
+          }
         }
         catchUp = false;
       } catch {
@@ -275,5 +299,5 @@ export function useLiveArticles({
     refresh();
   }, [refresh]);
 
-  return { ...state, listening, fresh, finish };
+  return { ...state, listening, fresh, batch, finish };
 }

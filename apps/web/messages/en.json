@@ -2889,7 +2889,8 @@
     "signalAnalysis.research.trace.costWindow",
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
-    "signalAnalysis.research.trace.countsShort"
+    "signalAnalysis.research.trace.countsShort",
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
@@ -9214,7 +9215,8 @@
         "waiting": " · {n} waiting",
         "more": " · +{n} more counted",
         "pending": "{n, plural, one {# new article} other {# new articles}} · play",
-        "new": "NEW"
+        "new": "NEW",
+        "batch": "{n, plural, one {# new article} other {# new articles}} · {s, plural, one {# signal} other {# signals}} · {d} dropped"
       },
       "strip": {
         "label": "Summary",
