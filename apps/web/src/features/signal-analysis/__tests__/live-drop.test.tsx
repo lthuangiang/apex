@@ -264,7 +264,8 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     await ready();
     await tick(0);
     expect(verdict()).toHaveTextContent("Pick an article on the left");
-    expect(panel()).toBeNull();
+    // #343: khung Context luôn hiện; chế độ tổng là hoạt cảnh chờ.
+    expect(panel()).toHaveAttribute("data-state", "idle");
     expect(state.paths.some((x) => x.includes("/trace"))).toBe(false);
   });
 

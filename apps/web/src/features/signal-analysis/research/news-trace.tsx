@@ -262,7 +262,12 @@ function totalBands(
       ...(key === "decide" && tot.decide !== null
         ? {
             noteNode: t.rich("trace.counts.decide", { ...tot.decide, p: pair }),
-            noteShort: t.rich("trace.countsShort.decide", { ...tot.decide, p: pair }),
+            // Câu ngắn "L 1 · S 0" luôn trên một dòng (tầng hẹp).
+            noteShort: (
+              <span data-nowrap="" className="whitespace-nowrap">
+                {t.rich("trace.countsShort.decide", { ...tot.decide, p: pair })}
+              </span>
+            ),
           }
         : {}),
       state: "total" as const,
