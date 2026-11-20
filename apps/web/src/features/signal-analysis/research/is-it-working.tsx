@@ -18,6 +18,7 @@ import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ScrollTable } from "../components/bits";
 import { clock, count, monthDay } from "../format";
 
+import { useBotsLabels } from "./bots-labels-context";
 import { ContextHelp } from "./context-help";
 import { pctPlain, pctSigned, tone } from "./format";
 import { HelpButton } from "./how-it-works";
@@ -154,14 +155,27 @@ function Card({ children, className = "" }: { children: ReactNode; className?: s
   );
 }
 
-const labelLink = (c: ReactNode) => (
-  <a
-    href="#sr-labels"
-    className="font-semibold text-accent-ink underline-offset-2 hover:underline focus-visible:underline"
-  >
-    {c}
-  </a>
-);
+const linkCls =
+  "font-semibold text-accent-ink underline-offset-2 hover:underline focus-visible:underline";
+
+/** "Label signals": mở khu Bots & labels và bắt đầu gắn nhãn (trong trang); đứng riêng thì là link tới khu nhãn. */
+function useLabelLink() {
+  const open = useBotsLabels();
+  return (c: ReactNode) =>
+    open === null ? (
+      <a href="#sr-labels" className={linkCls}>
+        {c}
+      </a>
+    ) : (
+      <button
+        type="button"
+        onClick={open.openLabels}
+        className={`cursor-pointer border-0 bg-transparent p-0 ${linkCls}`}
+      >
+        {c}
+      </button>
+    );
+}
 
 function ProgressCards({
   v,
@@ -175,6 +189,7 @@ function ProgressCards({
   const t = useTranslations("signalAnalysis.research.judge");
   const tc = useTranslations("signalAnalysis.research.contextHelp");
   const na = useTranslations("signalAnalysis.research")("na");
+  const labelLink = useLabelLink();
   const b = (c: ReactNode) => <b>{c}</b>;
 
   // Lệnh đóng cho cổng: dòng News · Live paper (cổng gộp mọi tin).
@@ -188,6 +203,8 @@ function ProgressCards({
   const pct = c?.precisionPct ?? null;
   const name = c === null ? null : classifierShort(c.current);
   const labelsMore = c === null || min === null ? 0 : Math.max(0, min - c.labeled);
+  // Chưa đếm (Claude reader chưa qua nhãn, chưa có lệnh nào được tính): nói bằng lời thường thay vì "needs 100 more".
+  const waits = c !== null && c.status !== "passed" && closed === 0 ? c : null;
 
   const h1 = v.context?.questions.find((q) => q.key === "h1") ?? null;
   const ctxMin = v.context?.minClosedPerGroup ?? null;
@@ -196,7 +213,7 @@ function ProgressCards({
       <Card>
         <div className="flex justify-between gap-2 text-[13px]">
           <strong>{t("closedTitle")}</strong>
-          {weeks === null || more === 0 ? null : (
+          {weeks === null || more === 0 || waits !== null ? null : (
             <span className="text-muted max-md:hidden">{t("weeksToGo", { weeks })}</span>
           )}
         </div>
@@ -206,34 +223,51 @@ function ProgressCards({
           <>
             <Bar label={t("closedAria")} now={closed} max={GATE_MIN_CLOSED} />
             <div className="text-[13px] text-ink-2 max-md:hidden">
-              {more === 0
-                ? t.rich("closedLineDone", { b, n: count(closed), gate: GATE_MIN_CLOSED })
-                : t.rich("closedLine", {
-                    b,
-                    n: count(closed),
-                    gate: GATE_MIN_CLOSED,
-                    more: count(more),
-                  })}
+              {waits !== null
+                ? waits.status === "needsLabels"
+                  ? t.rich("closedLineWaits", {
+                      b,
+                      n: count(closed),
+                      gate: GATE_MIN_CLOSED,
+                      k: waits.labelsToGo,
+                    })
+                  : t.rich("closedLineUnder", { b, n: count(closed), gate: GATE_MIN_CLOSED })
+                : more === 0
+                  ? t.rich("closedLineDone", { b, n: count(closed), gate: GATE_MIN_CLOSED })
+                  : t.rich("closedLine", {
+                      b,
+                      n: count(closed),
+                      gate: GATE_MIN_CLOSED,
+                      more: count(more),
+                    })}
             </div>
             <div className="text-xs text-ink-2 md:hidden">
-              {more === 0
-                ? t.rich("closedLineDone", {
-                    b: (x) => <>{x}</>,
-                    n: count(closed),
-                    gate: GATE_MIN_CLOSED,
-                  })
-                : weeks === null
-                  ? t("closedShortNoWeeks", {
+              {waits !== null
+                ? waits.status === "needsLabels"
+                  ? t("closedShortWaits", {
                       n: count(closed),
                       gate: GATE_MIN_CLOSED,
-                      more: count(more),
+                      k: waits.labelsToGo,
                     })
-                  : t("closedShort", {
+                  : t("closedShortUnder", { n: count(closed), gate: GATE_MIN_CLOSED })
+                : more === 0
+                  ? t.rich("closedLineDone", {
+                      b: (x) => <>{x}</>,
                       n: count(closed),
                       gate: GATE_MIN_CLOSED,
-                      more: count(more),
-                      weeks,
-                    })}
+                    })
+                  : weeks === null
+                    ? t("closedShortNoWeeks", {
+                        n: count(closed),
+                        gate: GATE_MIN_CLOSED,
+                        more: count(more),
+                      })
+                    : t("closedShort", {
+                        n: count(closed),
+                        gate: GATE_MIN_CLOSED,
+                        more: count(more),
+                        weeks,
+                      })}
             </div>
           </>
         )}

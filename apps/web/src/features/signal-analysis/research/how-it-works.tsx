@@ -7,23 +7,48 @@ import {
   versionHoldHours,
   type ResearchVersion,
 } from "@drift/shared";
-import { BottomSheet } from "@drift/ui";
+import { BottomSheet, Button } from "@drift/ui";
 import { useTranslations } from "next-intl";
-import { createContext, useContext, useRef, type KeyboardEvent, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import { ScrollTable } from "../components/bits";
 import { count } from "../format";
 
+import { useResearchClassifiers } from "./api";
+import { useBotsLabels } from "./bots-labels-context";
 import { hold } from "./format";
 import { LEVEL_TONE, Na, Note, Pill, Sub, tdR, tdW, thR } from "./ui";
-import { catalystName, catalystSide, configLine, versionShort } from "./version-text";
+import {
+  catalystName,
+  catalystSide,
+  classifierShort,
+  configLine,
+  versionShort,
+} from "./version-text";
 
 // Drawer "How it works" của trang Signal research (#342, thiết kế docs/mockups/signal-research/redesign-full-page*.html):
 // nội dung cũ của khối "What counts as a news signal" chuyển vào đây, chia tab, theo luật của version đang chọn ở đầu trang.
 // Không bao giờ tự mở; Esc đóng; Radix giữ focus trong drawer và trả focus về nút đã mở (BottomSheet). Desktop: bám cạnh
-// phải (`side`); dưới 768px: chiếm màn hình như sheet của version.
+// phải (`side`); dưới 768px: chiếm màn hình như sheet của version. Trang gọn (2026-11-20): giải thích dài của Paper bots và
+// Classifier quality chuyển vào tab Versions và tab Labels (mới); 7 tab cuộn ngang, mép phải mờ khi còn tab phía sau.
 
-export const HOW_TABS = ["news", "levels", "tpsl", "gate", "context", "versions"] as const;
+export const HOW_TABS = [
+  "news",
+  "levels",
+  "tpsl",
+  "gate",
+  "context",
+  "versions",
+  "labels",
+] as const;
 export type HowTab = (typeof HOW_TABS)[number];
 
 const HowContext = createContext<((tab: HowTab) => void) | null>(null);
@@ -54,6 +79,7 @@ export function HowItWorksDrawer({
   onClose,
   version,
   rulesVersion,
+  maxRunning = null,
 }: {
   /** null = đóng. */
   tab: HowTab | null;
@@ -63,12 +89,36 @@ export function HowItWorksDrawer({
   version: ResearchVersion | null;
   /** Rules vN của bảng loại tin (tổng kết); null khi không có. */
   rulesVersion: number | null;
+  /** Số version chạy cùng lúc (API versions); null khi chưa tải. */
+  maxRunning?: number | null;
 }) {
   const t = useTranslations("signalAnalysis.research.page.drawer");
   const tv = useTranslations("signalAnalysis.research.versions");
   const tn = useTranslations("signalAnalysis.research");
   const refs = useRef(new Map<HowTab, HTMLButtonElement>());
   const cur = tab ?? "news";
+  // 7 tab cuộn ngang khi drawer hẹp: mép phải mờ khi còn tab phía sau; tab đang chọn luôn cuộn vào khung.
+  const [list, setList] = useState<HTMLDivElement | null>(null);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    if (list === null) return;
+    const check = () => {
+      setMore(list.scrollWidth - list.clientWidth - list.scrollLeft > 1);
+    };
+    check();
+    list.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    return () => {
+      list.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+    };
+  }, [list]);
+  useEffect(() => {
+    const el = refs.current.get(cur);
+    // jsdom (test) không có scrollIntoView.
+    if (el !== undefined && "scrollIntoView" in el)
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [cur, list]);
   const name =
     version === null
       ? null
@@ -99,9 +149,11 @@ export function HowItWorksDrawer({
       side
     >
       <div
+        ref={setList}
         role="tablist"
         aria-label={t("tabsLabel")}
-        className="flex gap-1 overflow-x-auto rounded-tile border border-border bg-surface-2 p-1 max-md:mask-r-from-85%"
+        data-more={more || undefined}
+        className={`flex gap-1 overflow-x-auto rounded-tile border border-border bg-surface-2 p-1 [scrollbar-width:none] ${more ? "mask-r-from-85%" : ""}`}
       >
         {HOW_TABS.map((k) => {
           const on = k === cur;
@@ -135,7 +187,14 @@ export function HowItWorksDrawer({
         aria-labelledby={`hiw-tab-${cur}`}
         className="flex flex-col gap-3 text-sm leading-normal text-ink-2"
       >
-        <Panel tab={cur} version={version} name={name} rulesVersion={rulesVersion} />
+        <Panel
+          tab={cur}
+          version={version}
+          name={name}
+          rulesVersion={rulesVersion}
+          maxRunning={maxRunning}
+          onClose={onClose}
+        />
       </div>
     </BottomSheet>
   );
@@ -148,11 +207,15 @@ function Panel({
   version,
   name,
   rulesVersion,
+  maxRunning,
+  onClose,
 }: {
   tab: HowTab;
   version: ResearchVersion | null;
   name: string | null;
   rulesVersion: number | null;
+  maxRunning: number | null;
+  onClose: () => void;
 }) {
   const t = useTranslations("signalAnalysis.research.page.drawer");
   const tr = useTranslations("signalAnalysis.research.rules");
@@ -273,7 +336,9 @@ function Panel({
     case "versions":
       return (
         <>
-          <p className="m-0">{tv("intro")}</p>
+          <p className="m-0">{t.rich("versions1", { b })}</p>
+          <p className="m-0">{t.rich("versions2", { max: maxRunning ?? tn("na"), b })}</p>
+          <p className="m-0">{t.rich("versions3", { b })}</p>
           {version === null || name === null ? (
             <Na />
           ) : (
@@ -283,5 +348,55 @@ function Panel({
           )}
         </>
       );
+    case "labels":
+      return <LabelsPanel onClose={onClose} />;
   }
+}
+
+/** Tab Labels (mới, trang gọn): nhãn là gì, vì sao tính theo Claude reader, khi nào lệnh bắt đầu được tính. */
+function LabelsPanel({ onClose }: { onClose: () => void }) {
+  const t = useTranslations("signalAnalysis.research.page.drawer");
+  const tl = useTranslations("signalAnalysis.research.labeling");
+  const tn = useTranslations("signalAnalysis.research");
+  const q = useResearchClassifiers();
+  const open = useBotsLabels();
+  const cur = q.data?.items.find((r) => r.current) ?? null;
+  const min = CLASSIFIER_GATE.minLabels;
+  const pct = CLASSIFIER_GATE.minPrecisionPct;
+  return (
+    <>
+      <p className="m-0">{t.rich("labels1", { b })}</p>
+      <p className="m-0">{t.rich("labels2", { b })}</p>
+      <p className="m-0">{t.rich("labels3", { b })}</p>
+      <p className="m-0">{t.rich("labels4", { min, pct, b })}</p>
+      <p className="m-0">{t.rich("labels5", { min, b })}</p>
+      <Sub>{t("labelsRule")}</Sub>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-tile border border-border p-3.5 text-[13px]">
+        <span>
+          {cur === null ? (
+            <Na />
+          ) : (
+            t.rich("labelsNow", {
+              v: classifierShort(cur.classifierVersion),
+              n: cur.labeled,
+              min,
+              pct:
+                cur.precisionPct === null ? tn("na") : `${String(Math.round(cur.precisionPct))}%`,
+              b,
+            })
+          )}
+        </span>
+        {open === null ? null : (
+          <Button
+            onClick={() => {
+              onClose();
+              open.openLabels();
+            }}
+          >
+            {tl("random")}
+          </Button>
+        )}
+      </div>
+    </>
+  );
 }

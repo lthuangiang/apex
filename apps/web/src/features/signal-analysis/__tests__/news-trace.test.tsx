@@ -247,7 +247,7 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     for (const x of pairs) expect(x).toHaveClass("whitespace-nowrap");
     expect(pairs[0]?.parentElement).toHaveClass("hidden", "@[480px]:inline");
     expect(pairs[3]?.parentElement).toHaveClass("@[480px]:hidden");
-    expect(ctxBand).not.toHaveTextContent("records only");
+    expect(ctxBand).not.toHaveTextContent("saved, not used yet");
     expect(ctxBand?.tagName).toBe("DIV");
     expect(ctxBand).toHaveClass("border-dashed");
     expect(
@@ -262,20 +262,14 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
       "5 · Filter",
       "6 · Decide",
     ]);
-    // Ba ô giải thích bước 4 dưới phễu; điện thoại có một dòng ngắn.
-    expect(
-      within(f).getByText(/Where the other signals go: step 4 · Context\./),
-    ).toBeInTheDocument();
-    expect(within(f).getByText(/Now: records only \(dashed\)\./)).toBeInTheDocument();
-    expect(within(f).getByText(/Later: a version can use it\./)).toBeInTheDocument();
+    // Trang gọn (2026-11-20): ba ô giải thích bước 4 dưới phễu đã bỏ (nội dung ở drawer › Context questions).
+    expect(within(f).queryByText(/Where the other signals go: step 4 · Context\./)).toBeNull();
     // #343: khung 4 · Context luôn hiện; chế độ tổng là hoạt cảnh chờ, không badge, không số.
     const idle = within(f).getByTestId("sr-ctx-panel");
     expect(idle).toHaveAttribute("data-state", "idle");
     expect(idle).toHaveTextContent("Waiting for the next signal");
     expect(
-      within(f).getByText(
-        "Every step counts the same articles, collected in the last 1 day: in − out = next step.",
-      ),
+      within(f).getByText("Each step shows how many of the last 1 day’s articles are still in."),
     ).toBeInTheDocument();
     expect(within(f).getByText("4 min 20 s")).toBeInTheDocument();
     expect(within(f).getByText("$0.03 · last 24 h")).toBeInTheDocument();
@@ -326,11 +320,11 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(
       within(funnel()).getByRole("button", { name: "List articles that stopped at Normalize" }),
     ).toHaveAttribute("title", "900 out · 808 duplicate, 52 not on SoDEX");
-    // 7 ngày: API chưa có snapshot live trong khoảng (context null) → giữ "records only", không bao giờ 0.
+    // 7 ngày: API chưa có snapshot live trong khoảng (context null) → giữ "saved, not used yet", không bao giờ 0.
     const ctx7 = within(funnel())
       .getByTestId("sr-funnel-bands")
       .querySelector("[data-band='context']");
-    expect(ctx7).toHaveTextContent("records only");
+    expect(ctx7).toHaveTextContent("saved, not used yet");
     expect(ctx7).not.toHaveTextContent(/Whales agree/);
     expect(intlErrors).toEqual([]);
   });
@@ -419,7 +413,7 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     const panel = within(f).getByTestId("sr-ctx-panel");
     expect(panel).toHaveAttribute("data-state", "waiting");
     expect(panel).toHaveTextContent("Waiting for the article to reach step 4…");
-    expect(panel).toHaveTextContent("records only");
+    expect(panel).toHaveTextContent("saved, not used yet");
 
     const names = ["Collect", "Normalize", "Score", "Context", "Filter", "Decide"];
     for (const [i, n] of names.entries()) {

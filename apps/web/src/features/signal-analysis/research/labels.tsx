@@ -12,7 +12,7 @@ import {
 } from "@drift/shared";
 import { Button } from "@drift/ui";
 import { useTranslations } from "next-intl";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api";
 
@@ -21,7 +21,7 @@ import { clock } from "../format";
 import { useLabelNext, useResearchClassifiers, useSaveLabel } from "./api";
 import { pctSigned, tone, usdSigned } from "./format";
 import { usd4 } from "./trace-text";
-import { Block, Na } from "./ui";
+import { Na } from "./ui";
 import { classifierShort } from "./version-text";
 
 // Nhãn phân loại (#306; thiết kế docs/mockups/signal-research/bot-versions-labels.html, API #304 / DEC-333): Right /
@@ -208,15 +208,29 @@ const input =
 
 /* ---------------------------------------------------------------- Classifier quality + random signal */
 
-export function ClassifierQuality({ tz }: { tz: string }) {
+/** Id của tiêu đề khu chất lượng Claude reader (đích cuộn của "Label signals"). */
+export const LABELS_ID = "sr-labels";
+
+/**
+ * "Is Claude reading news right?" (trước là Classifier quality) trong khu Bots & labels. `startSeq` tăng mỗi lần ai đó bấm
+ * "Label signals" ở chỗ khác (dải tóm tắt, Is it working?): mở luồng gắn nhãn ngẫu nhiên. Đoạn giải thích dài nằm ở
+ * drawer How it works › Labels.
+ */
+export function ClassifierQuality({ tz, startSeq = 0 }: { tz: string; startSeq?: number }) {
   const t = useTranslations("signalAnalysis.research.labeling");
   const tc = useTranslations("common.errors");
   const q = useResearchClassifiers();
   const [labelling, setLabelling] = useState(false);
+  useEffect(() => {
+    if (startSeq > 0) setLabelling(true);
+  }, [startSeq]);
   const data = q.data;
   const cur = data?.items.find((r) => r.current) ?? null;
   return (
-    <Block id="sr-labels" title={t("title")}>
+    <section aria-labelledby={LABELS_ID} className="flex min-w-0 flex-col gap-3.5">
+      <h3 id={LABELS_ID} tabIndex={-1} className="m-0 scroll-mt-4 text-[17px] font-extrabold">
+        {t("title")}
+      </h3>
       <div className="flex flex-wrap items-start gap-4">
         {labelling ? (
           <div className="flex min-w-0 flex-[3_1_480px] flex-col gap-3">
@@ -229,9 +243,6 @@ export function ClassifierQuality({ tz }: { tz: string }) {
           </div>
         ) : null}
         <div className="flex min-w-0 flex-[2_1_340px] flex-col gap-3">
-          <p className="m-0 text-sm leading-normal text-ink-2">
-            {t.rich("intro", { b: (c: ReactNode) => <b className="text-ink">{c}</b> })}
-          </p>
           {data === undefined ? (
             q.isError ? (
               <p
@@ -251,9 +262,6 @@ export function ClassifierQuality({ tz }: { tz: string }) {
           ) : (
             <>
               <QualityTable rows={data.items} />
-              <p className="m-0 text-xs leading-normal text-muted">
-                {t.rich("randomOnly", { b: (c: ReactNode) => <b className="text-ink">{c}</b> })}
-              </p>
               <p className="m-0 rounded-tile bg-surface-2 p-3.5 text-[13px] leading-normal text-ink-2">
                 {cur?.interval != null && cur.precisionPct !== null
                   ? t.rich("floorRange", {
@@ -282,10 +290,9 @@ export function ClassifierQuality({ tz }: { tz: string }) {
           >
             {t("random")}
           </Button>
-          <span className="text-xs leading-normal text-muted">{t("randomNote")}</span>
         </div>
       </div>
-    </Block>
+    </section>
   );
 }
 
@@ -486,8 +493,8 @@ function ClaudeSaid({ item }: { item: NonNullable<ResearchLabelNext["item"]> }) 
       </span>
       <span className="text-xs text-muted">
         {cost === null
-          ? t("metaNoCost", { v: c.classifierVersion })
-          : t("meta", { v: c.classifierVersion, cost: usd4(cost) })}
+          ? t("metaNoCost", { v: classifierShort(c.classifierVersion) })
+          : t("meta", { v: classifierShort(c.classifierVersion), cost: usd4(cost) })}
       </span>
     </div>
   );

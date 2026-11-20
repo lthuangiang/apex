@@ -204,15 +204,13 @@ function newVersion(): HTMLElement {
 describe("News bot versions: cards, gate and table", { timeout: 20_000 }, () => {
   it("summary bar, extra check and version cards follow the mockup", async () => {
     wrap();
-    const bots = await screen.findByRole("region", { name: "Paper bots" });
+    const bots = await screen.findByRole("region", { name: "Bots & labels" });
     const base = await card("News bot v3 · Baseline");
-    expect(within(bots).getByText(/at most 3 versions run at once/)).toHaveTextContent(
-      "Running 2 of 3 · at most 3 versions run at once",
-    );
+    expect(within(bots).getByText("2 of 3 slots in use")).toBeInTheDocument();
     expect(within(bots).getByText("Versions tried: 4")).toBeInTheDocument();
-    expect(within(bots).getByText(/precision 84% on 37 labels/)).toHaveTextContent(
-      "Classifier news-classifier-v2 · precision 84% on 37 labels",
-    );
+    expect(
+      within(bots).getByText("Claude reader v2 · share right 84% (37 labels)", { exact: false }),
+    ).toBeInTheDocument();
     expect(
       within(bots)
         .getByText(/Extra check is on\./)
@@ -220,21 +218,25 @@ describe("News bot versions: cards, gate and table", { timeout: 20_000 }, () => 
     ).toHaveTextContent("on its next 100 closed trades before it counts.");
 
     expect(
-      within(base).getByText("Saved Nov 18, 09:12 · locked, the reference for later versions"),
+      within(base).getByText(
+        "Saved Nov 18, 09:12 · can’t be changed · later versions are compared to it",
+      ),
     ).toBeInTheDocument();
     expect(
       within(base).getByText(
-        "All 12 news types · level Low and up · 500 USDC · TP 1.5× · SL 0.75× · now on classifier v2",
+        "All 12 news types · level Low and up · 500 USDC a trade · take profit 1.5× · stop loss 0.75× · uses Claude reader v2",
       ),
     ).toBeInTheDocument();
     expect(
       within(base)
-        .getByText(/^Open 7 \/ 20/)
+        .getByText(/^7 open$/)
         .closest("p"),
-    ).toHaveTextContent("Open 7 / 20 · today 3 / no limit · blocked by limit 0");
+    ).toHaveTextContent(
+      "7 open (max 20) · 3 opened today (no daily limit) · 0 skipped by the limits",
+    );
     expect(
       within(base).getByText(
-        "31 trades not counted · classifier v1 under 80%. Classifier v2 started a new count on Nov 19, 13:00; it waits for labels (13 to go).",
+        "31 closed trades aren’t counted: Claude reader v1 was right less than 80% of the time. Since Nov 19, 13:00 Claude reader v2 is used; it needs 13 labels.",
       ),
     ).toBeInTheDocument();
     expect(within(base).getByRole("button", { name: "Copy to new version" })).toBeInTheDocument();
@@ -244,15 +246,15 @@ describe("News bot versions: cards, gate and table", { timeout: 20_000 }, () => 
       within(v4).getByText("Saved Nov 19, 13:05 by ··a91f · counts trades opened after that"),
     ).toBeInTheDocument();
     expect(within(v4).getByText(/^10 news types · level Medium and up/)).toBeInTheDocument();
-    expect(within(v4).getByText("Waits for labels")).toBeInTheDocument();
+    expect(within(v4).getByText("Not yet · label 13 signals first")).toBeInTheDocument();
     expect(
       within(v4)
-        .getByText(/^Open 0 \/ 20/)
+        .getByText(/^0 open$/)
         .closest("p"),
-    ).toHaveTextContent("Open 0 / 20 · today 0 / 5 · blocked by limit 0");
+    ).toHaveTextContent("0 open (max 20) · 0 opened today (max 5 a day) · 0 skipped by the limits");
     expect(
       within(v4).getByText(
-        "Trades count once classifier v2 has 50 labels at 80% or better (13 to go).",
+        "Trades count once Claude reader v2 has 50 labels with 80% or more right (13 to go).",
       ),
     ).toBeInTheDocument();
     for (const b of ["Pause", "Stop", "Edit as new version", "Rules"])
@@ -295,11 +297,11 @@ describe("News bot versions: cards, gate and table", { timeout: 20_000 }, () => 
     expect(within(v4).getByText("Not enough trades")).toBeInTheDocument();
     const v3 = row(/v3 · Baseline/);
     expect(within(v3).getByText("v1 → v2")).toBeInTheDocument();
-    expect(within(v3).getByText("31 · 0 counted")).toBeInTheDocument();
+    expect(within(v3).getByText("31 closed · 0 counted")).toBeInTheDocument();
     expect(within(v3).getByText("Not copied from a version")).toBeInTheDocument();
     // PM (#313): "under 80%" luôn kèm số nhãn.
     expect(
-      within(v3).getByText("Not counted · classifier v1 under 80% · 24 labels"),
+      within(v3).getByText("Not counting · Claude reader v1 under 80% right · 24 labels"),
     ).toBeInTheDocument();
   });
 
@@ -335,10 +337,12 @@ describe("News bot versions: cards, gate and table", { timeout: 20_000 }, () => 
       </Intl>,
     );
     expect(
-      screen.getByText("Not counted · classifier v2 under 80% · 37 labels"),
+      screen.getByText("Not counting · Claude reader v2 under 80% right · 37 labels"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Not counted · classifier v2 under 80% · 37 labels."),
+      screen.getByText(
+        "Not counting: Claude reader v2 was right less than 80% of the time (37 labels).",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText("Not counted")).toBeInTheDocument();
   });
@@ -374,9 +378,12 @@ describe("News bot versions: cards, gate and table", { timeout: 20_000 }, () => 
         name: "News bot v4 · Strict subject",
       }),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText(/below show/)).toHaveTextContent(
-      "Summary, news feed and trades below show News bot v4 · Strict subject.",
-    );
+    // Dải tóm tắt đánh dấu version đang hiện ở dưới ("shown below").
+    const lines = screen.getByRole("list", { name: "Running News bot versions" });
+    const cur = within(lines)
+      .getAllByRole("listitem")
+      .find((li) => li.getAttribute("aria-current") === "true");
+    expect(cur).toHaveTextContent(/^News bot · Strict subject \(v4\).*shown below$/);
     // Bảng All versions cũng chọn được.
     const tbl = screen.getByRole("table", { name: "All News bot versions" });
     await userEvent.click(within(tbl).getByRole("button", { name: "v5 · Majors only" }));

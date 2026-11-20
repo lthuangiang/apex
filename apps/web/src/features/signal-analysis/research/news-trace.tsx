@@ -720,7 +720,6 @@ export function NewsTrace({
         />
       ) : (
         <>
-          <Explainers />
           <TotalsPanel
             funnel={funnel}
             range={range}
@@ -784,24 +783,6 @@ function liveVerdict(
   return `${head}${q.queue.length > 0 ? t("live.waiting", { n: q.queue.length }) : ""}${
     q.extra > 0 ? t("live.more", { n: q.extra }) : ""
   }`;
-}
-
-/** Ba ô giải thích bước 4 dưới phễu (chế độ tổng, từ 768 px; điện thoại có một dòng ngắn dưới phễu). */
-function Explainers() {
-  const t = useTranslations("signalAnalysis.research.page.drawer");
-  const b = (c: ReactNode) => <strong className="text-ink">{c}</strong>;
-  return (
-    <div className="grid gap-3 max-md:hidden md:grid-cols-3">
-      {(["context1", "context2", "context3"] as const).map((k) => (
-        <p
-          key={k}
-          className="m-0 rounded-tile border border-border px-3.5 py-3 text-[13px] leading-normal text-ink-2"
-        >
-          {t.rich(k, { b })}
-        </p>
-      ))}
-    </div>
-  );
 }
 
 /* ---------------------------------------------------------------- News feed */
