@@ -417,6 +417,7 @@ export async function signalResearchCreateVersion(
     createdBy: userId,
     savedFromVersionId: from,
     start: b.start,
+    hypothesis: b.hypothesis,
     ip,
     now: deps.now(),
   });

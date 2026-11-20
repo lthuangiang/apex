@@ -10,6 +10,7 @@ import {
   H3_STATUSES,
   RANGE_BREAKOUTS,
 } from "../signal-research/context";
+import { EXPERIMENT_VERDICTS, hypothesisSchema } from "../signal-research/experiments";
 import {
   CLASSIFICATION_LABEL_SOURCES,
   CLASSIFICATION_VERDICTS,
@@ -1349,6 +1350,31 @@ const versionNotCounted = z.object({
   labelsToGo: int.nullable(),
 });
 
+/**
+ * #377 (DEC-TBD-sr-experiments): thí nghiệm của một version so với Baseline CỐ ĐỊNH (không phải version đã chép từ). Cặp =
+ * lệnh đã đóng của version (mở từ lúc lưu) và của Baseline trên cùng câu chuyện + market; chênh lệch kết quả sau phí (điểm
+ * %), khoảng 95% block bootstrap theo ngày (DEC-321) trên đúng 100 cặp đầu. `finishedAt` / kết quả đóng băng khi version tự
+ * dừng lúc đủ 100 cặp (Finished).
+ */
+export const researchExperimentSchema = z.object({
+  control: z.object({ id: z.uuid(), number: int }),
+  /** Khác biệt so với Baseline (cùng dạng `changedFromPrevious`); null khi thiếu config để so. */
+  changes: z.array(researchVersionChangeSchema).nullable(),
+  /** Số "thứ" đã đổi (mỗi loại tin một thứ; Assets là một thứ); null khi thiếu config. */
+  changedThings: int.nullable(),
+  /** Đổi đúng một thứ; false = "Not a clean test" (chỉ cảnh báo). */
+  clean: z.boolean().nullable(),
+  pairs: int,
+  needed: int,
+  meanDiffPct: dec.nullable(),
+  ciLow: dec.nullable(),
+  ciHigh: dec.nullable(),
+  clusters: int,
+  verdict: z.enum(EXPERIMENT_VERDICTS),
+  /** Lúc tự dừng vì đủ cặp (Finished); null = chưa. */
+  finishedAt: iso.nullable(),
+});
+
 export const researchVersionSchema = z.object({
   id: z.uuid(),
   /** Số hiển thị ("v4"), tăng dần, không dùng lại. */
@@ -1408,6 +1434,10 @@ export const researchVersionSchema = z.object({
     firstPassAt: int.nullable(),
     repeat: z.object({ closed: int, needed: int }).nullable(),
   }),
+  /** #377: giả thuyết (một câu) khi lưu; null với Baseline và version lưu trước #377. */
+  hypothesis: z.string().nullable(),
+  /** #377: thí nghiệm so ghép cặp với Baseline cố định; null với Baseline (hoặc khi chưa có Baseline). */
+  experiment: researchExperimentSchema.nullable(),
 });
 
 export const researchVersionsSchema = z.object({
@@ -1439,6 +1469,8 @@ export const researchVersionCreateBodySchema = z.strictObject({
   savedFromVersionId: z.uuid().nullish(),
   /** true = "Save and start"; false = lưu ở trạng thái paused. */
   start: z.boolean(),
+  /** #377: giả thuyết của thí nghiệm, một câu, bắt buộc với mọi version mới. */
+  hypothesis: hypothesisSchema,
 });
 
 export const researchVersionStatusBodySchema = z.strictObject({
@@ -1484,6 +1516,7 @@ export const researchVersionCreatedSchema = researchVersionSchema.extend({
 export type ResearchVersionCreated = z.infer<typeof researchVersionCreatedSchema>;
 export type ResearchVersionChange = z.infer<typeof researchVersionChangeSchema>;
 export type ResearchVersion = z.infer<typeof researchVersionSchema>;
+export type ResearchExperiment = z.infer<typeof researchExperimentSchema>;
 export type ResearchVersions = z.infer<typeof researchVersionsSchema>;
 export type ResearchVersionCreateBody = z.infer<typeof researchVersionCreateBodySchema>;
 export type ResearchVersionStatusBody = z.infer<typeof researchVersionStatusBodySchema>;

@@ -67,6 +67,9 @@ const common = {
 } as const;
 
 export const BASELINE: ResearchVersion = {
+  // #377: thí nghiệm (API mới); UI chưa dùng.
+  hypothesis: null,
+  experiment: null,
   ...common,
   id: BASELINE_ID,
   number: 3,
@@ -95,6 +98,9 @@ export const BASELINE: ResearchVersion = {
 };
 
 export const V4: ResearchVersion = {
+  // #377: thí nghiệm (API mới); UI chưa dùng.
+  hypothesis: null,
+  experiment: null,
   ...common,
   id: V4_ID,
   number: 4,
@@ -113,6 +119,9 @@ export const V4: ResearchVersion = {
 
 /** Kiểm tra thêm: đã qua một lần ở 120 lệnh, đang lặp lại 40 / 100; Only these 2 mã → "Effectively 2". */
 export const V5: ResearchVersion = {
+  // #377: thí nghiệm (API mới); UI chưa dùng.
+  hypothesis: null,
+  experiment: null,
   ...common,
   id: V5_ID,
   number: 5,
@@ -144,6 +153,9 @@ export const V5: ResearchVersion = {
 };
 
 export const V6: ResearchVersion = {
+  // #377: thí nghiệm (API mới); UI chưa dùng.
+  hypothesis: null,
+  experiment: null,
   ...common,
   id: V6_ID,
   number: 6,

@@ -1,11 +1,13 @@
 import {
   AppError,
   botVersionConfigSchema,
+  hypothesisSchema,
   SignalBotVersionStatus,
   ErrorCode,
   MAX_RUNNING_VERSIONS,
   segmentStart,
   type BotVersionConfig,
+  type ExperimentResult,
 } from "@drift/shared";
 import { and, asc, eq, inArray, isNull, max, ne, or, sql, type SQL } from "drizzle-orm";
 
@@ -30,6 +32,9 @@ export const SignalBotVersionAudit = {
   created: "signal_research.version_created",
   statusChanged: "signal_research.version_status",
 } as const;
+
+/** Lý do trong metadata audit khi version tự dừng vì thí nghiệm đủ cặp (#377). */
+export const EXPERIMENT_FINISHED_REASON = "experiment_finished";
 
 export interface SignalBotVersion {
   id: string;
@@ -112,10 +117,15 @@ export async function createSignalBotVersion(
     createdBy: string | null;
     savedFromVersionId: string | null;
     start: boolean;
+    /** #377: giả thuyết (một câu), bắt buộc với version mới. */
+    hypothesis: string;
     ip?: string | null;
     now?: Date;
   },
 ): Promise<SignalBotVersion> {
+  const hyp = hypothesisSchema.safeParse(input.hypothesis);
+  if (!hyp.success)
+    throw new AppError(ErrorCode.validationFailed, "Invalid input.", { fields: ["hypothesis"] });
   const parsed = botVersionConfigSchema.safeParse(input.config);
   if (!parsed.success)
     throw new AppError(ErrorCode.validationFailed, "Invalid input.", {
@@ -141,6 +151,7 @@ export async function createSignalBotVersion(
         createdBy: input.createdBy,
         savedFromVersionId: input.savedFromVersionId,
         isBaseline: false,
+        hypothesis: hyp.data,
         statusChangedAt: now,
         createdAt: now,
         updatedAt: now,
@@ -151,7 +162,13 @@ export async function createSignalBotVersion(
       userId: input.createdBy,
       action: SignalBotVersionAudit.created,
       target: row.id,
-      metadata: { number, name, status, savedFromVersionId: input.savedFromVersionId },
+      metadata: {
+        number,
+        name,
+        status,
+        savedFromVersionId: input.savedFromVersionId,
+        hypothesis: hyp.data,
+      },
       ip: input.ip ?? null,
     });
     return {
@@ -174,7 +191,11 @@ const NEXT: Readonly<Record<SignalBotVersionStatus, readonly SignalBotVersionSta
   retired: [],
 };
 
-/** Pause / Resume / Stop / Retire một version; ghi audit. Resume khi đã có 3 version chạy → `MAX_RUNNING_VERSIONS`. */
+/**
+ * Pause / Resume / Stop / Retire một version; ghi audit. Resume khi đã có 3 version chạy → `MAX_RUNNING_VERSIONS`.
+ * `finish` (#377): version tự dừng vì thí nghiệm đủ cặp — chỉ đi running / paused → stopped qua đúng state machine này, ghi
+ * kết quả đóng băng cùng transaction, audit lý do `experiment_finished`. Baseline không bao giờ được dừng theo cách này.
+ */
 export async function setSignalBotVersionStatus(
   db: Db,
   input: {
@@ -183,18 +204,34 @@ export async function setSignalBotVersionStatus(
     userId: string | null;
     ip?: string | null;
     now?: Date;
+    finish?: ExperimentResult;
   },
 ): Promise<void> {
   const now = input.now ?? new Date();
   await db.transaction(async (tx) => {
     await tx.execute(RUNNING_LOCK);
     const [row] = await tx
-      .select({ status: signalBotVersions.status, number: signalBotVersions.number })
+      .select({
+        status: signalBotVersions.status,
+        number: signalBotVersions.number,
+        isBaseline: signalBotVersions.isBaseline,
+        finishedAt: signalBotVersions.experimentFinishedAt,
+      })
       .from(signalBotVersions)
       .where(eq(signalBotVersions.id, input.id))
       .for("update");
     if (row === undefined) throw new AppError(ErrorCode.notFound, "Version not found.");
     const from = statusOf(row.status);
+    const finish = input.finish;
+    if (finish !== undefined) {
+      if (row.isBaseline)
+        throw new AppError(ErrorCode.stateConflict, "Baseline is never an experiment.", {
+          reason: "BASELINE",
+        });
+      if (input.status !== SignalBotVersionStatus.stopped)
+        throw new AppError(ErrorCode.internal, "An experiment finishes by stopping.");
+      if (row.finishedAt !== null) return;
+    }
     if (from === input.status) return;
     if (!NEXT[from].includes(input.status))
       throw new AppError(ErrorCode.stateConflict, "This change is not allowed.", {
@@ -208,13 +245,27 @@ export async function setSignalBotVersionStatus(
       throw tooMany();
     await tx
       .update(signalBotVersions)
-      .set({ status: input.status, statusChangedAt: now, updatedAt: now })
+      .set({
+        status: input.status,
+        statusChangedAt: now,
+        updatedAt: now,
+        ...(finish === undefined ? {} : { experimentFinishedAt: now, experimentResult: finish }),
+      })
       .where(eq(signalBotVersions.id, input.id));
     await tx.insert(auditLog).values({
       userId: input.userId,
       action: SignalBotVersionAudit.statusChanged,
       target: input.id,
-      metadata: { number: row.number, from, to: input.status },
+      metadata:
+        finish === undefined
+          ? { number: row.number, from, to: input.status }
+          : {
+              number: row.number,
+              from,
+              to: input.status,
+              reason: EXPERIMENT_FINISHED_REASON,
+              result: finish,
+            },
       ip: input.ip ?? null,
     });
   });

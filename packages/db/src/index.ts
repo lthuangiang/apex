@@ -10,6 +10,7 @@ export * from "./signal-research";
 export * from "./signal-research-articles";
 export * from "./signal-research-versions";
 export * from "./signal-research-version-list";
+export * from "./signal-research-experiments";
 export * from "./signal-research-labels";
 export * from "./signal-research-context";
 export * from "./research-wallets";

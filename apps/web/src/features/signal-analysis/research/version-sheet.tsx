@@ -170,8 +170,12 @@ export function configOf(d: Draft): BotVersionConfig | null {
   return parsed.success ? parsed.data : null;
 }
 
-/** Body của `POST /versions` ("Save and start"). */
-export function bodyOf(d: Draft, from: ResearchVersion | null): ResearchVersionCreateBody | null {
+/**
+ * Body của `POST /versions` ("Save and start"). #377: API bắt buộc thêm `hypothesis`; ô Hypothesis của sheet đến ở PR UI
+ * sau (mockup catalyst-experiments-*), tới lúc đó API trả 400 cho body này.
+ */
+export type SheetBody = Omit<ResearchVersionCreateBody, "hypothesis">;
+export function bodyOf(d: Draft, from: ResearchVersion | null): SheetBody | null {
   const config = configOf(d);
   if (config === null || validate(d).name !== undefined) return null;
   return {
@@ -209,7 +213,7 @@ export function VersionSheet({
   checking: boolean;
   error: string | null;
   onClose: () => void;
-  onSave: (body: ResearchVersionCreateBody) => void;
+  onSave: (body: SheetBody) => void;
 }) {
   const t = useTranslations("signalAnalysis.research.versions");
   const tn = useTranslations("signalAnalysis.research");

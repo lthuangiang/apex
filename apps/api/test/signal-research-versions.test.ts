@@ -35,6 +35,8 @@ let baselineId: string;
 let v4: ResearchVersion;
 const base = "/api/v1/admin/signal-research";
 const CURRENT = NEWS_CLASSIFIER.promptVersion;
+/** #377: mọi version mới cần một giả thuyết (một câu). */
+const HYP = "One change gives a better result after fees.";
 const cfg = baselineVersionConfig();
 const onlyCfg: BotVersionConfig = {
   ...cfg,
@@ -237,7 +239,7 @@ describe("News bot versions API (#305)", () => {
       expect((await anon.request("GET", r)).statusCode).toBe(401);
       expect((await user.request("GET", r)).statusCode).toBe(403);
     }
-    const body = { name: "x", config: cfg, start: false };
+    const body = { name: "x", config: cfg, start: false, hypothesis: HYP };
     expect((await post(anon, "/versions", body)).statusCode).toBe(401);
     expect((await post(user, "/versions", body)).statusCode).toBe(403);
     expect((await post(user, "/versions", { nope: true })).statusCode).toBe(403);
@@ -324,14 +326,15 @@ describe("News bot versions API (#305)", () => {
 
   it("rejects an invalid version: TP under 1× cost, unknown market, unknown parent, extra keys", async () => {
     const bad = [
-      { name: "x", config: { ...cfg, minTpCostMultiple: "0.5" }, start: false },
-      { name: "", config: cfg, start: false },
+      { name: "x", config: { ...cfg, minTpCostMultiple: "0.5" }, start: false, hypothesis: HYP },
+      { name: "", config: cfg, start: false, hypothesis: HYP },
       { name: "x", config: cfg },
-      { name: "x", config: cfg, start: false, extra: 1 },
+      { name: "x", config: cfg, start: false, hypothesis: HYP, extra: 1 },
       {
         name: "x",
         config: { ...cfg, assets: { mode: "only", markets: [], crypto: true, stocks: true } },
         start: false,
+        hypothesis: HYP,
       },
     ];
     for (const body of bad) {
@@ -350,6 +353,7 @@ describe("News bot versions API (#305)", () => {
         assets: { mode: "except", markets: ["FOO-USD", "ETH-USD"], crypto: true, stocks: true },
       },
       start: false,
+      hypothesis: HYP,
     });
     expect(unknown.statusCode).toBe(400);
     expect(errOf(unknown).details).toMatchObject({
@@ -360,6 +364,7 @@ describe("News bot versions API (#305)", () => {
       name: "x",
       config: cfg,
       start: false,
+      hypothesis: HYP,
       savedFromVersionId: randomUUID(),
     });
     expect(parent.statusCode).toBe(400);
@@ -375,6 +380,7 @@ describe("News bot versions API (#305)", () => {
       name: "Strict subject",
       config: onlyCfg,
       start: true,
+      hypothesis: HYP,
       savedFromVersionId: baselineId,
     };
     const r = await post(team, "/versions", body, key);
@@ -420,18 +426,29 @@ describe("News bot versions API (#305)", () => {
       name: "Wider stops",
       config: { ...cfg, slMultiple: "1" },
       start: true,
+      hypothesis: HYP,
     });
     expect(v5.statusCode).toBe(201);
     // Baseline + 2 version đã lưu = 3 → kiểm tra thêm chưa bật (409 bên dưới không lưu gì nên không tính).
     expect(await list()).toMatchObject({ versionsTried: 3, extraCheck: false });
-    const fourth = await post(team, "/versions", { name: "Too many", config: cfg, start: true });
+    const fourth = await post(team, "/versions", {
+      name: "Too many",
+      config: cfg,
+      start: true,
+      hypothesis: HYP,
+    });
     expect(fourth.statusCode).toBe(409);
     expect(errOf(fourth)).toMatchObject({
       code: "STATE_CONFLICT",
       message: "Pause or stop a version first.",
       details: { reason: "MAX_RUNNING_VERSIONS", max: 3 },
     });
-    const paused = await post(team, "/versions", { name: "Later", config: cfg, start: false });
+    const paused = await post(team, "/versions", {
+      name: "Later",
+      config: cfg,
+      start: false,
+      hypothesis: HYP,
+    });
     expect(paused.statusCode).toBe(201);
     expect(researchVersionSchema.parse(paused.json())).toMatchObject({
       number: 6,
@@ -780,6 +797,7 @@ describe("News bot versions API (#305)", () => {
       name: "Assets check",
       config: { ...cfg, assets: { mode: "except", markets, crypto: true, stocks: true } },
       start: false,
+      hypothesis: HYP,
     });
     setMarkets(null);
     const missing = await post(team, "/versions", withAssets(["BTC-USD"]));
@@ -799,7 +817,12 @@ describe("News bot versions API (#305)", () => {
     expect(researchVersionCreatedSchema.parse(retried.json()).warnings).toEqual([]);
     setMarkets(null);
     // Không có danh sách tài sản thì không cần bản chụp.
-    const noList = await post(team, "/versions", { name: "All assets", config: cfg, start: false });
+    const noList = await post(team, "/versions", {
+      name: "All assets",
+      config: cfg,
+      start: false,
+      hypothesis: HYP,
+    });
     expect(noList.statusCode).toBe(201);
     expect(researchVersionCreatedSchema.parse(noList.json()).warnings).toEqual([]);
 

@@ -29,6 +29,7 @@ import { and, desc, eq, isNotNull, or, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import type { DbTx } from "./read-only";
 import { signalBotVersions, signalClassifierVersions, signalPaperTrades } from "./schema";
+import { experimentOf } from "./signal-research-experiments";
 import { classifierStatusOf, loadClassifierGates } from "./signal-research-labels";
 
 // Danh sách News bot version cho khối Paper bots (#305, DEC-328; thiết kế docs/mockups/signal-research/bot-versions.html).
@@ -50,6 +51,9 @@ const statusOf = (s: string): SignalBotVersionStatus =>
 interface TradeLite {
   id: string;
   versionId: string | null;
+  storyId: string | null;
+  articleId: string | null;
+  market: string;
   status: string;
   classifierVersion: string | null;
   openedAt: Date;
@@ -109,6 +113,9 @@ export async function loadSignalBotVersions(
     .select({
       id: signalPaperTrades.id,
       versionId: signalPaperTrades.versionId,
+      storyId: signalPaperTrades.storyId,
+      articleId: signalPaperTrades.articleId,
+      market: signalPaperTrades.market,
       status: signalPaperTrades.status,
       classifierVersion: signalPaperTrades.classifierVersion,
       openedAt: signalPaperTrades.openedAt,
@@ -168,6 +175,11 @@ export async function loadSignalBotVersions(
     }),
   );
   const numbers = new Map(rows.map((r) => [r.id, r.number]));
+  const baseRow = rows.find((r) => r.isBaseline) ?? null;
+  const control =
+    baseRow === null
+      ? null
+      : { id: baseRow.id, number: baseRow.number, config: configs.get(baseRow.id) ?? null };
   const current = NEWS_CLASSIFIER.promptVersion;
   const currentGate = gates.get(current) ?? classifierGate({ labeled: 0, right: 0 });
   const currentStatus = classifierStatusOf(gates, current);
@@ -273,6 +285,20 @@ export async function loadSignalBotVersions(
         firstPassAt: gate.firstPassAt,
         repeat: gate.repeat,
       },
+      hypothesis: r.hypothesis,
+      experiment: experimentOf({
+        version: {
+          id: r.id,
+          config: r.config,
+          createdAt: toDate(r.createdAt),
+          isBaseline: r.isBaseline,
+          experimentFinishedAt:
+            r.experimentFinishedAt === null ? null : toDate(r.experimentFinishedAt),
+          experimentResult: r.experimentResult,
+        },
+        baseline: control,
+        trades: byVersion,
+      }),
     };
   });
 
