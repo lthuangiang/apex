@@ -68,6 +68,7 @@ import {
   type TraceView,
 } from "./trace-text";
 import { Na, Sub } from "./ui";
+import { useCanOpenTraders } from "./wallet-links";
 
 // "From headline to trade" (#292, làm lại ở #343 theo docs/mockups/signal-research/redesign-full-page.html,
 // redesign-trace-live.html, redesign-trace-no-signal.html). Phễu sáng 6 tầng (tầng 4 · Context viền đứt, chỉ ghi nhận,
@@ -1072,6 +1073,7 @@ function Steps({
   scoreExtra?: ReactNode;
 }) {
   const t = useTranslations("signalAnalysis.research");
+  const canOpenTraders = useCanOpenTraders();
   const visible = bands
     .map((b, i) => ({ b, n: i + 1 }))
     .filter(
@@ -1092,7 +1094,12 @@ function Steps({
               key={b.key}
               className="rounded-tile border-2 border-accent bg-surface p-3 motion-safe:animate-[sr-reveal_.45s_cubic-bezier(.2,.8,.2,1)_both] md:col-span-3 md:rounded-[14px] md:p-4"
             >
-              <ContextCard context={context} asset={asset} tz={tz} />
+              <ContextCard
+                context={context}
+                asset={asset}
+                tz={tz}
+                canOpenTraders={canOpenTraders}
+              />
             </li>
           );
         const s = b.step;

@@ -2136,6 +2136,12 @@ export const signalContexts = pgTable(
     h1WalletSetSize: integer("h1_wallet_set_size"),
     h1AgreeingWallets: integer("h1_agreeing_wallets"),
     h1OpposingWallets: integer("h1_opposing_wallets"),
+    /**
+     * Địa chỉ ví cùng chiều / ngược chiều (chữ thường, sắp xếp) lúc chụp. null ở snapshot ghi trước khi có cột này (chỉ có số
+     * lượng) hoặc khi H1 không tính (backfill); `[]` khi không có ví nào.
+     */
+    h1AgreeingAddresses: text("h1_agreeing_addresses").array(),
+    h1OpposingAddresses: text("h1_opposing_addresses").array(),
     h1AgreeingUsdc: money("h1_agreeing_usdc"),
     h1FirstAt: tstz("h1_first_at"),
     /** H2 funding ngược đám đông: `yes` | `no` | `na`. */

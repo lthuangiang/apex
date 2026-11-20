@@ -21,6 +21,8 @@ let team: TestClient;
 let teamId: string;
 const base = "/api/v1/admin/signal-research";
 const CLS = "ctx-cls";
+const WALLET_A = "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+const WALLET_B = "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
 
 const ago = (min: number) => new Date(env.clock.now.getTime() - min * 60_000).toISOString();
 
@@ -31,6 +33,9 @@ interface Ctx {
   source?: "live" | "backfilled";
   /** Mặc định version hiện tại (`context-v2`, tập ví nghiên cứu 7, 30 ví); `context-v1` = H1 trên ví được follow. */
   version?: string;
+  /** Địa chỉ ví cùng / ngược chiều đã lưu; không truyền = snapshot cũ (null, chỉ có số lượng). */
+  agreeing?: string[];
+  opposing?: string[];
 }
 
 async function snapshot(articleId: string, decidedAt: string, c: Ctx) {
@@ -38,10 +43,11 @@ async function snapshot(articleId: string, decidedAt: string, c: Ctx) {
     `insert into signal_contexts (id, article_id, market, direction, decided_at, source, context_version, rule_version,
        h1_status, h1_wallets_checked, h1_asset_on_hyperliquid, h1_wallet_set_version, h1_wallet_set_size,
        h1_agreeing_wallets, h1_opposing_wallets, h1_agreeing_usdc, h1_first_at,
+       h1_agreeing_addresses, h1_opposing_addresses,
        h2_status, h2_funding_rate, h2_funding_time, h2_percentile, h2_samples, h2_payer, h2_interval_hours,
        h3_status, h3_moved_pct, h3_typical_move_pct, volume_vs_24h, range_breakout)
      values (gen_random_uuid(), $1, 'ETH-USD', 'long', $2, $3, $7, 'news-v3',
-       $4, 12, true, $8, $9, 2, 0, 1400000, $2::timestamptz - interval '39 minutes',
+       $4, 12, true, $8, $9, 2, 0, 1400000, $2::timestamptz - interval '39 minutes', $10, $11,
        $5, 0.0001, $2::timestamptz - interval '2 hours', 56, 90, 'long', 8,
        $6, 0.2, 0.6, 1.8, 'none')`,
     [
@@ -54,6 +60,8 @@ async function snapshot(articleId: string, decidedAt: string, c: Ctx) {
       c.version ?? SIGNAL_CONTEXT_VERSION,
       c.version === SIGNAL_CONTEXT_V1 ? null : 7,
       c.version === SIGNAL_CONTEXT_V1 ? null : 30,
+      c.agreeing ?? null,
+      c.opposing ?? null,
     ],
   );
 }
@@ -158,7 +166,19 @@ describe("trace step 4 and feed flags (#329)", () => {
     await event("ctx-a1", "normalize", "pass");
     await event("ctx-a1", "understand", "pass");
     await event("ctx-a1", "filter", "drop");
-    await snapshot("ctx-a1", ago(58), { h1: "yes", h2: "no", h3: "na" });
+    // Ví A có thống kê leaderboard (trang trader mở được), ví B thì không.
+    await env.pool.query(
+      `insert into leader_stats_daily (source, address, date, stats, hidden, tabs, profit, computed_at)
+       values ('hyperliquid', $1, '2026-11-01', '{}', '{}', '{top}', 1000, now())`,
+      [WALLET_A],
+    );
+    await snapshot("ctx-a1", ago(58), {
+      h1: "yes",
+      h2: "no",
+      h3: "na",
+      agreeing: [WALLET_A, WALLET_B],
+      opposing: [],
+    });
     // Bài bị loại ở Score: không tới bước 4, không có snapshot.
     await article("ctx-a2");
     await event("ctx-a2", "collect", "pass");
@@ -189,6 +209,11 @@ describe("trace step 4 and feed flags (#329)", () => {
         assetOnHyperliquid: true,
         agreeingWallets: 2,
         opposingWallets: 0,
+        agreeing: [
+          { address: WALLET_A, hasProfile: true },
+          { address: WALLET_B, hasProfile: false },
+        ],
+        opposing: [],
         agreeingUsdc: "1400000",
         firstAt: new Date(Date.parse(ago(58)) - 39 * 60_000).toISOString(),
         windowMinutes: 60,
@@ -491,5 +516,26 @@ describe("context-v1 and context-v2 stay apart for H1, H2 / H3 merge (#353, revi
       (await team.request("GET", `${base}/summary?range=1d`)).json(),
     );
     expect(r1.funnel?.context).toEqual(r0.funnel?.context);
+  });
+});
+
+// Đặt cuối file: thêm một snapshot live sẽ đổi số đếm / độ phủ mà các test trên kiểm.
+describe("older snapshots without wallet addresses (#353 list)", () => {
+  it("an older snapshot without wallet addresses still returns the counts, with no wallet list", async () => {
+    await article("ctx-old");
+    await event("ctx-old", "collect", "pass");
+    await event("ctx-old", "normalize", "pass");
+    await event("ctx-old", "understand", "pass");
+    await event("ctx-old", "filter", "drop");
+    await snapshot("ctx-old", ago(57), { h1: "yes", h2: "no", h3: "na" });
+    const tr = researchArticleTraceSchema.parse(
+      (await team.request("GET", `${base}/articles/ctx-old/trace`)).json(),
+    );
+    expect(tr.context?.h1).toMatchObject({
+      agreeingWallets: 2,
+      opposingWallets: 0,
+      agreeing: null,
+      opposing: null,
+    });
   });
 });

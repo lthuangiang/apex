@@ -10,6 +10,7 @@ import {
   loadSignalResearchSummary,
   loadSignalResearchTrade,
   loadSignalResearchTrades,
+  loadResearchWallets,
   readOnlyTx,
   saveSignalClassificationLabel,
   setSignalBotVersionStatus,
@@ -46,6 +47,8 @@ import {
   researchVersionStatusBodySchema,
   parseSrMarkets,
   researchVersionCreatedSchema,
+  researchWalletsSchema,
+  type ResearchWallets,
   srMarketsStale,
   STOCK_MARKET_SET,
   type ResearchVersionCreated,
@@ -285,6 +288,21 @@ export async function signalResearchClassifiers(
   return researchClassifiersSchema.parse(out);
 }
 
+/**
+ * Research wallets (#353): tập ví nghiên cứu mới nhất của H1, hạng, lần đọc được gần nhất, có trang trader hay không. Chỉ đọc
+ * DB trong transaction READ ONLY; không gọi Hyperliquid.
+ */
+export async function signalResearchWallets(
+  deps: SignalResearchDeps,
+  userId: string,
+  query: unknown,
+): Promise<ResearchWallets> {
+  await requireTeam(deps.db, userId, FORBIDDEN);
+  parseOrThrow(tzQuery, query);
+  const out = await tx(deps, (t) => loadResearchWallets(t, deps.now()));
+  return researchWalletsSchema.parse(out);
+}
+
 // ── News bot versions (#305) ─────────────────────────────────────────────────────────────────────────────────────
 
 /** Mọi version, mới nhất trước, kèm số dư, giới hạn, lệnh bị chặn, cổng; số version đang chạy / đã thử; classifier. */
@@ -480,6 +498,10 @@ export function registerSignalResearchRoutes(
   app.get(`${base}/classifiers`, async (request, reply) => {
     void reply.header("cache-control", "no-store");
     return signalResearchClassifiers(deps, requireAuth(request).userId, request.query);
+  });
+  app.get(`${base}/research-wallets`, async (request, reply) => {
+    void reply.header("cache-control", "no-store");
+    return signalResearchWallets(deps, requireAuth(request).userId, request.query);
   });
   app.get(`${base}/versions`, async (request, reply) => {
     void reply.header("cache-control", "no-store");

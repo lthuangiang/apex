@@ -294,6 +294,9 @@ describe("context capture values", () => {
     expect(r.decidedAt.getTime()).toBe(T0);
     expect(dec(r.h1AgreeingUsdc ?? "0").toFixed()).toBe("1400000");
     expect(r.h1FirstAt?.getTime()).toBe(T0 - 30 * MIN);
+    // Địa chỉ ví (chữ thường) để trace link tới trang trader; ví ngoài tập (C, E) không có.
+    expect(r.h1AgreeingAddresses).toEqual(["0xaaa"]);
+    expect(r.h1OpposingAddresses).toEqual(["0xbbb"]);
     expect(Number(r.h2Percentile)).toBeLessThanOrEqual(20);
     expect(dec(r.h2FundingRate ?? "0").toFixed()).toBe("-0.0001");
     expect(Number(r.h2IntervalHours)).toBe(8);
@@ -315,6 +318,10 @@ describe("context capture values", () => {
     await captureSignalContext(db, btcLong("against"), T0, quote("100"));
     await captureSignalContext(db, { ...btcLong("quiet"), market: "SOL-USD" }, T0, quote("100"));
     expect(h1(await snapshot("against"))).toMatchObject({ s: "against", w: 2, a: 0, o: 1 });
+    expect(await snapshot("against")).toMatchObject({
+      h1AgreeingAddresses: [],
+      h1OpposingAddresses: ["0xbbb"],
+    });
     expect((await snapshot("against")).h1AgreeingUsdc).toBeNull();
     expect(h1(await snapshot("quiet"))).toMatchObject({ s: "no", w: 2, a: 0, o: 0 });
   });
@@ -348,6 +355,8 @@ describe("context capture values", () => {
       h1WalletsChecked: 0,
       h1WalletSetVersion: null,
       h1WalletSetSize: null,
+      h1AgreeingAddresses: [],
+      h1OpposingAddresses: [],
       h1AssetOnHyperliquid: true,
       h1AgreeingWallets: 0,
       h1AgreeingUsdc: null,

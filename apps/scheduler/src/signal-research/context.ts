@@ -216,6 +216,8 @@ export async function computeSignalContext(
           h1AssetOnHyperliquid: h1.assetOnHyperliquid,
           h1AgreeingWallets: h1.agreeingWallets,
           h1OpposingWallets: h1.opposingWallets,
+          h1AgreeingAddresses: h1.agreeingAddresses,
+          h1OpposingAddresses: h1.opposingAddresses,
           h1AgreeingUsdc: fx(h1.agreeingUsdc),
           h1FirstAt: h1.firstAt === null ? null : new Date(h1.firstAt),
         };
@@ -228,6 +230,8 @@ export async function computeSignalContext(
         h1AssetOnHyperliquid: null,
         h1AgreeingWallets: null,
         h1OpposingWallets: null,
+        h1AgreeingAddresses: null,
+        h1OpposingAddresses: null,
         h1AgreeingUsdc: null,
         h1FirstAt: null,
       };

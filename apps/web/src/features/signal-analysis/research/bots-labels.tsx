@@ -18,6 +18,7 @@ import { rulesList } from "./text";
 import { Na, Pill } from "./ui";
 import { classifierShort } from "./version-text";
 import { NewsVersions } from "./versions";
+import { ResearchWalletsBlock } from "./wallet-links";
 
 // Khu "Bots & labels" ở cuối trang Signal research (thiết kế docs/mockups/signal-research/compact-desktop.html, khung A
 // và B): gập sẵn bằng <details>. Bên trong giữ nguyên nội dung cũ của Paper bots (News bot versions, thẻ bot replay, lệnh
@@ -123,6 +124,10 @@ export function BotsAndLabels({
           )}
           <div className="border-t border-border pt-4">
             <ClassifierQuality tz={tz} startSeq={labelSeq} />
+          </div>
+          {/* #353: tập ví nghiên cứu của H1 (tải khi khu mở). */}
+          <div className="border-t border-border pt-4">
+            <ResearchWalletsBlock open={open} />
           </div>
           <p className="m-0 text-xs text-muted">
             {t("more")}{" "}

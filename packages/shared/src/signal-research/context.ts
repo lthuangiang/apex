@@ -104,6 +104,9 @@ export interface H1Result {
   assetOnHyperliquid: boolean;
   agreeingWallets: number;
   opposingWallets: number;
+  /** Địa chỉ ví cùng chiều / ngược chiều (chữ thường, sắp xếp); rỗng khi `na`. */
+  agreeingAddresses: string[];
+  opposingAddresses: string[];
   /** Tổng notional (USD) của các sự kiện cùng chiều; null khi không có. */
   agreeingUsdc: Decimal | null;
   /** Giờ fill đầu tiên của sự kiện cùng chiều sớm nhất; null khi không có. */
@@ -141,6 +144,8 @@ export function h1Of(input: {
     assetOnHyperliquid: input.assetOnHyperliquid,
     agreeingWallets: agree.size,
     opposingWallets: oppose.size,
+    agreeingAddresses: [...agree].sort(),
+    opposingAddresses: [...oppose].sort(),
     agreeingUsdc: agree.size === 0 ? null : usdc,
     firstAt,
   };
@@ -150,6 +155,8 @@ export function h1Of(input: {
       status: "na",
       agreeingWallets: 0,
       opposingWallets: 0,
+      agreeingAddresses: [],
+      opposingAddresses: [],
       agreeingUsdc: null,
       firstAt: null,
     };

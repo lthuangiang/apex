@@ -9061,7 +9061,10 @@
             "against": "{n, plural, one {# research wallet} other {# research wallets}} ({top}) added {opp} {asset} in the {mins} min before, the other way from this {side} signal.",
             "naWallets": "No research wallet ({top}) was read in the {mins} min before, so there is no whale data. The signal is left out of the H1 comparison.",
             "naAny": "This asset is not on Hyperliquid, or no research wallet ({top}) has data, so there is no whale data. The signal is left out of the H1 comparison."
-          }
+          },
+          "sameWay": "Same way:",
+          "otherWay": "Other way:",
+          "more": "+{n} more"
         },
         "h2": {
           "tagYes": "Funding p{p} · {payer}",
@@ -9251,6 +9254,29 @@
         "more": "Why labels and versions work this way:",
         "howVersions": "How it works › Versions",
         "howLabels": "How it works › Labels"
+      },
+      "researchWallets": {
+        "title": "Research wallets (top {k})",
+        "titleNoK": "Research wallets",
+        "sub": "H1 · Whales agree checks these wallets · {n} of {k} read in the last {mins} min.",
+        "chip": "Set v{v} · {date}",
+        "colRank": "Rank",
+        "colWallet": "Wallet",
+        "colRead": "Last read",
+        "colPage": "Trader page",
+        "rank": "#{n}",
+        "read": "read {n} min ago",
+        "notRead": "not read in the last {mins} min",
+        "open": "Open ›",
+        "openAria": "Open the trader page of {wallet}",
+        "noPage": "No trader page",
+        "showAll": "Show all {k}",
+        "empty": "No research wallets yet · the leaderboard hasn't run",
+        "emptySet": "This set has no wallets (research wallets are turned off).",
+        "note": "Open a wallet to see its trades or follow it. Wallets are read about every 2 minutes; a wallet not read in the 60 min before a decision isn't counted."
+      },
+      "traders": {
+        "noDesk": "Turn on AI Desk to open trader pages"
       }
     },
     "pricesMainnet": "Prices from mainnet"

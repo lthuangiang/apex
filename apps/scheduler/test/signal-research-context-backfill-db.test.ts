@@ -180,7 +180,19 @@ describe("backfilled snapshot values", () => {
       o: s.h1OpposingWallets,
       u: s.h1AgreeingUsdc,
       f: s.h1FirstAt,
-    }).toEqual({ s: "na", w: null, hl: null, a: null, o: null, u: null, f: null });
+      aa: s.h1AgreeingAddresses,
+      oa: s.h1OpposingAddresses,
+    }).toEqual({
+      s: "na",
+      w: null,
+      hl: null,
+      a: null,
+      o: null,
+      u: null,
+      f: null,
+      aa: null,
+      oa: null,
+    });
     // H2: 90 kỳ trong 30 ngày trước T0, kỳ cuối thấp nhất.
     expect(s.h2Status).toBe("yes");
     expect(s.h2Samples).toBe(90);

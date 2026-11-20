@@ -21,6 +21,7 @@ import {
 } from "./context-text";
 import type { ContextReach } from "./trace-player";
 import { Na } from "./ui";
+import { H1Wallets } from "./wallet-links";
 import { WhaleIcon } from "./whale-icon";
 
 // Khung 4 · Context cạnh phễu + thẻ bước 4 (#343, mockup redesign-trace-live.html, redesign-trace-no-signal.html,
@@ -361,10 +362,13 @@ export function ContextCard({
   context,
   asset,
   tz,
+  canOpenTraders = false,
 }: {
   context: ResearchSignalContext;
   asset: string;
   tz: string;
+  /** #353: người xem bật AI Desk nên link ví tới trang trader được (`useCanOpenTraders`). */
+  canOpenTraders?: boolean;
 }) {
   const t = useTranslations("signalAnalysis.research");
   const answers = useContextAnswers(context, asset, tz);
@@ -403,6 +407,7 @@ export function ContextCard({
               <span className="text-xs font-extrabold text-muted">{t(`context.h.${key}`)}</span>
               <div className={`text-lg font-extrabold ${WORD[tone]}`}>{a.badge}</div>
               <p className="m-0 text-xs leading-[1.45] text-ink-2">{a.text}</p>
+              {key === "h1" ? <H1Wallets context={context} canOpen={canOpenTraders} /> : null}
             </div>
           );
         })}

@@ -49,6 +49,9 @@ describe("H1 whales agree", () => {
     expect(r.opposingWallets).toBe(1);
     expect(r.agreeingUsdc?.toFixed()).toBe("1400000");
     expect(r.firstAt).toBe(T - 39 * MIN);
+    // Địa chỉ chữ thường, mỗi ví một lần (#353 list: trace link tới trang trader).
+    expect(r.agreeingAddresses).toEqual(["0xa"]);
+    expect(r.opposingAddresses).toEqual(["0xb"]);
   });
 
   it("is against when only opposite wallets moved, and no when nothing moved", () => {

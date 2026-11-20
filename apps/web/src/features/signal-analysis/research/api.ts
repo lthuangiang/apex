@@ -12,6 +12,7 @@ import {
   researchSummarySchema,
   researchTradeDetailSchema,
   researchTradesPageSchema,
+  researchWalletsSchema,
   type RESEARCH_ARTICLE_SHOWS,
   type ResearchDropReason,
   type ResearchLabel,
@@ -53,6 +54,7 @@ export const RESEARCH_PATHS = {
   versionStatus: (id: string) => `${RESEARCH_BASE}/versions/${encodeURIComponent(id)}/status`,
   markets: `${RESEARCH_BASE}/markets`,
   classifiers: `${RESEARCH_BASE}/classifiers`,
+  researchWallets: `${RESEARCH_BASE}/research-wallets`,
   labelNext: `${RESEARCH_BASE}/labels/next`,
   label: (id: string) => `${RESEARCH_BASE}/articles/${encodeURIComponent(id)}/label`,
 } as const;
@@ -235,6 +237,16 @@ export function useResearchMarkets(enabled: boolean) {
   return useQuery({
     queryKey: MARKETS_KEY,
     queryFn: () => api("GET", RESEARCH_PATHS.markets, researchMarketsSchema),
+    enabled,
+    retry,
+  });
+}
+
+/** #353: tập ví nghiên cứu mới nhất (khu Bots & labels). Chỉ tải khi khu đang mở. */
+export function useResearchWallets(enabled: boolean) {
+  return useQuery({
+    queryKey: [...KEY, "research-wallets"],
+    queryFn: () => api("GET", RESEARCH_PATHS.researchWallets, researchWalletsSchema),
     enabled,
     retry,
   });
