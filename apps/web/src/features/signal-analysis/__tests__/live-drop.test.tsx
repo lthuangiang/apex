@@ -14,6 +14,7 @@ import {
   advance,
   EMPTY_QUEUE,
   enqueue,
+  enqueueNewest,
   interrupt,
   LIVE_CONTEXT_MS,
   LIVE_HOLD_MS,
@@ -202,6 +203,10 @@ describe("live queue (pure)", () => {
     s = interrupt(s);
     expect(s.current).toBeNull();
     expect(s.queue.map((a) => a.id)).toEqual([ETH.id, HYPE.id, SOL.id]);
+    // Quay lại sau khi lỡ 5 bài: giữ 3 bài mới nhất, 2 bài cũ chỉ đếm.
+    const back = enqueueNewest(EMPTY_QUEUE, [ETH, HYPE, SOL, KNTQ, MERGED]);
+    expect(back.queue.map((a) => a.id)).toEqual([SOL.id, KNTQ.id, MERGED.id]);
+    expect(back.extra).toBe(2);
     // Hết bài: xoá "+N more".
     expect(advance({ current: null, queue: [], extra: 4 }).extra).toBe(0);
   });
@@ -231,6 +236,36 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     fireEvent.click(within(funnel()).getByRole("button", { name: /Bithumb will list/ }));
     await tick(LIVE_POLL_MS * 3);
     expect(newCalls()).toHaveLength(3);
+  });
+
+  it("back on the tab after missing 5 articles: the 3 newest drop, the rest show as +2 more", async () => {
+    state.next = [page("c1"), page("c2", [ETH, HYPE, SOL, KNTQ, MERGED])];
+    await ready();
+    setVisible("hidden");
+    await tick(LIVE_POLL_MS * 2);
+    expect(newCalls()).toHaveLength(1);
+    setVisible("visible");
+    await tick(0);
+    await tick(0);
+    await tick(0);
+    // Hỏi bù với trang lớn để lấy được bài mới nhất của khoảng lỡ.
+    expect(newCalls()[1]).toContain("since=c1");
+    expect(newCalls()[1]).toContain("limit=50");
+    expect(verdict()).toHaveTextContent(
+      "New article · step 1 · Collect… · 2 waiting · +2 more counted",
+    );
+    // Bài rơi trước là bài cũ nhất trong 3 bài mới nhất (SOL), không phải bài cũ nhất của đợt.
+    expect(state.paths.some((x) => x.includes(`/articles/${SOL.id}/trace`))).toBe(true);
+    expect(state.paths.some((x) => x.includes(`/articles/${ETH.id}/trace`))).toBe(false);
+  });
+
+  it("the first poll when the page opens only sets the cursor: nothing drops", async () => {
+    state.next = [page("c1", [ETH])];
+    await ready();
+    await tick(0);
+    expect(verdict()).toHaveTextContent("Pick an article on the left");
+    expect(panel()).toBeNull();
+    expect(state.paths.some((x) => x.includes("/trace"))).toBe(false);
   });
 
   it("Live off: no polling, and the choice is remembered for this viewer", async () => {
