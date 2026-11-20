@@ -21,6 +21,14 @@ export const SIGNAL_CONTEXT_VERSION = "context-v2";
 /** context-v1 (#349): H1 trên ví được follow. Chỉ để đọc snapshot cũ; không ghi mới. */
 export const SIGNAL_CONTEXT_V1 = "context-v1";
 
+/**
+ * Các context version có CÙNG hàm tính H2 và H3 (#353, PM duyệt ở review #365): "Does context help?" và độ phủ gộp H2 / H3
+ * của các version này (H1 thì chỉ version hiện tại; Live và Backfilled vẫn luôn tách). **Chỉ gộp khi hàm tính không đổi:**
+ * đổi `h2Of` / `h3Of`, ngưỡng H2 / H3 trong `SIGNAL_CONTEXT_RULES`, hay cách lấy dữ liệu đầu vào của chúng thì phải ra version
+ * mới và KHÔNG thêm nó vào danh sách này (test "H2 / H3 unchanged across merged context versions" giữ điều kiện này).
+ */
+export const H23_SAME_AS_CURRENT: readonly string[] = [SIGNAL_CONTEXT_V1, SIGNAL_CONTEXT_VERSION];
+
 export const SIGNAL_CONTEXT_RULES = {
   /** H1: cửa sổ trước quyết định để tìm ví mở / tăng vị thế cùng chiều. */
   h1WindowMinutes: 60,

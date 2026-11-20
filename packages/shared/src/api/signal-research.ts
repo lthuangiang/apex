@@ -425,7 +425,10 @@ export const researchContextQuestionSchema = z.object({
 });
 
 export const researchContextSummarySchema = z.object({
-  /** #353: so sánh và độ phủ chỉ tính snapshot của version này (version hiện tại), không gộp với version cũ. */
+  /**
+   * #353: version hiện tại. H1 (so sánh và `coverage.whale`) chỉ tính snapshot của version này; H2 / H3 gộp các version có
+   * cùng hàm tính (`H23_SAME_AS_CURRENT`, review #365).
+   */
   contextVersion: z.string().min(1),
   /** #353: số ví của tập ví nghiên cứu mới nhất ("top {K} of the leaderboard"); null khi chưa có tập. */
   researchWalletsTop: int.nullable(),
@@ -438,8 +441,7 @@ export const researchContextSummarySchema = z.object({
   minClosedPerGroup: int,
   questions: z.array(researchContextQuestionSchema).length(3),
   /**
-   * Lệnh đóng được tính nhưng không có snapshot của nguồn này ở version hiện tại (mở trước khi có bước Context, chỉ có
-   * nguồn kia, hoặc snapshot của context version cũ).
+   * Lệnh đóng được tính nhưng không có snapshot của nguồn này (mở trước khi có bước Context, hoặc chỉ có nguồn kia).
    */
   closedWithoutSnapshot: int,
   /**

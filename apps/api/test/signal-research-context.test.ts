@@ -421,8 +421,8 @@ describe("funnel step 4 counts in totals mode (#358, refs #343)", () => {
   });
 });
 
-describe("context-v1 and context-v2 stay apart (#353)", () => {
-  it("compares, covers and counts the funnel with current-version snapshots only", async () => {
+describe("context-v1 and context-v2 stay apart for H1, H2 / H3 merge (#353, review #365)", () => {
+  it("H1 uses current-version snapshots only; H2 / H3 and their coverage merge versions with the same formula", async () => {
     const versionId = randomUUID();
     await env.pool.query(
       `insert into signal_bot_versions (id, number, name, config, status, created_at, updated_at, status_changed_at)
@@ -433,27 +433,42 @@ describe("context-v1 and context-v2 stay apart (#353)", () => {
     const before = await summary(versionId);
     const from = "2026-10-20T00:00:00Z";
     const v1 = (h1: string) => ({ h1, h2: "no", h3: "no", version: SIGNAL_CONTEXT_V1 });
-    // context-v1 (ví được follow): đủ mẫu ở cả hai nhóm nếu bị gộp, nhưng không bao giờ vào so sánh của v2.
+    // context-v1 (ví được follow): H1 đủ mẫu ở cả hai nhóm nếu bị gộp, nhưng không bao giờ vào H1 của v2.
     await bulk(versionId, "v1-w", 30, from, 1, v1("yes"));
     await bulk(versionId, "v1-o", 30, from, 0, v1("no"));
     let c = await summary(versionId);
+    const q = (k: "h1" | "h2" | "h3") => c.questions.find((x) => x.key === k);
     expect(c.contextVersion).toBe(SIGNAL_CONTEXT_VERSION);
-    expect(c.closedWithoutSnapshot).toBe(60);
-    expect(c.questions.find((x) => x.key === "h1")).toMatchObject({
+    expect(c.closedWithoutSnapshot).toBe(before.closedWithoutSnapshot);
+    expect(q("h1")).toMatchObject({
       with: { closed: 0 },
       without: { closed: 0 },
       status: "collecting",
     });
-    expect(c.coverage.signals).toBe(before.coverage.signals);
+    // H2 / H3 cùng hàm tính ở v1 và v2: gộp.
+    expect(q("h2")).toMatchObject({ with: { closed: 0 }, without: { closed: 60 } });
+    expect(q("h3")).toMatchObject({ with: { closed: 0 }, without: { closed: 60 } });
+    expect(c.coverage).toMatchObject({
+      signals: before.coverage.signals + 60,
+      whale: before.coverage.whale,
+      funding: before.coverage.funding + 60,
+      priceRun: before.coverage.priceRun + 60,
+    });
 
     await bulk(versionId, "v2-w", 5, from, 1, { h1: "yes", h2: "no", h3: "no" });
     c = await summary(versionId);
-    expect(c.questions.find((x) => x.key === "h1")).toMatchObject({
-      with: { closed: 5 },
+    expect(q("h1")).toMatchObject({ with: { closed: 5 }, without: { closed: 0 } });
+    expect(q("h2")).toMatchObject({ without: { closed: 65 } });
+    expect(c.coverage).toMatchObject({
+      signals: before.coverage.signals + 65,
+      whale: before.coverage.whale + 5,
+    });
+    // Live và Backfilled vẫn tách: khối backfilled không thấy các lệnh live này.
+    const bf = await summary(versionId, "backfilled");
+    expect(bf.questions.find((x) => x.key === "h2")).toMatchObject({
+      with: { closed: 0 },
       without: { closed: 0 },
     });
-    expect(c.closedWithoutSnapshot).toBe(60);
-    expect(c.coverage.signals).toBe(before.coverage.signals + 5);
 
     // Tập ví nghiên cứu mới nhất → "top {K} of the leaderboard".
     await env.pool.query(
