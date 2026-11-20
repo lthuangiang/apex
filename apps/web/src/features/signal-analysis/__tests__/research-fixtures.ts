@@ -299,6 +299,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
   context: null,
   contextBackfilled: null,
   marketSplit: null,
+  marketSplitBackfilled: null,
   newsRulesSince: "2026-11-01T00:00:00.000Z",
   olderRules: { trades: 0, versions: [] },
 };

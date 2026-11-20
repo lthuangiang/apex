@@ -24,6 +24,12 @@ export const MARKET_STATE_RULES = {
   volLookbackDays: NEWS_RULES.volatilityLookbackDays,
   /** Ít hơn ngần này cặp giờ trong cửa sổ → không xếp được (null), như biến động thường gặp của Decide. */
   volMinSamples: NEWS_RULES.volatilityMinSamples,
+  /**
+   * Thiếu nến trong cửa sổ 4 h (PM chốt ở review #381): cửa sổ = các nến 1 phút đóng trong 4 h trước quyết định (kỳ vọng
+   * 240 nến). Thiếu khi có ít hơn ngần này phần số nến kỳ vọng (nến bị hổng / thiếu mẫu), hoặc tổng khối lượng của cửa sổ
+   * = 0 (không có giao dịch). Thiếu → volatility null ("Not available"), không bao giờ "0%".
+   */
+  volMinCoverage: 0.9,
   /** Dưới phân vị này là `low`, trên phân vị kia là `high` (đúng bằng là `normal`). */
   volLowPercentile: 33,
   volHighPercentile: 67,
@@ -74,6 +80,20 @@ export function hourlyMovesPct(
     moves.push(later.sub(close).abs().div(close).mul(HUNDRED));
   }
   return moves;
+}
+
+/**
+ * Cửa sổ 4 h có đủ nến để đo biến động: ≥ 90% số nến 1 phút kỳ vọng và có giao dịch (tổng khối lượng > 0). Chỉ khi đủ, biến
+ * động 0% mới là giá thật sự đứng yên.
+ */
+export function volWindowComplete(input: {
+  candles: number;
+  volume: DecimalInput | null;
+}): boolean {
+  const r = MARKET_STATE_RULES;
+  const expected = r.volHours * 60;
+  if (input.candles < Math.ceil(expected * r.volMinCoverage)) return false;
+  return input.volume !== null && dec(input.volume).gt(0);
 }
 
 export interface VolatilityResult {

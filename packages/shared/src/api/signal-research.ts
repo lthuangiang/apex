@@ -368,10 +368,12 @@ const marketGroup = <T extends readonly [string, ...string[]]>(keys: T) =>
 
 /**
  * "Is it working? › By market" (#376): cùng tập lệnh đóng được tính như cổng chính, tách theo trạng thái thị trường lúc quyết
- * định. Nhóm < 30 lệnh đóng không hiện trung bình. `notRecorded` = lệnh không có trạng thái (mở trước #376); `notAvailable`
- * = có ghi nhưng thiếu dữ liệu lúc đó.
+ * định. Nhóm < 30 lệnh đóng không hiện trung bình. `notRecorded` = lệnh không có trạng thái của nguồn này (mở trước #376,
+ * hoặc chỉ có snapshot của nguồn kia); `notAvailable` = có ghi nhưng thiếu dữ liệu lúc đó.
  */
 export const researchMarketSplitSchema = z.object({
+  /** Nguồn snapshot của khối (review #381): `live` và `backfilled` không bao giờ trộn, như "Does context help?". */
+  source: contextSource,
   minClosedPerGroup: int,
   btcTrend: z.array(marketGroup(BTC_TRENDS)),
   volatility: z.array(marketGroup(VOLATILITY_STATES)),
@@ -578,8 +580,10 @@ export const researchSummarySchema = z.object({
   context: researchContextSummarySchema.nullable(),
   /** #344: như `context` nhưng chỉ snapshot `backfilled` (nút "Backfilled"); null khi lane chưa chạy. */
   contextBackfilled: researchContextSummarySchema.nullable(),
-  /** #376: tách kết quả theo trạng thái thị trường lúc quyết định; null khi lane chưa chạy. */
+  /** #376: tách kết quả theo trạng thái thị trường lúc quyết định, snapshot `live`; null khi lane chưa chạy. */
   marketSplit: researchMarketSplitSchema.nullable(),
+  /** Như `marketSplit` nhưng chỉ snapshot `backfilled`; null khi lane chưa chạy. */
+  marketSplitBackfilled: researchMarketSplitSchema.nullable(),
   /**
    * #321: lúc quy tắc News hiện tại (`newsRulesVersion`) bắt đầu (bài đầu tiên thu theo quy tắc đó); phễu theo khoảng chỉ
    * đếm từ mốc này ("since rules v3 started …"). null khi lane chưa chạy.

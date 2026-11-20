@@ -180,12 +180,13 @@ export function marketStateOf(r: ContextRow | undefined): ResearchMarketState | 
 
 /**
  * "Is it working? › By market" (#376): `closed` = cùng tập lệnh đóng được tính như cổng chính. Mỗi lệnh lấy trạng thái thị
- * trường của bài đã mở nó (snapshot live hoặc backfilled: cả hai tính trạng thái thị trường cùng một cách từ nến đã đóng
- * trước quyết định). Nhóm < 30 lệnh đóng không có trung bình.
+ * trường của bài đã mở nó, chỉ khi snapshot đúng nguồn `source` (review #381: live và backfilled tách như "Does context
+ * help?"). Nhóm < 30 lệnh đóng không có trung bình.
  */
 export async function loadMarketSplit(
   q: Q,
   closed: readonly TradeRow[],
+  source: ContextSource = "live",
 ): Promise<ResearchMarketSplit> {
   const ctx = await loadSignalContexts(
     q,
@@ -198,7 +199,8 @@ export async function loadMarketSplit(
   let volNa = 0;
   for (const t of closed) {
     if (t.resultPct === null) continue;
-    const m = marketStateOf(t.articleId === null ? undefined : ctx.get(t.articleId));
+    const c = t.articleId === null ? undefined : ctx.get(t.articleId);
+    const m = c?.source === source ? marketStateOf(c) : null;
     if (m === null) {
       notRecorded += 1;
       continue;
@@ -216,6 +218,7 @@ export async function loadMarketSplit(
     need: g.need,
   });
   return {
+    source,
     minClosedPerGroup: MARKET_STATE_RULES.minClosedPerGroup,
     btcTrend: marketGroupsOf(BTC_TRENDS, btc).map(out),
     volatility: marketGroupsOf(VOLATILITY_STATES, vol).map(out),

@@ -17,6 +17,7 @@ import {
   typicalMovePct,
   volatilityOf,
   volumeVs24h,
+  volWindowComplete,
   type Decimal,
   type DecimalInput,
   type Quote,
@@ -174,6 +175,18 @@ async function hourlyClosesBefore(db: Exec, market: string, t: number) {
  * Giá "lúc `t`" cho trạng thái thị trường: giá đóng của nến 1 phút cuối cùng ĐÃ ĐÓNG trước `t` (giờ đóng = ts + 1 phút < t),
  * tìm lùi tối đa `priceMaxAgeMinutes`; không có → null (không bao giờ dùng nến đóng đúng lúc hay sau `t`).
  */
+/** Số nến 1 phút và tổng khối lượng của cửa sổ 4 h trước `t` (nến đóng trong (t − 4 h, t)). */
+async function volWindow(db: Exec, market: string, t: number) {
+  const end = closedBefore(t);
+  const from = new Date(end.getTime() - MARKET_STATE_RULES.volHours * HOUR_MS);
+  const [r] = rowsOf(
+    await db.execute<{ n: number | string; vol: string | null }>(sql`
+      select count(*) as n, sum(volume)::text as vol from candles_1m
+       where market = ${market} and ts >= ${from} and ts < ${end}`),
+  );
+  return { candles: Number(r?.n ?? 0), volume: r?.vol ?? null };
+}
+
 async function closeBefore(db: Exec, market: string, t: number): Promise<string | null> {
   const end = closedBefore(t);
   const from = new Date(end.getTime() - MARKET_STATE_RULES.priceMaxAgeMinutes * MIN_MS);
@@ -197,10 +210,14 @@ async function marketStateAt(db: Exec, market: string, t: number) {
     await closeBefore(db, r.btcMarket, t - r.btcHours * HOUR_MS),
     await closeBefore(db, r.btcMarket, t),
   );
-  const move = pctChange(
-    await closeBefore(db, market, t - r.volHours * HOUR_MS),
-    await closeBefore(db, market, t),
-  );
+  // Thiếu nến trong cửa sổ 4 h (hổng / không giao dịch) → volatility null, không bao giờ "0%".
+  const win = await volWindow(db, market, t);
+  const move = !volWindowComplete(win)
+    ? null
+    : pctChange(
+        await closeBefore(db, market, t - r.volHours * HOUR_MS),
+        await closeBefore(db, market, t),
+      );
   const vol = volatilityOf(
     move === null ? null : move.abs(),
     hourlyMovesPct(await hourlyClosesBefore(db, market, t), r.volHours),

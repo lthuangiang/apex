@@ -26,6 +26,8 @@ const ago = (min: number) => new Date(env.clock.now.getTime() - min * 60_000).to
 interface Mkt {
   /** null = snapshot ghi trước #376 (không có market_version). */
   recorded: boolean;
+  /** Mặc định `live`. */
+  source?: "live" | "backfilled";
   btc: string | null;
   trend: "up" | "flat" | "down" | null;
   move: string | null;
@@ -47,7 +49,7 @@ async function snapshot(articleId: string, decidedAt: string, m: Mkt) {
     `insert into signal_contexts (id, article_id, market, direction, decided_at, source, context_version, rule_version,
        h1_status, h2_status, h3_status, market_version, market_btc_change_24h_pct, market_btc_trend, market_vol_4h_pct,
        market_vol_percentile, market_volatility)
-     values (gen_random_uuid(), $1, 'ETH-USD', 'long', $2, 'live', $3, 'news-v3', 'na', 'na', 'na', $4, $5, $6, $7, $8, $9)`,
+     values (gen_random_uuid(), $1, 'ETH-USD', 'long', $2, $10, $3, 'news-v3', 'na', 'na', 'na', $4, $5, $6, $7, $8, $9)`,
     [
       articleId,
       decidedAt,
@@ -58,6 +60,7 @@ async function snapshot(articleId: string, decidedAt: string, m: Mkt) {
       m.move,
       m.pctl,
       m.vol,
+      m.source ?? "live",
     ],
   );
 }
@@ -96,10 +99,14 @@ async function version(n: number): Promise<string> {
   return id;
 }
 
-async function split(versionId: string): Promise<ResearchMarketSplit> {
+async function split(
+  versionId: string,
+  source: "live" | "backfilled" = "live",
+): Promise<ResearchMarketSplit> {
   const r = await team.request("GET", `${base}/summary?versionId=${versionId}`);
   expect(r.statusCode).toBe(200);
-  const s = researchSummarySchema.parse(r.json()).marketSplit;
+  const body = researchSummarySchema.parse(r.json());
+  const s = source === "live" ? body.marketSplit : body.marketSplitBackfilled;
   if (s === null) throw new Error("no market split");
   return s;
 }
@@ -206,5 +213,33 @@ describe("market state per trade and the By market split (#376)", () => {
     expect(byArticle.get("flat-na-1")).toMatchObject({ btcTrend: "flat", volatility: null });
     expect(byArticle.get("old-1")).toBeNull();
     expect(byArticle.get("none-1")).toBeNull();
+  });
+});
+
+describe("live and backfilled market splits stay apart (review #381)", () => {
+  it("each block only counts snapshots of its own source", async () => {
+    const v = await version(51);
+    await bulk(v, "live-up", 30, 1, STATE("up", "normal"));
+    await bulk(v, "bf-down", 30, -1, { ...STATE("down", "low"), source: "backfilled" });
+
+    const live = await split(v, "live");
+    expect(live.source).toBe("live");
+    expect(live.btcTrend.map((g) => [g.key, g.closed, g.avgPct])).toEqual([
+      ["up", 30, 1],
+      ["flat", 0, null],
+      ["down", 0, null],
+    ]);
+    // Lệnh chỉ có snapshot backfilled: không có trạng thái của nguồn live.
+    expect(live.notRecorded).toBe(30);
+
+    const bf = await split(v, "backfilled");
+    expect(bf.source).toBe("backfilled");
+    expect(bf.btcTrend.map((g) => [g.key, g.closed, g.avgPct])).toEqual([
+      ["up", 0, null],
+      ["flat", 0, null],
+      ["down", 30, -1],
+    ]);
+    expect(bf.volatility.find((g) => g.key === "low")).toMatchObject({ closed: 30, avgPct: -1 });
+    expect(bf.notRecorded).toBe(30);
   });
 });

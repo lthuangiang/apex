@@ -9,6 +9,7 @@ import {
   MARKET_STATE_RULES,
   pctChange,
   volatilityOf,
+  volWindowComplete,
 } from "../signal-research/market-state";
 
 // Trạng thái thị trường lúc quyết định (Catalyst P0, #376): ngưỡng ở biên, thiếu dữ liệu → null, nhóm < 30 không có
@@ -58,6 +59,14 @@ describe("volatility", () => {
       state: "high",
       percentile: 67.3333,
     });
+  });
+
+  it("needs ≥ 90% of the 240 one-minute candles in the 4 h window and some trading, else Not available", () => {
+    expect(volWindowComplete({ candles: 240, volume: "12" })).toBe(true);
+    expect(volWindowComplete({ candles: 216, volume: "1" })).toBe(true);
+    expect(volWindowComplete({ candles: 215, volume: "1" })).toBe(false);
+    expect(volWindowComplete({ candles: 240, volume: "0" })).toBe(false);
+    expect(volWindowComplete({ candles: 0, volume: null })).toBe(false);
   });
 
   it("is null without the current move or with too little history", () => {

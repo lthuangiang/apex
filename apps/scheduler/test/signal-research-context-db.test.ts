@@ -521,14 +521,40 @@ describe("no lookahead: data stamped at or after the decision never changes the 
 // ── Trạng thái thị trường lúc quyết định (Catalyst P0, #376) ────────────────────────────────────────────────────────
 
 /** Một nến 1 phút (giá mở / cao / thấp / đóng như nhau); ghi đè nếu đã có. */
-async function candle(market: string, ts: number, close: string) {
+async function candle(market: string, ts: number, close: string, volume = "1") {
   await db
     .insert(candles1m)
-    .values({ market, ts: new Date(ts), open: close, high: close, low: close, close, volume: "1" })
+    .values({ market, ts: new Date(ts), open: close, high: close, low: close, close, volume })
     .onConflictDoUpdate({
       target: [candles1m.market, candles1m.ts],
-      set: { open: close, high: close, low: close, close },
+      set: { open: close, high: close, low: close, close, volume },
     });
+}
+
+/**
+ * Cửa sổ 4 h trước T0 cho volatility: giá lúc T0 − 4 h = `start` (nến T0 − 242 phút, đóng trước T0 − 4 h), rồi `n` nến 1
+ * phút trong cửa sổ (nến T0 − 241 … T0 − 2 phút, kỳ vọng 240), nến cuối = `end`, các nến khác = `start`.
+ */
+async function volWindow(
+  market: string,
+  start: string,
+  end: string,
+  opts: { n?: number; volume?: string } = {},
+) {
+  const n = opts.n ?? 240;
+  await candle(market, T0 - 242 * MIN, start);
+  // Bỏ bớt nến ở đầu cửa sổ khi n < 240 (nến cuối luôn có để giá lúc quyết định không thiếu).
+  for (let m = 241; m >= 2; m -= 1) {
+    if (m > n + 1) {
+      await db
+        .delete(candles1m)
+        .where(
+          sql`${candles1m.market} = ${market} and ${candles1m.ts} = ${new Date(T0 - m * MIN)}`,
+        );
+      continue;
+    }
+    await candle(market, T0 - m * MIN, m === 2 ? end : start, opts.volume ?? "1");
+  }
 }
 const market = (r: typeof signalContexts.$inferSelect) => ({
   v: r.marketVersion,
@@ -568,20 +594,46 @@ describe("market state at decision (#376)", () => {
   it("volatility: the asset's 4 h move ranked in its own 30 days (SOL moves 2% once a day → a 2% move is high)", async () => {
     await btc("100");
     // SOL: 100 / 102 xen kẽ theo ngày (seedCandles), nên biến động 4 h thường là 0%, chỉ ~1 / 6 cặp là 2%.
-    await candle("SOL-USD", T0 - 4 * HOUR - 2 * MIN, "100");
-    await candle("SOL-USD", T0 - 2 * MIN, "102");
+    await volWindow("SOL-USD", "100", "102");
     await captureSignalContext(db, { ...btcLong("sol"), market: "SOL-USD" }, T0, quote("102"));
     const m = market(await snapshot("sol"));
     expect(m).toMatchObject({ v: MARKET_STATE_VERSION, move: "2", vol: "high", trend: "flat" });
     expect(m.pctl).toBeGreaterThan(67);
     // Không đổi giá trong 4 h → 0%, bằng phần lớn lịch sử: hạng giữa đặt nó ở giữa nhóm bằng nhau → normal (không bị đẩy
-    // về low chỉ vì hoà, như percentile của H2).
-    await candle("SOL-USD", T0 - 2 * MIN, "100");
+    // về low chỉ vì hoà, như percentile của H2). Cửa sổ đủ nến và có giao dịch: giá thật sự đứng yên.
+    await volWindow("SOL-USD", "100", "100");
     await captureSignalContext(db, { ...btcLong("sol-calm"), market: "SOL-USD" }, T0, quote("100"));
     const calm = market(await snapshot("sol-calm"));
     expect(calm).toMatchObject({ move: "0", vol: "normal" });
     expect(calm.pctl).toBeGreaterThanOrEqual(33);
     expect(calm.pctl).toBeLessThanOrEqual(67);
+  });
+
+  it("volatility is null (Not available, never 0%) when the 4 h window is missing candles or has no trades", async () => {
+    await btc("100");
+    // 216 / 240 nến (đúng 90%) và có giao dịch: đo được.
+    await volWindow("SOL-USD", "100", "100", { n: 216 });
+    await captureSignalContext(db, { ...btcLong("cov-216"), market: "SOL-USD" }, T0, quote("100"));
+    expect(market(await snapshot("cov-216"))).toMatchObject({ move: "0", vol: "normal" });
+    // 215 / 240 nến: nến bị hổng → null, dù hai đầu cửa sổ có giá.
+    await volWindow("SOL-USD", "100", "100", { n: 215 });
+    await captureSignalContext(db, { ...btcLong("cov-215"), market: "SOL-USD" }, T0, quote("100"));
+    expect(market(await snapshot("cov-215"))).toMatchObject({
+      v: MARKET_STATE_VERSION,
+      move: null,
+      pctl: null,
+      vol: null,
+      trend: "flat",
+    });
+    // Đủ nến nhưng không có giao dịch nào (khối lượng 0): null, không phải "0% · normal".
+    await volWindow("SOL-USD", "100", "100", { volume: "0" });
+    await captureSignalContext(
+      db,
+      { ...btcLong("no-trades"), market: "SOL-USD" },
+      T0,
+      quote("100"),
+    );
+    expect(market(await snapshot("no-trades"))).toMatchObject({ move: null, vol: null });
   });
 
   it("is null (never 0) when prices are missing, but marks the snapshot as recorded", async () => {
@@ -599,8 +651,7 @@ describe("market state at decision (#376)", () => {
 
   it("does not look ahead: a candle closing at the decision time or later never changes the state", async () => {
     await btc("101");
-    await candle("SOL-USD", T0 - 4 * HOUR - 2 * MIN, "100");
-    await candle("SOL-USD", T0 - 2 * MIN, "102");
+    await volWindow("SOL-USD", "100", "102");
     const sol = { ...btcLong("before"), market: "SOL-USD" };
     await captureSignalContext(db, sol, T0, quote("102"));
     // Nến bắt đầu lúc T0 − 1 phút đóng ĐÚNG lúc quyết định (không phải trước): không dùng. Nến sau quyết định cũng vậy.

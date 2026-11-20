@@ -613,7 +613,8 @@ export async function loadSignalResearchSummary(
   const context = on ? await loadContextSummary(q, scope, counted, "live") : null;
   const contextBackfilled = on ? await loadContextSummary(q, scope, counted, "backfilled") : null;
   // #376: cùng tập lệnh đóng được tính, tách theo trạng thái thị trường lúc quyết định.
-  const marketSplit = on ? await loadMarketSplit(q, counted) : null;
+  const marketSplit = on ? await loadMarketSplit(q, counted, "live") : null;
+  const marketSplitBackfilled = on ? await loadMarketSplit(q, counted, "backfilled") : null;
   check();
   // #321: chưa có lệnh nào của quy tắc hiện tại thì chi phí một lệnh lấy từ các tín hiệu đã tới bước kiểm TP vs chi phí
   // (event Filter có `costPct`, cùng cách tính); vẫn không có → null ("no v3 trade has reached the cost check").
@@ -780,6 +781,7 @@ export async function loadSignalResearchSummary(
     context,
     contextBackfilled,
     marketSplit,
+    marketSplitBackfilled,
     newsRulesSince: enabledSince === null ? null : iso(enabledSince),
     olderRules: {
       trades: older.reduce((acc, r) => acc + r.n, 0),
