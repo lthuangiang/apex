@@ -89,6 +89,21 @@ export async function loadSignalResearchLatency(
     where t.label = 'live' and t.decided_clock_at is not null and t.opened_clock_at is not null
       and ${versionTrades}`);
 
+  // Tổng published → opened trên các bài đủ MỌI chặng (cùng điều kiện của từng chặng ở trên), không cộng các median.
+  const full = await one(sql`with a as (${articles}),
+    d as (
+      select e.article_id from signal_events e
+      join a on a.id = e.article_id
+      where e.stage in ('filter', 'decide') and e.decided_clock_at is not null and e.rule_version = ${v}
+        and ${versionEventSql(scope, "e")}
+      group by e.article_id
+    )
+    select ${median(epochMs(sql`t.opened_clock_at`, sql`a.published_at`))} from a
+    join d on d.article_id = a.id
+    join signal_paper_trades t on t.article_id = a.id
+    where a.claude_done_at is not null and t.label = 'live' and t.decided_clock_at is not null
+      and t.opened_clock_at is not null and ${versionTrades}`);
+
   const by: Record<ResearchLatencyStageKey, { medianMs: number | null; n: number | null }> = {
     sourceToSoso: { medianMs: null, n: null },
     publishedToCollected,
@@ -100,5 +115,6 @@ export async function loadSignalResearchLatency(
     range: query.range,
     computedAt: now.toISOString(),
     stages: RESEARCH_LATENCY_STAGES.map((key) => ({ key, ...by[key] })),
+    total: full.medianMs === null || full.n === 0 ? null : { medianMs: full.medianMs, n: full.n },
   };
 }

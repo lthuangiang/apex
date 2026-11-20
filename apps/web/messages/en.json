@@ -9344,6 +9344,50 @@
           "candles": "Volatility is “Not available” too when the last {h} h has fewer than {pct}% of its 1-minute candles, or no trades at all."
         }
       },
+      "latency": {
+        "title": "Where the time goes",
+        "sub": "median · last {range} · {n, plural, one {# article} other {# articles}}",
+        "ranges": {
+          "1d": "1 day",
+          "7d": "7 days"
+        },
+        "stages": {
+          "sourceToSoso": "Published by the source → SoSoValue",
+          "publishedToCollected": "SoSoValue → DeskLabs collected · waiting for the {n}-min check",
+          "publishedToCollectedPlain": "SoSoValue → DeskLabs collected",
+          "collectedToClaudeDone": "Collected → Claude done",
+          "claudeDoneToDecided": "Claude done → decided",
+          "decidedToOpened": "Decided → paper trade opened"
+        },
+        "notProvided": "Not provided",
+        "notMeasured": "Not measured yet",
+        "slowest": "<b>Slowest leg: {leg}.</b>",
+        "slowestWait": "waiting for the {n}-min check",
+        "slowestWaitWhy": "SoSoValue is checked every {n} min, so most of the delay is the wait for the next check.",
+        "total": "Total, SoSoValue → paper trade opened: <b>{duration}</b>",
+        "totalMissing": "Total, SoSoValue → paper trade opened: <b>Not measured yet</b> (one leg is missing)",
+        "totalMedian": "Total, SoSoValue → paper trade opened: <b>{duration}</b> · median of the full time, {n, plural, one {# article} other {# articles}}",
+        "totalNone": "Total, SoSoValue → paper trade opened: <b>Not measured yet</b>",
+        "barAria": "Median time per leg",
+        "ms": "{n} ms",
+        "underMs": "< 1 ms",
+        "timeline": {
+          "title": "From news to trade",
+          "toDecided": "SoSoValue → decided: <b>{duration}</b>",
+          "toOpened": "SoSoValue → paper trade opened: <b>{duration}</b>",
+          "published": "Published by the source",
+          "notProvidedWhy": "SoSoValue doesn’t send the source’s time",
+          "released": "SoSoValue released",
+          "collected": "DeskLabs collected",
+          "claudeDone": "Claude done",
+          "decidedTrade": "Decided: {side} {asset}",
+          "decidedNoTrade": "Decided: no trade",
+          "decided": "Decided",
+          "opened": "Paper trade opened",
+          "gap": "+{duration}",
+          "gapWait": "+{duration} · waited for the {n}-min check"
+        }
+      },
       "experiments": {
         "title": "Experiments",
         "tagline": "One hypothesis, one change, one result",

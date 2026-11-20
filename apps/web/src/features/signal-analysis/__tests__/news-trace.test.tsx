@@ -14,7 +14,14 @@ import messages from "../../../../messages/en.json";
 import { SignalAnalysisPage } from "../components/signal-analysis-page";
 import { CONTEXT_STEP_MS, STEP_MS } from "../research/news-trace";
 
-import { ARTICLES, PAGE_SIZE, SUMMARY_1D, SUMMARY_7D, TRACES } from "./news-trace-fixtures";
+import {
+  ARTICLES,
+  LATENCY_1D,
+  PAGE_SIZE,
+  SUMMARY_1D,
+  SUMMARY_7D,
+  TRACES,
+} from "./news-trace-fixtures";
 import { RESEARCH_TRADES } from "./research-fixtures";
 
 // News feed và funnel trace của tab Signal research (#292, thiết kế docs/mockups/signal-research/news-trace.html).
@@ -58,6 +65,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
         return Promise.resolve(
           schema.parse(u.searchParams.get("range") === "7d" ? SUMMARY_7D : SUMMARY_1D),
         );
+      if (p.endsWith("/signal-research/latency")) return Promise.resolve(schema.parse(LATENCY_1D));
       if (p.endsWith("/signal-research/trades"))
         return Promise.resolve(schema.parse(RESEARCH_TRADES));
       if (p.endsWith("/signal-research/articles")) {
@@ -271,7 +279,28 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(
       within(f).getByText("Each step shows how many of the last 1 day’s articles are still in."),
     ).toBeInTheDocument();
-    expect(within(f).getByText("4 min 20 s")).toBeInTheDocument();
+    // #375: "Where the time goes" thay ô Delay: median từng chặng, chặng chậm nhất, chặng thiếu ghi rõ.
+    const lat = within(f).getByTestId("sr-latency");
+    expect(lat).toHaveTextContent("Where the time goes");
+    expect(lat).toHaveTextContent("median · last 1 day · 58 articles");
+    const row = (k: string) => lat.querySelector(`[data-stage='${k}']`);
+    expect(row("sourceToSoso")).toHaveTextContent(
+      "Published by the source → SoSoValueNot provided",
+    );
+    expect(row("publishedToCollected")).toHaveTextContent(
+      "SoSoValue → DeskLabs collected · waiting for the 5-min check5 min 45 s",
+    );
+    expect(row("publishedToCollected")).toHaveAttribute("data-slowest");
+    expect(row("collectedToClaudeDone")).toHaveTextContent("9 s");
+    expect(row("claudeDoneToDecided")).toHaveTextContent("1 s");
+    expect(row("decidedToOpened")).toHaveTextContent("Not measured yet");
+    expect(within(lat).getByTestId("sr-latency-slowest")).toHaveTextContent(
+      "Slowest leg: waiting for the 5-min check. SoSoValue is checked every 5 min, so most of the delay is the wait for the next check.",
+    );
+    expect(within(lat).getByTestId("sr-latency-total")).toHaveTextContent(
+      "Total, SoSoValue → paper trade opened: Not measured yet",
+    );
+    expect(lat).not.toHaveTextContent(/(^|\D)0 s/);
     expect(within(f).getByText("$0.03 · last 24 h")).toBeInTheDocument();
     expect(verdict()).toHaveTextContent(
       "Pick an article on the left, or click a step to list its articles.",
@@ -453,6 +482,21 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
       "6. Decide",
     ]);
     expect(within(list).getAllByText("Passed")).toHaveLength(5);
+    // #375: thẻ Collect có dòng thời gian 6 mốc (giờ trang Asia/Ho_Chi_Minh), khoảng "+N" giữa hai mốc.
+    const tl = within(list).getByTestId("sr-latency-timeline");
+    const mark = (k: string) => tl.querySelector(`[data-mark='${k}']`);
+    expect(tl).toHaveTextContent("From news to trade");
+    expect(tl).toHaveTextContent("SoSoValue → paper trade opened: 4 min 18 s");
+    expect(mark("published")).toHaveTextContent(
+      "Published by the sourceSoSoValue doesn’t send the source’s timeNot provided",
+    );
+    expect(mark("released")).toHaveTextContent("SoSoValue released10:16:02");
+    expect(mark("collected")).toHaveTextContent(
+      "DeskLabs collected+4 min 9 s · waited for the 5-min check10:20:11",
+    );
+    expect(mark("claudeDone")).toHaveTextContent("Claude done+8 s10:20:19");
+    expect(mark("decided")).toHaveTextContent("Decided: Long ETH+1 s10:20:20");
+    expect(mark("opened")).toHaveTextContent("Paper trade opened+40 ms10:20:20");
     // #376: thẻ Decide có "Market at decision"; snapshot này ghi trước #376 nên cả hai chip là Not available.
     const market = within(list).getByRole("region", { name: "Market at decision" });
     const decide = market.closest("li");
@@ -567,6 +611,13 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     ).toBeInTheDocument();
     const list = within(f).getByRole("list", { name: "Steps this article went through" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(5);
+    // #375: Filter loại → quyết định không vào lệnh; không có lệnh để đo.
+    const tlSol = within(list).getByTestId("sr-latency-timeline");
+    expect(tlSol.querySelector("[data-mark='decided']")).toHaveTextContent("Decided: no trade+2 s");
+    expect(tlSol.querySelector("[data-mark='opened']")).toHaveTextContent(
+      "Paper trade openedNot available",
+    );
+    expect(tlSol).toHaveTextContent("SoSoValue → decided:");
     expect(within(list).getByText("Dropped")).toHaveClass("bg-bg");
     expect(within(list).getByTestId("sr-ctx-card-h1")).toHaveTextContent(
       "Checked 12 tracked wallets: none traded SOL in the 60 min before.",
@@ -598,6 +649,11 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     });
     const list = within(f).getByRole("list", { name: "Steps this article went through" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    // #375: bài không qua Claude, chưa quyết định: các mốc sau ghi "Not measured yet", không bao giờ 0.
+    const tlOld = within(list).getByTestId("sr-latency-timeline");
+    for (const k of ["claudeDone", "decided", "opened"])
+      expect(tlOld.querySelector(`[data-mark='${k}']`)).toHaveTextContent("Not measured yet");
+    expect(tlOld).toHaveTextContent("SoSoValue → decided: Not measured yet");
     expect(within(list).getByText("Dropped: Not on SoDEX")).toHaveAttribute(
       "title",
       "NO_SODEX_MARKET",
