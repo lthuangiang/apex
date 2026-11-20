@@ -319,7 +319,7 @@ Migration `0044_signal_research` (đã sửa tại chỗ trong PR #278 trước 
 
 ### 2.16 Checklist đưa Signal research lên prod (bản sau v2.12.0)
 
-Gom mọi việc cho lần release đầu tiên có Signal research (từ v2.12.0 tới #361). Mục 2.15 là chi tiết của lane tin tức; mục này là danh sách để làm theo thứ tự. **Không bao giờ dán giá trị key vào đây, vào log, ticket hay PR**: người dùng tự điền trong `/opt/drift/.env`.
+Gom mọi việc cho lần release đầu tiên có Signal research (từ v2.12.0 tới #365). Mục 2.15 là chi tiết của lane tin tức; mục này là danh sách để làm theo thứ tự. **Không bao giờ dán giá trị key vào đây, vào log, ticket hay PR**: người dùng tự điền trong `/opt/drift/.env`.
 
 **1. Biến môi trường** (`/opt/drift/.env`, rồi khai báo trong `/opt/drift/docker-compose.yml` như khối `scheduler` của mẫu `deploy/server/docker-compose.yml`; compose trên VPS giữ tay nên biến chưa khai báo sẽ không tới container):
 
@@ -335,9 +335,9 @@ Gom mọi việc cho lần release đầu tiên có Signal research (từ v2.12.
 | `SIGNAL_SOSO_MAX_PAGES` | scheduler | Số trang tin tối đa mỗi chu kỳ (mặc định `2`) |
 | `SIGNAL_NEWS_START_LOOKBACK_MIN` | scheduler | Lần chạy đầu chỉ nhận tin trong ngần này phút (mặc định `15`) |
 | `SIGNAL_NEWS_MAX_CATCHUP_MIN` | scheduler | Sau thời gian ngừng, không bắt kịp quá ngần này phút (mặc định `30`) |
-| `COPY_LEADERBOARD_ENABLED`, `COPY_LEADERBOARD_HOUR_UTC` | scheduler | Không mới. **COPY_LEADERBOARD_ENABLED=true để research wallets có dữ liệu.** H1 · Whales agree chỉ có số khi leaderboard Hyperliquid được tính (DEC-163); tắt thì H1 của mọi tín hiệu là "Not available" (0 ví theo dõi) |
+| `COPY_LEADERBOARD_ENABLED`, `COPY_LEADERBOARD_HOUR_UTC` | scheduler | Không mới. **COPY_LEADERBOARD_ENABLED=true để research wallets có dữ liệu.** H1 · Whales agree chỉ có số khi leaderboard Hyperliquid được tính (DEC-163); tắt thì không có bộ research wallets mới và H1 của mọi tín hiệu là "Not available" (0 ví được kiểm) |
 | `MCP_PUBLIC_URL`, `MCP_INTROSPECT_SECRET` | api | Không mới (DEC-167, mục 2.9), nhưng mẫu compose trước đây thiếu ở `api`. Gốc URL của `apps/mcp` và secret introspect nội bộ (người dùng tự điền); secret trống = MCP tắt |
-| `SIGNAL_RESEARCH_WALLETS_K` | scheduler | **Chờ #365 merge** (#353). Số ví nghiên cứu K mà marketdata poll cho H1 (mặc định `30`, trần `40`, `0` = tắt). Trên branch của #365 chỉ `scheduler` đọc biến này (scheduler chụp bộ ví vào DB; marketdata poll theo bộ đã lưu). Compose chỉ cần biến ở `scheduler` |
+| `SIGNAL_RESEARCH_WALLETS_K` | scheduler | Số ví nghiên cứu K (top-K tab Top của leaderboard) cho H1 context-v2 (#353 / #365): mặc định `30`, tối đa `40`, `0` = tắt; giá trị sai thì dùng `30`. Chỉ `scheduler` đọc biến này (scheduler chụp bộ ví vào DB theo phiên bản; marketdata poll theo bộ đã lưu), nên compose chỉ cần biến ở `scheduler` |
 
 Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod env của `scheduler`, `api`, `marketdata`, `engine`). `DESK_AI_API_KEY`, `MCP_PUBLIC_URL`, `MCP_INTROSPECT_SECRET` của `api` là biến cũ; kiểm chúng đã có trong khối `api` của compose trên VPS.
 
@@ -353,7 +353,7 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 | `0049_api_idempotency_outcome` | Cột `idempotency_keys.outcome`, `error_code` (nullable). Không thuộc Signal research (#316) |
 | `0050_sr_label_source` | Bảng `signal_label_tokens`, cột nguồn nhãn (nhãn cũ nhận `trace` qua DEFAULT) |
 | `0051_sr_signal_contexts` | Bảng `signal_contexts` (trigger chặn UPDATE), cột `leader_wallets.last_polled_at` |
-| `0052_sr_research_wallets` | **Chờ #365 merge.** Bảng `research_wallet_sets`, `research_wallet_set_members` |
+| `0052_sr_research_wallets` | Bảng `research_wallet_sets`, `research_wallet_set_members`; cột `signal_contexts.h1_wallet_set_version`, `h1_wallet_set_size` (nullable) |
 
 **3. Service cần pull lại:** cả 11 app. `infra/deploy/changed-apps.sh v2.12.0 <tag mới>` trả cả 11 vì `packages/**` đổi (shared, db). `build-push.sh --deploy-only <tag>` đã pull và `up -d` hết; không cần chọn tay.
 
