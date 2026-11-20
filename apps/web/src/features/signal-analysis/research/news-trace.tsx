@@ -124,6 +124,8 @@ interface Totals {
    * khoảng ("records only").
    */
   context: { h1: string; h2: string; h3: string } | null;
+  /** Câu ngắn của số trong tầng khi tầng hẹp (null = dùng câu thường). */
+  countsShort: (string | null)[];
 }
 
 function totals(f: ResearchFunnel | null, t: Tr): Totals {
@@ -133,6 +135,7 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
       notes: STAGES.map(() => null),
       reasons: [],
       context: null,
+      countsShort: STAGES.map(() => null),
     };
   const dropped = f.articleStops.filter((s) => s.outcome === "dropped" && s.reason !== null);
   const byReason = new Map<ResearchDropReason, { n: number; stage: number }>();
@@ -181,6 +184,13 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
       t("trace.counts.filter", { n: count(passed(3)) }),
       t("trace.counts.decide", { long: count(f.long), short: count(f.short) }),
     ],
+    countsShort: [
+      t("trace.countsShort.collect", { n: count(steps[0]?.in ?? 0) }),
+      t("trace.countsShort.normalize", { n: count(passed(1)) }),
+      null,
+      null,
+      t("trace.countsShort.decide", { long: count(f.long), short: count(f.short) }),
+    ],
     notes: [
       t("trace.notes.collect"),
       noteAt(1),
@@ -219,7 +229,7 @@ function totalBands(
       const c = tot.context;
       if (c === null)
         return { key, label, note: t("context.recordsOnly"), state: "total" as const };
-      // #345: không ngắt dòng giữa nhãn và số (mỗi cặp nowrap); tầng hẹp (dưới 480 px) dùng câu ngắn.
+      // #345: không ngắt dòng giữa nhãn và số (mỗi cặp nowrap); tầng hẹp dùng câu ngắn (FunnelBands, SHORT_AT).
       const pair = (chunk: ReactNode) => (
         <span data-pair="" className="whitespace-nowrap">
           {chunk}
@@ -229,16 +239,8 @@ function totalBands(
         key,
         label,
         note: null,
-        noteNode: (
-          <>
-            <span className="hidden @[480px]:inline">
-              {t.rich("context.funnelCounts", { ...c, p: pair })}
-            </span>
-            <span className="@[480px]:hidden">
-              {t.rich("context.funnelCountsShort", { ...c, p: pair })}
-            </span>
-          </>
-        ),
+        noteNode: t.rich("context.funnelCounts", { ...c, p: pair }),
+        noteShort: t.rich("context.funnelCountsShort", { ...c, p: pair }),
         title: t.markup("context.funnelCounts", { ...c, p: (x) => x }),
         state: "total" as const,
       };
@@ -249,6 +251,7 @@ function totalBands(
       key,
       label,
       note: tot.counts[i] ?? t("na"),
+      noteShort: tot.countsShort[i] ?? undefined,
       state: "total" as const,
       title: tot.notes[i] ?? undefined,
       onClick: () => {

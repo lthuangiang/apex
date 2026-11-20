@@ -2885,7 +2885,8 @@
     "signalAnalysis.research.bots.olderRules",
     "signalAnalysis.research.trace.rulesSince",
     "signalAnalysis.research.trace.rulesSinceDay",
-    "signalAnalysis.research.context.funnelCountsShort"
+    "signalAnalysis.research.context.funnelCountsShort",
+    "signalAnalysis.research.trace.countsShort"
   ],
   "beta": {
     "label": "Beta",
@@ -7961,6 +7962,11 @@
           "score": "{n, plural, one {# signal} other {# signals}}",
           "filter": "{n} left",
           "decide": "Long {long} · Short {short}"
+        },
+        "countsShort": {
+          "collect": "{n}",
+          "normalize": "{n} on SoDEX",
+          "decide": "L {long} · S {short}"
         },
         "notes": {
           "collect": "every SoSoValue article",
