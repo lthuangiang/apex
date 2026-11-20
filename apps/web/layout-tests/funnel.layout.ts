@@ -145,13 +145,14 @@ for (const title of ["SEC approves in-kind", "Solana Foundation", "Bithumb will 
   });
 
 // #343 (review PM): câu ngắn của Decide ("L 1 · S 0") luôn nằm trên một dòng khi tầng hẹp. Ép tầng Decide hẹp hơn ngưỡng
-// câu ngắn (container query 260 px) để chắc chắn câu ngắn hiện ở mọi độ rộng của project.
+// câu ngắn (container query 260 px) để chắc chắn câu ngắn hiện ở mọi độ rộng của project. 140 px là độ rộng nhỏ nhất mà
+// tầng vẫn vừa khi có nowrap; không có nowrap thì ở 140 px câu này xuống 2 dòng (đã kiểm ngược), nên test bắt được lỗi.
 test("totals: the short Decide counts stay on one line when the band is narrow", async ({
   page,
   baseURL,
 }) => {
   await open(page, baseURL);
-  for (const px of [180, 220, 250]) {
+  for (const px of [140, 180, 220, 250]) {
     const r = await page.getByTestId("sr-funnel-bands").evaluate(async (root, w) => {
       const band = root.querySelector<HTMLElement>("[data-band='decide']");
       if (band === null) return null;
