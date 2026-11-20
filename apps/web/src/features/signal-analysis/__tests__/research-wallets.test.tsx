@@ -14,7 +14,7 @@ import { ResearchWalletsBlock } from "../research/wallet-links";
 
 import { CTX_AGAINST_LATE, CTX_ETH, CTX_V2 } from "./context-fixtures";
 
-// #353: danh sách research wallets (khu Bots & labels) và link ví trên thẻ H1 (DEC-TBD-sr-research-wallet-list). Link tới
+// #353: danh sách research wallets (khu Bots & labels) và link ví trên thẻ H1 (DEC-347). Link tới
 // `/traders/[address]` chỉ khi người xem bật AI Desk (`useFeatures().data.aiDesk`) và ví có trang trader; không có AI Desk
 // thì địa chỉ chữ thường + "Turn on AI Desk to open trader pages" (không bao giờ dẫn tới trang 403).
 

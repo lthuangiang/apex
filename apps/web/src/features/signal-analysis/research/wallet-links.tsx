@@ -12,7 +12,7 @@ import { monthDay } from "../format";
 import { useResearchWallets } from "./api";
 import { Na, Pill, tdR, thR } from "./ui";
 
-// Ví nghiên cứu (#353, DEC-TBD-sr-research-wallet-list; thiết kế scratchpad rwlist-mockup đã duyệt): danh sách trong khu
+// Ví nghiên cứu (#353, DEC-347; thiết kế scratchpad rwlist-mockup đã duyệt): danh sách trong khu
 // "Bots & labels" và link ví cùng / ngược chiều trên thẻ H1 của bước 4. Link tới trang có sẵn `/traders/[address]` chỉ khi
 // người xem bật AI Desk (`useFeatures().data.aiDesk`, cùng nguồn với workspace shell) VÀ ví có trang trader (`hasProfile`).
 // Không có AI Desk: địa chỉ chữ thường kèm "Turn on AI Desk to open trader pages", không bao giờ dẫn tới trang 403.
