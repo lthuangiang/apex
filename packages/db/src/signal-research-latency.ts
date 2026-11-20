@@ -12,7 +12,7 @@ import type { DbTx } from "./read-only";
 import { rangeSince } from "./signal-research-articles";
 import { resolveSignalVersion, versionEventSql } from "./signal-research-versions";
 
-// Độ trễ theo chặng của lane tin tức (#375, DEC-TBD-catalyst-p0 mục 4). Chỉ đọc; nơi gọi bọc transaction chỉ đọc.
+// Độ trễ theo chặng của lane tin tức (#375, DEC-348 mục 4). Chỉ đọc; nơi gọi bọc transaction chỉ đọc.
 //
 // Mốc và nguồn giờ:
 // - published = `release_time` của SoSoValue (đồng hồ nguồn); collected = giờ bắt đầu chu kỳ của scheduler.

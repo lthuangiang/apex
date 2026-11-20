@@ -926,7 +926,7 @@ export const researchSummaryQuerySchema = z.object({
 });
 
 /** #305: query của trace một bài. */
-// ── Độ trễ theo chặng (#375, DEC-TBD-catalyst-p0 mục 4) ──────────────────────────────────────────────────────────
+// ── Độ trễ theo chặng (#375, DEC-348 mục 4) ──────────────────────────────────────────────────────────
 
 /**
  * Các chặng từ tin gốc tới lệnh, theo thứ tự. `sourceToSoso` (nguồn gốc → SoSoValue) không đo được: SoSoValue chỉ trả
