@@ -514,7 +514,12 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     expect(researchVersionCreateBodySchema.parse(posts()[0]?.body)).toEqual(want);
     expect(posts()[0]?.key).toMatch(/^[0-9a-f-]{36}$/);
     // Lưu xong: sheet đóng, câu báo, tổng kết chuyển sang version mới.
-    expect(await screen.findByText("Saved v7 · High only.")).toBeInTheDocument();
+    // #377: lưu qua "Save and start anyway" thì câu báo thêm "Saved anyway…" (mockup catalyst-experiments-1440).
+    expect(
+      await screen.findByText(
+        "Saved v7 · High only. Saved anyway: the experiment shows “Not a clean test” in Bots & labels › Experiments.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => {
       expect(state.calls.some((c) => c.path.includes(`versionId=${NEW_ID}`))).toBe(true);
