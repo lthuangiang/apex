@@ -2890,8 +2890,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "signalAnalysis.research.market.drawer.candles"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
