@@ -79,7 +79,7 @@ Người dùng thấy khu Paper bots và Classifier quality quá to mà khó hi�
 | `compact-mobile.html`, `compact-390.png`, `compact-390-expanded.png` | Toàn trang 390, gập và mở |
 | `compact-copy-changes.md` | Bảng câu cũ → câu mới đã duyệt, câu mới hoàn toàn |
 
-**Quy tắc PM chốt khi code (DEC-TBD-sr-compact-page):**
+**Quy tắc PM chốt khi code (DEC-346):**
 - Thứ tự trang: dải tóm tắt → From headline to trade → Is it working? → Paper trades → Bots & labels (gập sẵn bằng `<details>`).
 - Dải tóm tắt thay Paper bots, Classifier quality và dòng Progress: banner "Research only · fake money" có chấm nguồn, bộ chọn Version, mỗi version đang chạy / tạm dừng một dòng (tối đa 3; version đang chọn luôn có mặt), rồi hàng nhãn bằng lời thường với [Label signals] [Manage versions]. Thiếu số thì "Not available", không bao giờ 0.
 - Claude reader dưới 80%: "Not counting yet: Claude reader is right {pct}% of the time on {n} labels; it needs 80% on 50. Label more signals." trên nền amber nhạt, có nút Label signals. Chưa đủ nhãn / đã qua: nền xanh nhạt.
