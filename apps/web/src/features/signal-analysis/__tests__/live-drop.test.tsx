@@ -185,6 +185,18 @@ async function ready() {
   await tick(0);
 }
 
+/** Signal giả (đã qua Score) không có trace: dùng để lấp hàng đợi. */
+const sig = (id: string): ResearchArticle => ({ ...ETH, id });
+const batchLine = () => within(funnel()).queryByTestId("sr-live-batch");
+
+/** Tiến từng bước cho tới khi phễu rảnh (về chế độ tổng). */
+async function untilIdle(max = 60) {
+  for (let i = 0; i < max; i++) {
+    if (verdict().textContent.includes("Pick an article on the left")) return;
+    await tick(LIVE_STEP_MS);
+  }
+}
+
 const page = (since: string, items: ResearchArticle[] = []): ResearchNewArticles => ({
   items,
   since,
@@ -239,7 +251,11 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
   });
 
   it("back on the tab after missing 5 articles: the 3 newest drop, the rest show as +2 more", async () => {
-    state.next = [page("c1"), page("c2", [ETH, HYPE, SOL, KNTQ, MERGED])];
+    // 5 signal lỡ (cũ trước mới) xen 2 bài bị loại trước Score.
+    state.next = [
+      page("c1"),
+      page("c2", [sig("art-s1"), HYPE, sig("art-s2"), KNTQ, SOL, MERGED, ETH]),
+    ];
     await ready();
     setVisible("hidden");
     await tick(LIVE_POLL_MS * 2);
@@ -254,9 +270,10 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     expect(verdict()).toHaveTextContent(
       "New article · step 1 · Collect… · 2 waiting · +2 more counted",
     );
-    // Bài rơi trước là bài cũ nhất trong 3 bài mới nhất (SOL), không phải bài cũ nhất của đợt.
+    // Bài rơi trước là signal cũ nhất trong 3 signal mới nhất (SOL), không phải bài cũ nhất của đợt.
     expect(state.paths.some((x) => x.includes(`/articles/${SOL.id}/trace`))).toBe(true);
-    expect(state.paths.some((x) => x.includes(`/articles/${ETH.id}/trace`))).toBe(false);
+    expect(state.paths.some((x) => x.includes("/articles/art-s1/trace"))).toBe(false);
+    expect(batchLine()).toHaveTextContent("7 new articles · 5 signals · 2 dropped");
   });
 
   it("the first poll when the page opens only sets the cursor: nothing drops", async () => {
@@ -329,25 +346,76 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     expect(summaryCalls()).toBeGreaterThan(before);
     const card = within(funnel()).getByRole("button", { name: /SEC approves in-kind creations/ });
     expect(within(card).getByText("NEW")).toBeInTheDocument();
+    expect(batchLine()).toHaveTextContent("1 new article · 1 signal · 0 dropped");
   });
 
-  it("drops each article only once (same id again is ignored)", async () => {
-    state.next = [page("c1"), page("c2", [KNTQ]), page("c2", [KNTQ])];
+  it("articles dropped before Score do not drop: only the NEW badge and the counts", async () => {
+    state.next = [page("c1"), page("c2", [HYPE, KNTQ])];
+    await ready();
+    const before = summaryCalls();
+    await poll();
+    expect(verdict()).toHaveTextContent("Pick an article on the left");
+    expect(state.paths.some((x) => x.includes("/trace"))).toBe(false);
+    expect(token()).toBeNull();
+    expect(summaryCalls()).toBeGreaterThan(before);
+    expect(batchLine()).toHaveTextContent("2 new articles · 0 signals · 2 dropped");
+    for (const title of [/Hyperliquid: six whales/, /Bithumb will list/]) {
+      const card = within(funnel()).getByRole("button", { name: title });
+      expect(within(card).getByText("NEW")).toBeInTheDocument();
+    }
+  });
+
+  it("a mixed batch: only the signal drops; the summary counts all three", async () => {
+    state.next = [page("c1"), page("c2", [HYPE, SOL, KNTQ])];
     await ready();
     await poll();
     expect(verdict()).toHaveTextContent("New article · step 1 · Collect…");
-    await ticks(3, LIVE_STEP_MS);
-    await tick(LIVE_HOLD_MS);
+    expect(verdict()).not.toHaveTextContent("waiting");
+    expect(batchLine()).toHaveTextContent("3 new articles · 1 signal · 2 dropped");
+    await untilIdle();
+    expect(state.paths.filter((x) => x.includes("/trace"))).toEqual([
+      expect.stringContaining(`/articles/${SOL.id}/trace`),
+    ]);
+  });
+
+  it("the queue plays one article at a time, in order", async () => {
+    state.next = [page("c1"), page("c2", [ETH, SOL])];
+    await ready();
+    await poll();
+    expect(verdict()).toHaveTextContent("New article · step 1 · Collect… · 1 waiting");
+    const traced = () =>
+      state.paths
+        .filter((x) => x.includes("/trace"))
+        .map((x) => /articles\/([^/]+)\/trace/.exec(x)?.[1]);
+    // SOL chỉ được tải khi ETH chạy xong.
+    expect(traced()).toEqual([ETH.id]);
+    await ticks(8, LIVE_STEP_MS);
+    expect(traced()).toEqual([ETH.id]);
+    for (let i = 0; i < 40 && traced().length < 2; i++) await tick(LIVE_STEP_MS);
+    expect(traced()).toEqual([ETH.id, SOL.id]);
+    expect(verdict()).toHaveTextContent(/New article · step [12] · /);
+    expect(verdict()).not.toHaveTextContent("waiting");
+  });
+
+  it("drops each article only once (same id again is ignored)", async () => {
+    state.next = [page("c1"), page("c2", [SOL]), page("c2", [SOL])];
+    await ready();
+    await poll();
+    expect(verdict()).toHaveTextContent("New article · step 1 · Collect…");
+    await untilIdle();
     expect(verdict()).toHaveTextContent("Pick an article on the left");
-    const traces = () => state.paths.filter((x) => x.includes(`/articles/${KNTQ.id}/trace`));
+    const traces = () => state.paths.filter((x) => x.includes(`/articles/${SOL.id}/trace`));
     const n = traces().length;
     await poll();
     expect(verdict()).toHaveTextContent("Pick an article on the left");
     expect(traces()).toHaveLength(n);
   });
 
-  it("queues at most 3 and counts the rest as +N more", async () => {
-    state.next = [page("c1"), page("c2", [ETH, HYPE, SOL, KNTQ, MERGED])];
+  it("queues at most 3 signals and counts the rest as +N more", async () => {
+    state.next = [
+      page("c1"),
+      page("c2", [ETH, HYPE, SOL, KNTQ, MERGED, sig("art-s1"), sig("art-s2")]),
+    ];
     await ready();
     await poll();
     expect(verdict()).toHaveTextContent(
@@ -356,7 +424,7 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
   });
 
   it("never interrupts a trace: new articles wait in “N new articles · play”", async () => {
-    state.next = [page("c1"), page("c2", [HYPE])];
+    state.next = [page("c1"), page("c2", [SOL])];
     await ready();
     await poll();
     expect(verdict()).toHaveTextContent("New article · step 1 · Collect…");
