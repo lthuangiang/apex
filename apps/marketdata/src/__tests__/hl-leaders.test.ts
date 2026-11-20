@@ -1,4 +1,4 @@
-import type { HlFill } from "@drift/hyperliquid";
+import { HyperliquidRateLimitedError, type HlFill, type HlPriority } from "@drift/hyperliquid";
 import { coinIndex, type LeaderEvent } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
@@ -36,6 +36,7 @@ function harness(over: Partial<HlLeaderTrackerDeps> = {}) {
   const deps: HlLeaderTrackerDeps = {
     copied: () => Promise.resolve([A]),
     followed: () => Promise.resolve([]),
+    research: () => Promise.resolve([]),
     stream: { setUsers: (u) => users.push([...u]) },
     hl: {
       // Perp gốc khi không có `dex`; dex HIP-3 `xyz` trả vị thế riêng.
@@ -227,6 +228,102 @@ describe("HlLeaderTracker", () => {
     });
     await bad.t.sync();
     expect(bad.marked).toEqual([]);
+  });
+
+  describe("research wallets (#353)", () => {
+    const C = "0xccc0000000000000000000000000000000000003";
+    const D = "0xddd0000000000000000000000000000000000004";
+    const E = "0xeee0000000000000000000000000000000000005";
+
+    /** Ghi lại thứ tự đọc và priority / yieldOnLimit; `limitAfter` = số lần đọc nhường được trước khi chạm rate limit. */
+    function reads(limitAfter = Infinity) {
+      const calls: [string, HlPriority, boolean][] = [];
+      let yielding = 0;
+      return {
+        calls,
+        hl: {
+          clearinghouseState: () => Promise.resolve({ assetPositions: [] }),
+          userFillsByTime: (
+            user: string,
+            _start: number,
+            priority: HlPriority,
+            call?: { yieldOnLimit?: boolean },
+          ) => {
+            const y = call?.yieldOnLimit === true;
+            if (y && (yielding += 1) > limitAfter)
+              return Promise.reject(new HyperliquidRateLimitedError(1000));
+            calls.push([user, priority, y]);
+            return Promise.resolve([]);
+          },
+        },
+      };
+    }
+    const withCursors = (h: ReturnType<typeof harness>, xs: string[]) => {
+      for (const a of xs) h.cursors.set(a, T - 1000);
+    };
+
+    it("polls followed wallets first (realtime), then research wallets (background, yielding) in rank order", async () => {
+      const r = reads();
+      const h = harness({
+        copied: () => Promise.resolve([]),
+        followed: () => Promise.resolve([B]),
+        research: () => Promise.resolve([D, C]),
+        hl: r.hl,
+      });
+      withCursors(h, [B, C, D]);
+      await h.t.poll();
+      expect(r.calls).toEqual([
+        [B, "realtime", false],
+        [D, "background", true],
+        [C, "background", true],
+      ]);
+      expect(h.marked.map(([a]) => a)).toEqual([B, D, C]);
+    });
+
+    it("never polls a wallet twice: followed or streaming wallets are skipped in the research list", async () => {
+      const r = reads();
+      const h = harness({
+        copied: () => Promise.resolve([A]),
+        followed: () => Promise.resolve([B]),
+        research: () => Promise.resolve([A, B.toUpperCase().replace("0X", "0x"), C]),
+        hl: r.hl,
+      });
+      withCursors(h, [A, B, C]);
+      await h.t.sync();
+      await h.t.poll();
+      expect(r.calls.map(([a]) => a)).toEqual([B, C]);
+    });
+
+    it("shares the poll cap: research wallets only fill what followed wallets leave", async () => {
+      const r = reads();
+      const h = harness({
+        copied: () => Promise.resolve([]),
+        followed: () => Promise.resolve([B]),
+        research: () => Promise.resolve([C, D, E]),
+        hl: r.hl,
+        maxPolled: 3,
+      });
+      withCursors(h, [B, C, D, E]);
+      await h.t.poll();
+      expect(r.calls.map(([a]) => a)).toEqual([B, C, D]);
+    });
+
+    it("yields the rest of the round at the rate limit, without marking the skipped wallets", async () => {
+      const warned: string[] = [];
+      const r = reads(1);
+      const h = harness({
+        copied: () => Promise.resolve([]),
+        followed: () => Promise.resolve([B]),
+        research: () => Promise.resolve([C, D, E]),
+        hl: r.hl,
+        warn: (_o, m) => warned.push(m),
+      });
+      withCursors(h, [B, C, D, E]);
+      await h.t.poll();
+      expect(r.calls.map(([a]) => a)).toEqual([B, C]);
+      expect(h.marked.map(([a]) => a)).toEqual([B, C]);
+      expect(warned).toEqual(["hyperliquid rate limit: research wallets yielded"]);
+    });
   });
 
   it("groups buffered fills into events once their 60 s window has passed", async () => {

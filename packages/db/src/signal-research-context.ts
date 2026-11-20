@@ -23,6 +23,7 @@ import { and, count, eq, gte, inArray } from "drizzle-orm";
 
 import type { Db } from "./client";
 import type { DbTx } from "./read-only";
+import { latestResearchWalletSet } from "./research-wallets";
 import { signalContexts, type signalPaperTrades } from "./schema";
 import type { SignalVersionScope } from "./signal-research-versions";
 
@@ -73,6 +74,8 @@ export function signalContextOf(r: ContextRow): ResearchSignalContext {
     h1: {
       status: h1Of(r.h1Status),
       walletsChecked: r.h1WalletsChecked,
+      walletSetVersion: r.h1WalletSetVersion,
+      walletSetSize: r.h1WalletSetSize,
       assetOnHyperliquid: r.h1AssetOnHyperliquid,
       agreeingWallets: r.h1AgreeingWallets,
       opposingWallets: r.h1OpposingWallets,
@@ -141,7 +144,12 @@ export async function loadContextSummary(
   let missing = 0;
   for (const t of closed) {
     const c = t.articleId === null ? undefined : ctx.get(t.articleId);
-    if (c?.source !== source || t.resultPct === null) {
+    // #353: chỉ snapshot của context version hiện tại; context-v1 (H1 trên ví được follow) không gộp số với v2.
+    if (
+      c?.source !== source ||
+      c.contextVersion !== SIGNAL_CONTEXT_VERSION ||
+      t.resultPct === null
+    ) {
       missing += 1;
       continue;
     }
@@ -172,7 +180,11 @@ export async function loadContextSummary(
 
   const since =
     scope === null || scope.isBaseline ? undefined : gte(signalContexts.decidedAt, scope.createdAt);
-  const base = and(eq(signalContexts.ruleVersion, NEWS_RULES.version), since);
+  const base = and(
+    eq(signalContexts.ruleVersion, NEWS_RULES.version),
+    eq(signalContexts.contextVersion, SIGNAL_CONTEXT_VERSION),
+    since,
+  );
   const cov = await q
     .select({
       source: signalContexts.source,
@@ -191,8 +203,10 @@ export async function loadContextSummary(
     );
   const own = cov.filter((r) => r.source === source);
   const sum = (rows: typeof cov) => rows.reduce((s, r) => s + r.n, 0);
+  const set = await latestResearchWalletSet(q);
   return {
     contextVersion: SIGNAL_CONTEXT_VERSION,
+    researchWalletsTop: set?.size ?? null,
     source,
     minClosedPerGroup: SIGNAL_CONTEXT_RULES.compareMinClosed,
     questions,

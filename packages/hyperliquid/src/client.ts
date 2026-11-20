@@ -47,6 +47,23 @@ export class HyperliquidError extends Error {
   }
 }
 
+/**
+ * Bucket không đủ token NGAY và lời gọi chọn không chờ (`yieldOnLimit`): chưa gửi request nào, chưa trừ token. Ví nghiên cứu
+ * của Signal research (#353) dùng để nhường chỗ cho ví được follow / copy khi chạm rate limit.
+ */
+export class HyperliquidRateLimitedError extends Error {
+  constructor(readonly retryAfterMs: number) {
+    super("Hyperliquid rate limit reached");
+    this.name = "HyperliquidRateLimitedError";
+  }
+}
+
+/** Tuỳ chọn của một lời gọi đọc. */
+export interface HlCallOptions {
+  /** true: bucket không đủ ngay thì ném `HyperliquidRateLimitedError` thay vì chờ. */
+  yieldOnLimit?: boolean;
+}
+
 export interface HyperliquidClientOptions {
   limiter: RateLimitStore;
   /** Khoá bucket theo IP egress, ví dụ `hl:ip:default`. */
@@ -71,8 +88,11 @@ export class HyperliquidClient {
     };
   }
 
-  /** Lấy `cost` token, chờ tới khi đủ (job nền chừa `HL_BACKGROUND_RESERVE`). */
-  async #charge(cost: number, priority: HlPriority): Promise<void> {
+  /**
+   * Lấy `cost` token, chờ tới khi đủ (job nền chừa `HL_BACKGROUND_RESERVE`). `yieldOnLimit`: lần lấy đầu không được thì ném
+   * `HyperliquidRateLimitedError` (chưa trừ gì), không chờ.
+   */
+  async #charge(cost: number, priority: HlPriority, yieldOnLimit = false): Promise<void> {
     const spec: BucketSpec =
       priority === "background" ? { ...HL_BUCKET, reserve: HL_BACKGROUND_RESERVE } : HL_BUCKET;
     let left = cost;
@@ -81,6 +101,7 @@ export class HyperliquidClient {
       const step = Math.min(left, spec.capacity - (spec.reserve ?? 0));
       const r = await this.#o.limiter.take(this.#o.bucketKey, spec, step);
       if (r.allowed) left -= step;
+      else if (yieldOnLimit && left === cost) throw new HyperliquidRateLimitedError(r.retryAfterMs);
       else await this.#o.sleep(r.retryAfterMs);
     }
   }
@@ -91,8 +112,9 @@ export class HyperliquidClient {
     weight: number,
     priority: HlPriority,
     perItem = false,
+    call: HlCallOptions = {},
   ): Promise<T> {
-    await this.#charge(weight, priority);
+    await this.#charge(weight, priority, call.yieldOnLimit === true);
     let res: Response;
     try {
       res = await this.#o.fetch(HL_INFO_URL, {
@@ -123,13 +145,19 @@ export class HyperliquidClient {
   }
 
   /** Một trang fill từ `startTime` (cũ → mới, tối đa 2.000). */
-  userFillsByTime(user: string, startTime: number, priority: HlPriority): Promise<HlFill[]> {
+  userFillsByTime(
+    user: string,
+    startTime: number,
+    priority: HlPriority,
+    call: HlCallOptions = {},
+  ): Promise<HlFill[]> {
     return this.#info(
       { type: "userFillsByTime", user, startTime, aggregateByTime: false },
       hlFillsSchema,
       HL_WEIGHT.standard,
       priority,
       true,
+      call,
     );
   }
 

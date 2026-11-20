@@ -5,6 +5,7 @@ import {
   createSodexCallSink,
   followedLeaders,
   fundingRates,
+  latestResearchWallets,
   latestTypicalHold,
   liveCopyBots,
 } from "@drift/db";
@@ -216,6 +217,7 @@ const hlStream = new HlUserFillsStream({
 const hlLeaders = new HlLeaderTracker({
   copied: () => copiedLeaders(db, "hyperliquid"),
   followed: () => followedLeaders(db, "hyperliquid"),
+  research: () => latestResearchWallets(db),
   stream: hlStream,
   hl,
   index: () => hlIndex,

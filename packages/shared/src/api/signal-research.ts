@@ -206,7 +206,8 @@ export const researchFunnelSchema = z.object({
   /**
    * #358: tầng 4 · Context ở chế độ tổng: số bài (cùng cửa sổ với `articleStops`: bài THU trong khoảng) có snapshot `live`
    * tới bước 4, và số có H1 / H2 / H3 = `yes` ("Whales agree N · Funding vs crowd N · Ran early N"). Không trộn
-   * `backfilled`. null khi trong khoảng không có snapshot live nào (web giữ "records only").
+   * `backfilled`; #353: chỉ snapshot của context version hiện tại. null khi trong khoảng không có snapshot nào như vậy (web
+   * giữ "records only").
    */
   context: z.object({ reached: int, h1Yes: int, h2Yes: int, h3Yes: int }).nullable(),
 });
@@ -336,16 +337,21 @@ export const researchSignalContextSchema = z.object({
   market: z.string(),
   side,
   /**
-   * H1 · Whales agree: ít nhất 1 ví DeskLabs đang theo dõi (được follow, và đã có trong leaderboard trước thời điểm đó) mở /
-   * tăng vị thế cùng chiều trong `windowMinutes` trước quyết định. `na`: tài sản không có trên Hyperliquid, hoặc N = 0.
+   * H1 · Whales agree. `context-v2` (#353): ít nhất 1 ví trong research set (top K của leaderboard, đã có trong leaderboard
+   * trước thời điểm đó) mở / tăng vị thế cùng chiều trong `windowMinutes` trước quyết định. `context-v1` (#349, snapshot cũ):
+   * ví DeskLabs đang theo dõi (được follow). `na`: tài sản không có trên Hyperliquid, hoặc N = 0.
    */
   h1: z.object({
     status: h1Status,
     /**
-     * N = số ví theo dõi có dữ liệu thật sự được kiểm lúc quyết định ("N wallets checked"; không phải số ví của cả
-     * leaderboard); null với dòng không lưu.
+     * N = số ví thật sự được kiểm lúc quyết định (đọc thành công trong 60 phút trước; "N wallets checked"; không phải số ví
+     * của cả leaderboard); null với dòng không lưu.
      */
     walletsChecked: int.nullable(),
+    /** context-v2: version tập ví nghiên cứu đã dùng; null ở v1 hoặc khi chưa có tập. */
+    walletSetVersion: int.nullable(),
+    /** context-v2: số ví của tập ("top {K} of the leaderboard"); null ở v1 hoặc khi chưa có tập. */
+    walletSetSize: int.nullable(),
     /** Tài sản có trên Hyperliquid (false → "Not available" vì không có trên Hyperliquid); null với dòng không lưu. */
     assetOnHyperliquid: z.boolean().nullable(),
     agreeingWallets: int.nullable(),
@@ -419,7 +425,10 @@ export const researchContextQuestionSchema = z.object({
 });
 
 export const researchContextSummarySchema = z.object({
+  /** #353: so sánh và độ phủ chỉ tính snapshot của version này (version hiện tại), không gộp với version cũ. */
   contextVersion: z.string().min(1),
+  /** #353: số ví của tập ví nghiên cứu mới nhất ("top {K} of the leaderboard"); null khi chưa có tập. */
+  researchWalletsTop: int.nullable(),
   /**
    * Nguồn snapshot của khối này (#344): `live` (chụp lúc chạy) và `backfilled` (dựng lại sau) không bao giờ trộn vào một
    * nhóm; tổng kết trả hai khối riêng (`context`, `contextBackfilled`).
@@ -428,7 +437,10 @@ export const researchContextSummarySchema = z.object({
   /** Mỗi nhóm cần ≥ ngần này lệnh đóng mới có kết luận. */
   minClosedPerGroup: int,
   questions: z.array(researchContextQuestionSchema).length(3),
-  /** Lệnh đóng được tính nhưng không có snapshot của nguồn này (mở trước khi có bước Context, hoặc chỉ có nguồn kia). */
+  /**
+   * Lệnh đóng được tính nhưng không có snapshot của nguồn này ở version hiện tại (mở trước khi có bước Context, chỉ có
+   * nguồn kia, hoặc snapshot của context version cũ).
+   */
   closedWithoutSnapshot: int,
   /**
    * Độ phủ trên mọi tín hiệu có snapshot của nguồn này (từ lúc version được lưu; Baseline: mọi lúc). `backfilled` luôn là
