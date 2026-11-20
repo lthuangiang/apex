@@ -43,6 +43,8 @@ export interface EventInput {
   reason?: SignalReason | null;
   detail?: Record<string, unknown> | null;
   at: number;
+  /** #375: giờ đồng hồ thật lúc quyết định (chỉ event Filter / Decide); `at` là giờ bắt đầu chu kỳ. */
+  decidedClockAt?: number | null;
 }
 
 export async function recordEvents(db: Exec, events: readonly EventInput[]): Promise<void> {
@@ -59,6 +61,7 @@ export async function recordEvents(db: Exec, events: readonly EventInput[]): Pro
       detail: e.detail ?? null,
       ruleVersion: NEWS_RULES.version,
       at: new Date(e.at),
+      decidedClockAt: e.decidedClockAt == null ? null : new Date(e.decidedClockAt),
     })),
   );
 }
