@@ -657,6 +657,20 @@ export function NewsTrace({
             >
               {verdict}
             </p>
+            {/* #345: tóm tắt đợt bài mới gần nhất (chỉ signal rơi; bài bị loại trước Score chỉ vào số đếm). */}
+            {tracing || feed.batch === null ? null : (
+              <p
+                aria-live="polite"
+                data-testid="sr-live-batch"
+                className="m-0 text-center text-xs font-bold text-ink-2"
+              >
+                {t("live.batch", {
+                  n: feed.batch.n,
+                  s: feed.batch.signals,
+                  d: feed.batch.dropped,
+                })}
+              </p>
+            )}
             {tracing ? null : (
               <p className="m-0 text-center text-xs text-muted">
                 {t("trace.unitNote", { range: t(`trace.range.${range}`) })}

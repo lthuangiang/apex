@@ -317,9 +317,9 @@ Migration `0044_signal_research` (đã sửa tại chỗ trong PR #278 trước 
 
 **Tắt khẩn cấp:** `SIGNAL_RESEARCH_ENABLED=false` trong `/opt/drift/.env` rồi `docker compose up -d scheduler`. Lệnh giấy đang mở giữ nguyên trong DB; bật lại thì watcher kiểm TP / SL tiếp, còn tin trong lúc tắt không được bắt kịp quá 30 phút. Ngân sách Claude hết trong ngày thì lane tự ngừng phân loại (`CLAUDE_BUDGET_REACHED`) tới 00:00 UTC.
 
-### 2.16 Checklist đưa Signal research lên prod (bản sau v2.12.0)
+### 2.16 Checklist đưa Signal research lên prod (v2.13.0)
 
-Gom mọi việc cho lần release đầu tiên có Signal research (từ v2.12.0 tới #365). Mục 2.15 là chi tiết của lane tin tức; mục này là danh sách để làm theo thứ tự. **Không bao giờ dán giá trị key vào đây, vào log, ticket hay PR**: người dùng tự điền trong `/opt/drift/.env`.
+Gom mọi việc cho lần release đầu tiên có Signal research: **v2.13.0** (từ v2.12.0 tới #369, migration `0044`–`0052`; release notes `docs/releases/v2.13.0.md`). Mục 2.15 là chi tiết của lane tin tức; mục này là danh sách để làm theo thứ tự. **Không bao giờ dán giá trị key vào đây, vào log, ticket hay PR**: người dùng tự điền trong `/opt/drift/.env`.
 
 **1. Biến môi trường** (`/opt/drift/.env`, rồi khai báo trong `/opt/drift/docker-compose.yml` như khối `scheduler` của mẫu `deploy/server/docker-compose.yml`; compose trên VPS giữ tay nên biến chưa khai báo sẽ không tới container):
 
@@ -354,6 +354,8 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 | `0050_sr_label_source` | Bảng `signal_label_tokens`, cột nguồn nhãn (nhãn cũ nhận `trace` qua DEFAULT) |
 | `0051_sr_signal_contexts` | Bảng `signal_contexts` (trigger chặn UPDATE), cột `leader_wallets.last_polled_at` |
 | `0052_sr_research_wallets` | Bảng `research_wallet_sets`, `research_wallet_set_members`; cột `signal_contexts.h1_wallet_set_version`, `h1_wallet_set_size` (nullable) |
+
+> **Bản sau v2.13.0** sẽ có thêm migration `0053` (danh sách research wallets, chưa merge, xem `docs/releases/next.md`). Checklist này chỉ đúng tới `0052`; khi bản sau ra, chạy `migrate` như thường và đọc ghi chú của `0053` trong release notes của bản đó.
 
 **3. Service cần pull lại:** cả 11 app. `infra/deploy/changed-apps.sh v2.12.0 <tag mới>` trả cả 11 vì `packages/**` đổi (shared, db). `build-push.sh --deploy-only <tag>` đã pull và `up -d` hết; không cần chọn tay.
 

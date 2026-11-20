@@ -1,65 +1,20 @@
-# vTBD (sau v2.12.0)
+# vTBD (sau v2.13.0)
 
-PM đổi tên file theo tag khi người dùng gõ "release" (có `feat` nên dự kiến tăng minor, xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.12.0` (2026-11-18) tới `main` 1dd3938 (#365). Bản này đưa **Signal research** lên prod lần đầu: làm theo checklist `docs/DEPLOY.md` mục 2.16.
-
-> **Lần pull này build lại cả 11 image:** `packages/shared` và `packages/db` đổi (`infra/deploy/changed-apps.sh v2.12.0 <tag>` trả cả 11 app).
+PM đổi tên file theo tag khi người dùng gõ "release" (xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.13.0` (2026-11-20, `main` f675acc). Mục nào ghi **chưa merge** là việc đang làm: khi PR merge thì bỏ chữ đó và thêm số PR; PR không vào bản này thì xoá dòng.
 
 ## Cho người dùng (English, dùng được cho GitHub Release)
 
-**Bots**
-- Volume Farm keeps your position closer to flat: it balances toward the side with lower net exposure and never reverses a balancing entry (#286).
-- A Volume Farm bot no longer resumes if its position couldn’t be read and its records aren’t repaired (#253).
-- Applying a new version to a running bot keeps its open position (#254).
-
-**Safety**
-- DeskLabs blocks a second copy of the same money action even when it arrives with a different request key, and re-checks the state before any retry (#315, #317, #318).
-- Builder fee approval: only one approval request waits for your signature at a time (#328).
+Chưa có thay đổi cho người dùng (các việc dưới đây chỉ thuộc Signal research, trang của team).
 
 Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
 **Signal research (chỉ team, paper trading, không bao giờ gửi lệnh tới SoDEX)**
-- Lane tin tức trong `scheduler`: thu tin SoSoValue, phân loại bằng Claude (Haiku 4.5), engine lệnh giấy, theo dõi TP / SL (#271 / #278, DEC-322). Mặc định **tắt** (`SIGNAL_RESEARCH_ENABLED=false`).
-- Bộ quy tắc news-v3 + prompt classifier v2 (#298 / #301), rồi classifier v3: tài sản bị đánh cắp không phải token bị ảnh hưởng; dự báo của analyst không phải guidance (#322).
-- Lưu token và chi phí Claude theo từng bài (#295, DEC-326).
-- Map tag công ty sang market cổ phiếu SoDEX, có version danh sách tài sản (#309 / #310).
-- Báo team một lần khi SoDEX niêm yết market chưa có trong danh sách tài sản (#350).
-- News bot versions: DB và scheduler (#303 / #312, DEC-328), API và đọc theo version (#305 / #324), web (thẻ, cổng, sheet tạo version, chọn tài sản: #338; phần 2: #347).
-- Nhãn phân loại và cổng precision của classifier (#304 / #313); cổng chỉ tính nhãn chọn ngẫu nhiên (#348 / #352, DEC-340).
-- Ngữ cảnh tín hiệu lúc quyết định, giai đoạn 1 chỉ ghi: H1 cá voi, H2 funding, H3 giá đã chạy (#349, DEC-341). Backfill ngữ cảnh cho tín hiệu cũ, một lượt mỗi ngày UTC (#333 / #354, DEC-342).
-- H1 context-v2 dùng research wallets: top-K ví tab Top của lần xếp hạng leaderboard gần nhất, chụp theo phiên bản (`SIGNAL_RESEARCH_WALLETS_K`, mặc định 30); marketdata poll các ví này sau ví được follow, cùng trần 40 ví, nhường khi chạm rate limit Hyperliquid. Snapshot context-v1 (ví được follow) được giữ nguyên: H1 chỉ so trong version hiện tại, H2 / H3 gộp các version cùng hàm tính (#353 / #365, DEC-TBD-sr-research-wallets).
-- Lãi / lỗ chưa chốt theo giá thoát thật (bid / ask), bỏ giá cũ; scheduler ghi bản chụp `sr:quotes` vào Redis (#355, DEC-343).
-- Web, tab Signal research trong Signal Analysis:
-  - tab đầu tiên (#273 / #280) và sửa câu chữ (#281);
-  - News feed và trace từng bài: API #291 / #296, web #292 / #300, sửa số đếm phễu (#297 / #307);
-  - khung trang một Version picker, dòng Progress, ngăn How it works (#342 / #351);
-  - phễu sáng 6 bước có bước 4 · Context và hiệu ứng (#343 / #356); chip vào lệnh đỗ dưới Decide (#357); chip bài bị loại đỗ cạnh tầng nên không còn che chữ, thẻ bước không còn hiện mã nội bộ (#361);
-  - số đếm bước 4 ở chế độ tổng (#359);
-  - Is it working? có thanh tiến độ, Does context help?, công tắc rules cũ (#344, #321 / #358);
-  - bài mới live rơi xuống phễu (#345 / #360); sửa lỗi live drop khi quay lại tab (bỏ các bài đã lỡ thay vì thả dồn), cặp số tầng 4 giữ trên một dòng nên phễu không còn tràn chữ (#362).
-- Backtest: replay tín hiệu cá voi, funding, cấu trúc giá và bộ lọc rủi ro D1 (#275, DEC-321).
+- **Chưa merge.** Live drop chỉ thả tín hiệu: bài mới bị loại sớm không còn rơi xuống phễu từng bài, mà gom thành tóm tắt theo đợt.
+- **Chưa merge.** Danh sách research wallets: xem bộ ví H1 đang dùng (theo phiên bản), link tới ví trong thẻ H1 của trace; kèm migration `0053`.
 
-**Khác**
-- Signal Analysis: chọn bot VB / MM bằng bot picker của Trading Agent (#289 / #294), nhóm theo account, có ngày tạo và id (#262).
-- Backtest: nghiên cứu VB counter-trend (#282 / #283).
-- SoDEX Debugger: ghi mã đóng, lý do và thời gian kết nối lại của WebSocket (#256).
-- Scheduler: dọn snapshot tín hiệu VB và context lệnh MM sau 45 ngày; index do job tự tạo, không cần bước tay (#257, DEPLOY 2.14).
-- Docs / test: #258 (quy trình deploy build-push), #268, #277 (đánh số DEC), #270 (ổn định test), #337 (maxFeeRate=10, DEC-46), mockup #272, #293, #302, #346.
+**Migration (chạy khi deploy)**
+- **Chưa merge.** `0053`: thuộc việc danh sách research wallets. Tên file và nội dung ghi khi PR merge; kiểm tra tương thích ngược trước khi release (`docs/DEPLOY.md` mục 2.16 ghi chú bản sau).
 
-**Migration (chạy khi deploy, tương thích ngược, chỉ thêm bảng / cột)**
-- `0044_signal_research`: bảng `signal_articles`, `signal_events`, `signal_stories`, `signal_paper_trades`, `signal_research_usage`, `signal_source_health`.
-- `0045_sr_article_usage`: cột usage Claude theo bài (nullable).
-- `0046_sr_asset_map_version`: cột `signal_paper_trades.asset_map_version`.
-- `0047_sr_bot_versions`: bảng News bot versions, seed Baseline, gắn dữ liệu news-v3 vào Baseline (UPDATE chỉ trên bảng `signal_*`).
-- `0048_sr_classification_labels`: bảng nhãn phân loại.
-- `0049_api_idempotency_outcome`: cột `idempotency_keys.outcome`, `error_code` (nullable, #316).
-- `0050_sr_label_source`: bảng `signal_label_tokens`, cột nguồn nhãn.
-- `0051_sr_signal_contexts`: bảng `signal_contexts`, cột `leader_wallets.last_polled_at`.
-- `0052_sr_research_wallets`: bảng `research_wallet_sets`, `research_wallet_set_members`; cột `signal_contexts.h1_wallet_set_version`, `h1_wallet_set_size` (nullable).
-
-**Biến môi trường mới** (`.env` trên VPS, chỉ tên; người dùng tự điền key): `SIGNAL_RESEARCH_ENABLED`, `SOSO_API_KEY`, `SIGNAL_CLAUDE_DAILY_INPUT_TOKENS`, `SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE`, `SIGNAL_SOSO_MONTHLY_LIMIT`, `SIGNAL_SOSO_MAX_PAGES`, `SIGNAL_NEWS_START_LOOKBACK_MIN`, `SIGNAL_NEWS_MAX_CATCHUP_MIN`, `SIGNAL_RESEARCH_WALLETS_K` (scheduler). Scheduler dùng thêm `DESK_AI_API_KEY` (biến cũ của Desk AI) và `NATS_URL` (đã có trong `x-env`).
-
-**Compose trên VPS (sửa tay):** thêm khối `environment` cho `scheduler` như mẫu `deploy/server/docker-compose.yml` (DEPLOY 2.15–2.16). Không thêm thì lane không bật được, mọi phần khác chạy như cũ.
-
-**Chi phí Claude:** ước tính khoảng 0,53 USD / ngày theo số liệu local (DEPLOY 2.16 mục 6), có trần ngân sách khoảng 2 USD / ngày.
+**Biến môi trường mới:** chưa có.
