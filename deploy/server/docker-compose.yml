@@ -209,7 +209,7 @@ services:
       SIGNAL_SOSO_MAX_PAGES: ${SIGNAL_SOSO_MAX_PAGES:-2}
       SIGNAL_NEWS_START_LOOKBACK_MIN: ${SIGNAL_NEWS_START_LOOKBACK_MIN:-15}
       SIGNAL_NEWS_MAX_CATCHUP_MIN: ${SIGNAL_NEWS_MAX_CATCHUP_MIN:-30}
-      # Research wallets (#365, chờ merge): số ví K, trần 40, 0 = tắt. Hiện chỉ scheduler đọc biến này.
+      # Research wallets (#353 / #365): số ví K, trần 40, 0 = tắt. Chỉ scheduler đọc biến này.
       SIGNAL_RESEARCH_WALLETS_K: ${SIGNAL_RESEARCH_WALLETS_K:-30}
 
   jobs:
