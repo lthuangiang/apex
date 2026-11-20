@@ -557,7 +557,10 @@ function TradesTable({
                     <>
                       {priceText(x.entry)}
                       {x.what.type === "whales" && x.delaySecs !== null ? (
-                        <Sub>{t("trades.entryAfterFill", { d: delay(x.delaySecs) })}</Sub>
+                        // Ô Entry không xuống dòng (giá); dòng phụ thì xuống dòng trong ô, không tràn sang Take profit.
+                        <Sub className="whitespace-normal text-muted">
+                          {t("trades.entryAfterFill", { d: delay(x.delaySecs) })}
+                        </Sub>
                       ) : null}
                     </>
                   )}
