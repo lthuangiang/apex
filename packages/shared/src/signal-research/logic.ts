@@ -1,6 +1,7 @@
 import { feeRateToPercent, SODEX_BASE_FEE_PCT } from "../fees";
 import { dec, Decimal, type DecimalInput } from "../money";
 
+import { hourlyMovesPct } from "./market-state";
 import {
   AssetKind,
   PaperExitReason,
@@ -345,14 +346,8 @@ export function typicalMovePct(
   closes: readonly { hour: number; close: DecimalInput }[],
   holdHours: number,
 ): Decimal | null {
-  const byHour = new Map<number, Decimal>();
-  for (const c of closes) byHour.set(c.hour, dec(c.close));
-  const moves: Decimal[] = [];
-  for (const [hour, close] of byHour) {
-    const later = byHour.get(hour + holdHours * HOUR_MS);
-    if (later === undefined || close.lte(0)) continue;
-    moves.push(later.sub(close).abs().div(close).mul(HUNDRED));
-  }
+  // Cùng cách ghép cặp giờ với volatility của trạng thái thị trường (#376).
+  const moves = hourlyMovesPct(closes, holdHours);
   if (moves.length < NEWS_RULES.volatilityMinSamples) return null;
   moves.sort((a, b) => a.cmp(b));
   const mid = Math.floor(moves.length / 2);

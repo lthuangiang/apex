@@ -298,6 +298,8 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
   assets: ["BTC", "ETH", "SOL", "NVDA"],
   context: null,
   contextBackfilled: null,
+  marketSplit: null,
+  marketSplitBackfilled: null,
   newsRulesSince: "2026-11-01T00:00:00.000Z",
   olderRules: { trades: 0, versions: [] },
 };
@@ -341,6 +343,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       shadow: null,
       opposite: null,
       rulesVersion: 3,
+      marketState: null,
     },
     {
       id: TRADE_ETH,
@@ -374,6 +377,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       shadow: null,
       opposite: null,
       rulesVersion: 3,
+      marketState: null,
     },
     {
       id: "sr-0003",
@@ -401,6 +405,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       shadow: null,
       opposite: null,
       rulesVersion: 3,
+      marketState: null,
     },
     {
       id: "sr-0004",
@@ -436,6 +441,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       shadow: null,
       opposite: null,
       rulesVersion: 3,
+      marketState: null,
     },
     {
       id: "sr-0005",
@@ -463,6 +469,7 @@ export const RESEARCH_TRADES: ResearchTradesPage = {
       shadow: null,
       opposite: null,
       rulesVersion: 3,
+      marketState: null,
     },
   ],
   nextCursor: "c2",
