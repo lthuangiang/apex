@@ -926,6 +926,45 @@ export const researchSummaryQuerySchema = z.object({
 });
 
 /** #305: query của trace một bài. */
+// ── Độ trễ theo chặng (#375, DEC-TBD-catalyst-p0 mục 4) ──────────────────────────────────────────────────────────
+
+/**
+ * Các chặng từ tin gốc tới lệnh, theo thứ tự. `sourceToSoso` (nguồn gốc → SoSoValue) không đo được: SoSoValue chỉ trả
+ * `release_time`, nên luôn null ("Not provided").
+ */
+export const RESEARCH_LATENCY_STAGES = [
+  "sourceToSoso",
+  "publishedToCollected",
+  "collectedToClaudeDone",
+  "claudeDoneToDecided",
+  "decidedToOpened",
+] as const;
+
+export const researchLatencyQuerySchema = z.object({
+  range: z.enum(RESEARCH_RANGES).default("1d"),
+  tz: z.string().max(64).optional(),
+  /** News bot version của chặng decided / opened; không có = Baseline. */
+  versionId: z.uuid().optional(),
+});
+
+export const researchLatencyStageSchema = z.object({
+  key: z.enum(RESEARCH_LATENCY_STAGES),
+  /** Median (ms, làm tròn); null = chưa đo được bài nào ("Not measured yet") hoặc không có nguồn ("Not provided"). */
+  medianMs: int.nullable(),
+  /** Số bài đo được ở chặng này; null khi chặng không có nguồn (`sourceToSoso`). */
+  n: int.nullable(),
+});
+
+/**
+ * Median từng chặng trong cửa sổ (bài thu trong 1 ngày / 7 ngày theo `collected_at`, version quy tắc hiện tại). Mỗi chặng
+ * đo trên các bài có đủ hai mốc, nên `n` khác nhau giữa các chặng.
+ */
+export const researchLatencySchema = z.object({
+  range: z.enum(RESEARCH_RANGES),
+  computedAt: iso,
+  stages: z.array(researchLatencyStageSchema).length(RESEARCH_LATENCY_STAGES.length),
+});
+
 export const researchTraceQuerySchema = z.object({
   tz: z.string().max(64).optional(),
   versionId: z.uuid().optional(),
@@ -1252,6 +1291,9 @@ export type ResearchClaudeUsage = z.infer<typeof researchClaudeUsageSchema>;
 export type ResearchArticle = z.infer<typeof researchArticleSchema>;
 export type ResearchArticlesPage = z.infer<typeof researchArticlesPageSchema>;
 export type ResearchArticlesQuery = z.infer<typeof researchArticlesQuerySchema>;
+export type ResearchLatencyStageKey = (typeof RESEARCH_LATENCY_STAGES)[number];
+export type ResearchLatencyQuery = z.infer<typeof researchLatencyQuerySchema>;
+export type ResearchLatency = z.infer<typeof researchLatencySchema>;
 export type ResearchNewArticlesQuery = z.infer<typeof researchNewArticlesQuerySchema>;
 export type ResearchNewArticles = z.infer<typeof researchNewArticlesSchema>;
 export type ResearchSummaryQuery = z.infer<typeof researchSummaryQuerySchema>;
