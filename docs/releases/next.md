@@ -1,10 +1,8 @@
 # vTBD (sau v2.12.0)
 
-PM đổi tên file theo tag khi người dùng gõ "release" (có `feat` nên dự kiến tăng minor, xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.12.0` (2026-11-18) tới `main` 4d90d30 (#361). Bản này đưa **Signal research** lên prod lần đầu: làm theo checklist `docs/DEPLOY.md` mục 2.16.
+PM đổi tên file theo tag khi người dùng gõ "release" (có `feat` nên dự kiến tăng minor, xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.12.0` (2026-11-18) tới `main` 1dd3938 (#365). Bản này đưa **Signal research** lên prod lần đầu: làm theo checklist `docs/DEPLOY.md` mục 2.16.
 
 > **Lần pull này build lại cả 11 image:** `packages/shared` và `packages/db` đổi (`infra/deploy/changed-apps.sh v2.12.0 <tag>` trả cả 11 app).
-
-> **Chờ trước khi release:** research wallets (#353, PR #365: biến `SIGNAL_RESEARCH_WALLETS_K`, migration `0052`) chưa merge. Nếu #365 merge trước khi tag thì thêm vào mục Kỹ thuật bên dưới; nếu không thì bỏ hai dòng đó trong checklist DEPLOY 2.16.
 
 ## Cho người dùng (English, dùng được cho GitHub Release)
 
@@ -30,15 +28,16 @@ Not financial advice. Past results are not a forecast.
 - News bot versions: DB và scheduler (#303 / #312, DEC-328), API và đọc theo version (#305 / #324), web (thẻ, cổng, sheet tạo version, chọn tài sản: #338; phần 2: #347).
 - Nhãn phân loại và cổng precision của classifier (#304 / #313); cổng chỉ tính nhãn chọn ngẫu nhiên (#348 / #352, DEC-340).
 - Ngữ cảnh tín hiệu lúc quyết định, giai đoạn 1 chỉ ghi: H1 cá voi, H2 funding, H3 giá đã chạy (#349, DEC-341). Backfill ngữ cảnh cho tín hiệu cũ, một lượt mỗi ngày UTC (#333 / #354, DEC-342).
+- H1 context-v2 dùng research wallets: top-K ví tab Top của lần xếp hạng leaderboard gần nhất, chụp theo phiên bản (`SIGNAL_RESEARCH_WALLETS_K`, mặc định 30); marketdata poll các ví này sau ví được follow, cùng trần 40 ví, nhường khi chạm rate limit Hyperliquid. Snapshot context-v1 (ví được follow) được giữ nguyên: H1 chỉ so trong version hiện tại, H2 / H3 gộp các version cùng hàm tính (#353 / #365, DEC-TBD-sr-research-wallets).
 - Lãi / lỗ chưa chốt theo giá thoát thật (bid / ask), bỏ giá cũ; scheduler ghi bản chụp `sr:quotes` vào Redis (#355, DEC-343).
 - Web, tab Signal research trong Signal Analysis:
   - tab đầu tiên (#273 / #280) và sửa câu chữ (#281);
   - News feed và trace từng bài: API #291 / #296, web #292 / #300, sửa số đếm phễu (#297 / #307);
   - khung trang một Version picker, dòng Progress, ngăn How it works (#342 / #351);
-  - phễu sáng 6 bước có bước 4 · Context và hiệu ứng (#343 / #356); chip vào lệnh đỗ dưới Decide (#357); chip bị loại đỗ cạnh tầng, không lộ mã nội bộ (#361);
+  - phễu sáng 6 bước có bước 4 · Context và hiệu ứng (#343 / #356); chip vào lệnh đỗ dưới Decide (#357); chip bài bị loại đỗ cạnh tầng nên không còn che chữ, thẻ bước không còn hiện mã nội bộ (#361);
   - số đếm bước 4 ở chế độ tổng (#359);
   - Is it working? có thanh tiến độ, Does context help?, công tắc rules cũ (#344, #321 / #358);
-  - bài mới live rơi xuống phễu (#345 / #360).
+  - bài mới live rơi xuống phễu (#345 / #360); sửa lỗi live drop khi quay lại tab (bỏ các bài đã lỡ thay vì thả dồn), cặp số tầng 4 giữ trên một dòng nên phễu không còn tràn chữ (#362).
 - Backtest: replay tín hiệu cá voi, funding, cấu trúc giá và bộ lọc rủi ro D1 (#275, DEC-321).
 
 **Khác**
@@ -57,9 +56,9 @@ Not financial advice. Past results are not a forecast.
 - `0049_api_idempotency_outcome`: cột `idempotency_keys.outcome`, `error_code` (nullable, #316).
 - `0050_sr_label_source`: bảng `signal_label_tokens`, cột nguồn nhãn.
 - `0051_sr_signal_contexts`: bảng `signal_contexts`, cột `leader_wallets.last_polled_at`.
-- *Chờ #365:* `0052_sr_research_wallets`.
+- `0052_sr_research_wallets`: bảng `research_wallet_sets`, `research_wallet_set_members`; cột `signal_contexts.h1_wallet_set_version`, `h1_wallet_set_size` (nullable).
 
-**Biến môi trường mới** (`.env` trên VPS, chỉ tên; người dùng tự điền key): `SIGNAL_RESEARCH_ENABLED`, `SOSO_API_KEY`, `SIGNAL_CLAUDE_DAILY_INPUT_TOKENS`, `SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE`, `SIGNAL_SOSO_MONTHLY_LIMIT`, `SIGNAL_SOSO_MAX_PAGES`, `SIGNAL_NEWS_START_LOOKBACK_MIN`, `SIGNAL_NEWS_MAX_CATCHUP_MIN` (scheduler). Scheduler dùng thêm `DESK_AI_API_KEY` (biến cũ của Desk AI) và `NATS_URL` (đã có trong `x-env`). *Chờ #365:* `SIGNAL_RESEARCH_WALLETS_K`.
+**Biến môi trường mới** (`.env` trên VPS, chỉ tên; người dùng tự điền key): `SIGNAL_RESEARCH_ENABLED`, `SOSO_API_KEY`, `SIGNAL_CLAUDE_DAILY_INPUT_TOKENS`, `SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE`, `SIGNAL_SOSO_MONTHLY_LIMIT`, `SIGNAL_SOSO_MAX_PAGES`, `SIGNAL_NEWS_START_LOOKBACK_MIN`, `SIGNAL_NEWS_MAX_CATCHUP_MIN`, `SIGNAL_RESEARCH_WALLETS_K` (scheduler). Scheduler dùng thêm `DESK_AI_API_KEY` (biến cũ của Desk AI) và `NATS_URL` (đã có trong `x-env`).
 
 **Compose trên VPS (sửa tay):** thêm khối `environment` cho `scheduler` như mẫu `deploy/server/docker-compose.yml` (DEPLOY 2.15–2.16). Không thêm thì lane không bật được, mọi phần khác chạy như cũ.
 
