@@ -235,22 +235,19 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
     );
     const block = await screen.findByRole(
       "region",
-      { name: "Classifier quality" },
+      { name: "Is Claude reading news right?" },
       { timeout: 5_000 },
     );
     const tbl = await within(block).findByRole("table", {
-      name: "Classifier quality by classifier version",
+      name: "Claude reader quality by version",
     });
     const cur = within(tbl).getByRole("row", { name: /v2 \(current\)/ });
     expect(within(cur).getByText("37")).toBeInTheDocument();
     // #348: nhãn từ trace hiện riêng, không cộng vào số nhãn của cổng.
     expect(within(cur).getByText("from traces: 9")).toBeInTheDocument();
     expect(within(tbl).getAllByText(/from traces/)).toHaveLength(1);
-    expect(
-      within(block).getByText("Label a random signal", { selector: "b" }).closest("p"),
-    ).toHaveTextContent(
-      "Only labels from Label a random signal count toward Labels, Right and the floor. Labels saved from a trace show as “from traces” and still count in the mistakes.",
-    );
+    // Trang gọn: giải thích "Which labels count" nằm ở drawer How it works › Labels, không ở khu này.
+    expect(within(block).queryByText(/Only labels from/)).toBeNull();
     expect(within(cur).getByText("84%")).toBeInTheDocument();
     expect(within(cur).getByText("likely 69–92%")).toBeInTheDocument();
     expect(within(cur).getByText("Not yet · 13 more labels")).toBeInTheDocument();
@@ -260,24 +257,18 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
     // Khoảng tin cậy là số API tính, không phải câu cố định "69% to 91%".
     expect(
       within(block)
-        .getByText(/The floor:/)
+        .getByText(/Trades count once a Claude reader has/)
         .closest("p"),
     ).toHaveTextContent(
-      "The floor: 50 labels with 80% or more right. With 37 labels at 84%, the real share could be anywhere from about 69% to 92%, so this is a minimum, not proof.",
+      "Trades count once a Claude reader has 50 random labels and at least 80% are marked right. With 37 labels at 84%, the real share could be anywhere from about 69% to 92%, so this is a minimum, not proof.",
     );
     expect(
-      within(block).getByRole("heading", { name: "Most common mistakes (v2)" }),
+      within(block).getByRole("heading", { name: "Most common mistakes (reader v2)" }),
     ).toBeInTheDocument();
     expect(
       within(block).getByText("The subject is a person, not the company · 3"),
     ).toBeInTheDocument();
-    expect(
-      within(block).getByText(
-        "Picks at random from articles the current classifier called a signal, so the share isn’t skewed by which ones people choose.",
-      ),
-    ).toBeInTheDocument();
-    // "Label more" của thanh tóm tắt trỏ tới khối này.
-    expect(screen.getByRole("link", { name: "Label more" })).toHaveAttribute("href", "#sr-labels");
+    expect(within(block).queryByText(/Picks at random/)).toBeNull();
   });
 
   it("random signal: the trade result stays hidden until the label is saved", async () => {
@@ -288,17 +279,19 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
     );
     const block = await screen.findByRole(
       "region",
-      { name: "Classifier quality" },
+      { name: "Is Claude reading news right?" },
       { timeout: 5_000 },
     );
-    await userEvent.click(within(block).getByRole("button", { name: "Label a random signal" }));
+    await userEvent.click(within(block).getByRole("button", { name: "Label signals" }));
     const card = await within(block).findByRole("article", { name: "Claude said" });
     expect(within(card).getByText(/A former Google software engineer/)).toBeInTheDocument();
     expect(within(card).getByText(/^News type/)).toHaveTextContent(
       "News type Regulator acts against · asset GOOGL · relevance main subject · not promotional",
     );
-    expect(within(card).getByText("news-classifier-v2 · $0.0021")).toBeInTheDocument();
-    expect(within(card).getByText("12 signals of v2 left to label")).toBeInTheDocument();
+    expect(within(card).getByText("Claude reader v2 · $0.0021")).toBeInTheDocument();
+    expect(
+      within(card).getByText("12 signals of Claude reader v2 left to label"),
+    ).toBeInTheDocument();
     expect(within(card).getByText("Result hidden while labelling")).toBeInTheDocument();
     expect(
       within(card).getByText(
