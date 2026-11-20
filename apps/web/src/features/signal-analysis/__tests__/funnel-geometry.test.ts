@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import { bandRects, DROP_CHIP_MAX, tokenRect, TOKEN_GUTTER, type Rect } from "../research/funnel";
 
 // Chip của phễu không bao giờ đè lên tầng nào (#343 review). Cùng công thức với CSS của `Token` / `FunnelBands`.
-// Khung phễu đo bằng Playwright trên trang thật (fixture), trừ lề 2 × 16 px: 1280 px → 585 px, 1440 px → 380 px (khung
-// Context nằm cạnh phễu từ 1400 px). Kiểm thêm một dải rộng để không phụ thuộc số đo.
+// Khung phễu đo bằng Playwright trên trang thật (fixture), trừ lề 2 × 16 px: 1280 px → 333 px, 1440 px → 440 px (khung
+// Context nằm cạnh phễu từ 1280 px: rộng 240 px tới 1399 px, 300 px từ 1400 px). Kiểm thêm một dải rộng để không phụ thuộc số đo.
 
 const overlap = (a: Rect, b: Rect) =>
   a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-const MEASURED = { 1280: 585, 1440: 380 } as const;
+const MEASURED = { 1280: 333, 1440: 440 } as const;
 const WIDTHS = [...Object.values(MEASURED), ...Array.from({ length: 13 }, (_, i) => 300 + i * 50)];
 // Chip dài nhất có thể: bị giới hạn bởi max-width; 2 dòng chữ 11 px.
 const CHIPS = [
@@ -19,10 +19,10 @@ const CHIPS = [
 ];
 
 describe("funnel chip geometry", () => {
-  it.each(WIDTHS)(
-    "a dropped chip parks beside the band that dropped it, never over a band (%i px)",
-    (width) => {
-      const bands = bandRects(width, true);
+  it.each(WIDTHS.flatMap((w) => [[w, false] as const, [w, true] as const]))(
+    "a dropped chip parks beside the band that dropped it, never over a band (%i px, 1280–1399 widths %s)",
+    (width, narrow) => {
+      const bands = bandRects(width, true, narrow);
       for (let pos = 1; pos <= 6; pos++)
         for (const chip of CHIPS) {
           const r = tokenRect(width, { pos, tone: "dropped" }, chip);

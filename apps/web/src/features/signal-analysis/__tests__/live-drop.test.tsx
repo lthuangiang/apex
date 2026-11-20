@@ -255,7 +255,8 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     state.next = [page("c1"), page("c2", [ETH])];
     await ready();
     const before = summaryCalls();
-    expect(panel()).toBeNull();
+    // #343: khung Context luôn hiện; chế độ tổng là hoạt cảnh chờ.
+    expect(panel()).toHaveAttribute("data-state", "idle");
     await poll();
     // Trace của bài mới được tải để khung 4 có đủ snapshot.
     expect(state.paths.some((p) => p.includes(`/articles/${ETH.id}/trace`))).toBe(true);
@@ -287,7 +288,8 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     // Giữ khung cuối rồi về chế độ tổng; số đếm và feed lấy lại từ API.
     await tick(LIVE_HOLD_MS);
     expect(verdict()).toHaveTextContent("Pick an article on the left");
-    expect(panel()).toBeNull();
+    // #343: khung Context luôn hiện; chế độ tổng là hoạt cảnh chờ.
+    expect(panel()).toHaveAttribute("data-state", "idle");
     expect(summaryCalls()).toBeGreaterThan(before);
     const card = within(funnel()).getByRole("button", { name: /SEC approves in-kind creations/ });
     expect(within(card).getByText("NEW")).toBeInTheDocument();
@@ -360,7 +362,8 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     const before = summaryCalls();
     await poll();
     expect(verdict()).toHaveTextContent("Pick an article on the left");
-    expect(panel()).toBeNull();
+    // #343: khung Context luôn hiện; chế độ tổng là hoạt cảnh chờ.
+    expect(panel()).toHaveAttribute("data-state", "idle");
     expect(summaryCalls()).toBeGreaterThan(before);
   });
 

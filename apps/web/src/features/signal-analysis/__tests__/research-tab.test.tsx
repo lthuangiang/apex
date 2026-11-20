@@ -107,7 +107,12 @@ const NULLS: ResearchSummary = {
   funnel:
     RESEARCH_SUMMARY.funnel === null
       ? null
-      : { ...RESEARCH_SUMMARY.funnel, delayMedianSecs: null, claudeCostPerDay: null },
+      : {
+          ...RESEARCH_SUMMARY.funnel,
+          delayMedianSecs: null,
+          claudeCostPerDay: null,
+          claudeCost: null,
+        },
   rows: RESEARCH_SUMMARY.rows.map((r) =>
     r.type === "whales" ? { ...r, randomPct: null, diffPct: null, range: null } : r,
   ),

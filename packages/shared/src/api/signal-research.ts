@@ -168,6 +168,14 @@ export const researchFunnelSchema = z.object({
   pollSecs: int,
   claudeCostPerDay: dec.nullable(),
   articlesRead: int.nullable(),
+  /**
+   * #343: chi phí Claude trong ĐÚNG cửa sổ của phễu (1d = 24 giờ, 7d = 7 ngày, tính theo `collected_at` như
+   * `articlesRead`), cộng từ chi phí đã lưu của từng bài (DEC-326), cùng tập bài với `articlesRead`. `articles` = số bài
+   * trong cửa sổ đã gọi Claude; `unknown` = trong số đó, bài không biết chi phí (bài trước khi lưu usage, lần gọi không
+   * có phản hồi, model không có bảng giá): `usd` chỉ cộng bài biết chi phí. Không bài nào gọi Claude → `usd` = "0" (số
+   * thật). null khi cửa sổ không có bài nào.
+   */
+  claudeCost: z.object({ usd: dec, articles: int, unknown: int }).nullable(),
   soso: z.object({ used: int, limit: int }).nullable(),
   collected: int,
   stories: int,

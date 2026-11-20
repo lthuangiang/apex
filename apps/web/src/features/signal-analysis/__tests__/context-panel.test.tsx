@@ -194,9 +194,7 @@ describe("ContextPanel", () => {
   it("waiting, never reached and recorded-before-step-4 states", () => {
     expect(panel(CTX_ETH, "waiting")).toHaveTextContent("Waiting for the article to reach step 4…");
     cleanup();
-    expect(panel(null, "notReached")).toHaveTextContent(
-      "This article never reaches step 4, so no context is checked.",
-    );
+    expect(panel(null, "notReached")).toHaveTextContent("This article stopped before step 4");
     cleanup();
     expect(panel(null, "missing")).toHaveTextContent(
       "This article came before step 4, so no context was recorded.",

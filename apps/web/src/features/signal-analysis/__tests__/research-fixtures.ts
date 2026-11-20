@@ -108,6 +108,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
     delayMedianSecs: 190,
     pollSecs: 300,
     claudeCostPerDay: "0.42",
+    claudeCost: { usd: "2.94", articles: 900, unknown: 0 },
     articlesRead: 1240,
     soso: { used: 2016, limit: 10000 },
     collected: 1240,

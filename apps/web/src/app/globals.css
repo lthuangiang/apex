@@ -323,3 +323,97 @@
     opacity: 0.4;
   }
 }
+
+/*
+ * Signal research › hoạt cảnh CHỜ của khung 4 · Context (#343, yêu cầu người dùng): lặp nền nhẹ khi chưa có kết quả.
+ * Chỉ transform / opacity; chỉ qua `motion-safe:`; dừng bằng animation-play-state khi tab ẩn / ngoài màn hình.
+ */
+@keyframes sr-idle-swim {
+  0% {
+    transform: translateX(0) scaleX(1);
+  }
+  49% {
+    transform: translateX(90px) scaleX(1);
+  }
+  50% {
+    transform: translateX(90px) scaleX(-1);
+  }
+  99% {
+    transform: translateX(0) scaleX(-1);
+  }
+  100% {
+    transform: translateX(0) scaleX(1);
+  }
+}
+@keyframes sr-idle-swim2 {
+  0% {
+    transform: translateX(0) scaleX(1);
+  }
+  49% {
+    transform: translateX(-80px) scaleX(1);
+  }
+  50% {
+    transform: translateX(-80px) scaleX(-1);
+  }
+  99% {
+    transform: translateX(0) scaleX(-1);
+  }
+  100% {
+    transform: translateX(0) scaleX(1);
+  }
+}
+@keyframes sr-idle-bubble {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  2% {
+    opacity: 0.8;
+  }
+  14% {
+    opacity: 0;
+    transform: translateY(-24px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-24px);
+  }
+}
+@keyframes sr-idle-step {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  75% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@keyframes sr-idle-rock {
+  0% {
+    transform: rotate(-2deg);
+  }
+  100% {
+    transform: rotate(2deg);
+  }
+}
+@keyframes sr-idle-ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}

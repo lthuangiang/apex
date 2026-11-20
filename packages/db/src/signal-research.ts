@@ -1,5 +1,6 @@
 import {
   AppError,
+  articleClaudeUsage,
   claudeCostUsd,
   classifierGate,
   dec,
@@ -16,6 +17,7 @@ import {
   tradesNeeded,
   type DayObs,
   type DaySummary,
+  type ArticleUsageColumns,
   type ClassifierGate,
   type ResearchFact,
   type ResearchLevelRow,
@@ -44,6 +46,7 @@ import {
   eq,
   gte,
   inArray,
+  isNotNull,
   lt,
   min,
   ne,
@@ -255,6 +258,26 @@ function sourceStatus(
   return age <= t.delayedMs ? "delayed" : "down";
 }
 
+/**
+ * Chi phí Claude của các bài trong cửa sổ (#343): cộng `articleClaudeUsage(...).costUsd` từng bài (DEC-326). Bài đã gọi
+ * Claude = có `claude_calls` hoặc đã được phân loại (bài trước khi lưu usage, chi phí không biết). null khi cửa sổ
+ * không có bài.
+ */
+export function claudeCostOf(
+  rows: readonly (ArticleUsageColumns & { classifiedAt: Date | null })[],
+  articlesInWindow: number,
+): { usd: string; articles: number; unknown: number } | null {
+  if (articlesInWindow === 0) return null;
+  let usd = new Decimal(0);
+  let unknown = 0;
+  for (const r of rows) {
+    const c = articleClaudeUsage(r)?.costUsd ?? null;
+    if (c === null) unknown += 1;
+    else usd = usd.add(dec(c));
+  }
+  return { usd: usd.toDecimalPlaces(6).toFixed(), articles: rows.length, unknown };
+}
+
 /** Chi phí một ngày, cùng công thức với chi phí từng bài (`claudeCostUsd` của `@drift/shared`). */
 function dailyClaudeCostUsd(u: typeof signalResearchUsage.$inferSelect): Decimal {
   return claudeCostUsd({
@@ -341,6 +364,30 @@ export async function loadSignalResearchSummary(
           .select({ n: count() })
           .from(signalArticles)
           .where(and(eq(signalArticles.ruleVersion, v), gte(signalArticles.collectedAt, since)));
+  check();
+  // #343: chi phí Claude trong đúng cửa sổ của phễu, cùng tập bài với "articles read" (không trộn ngày UTC với 24 giờ).
+  const claudeCost = claudeCostOf(
+    await q
+      .select({
+        claudeCalls: signalArticles.claudeCalls,
+        claudeInputTokens: signalArticles.claudeInputTokens,
+        claudeCacheWriteTokens: signalArticles.claudeCacheWriteTokens,
+        claudeCacheReadTokens: signalArticles.claudeCacheReadTokens,
+        claudeOutputTokens: signalArticles.claudeOutputTokens,
+        claudeModel: signalArticles.claudeModel,
+        claudePromptVersion: signalArticles.claudePromptVersion,
+        classifiedAt: signalArticles.classifiedAt,
+      })
+      .from(signalArticles)
+      .where(
+        and(
+          eq(signalArticles.ruleVersion, v),
+          since === null ? undefined : gte(signalArticles.collectedAt, since),
+          or(isNotNull(signalArticles.claudeCalls), isNotNull(signalArticles.classifiedAt)),
+        ),
+      ),
+    articlesInRange?.n ?? 0,
+  );
   check();
   const [delay] = await q
     .select({
@@ -631,6 +678,7 @@ export async function loadSignalResearchSummary(
                   .toDecimalPlaces(4)
                   .toFixed(),
           articlesRead: articlesInRange?.n ?? null,
+          claudeCost,
           soso: { used: Number(month?.n ?? 0), limit: limits.sosoMonthlyLimit },
           collected: steps[0]?.in ?? 0,
           stories: funnelStories.length,
