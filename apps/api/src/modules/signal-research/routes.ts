@@ -6,6 +6,7 @@ import {
   loadSignalClassifiers,
   loadSignalResearchArticles,
   loadSignalResearchArticleTrace,
+  loadSignalResearchLatency,
   loadSignalResearchNewArticles,
   loadSignalResearchSummary,
   loadSignalResearchTrade,
@@ -27,6 +28,8 @@ import {
   researchArticlesPageSchema,
   researchArticlesQuerySchema,
   researchArticleTraceSchema,
+  researchLatencyQuerySchema,
+  researchLatencySchema,
   researchNewArticlesQuerySchema,
   researchNewArticlesSchema,
   researchClassifiersSchema,
@@ -59,6 +62,7 @@ import {
   type ResearchVersions,
   type ResearchArticlesPage,
   type ResearchArticleTrace,
+  type ResearchLatency,
   type ResearchNewArticles,
   type ResearchClassifiers,
   type ResearchLabelNext,
@@ -214,6 +218,21 @@ export async function signalResearchNewArticles(
   const q = parseOrThrow(researchNewArticlesQuerySchema, query);
   const out = await tx(deps, (t, check) => loadSignalResearchNewArticles(t, q, deps.now(), check));
   return researchNewArticlesSchema.parse(out);
+}
+
+/**
+ * Độ trễ theo chặng (#375): median từng chặng published → collected → Claude done → decided → opened trong cửa sổ 1d / 7d,
+ * kèm số bài đo được. Chặng nguồn gốc → SoSoValue luôn null (không có nguồn).
+ */
+export async function signalResearchLatency(
+  deps: SignalResearchDeps,
+  userId: string,
+  query: unknown,
+): Promise<ResearchLatency> {
+  await requireTeam(deps.db, userId, FORBIDDEN);
+  const q = parseOrThrow(researchLatencyQuerySchema, query);
+  const out = await tx(deps, (t, check) => loadSignalResearchLatency(t, q, deps.now(), check));
+  return researchLatencySchema.parse(out);
 }
 
 /** Trace một bài qua 5 bước (#291). Bài không có / backlog / version khác → 404. */
@@ -461,6 +480,10 @@ export function registerSignalResearchRoutes(
   app.get(`${base}/articles`, async (request, reply) => {
     void reply.header("cache-control", "no-store");
     return signalResearchArticles(deps, requireAuth(request).userId, request.query);
+  });
+  app.get(`${base}/latency`, async (request, reply) => {
+    void reply.header("cache-control", "no-store");
+    return signalResearchLatency(deps, requireAuth(request).userId, request.query);
   });
   app.get(`${base}/articles/new`, async (request, reply) => {
     void reply.header("cache-control", "no-store");

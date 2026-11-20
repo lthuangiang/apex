@@ -1,6 +1,6 @@
 {
-  "id": "393cc5fb-482f-4237-b25d-a685868f8225",
-  "prevId": "20a5ef7c-64f8-4012-98ec-74e6bb64e3b0",
+  "id": "ea531917-23d7-47af-ad9b-0134339f9073",
+  "prevId": "ff09f800-ab16-4c09-933a-a7d0a47bbfcf",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6865,6 +6865,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "claude_started_at": {
+          "name": "claude_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claude_done_at": {
+          "name": "claude_done_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "rule_version": {
           "name": "rule_version",
           "type": "text",
@@ -7658,6 +7670,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "decided_clock_at": {
+          "name": "decided_clock_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -8045,6 +8063,18 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "decided_clock_at": {
+          "name": "decided_clock_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "opened_clock_at": {
+          "name": "opened_clock_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "moved_before_entry_pct": {
           "name": "moved_before_entry_pct",

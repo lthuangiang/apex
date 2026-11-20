@@ -1092,3 +1092,74 @@ describe("#309: company tags use the SoDEX market list, asset map version", () =
     expect(drops.some((d) => d.articleId === "spx" && d.reason !== null)).toBe(false);
   });
 });
+
+describe("latency clocks (#375)", () => {
+  it("stores Claude start / done and decided / opened from the scheduler clock; opened_at stays the cycle start", async () => {
+    await db
+      .insert(candles1m)
+      .values({
+        market: "SOL-USD",
+        ts: new Date(T0 - 5 * MIN),
+        open: "101",
+        high: "101",
+        low: "101",
+        close: "101",
+        volume: "1",
+      })
+      .onConflictDoNothing();
+    const items = [
+      item("lat1", T0 - 4 * MIN, "Protocol on Solana drained in exploit", {
+        author: "Bloomberg",
+        category: 5,
+      }),
+      item("lat2", T0 - 2 * MIN, "Unrelated stock", {
+        matched_currencies: [{ symbol: "ANT", name: '{"EN": "ANTHROPIC"}' }],
+      }),
+    ];
+    const claude = fakeClaude({ "Protocol on Solana drained in exploit": hack });
+    // Đồng hồ đi 50 ms mỗi lần đọc: lần đọc đầu = giờ bắt đầu chu kỳ (T0).
+    let reads = 0;
+    const clock = () => T0 + 50 * reads++;
+    const { sr, errors } = setup({ items: () => items, claude, now: clock });
+    book(sr, "SOL-USD", "99.99", "100.01", T0);
+    await sr.runCycle();
+    expect(errors).toEqual([]);
+
+    const arts = new Map((await db.select().from(signalArticles)).map((a) => [a.id, a]));
+    const a1 = arts.get("lat1");
+    if (a1 === undefined) throw new Error("lat1 missing");
+    expect(a1.collectedAt.getTime()).toBe(T0);
+    const started = a1.claudeStartedAt?.getTime() ?? NaN;
+    const done = a1.claudeDoneAt?.getTime() ?? NaN;
+    expect(started).toBeGreaterThan(T0);
+    expect(done).toBeGreaterThan(started);
+    // `classified_at` vẫn là giờ bắt đầu chu kỳ (không đổi), nên không dùng để đo.
+    expect(a1.classifiedAt?.getTime()).toBe(T0);
+    // Bài không tới Claude: không có mốc.
+    expect(arts.get("lat2")?.claudeStartedAt).toBeNull();
+    expect(arts.get("lat2")?.claudeDoneAt).toBeNull();
+
+    const evs = await db.select().from(signalEvents).where(eq(signalEvents.articleId, "lat1"));
+    const decided = evs.filter((e) => e.stage === "filter" || e.stage === "decide");
+    expect(decided.length).toBeGreaterThan(0);
+    for (const e of decided) {
+      expect(e.at.getTime()).toBe(T0);
+      expect(e.decidedClockAt?.getTime() ?? NaN).toBeGreaterThan(done);
+    }
+    // Bước dùng chung không có mốc quyết định.
+    expect(
+      evs.filter((e) => e.stage === "understand").every((e) => e.decidedClockAt === null),
+    ).toBe(true);
+
+    const [t] = await db.select().from(signalPaperTrades);
+    if (t === undefined) throw new Error("no trade");
+    expect(t.openedAt.getTime()).toBe(T0);
+    expect(t.maxHoldUntil.getTime()).toBe(T0 + 24 * HOUR);
+    const dAt = t.decidedClockAt?.getTime() ?? NaN;
+    const oAt = t.openedClockAt?.getTime() ?? NaN;
+    expect(dAt).toBeGreaterThan(done);
+    expect(oAt).toBeGreaterThan(dAt);
+    // Event Decide · open mang đúng mốc quyết định của lệnh.
+    expect(decided.find((e) => e.stage === "decide")?.decidedClockAt?.getTime()).toBe(dAt);
+  });
+});
