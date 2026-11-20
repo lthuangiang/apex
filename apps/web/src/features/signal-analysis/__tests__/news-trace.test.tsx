@@ -550,7 +550,10 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
       within(list).getByText("The expected move is too small to beat the cost of a trade."),
     ).toBeInTheDocument();
     expect(within(list).getByText("0.15% vs 2 × 0.10% = 0.20%")).toBeInTheDocument();
-    expect(within(list).getByText("Dropped: MOVE_TOO_SMALL_FOR_COST")).toBeInTheDocument();
+    // Mã nội bộ không in ra thẻ: cùng câu với "Why they dropped out", mã chỉ ở tooltip.
+    const result = within(list).getByText("Dropped: Take profit under 2× cost");
+    expect(result).toHaveAttribute("title", "MOVE_TOO_SMALL_FOR_COST");
+    expect(within(list).queryByText(/MOVE_TOO_SMALL_FOR_COST/)).toBeNull();
     expect(within(list).getByText("Hack → Short")).toBeInTheDocument();
     expect(within(list).queryByRole("heading", { name: /Decide/ })).not.toBeInTheDocument();
     expect(within(f).getByText(/SoSoValue · project account \(mid tier\)/)).toBeInTheDocument();
@@ -569,7 +572,18 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     });
     const list = within(f).getByRole("list", { name: "Steps this article went through" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(2);
-    expect(within(list).getByText("Dropped: NO_SODEX_MARKET")).toBeInTheDocument();
+    expect(within(list).getByText("Dropped: Not on SoDEX")).toHaveAttribute(
+      "title",
+      "NO_SODEX_MARKET",
+    );
+    // Không còn mã nội bộ / enum thô nào hiện ra trong phễu, thẻ bước hay feed.
+    expect(f.textContent).not.toMatch(/\b[A-Z]{2,}(_[A-Z]+)+\b/);
+    // Chip bài bị loại đỗ trong rãnh bên phải tầng Normalize, cùng hàng, không xoay.
+    const chip = within(f).getByTestId("sr-token");
+    expect(chip).toHaveAttribute("data-tone", "dropped");
+    expect(chip.style.top).toBe("44px");
+    expect(chip.style.left).toBe("calc(100% - 108px)");
+    expect(chip.className).not.toMatch(/rotate/);
     expect(
       within(list).getByText(
         "No SoDEX market for KNTQ, so the article stops here and Claude is not called.",

@@ -604,7 +604,7 @@ export function NewsTrace({
         <div
           id="sr-trace"
           ref={funnelRef}
-          className="flex min-w-0 scroll-mt-4 flex-col gap-3 max-md:order-1 md:col-span-2 xl:flex-row xl:items-stretch"
+          className="flex min-w-0 scroll-mt-4 flex-col gap-3 max-md:order-1 md:col-span-2 min-[1400px]:flex-row min-[1400px]:items-stretch"
         >
           <div className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-[14px] border border-border bg-surface-2 px-3 py-3.5 md:px-4">
             <div className="flex flex-1 flex-col justify-center">
@@ -644,7 +644,7 @@ export function NewsTrace({
               asset={asset}
               tz={ctx.tz}
               playKey={`${sel}:${String(run)}`}
-              className="xl:w-[300px] xl:flex-none"
+              className="min-[1400px]:w-[300px] min-[1400px]:flex-none"
             />
           ) : liveOn ? (
             <ContextPanel
@@ -653,7 +653,7 @@ export function NewsTrace({
               asset={liveData?.article.asset ?? liveData?.context?.market ?? liveView.assets}
               tz={ctx.tz}
               playKey={`live:${liveId}:${String(livePlayer.run)}`}
-              className="xl:w-[300px] xl:flex-none"
+              className="min-[1400px]:w-[300px] min-[1400px]:flex-none"
             />
           ) : (
             <p className="m-0 text-xs leading-normal text-ink-2 md:hidden">
@@ -1092,7 +1092,9 @@ function Steps({
                 {s.rows.map((r) => (
                   <div key={r.label} className="flex justify-between gap-3">
                     <dt className="text-muted">{r.label}</dt>
-                    <dd className="m-0 text-right font-bold text-ink">{r.value ?? <Na />}</dd>
+                    <dd title={r.title} className="m-0 text-right font-bold text-ink">
+                      {r.value ?? <Na />}
+                    </dd>
                   </div>
                 ))}
               </dl>

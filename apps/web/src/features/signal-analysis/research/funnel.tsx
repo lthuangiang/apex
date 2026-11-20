@@ -72,7 +72,7 @@ const CLIP: CSSProperties = { clipPath: "polygon(0 0,100% 0,97% 100%,3% 100%)" }
 const TOKEN: Record<TokenTone, string> = {
   moving: "border-accent bg-surface text-ink",
   traded: "border-pos-bg bg-pos text-white",
-  dropped: "border-muted bg-bg text-ink-2 rotate-[-4deg]",
+  dropped: "border-muted bg-bg text-ink-2",
   merged: "border-muted bg-bg text-ink-2",
 };
 
@@ -81,6 +81,54 @@ function bandTone(b: FunnelBandView): string {
   if (on) return FILL[b.key];
   if (b.state === "drop" || b.state === "merge") return "bg-bg text-ink-2";
   return "bg-bg text-muted";
+}
+
+/* ---------------------------------------------------------------- Hình học (dùng chung cho CSS và test) */
+
+/**
+ * Khi trace (từ 768 px), bên phải các tầng có một rãnh trống rộng ngần này: chip bài bị loại đỗ trong rãnh, cùng hàng với
+ * tầng đã loại nó, ngoài thân phễu, nên không bao giờ đè chữ của tầng nào (#343 review).
+ */
+export const TOKEN_GUTTER = 112;
+/** Chip trong rãnh rộng tối đa ngần này (rãnh − 8 px lề). */
+export const DROP_CHIP_MAX = TOKEN_GUTTER - 8;
+const BAND_H = 36;
+
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Hình chữ nhật của 6 tầng trong khung rộng `width` px (desktop, trace). */
+export function bandRects(width: number, tracing: boolean): Rect[] {
+  const inner = tracing ? width - TOKEN_GUTTER : width;
+  const ws = tracing ? WIDTHS_TRACE : WIDTHS_TOTAL;
+  return ws.map((p, i) => {
+    const w = (inner * p) / 100;
+    return { x: (inner - w) / 2, y: i * BAND_ROW, w, h: BAND_H };
+  });
+}
+
+/** Hình chữ nhật của chip (cùng công thức với `Token`); `chip` = kích thước chip đo được. */
+export function tokenRect(
+  width: number,
+  token: Pick<FunnelToken, "pos" | "tone">,
+  chip: { w: number; h: number },
+): Rect {
+  const inner = width - TOKEN_GUTTER;
+  if (token.tone === "dropped") {
+    const w = Math.min(chip.w, DROP_CHIP_MAX);
+    return { x: inner + 4, y: (token.pos - 1) * BAND_ROW, w, h: Math.max(chip.h, BAND_H) };
+  }
+  const docked = token.tone === "traded" || token.tone === "merged";
+  const y = docked
+    ? BANDS.length * BAND_ROW + 4
+    : token.pos === 0
+      ? -40
+      : (token.pos - 1) * BAND_ROW + 4;
+  return { x: inner / 2 - chip.w / 2, y, w: chip.w, h: chip.h };
 }
 
 export function FunnelBands({
@@ -94,7 +142,11 @@ export function FunnelBands({
 }) {
   const widths = tracing ? WIDTHS_TRACE : WIDTHS_TOTAL;
   return (
-    <div data-testid="sr-funnel-bands" className="relative flex flex-col items-center gap-2">
+    <div
+      data-testid="sr-funnel-bands"
+      style={tracing ? { ["--gutter" as string]: `${String(TOKEN_GUTTER)}px` } : undefined}
+      className={`relative flex flex-col items-center gap-2 ${tracing ? "md:pr-[var(--gutter)]" : ""}`}
+    >
       {bands.map((b) => {
         const i = BANDS.indexOf(b.key);
         const ctx = b.key === "context";
@@ -167,24 +219,35 @@ export function FunnelBands({
 
 function Token({ token }: { token: FunnelToken }) {
   const dropped = token.tone === "dropped";
-  // Đã vào lệnh / gộp: chip xuống hàng trống dưới tầng cuối thay vì nằm trên chữ kết quả của Decide.
+  // Đã vào lệnh / gộp: chip xuống hàng trống dưới tầng cuối thay vì nằm trên chữ kết quả của Decide (#357).
+  // Bị loại: chip đỗ trong rãnh bên phải, cùng hàng với tầng đã loại nó, không xoay, không đè tầng kế tiếp.
   const docked = token.tone === "traded" || token.tone === "merged";
-  const top = docked
-    ? BANDS.length * BAND_ROW + 4
-    : token.pos === 0
-      ? -40
-      : (token.pos - 1) * BAND_ROW + 4;
+  const top = dropped
+    ? (token.pos - 1) * BAND_ROW
+    : docked
+      ? BANDS.length * BAND_ROW + 4
+      : token.pos === 0
+        ? -40
+        : (token.pos - 1) * BAND_ROW + 4;
   const style: CSSProperties = {
-    top: `${String(dropped ? top + 26 : top)}px`,
-    left: dropped ? "calc(50% + 40px)" : "50%",
+    top: `${String(top)}px`,
+    left: dropped
+      ? `calc(100% - ${String(TOKEN_GUTTER - 4)}px)`
+      : `calc((100% - ${String(TOKEN_GUTTER)}px) / 2)`,
+    maxWidth: dropped ? `${String(DROP_CHIP_MAX)}px` : "200px",
     opacity: token.visible ? 1 : 0,
   };
   return (
     <div
       aria-hidden="true"
       data-testid="sr-token"
+      data-tone={token.tone}
       style={style}
-      className={`absolute z-[2] max-w-[200px] -translate-x-1/2 truncate rounded-full border-2 px-3 py-[5px] text-xs font-extrabold whitespace-nowrap shadow-float transition-[top,left,rotate,background-color,border-color,color,opacity] ${token.fast === true ? "duration-300" : "duration-700"} ease-[cubic-bezier(.65,0,.35,1)] motion-reduce:transition-none max-md:hidden ${TOKEN[token.tone]}`}
+      className={`absolute z-[2] rounded-full border-2 text-xs font-extrabold shadow-float transition-[top,left,transform,background-color,border-color,color,opacity] ${token.fast === true ? "duration-300" : "duration-700"} ease-[cubic-bezier(.65,0,.35,1)] motion-reduce:transition-none max-md:hidden ${
+        dropped
+          ? "flex min-h-9 items-center rounded-[14px] px-2.5 py-1 text-[11px] leading-tight break-words"
+          : "-translate-x-1/2 truncate px-3 py-[5px] whitespace-nowrap"
+      } ${TOKEN[token.tone]}`}
     >
       {token.text}
     </div>
