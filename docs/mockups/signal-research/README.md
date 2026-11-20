@@ -42,7 +42,7 @@ Mở thẳng file HTML trong trình duyệt. Các trang có tương tác dùng `
 | `redesign-full-page.html`, `-1440.png` | Toàn trang: Version, Progress, How it works, Paper bots, From headline to trade (phễu sáng 6 bước, bước 4 Context viền đứt, feed rộng bằng ô giải thích đầu), Is it working? (thanh tiến độ), Paper trades |
 | `redesign-full-page-mobile.html`, `-390.png` | Toàn trang trên điện thoại (thanh tab cuộn ngang) |
 | `redesign-trace-live.html`, `-1440.png` | Trace chạy thật: bấm một bài, chip chạy qua 6 bước, khung Context cạnh phễu chạy hiệu ứng theo dữ liệu bài đó (5 bài mẫu: cả ba Yes, không cá voi + giá chạy sớm, META không có dữ liệu cá voi, cả ba No, bị loại trước bước 4) |
-| `redesign-trace-no-signal.html`, `-at-context-1440.png` | Như trên, tự chạy bài "cả ba No": sonar + 2 cá voi lội dưới nước ("12 wallets checked · quiet"), bập bênh lắc rồi cân bằng, giá "on time" |
+| `redesign-trace-no-signal.html`, `-at-context-1440.png` | Như trên, tự chạy bài "cả ba No": sonar + 2 cá voi lội dưới nước ("27 wallets checked · quiet"), bập bênh lắc rồi cân bằng, giá "on time" |
 | `redesign-context-effects.html`, `-1440.png` | Từng hiệu ứng H1 / H2 / H3 với nút ví dụ (Yes, No, Whales disagree, No whale data) |
 | `redesign-live-new-article.html`, `-1440.png`, `-dropping-1440.png` | Bài mới tới khi đang ở trang: rơi xuống phễu, chạy nhanh qua các bước, số đếm nhảy (#345) |
 | `redesign-does-context-help.html`, `-1440.png` | Tab "Does context help?": 3 câu hỏi đăng ký trước, With / Without, khoảng theo khối ngày, ≥ 30 mỗi nhóm |
@@ -63,3 +63,5 @@ Mở thẳng file HTML trong trình duyệt. Các trang có tương tác dùng `
 - Sửa câu H3 so với canvas: "The line runs to the entry mark in the signal's direction".
 
 **Định nghĩa H1 / H3 sửa ở review PR #349:** H1 chỉ xét ví DeskLabs đang theo dõi (được follow, và đã có trong leaderboard trước thời điểm đó), nên HTML ghi "tracked wallets" và "N wallets checked" với N là số ví thật sự được kiểm (mẫu dùng 12, không phải 214 của leaderboard); "Not available" khi tài sản không có trên Hyperliquid hoặc không có ví theo dõi nào có dữ liệu. H3 đo từ giờ đăng của bài đầu tiên của story (cùng số với "moved before entry"). Ảnh PNG chụp trước khi sửa nên còn câu cũ; HTML là bản đúng.
+
+**H1 context-v2 (#353):** tập ví của H1 là tập ví nghiên cứu cố định: top K ví tab Top của lần xếp hạng gần nhất (K = 30 mặc định), chụp theo phiên bản. HTML ghi "research wallets (top {K} of the leaderboard)" (mẫu: top 30, 27 ví đọc được trong giờ trước nên "27 wallets checked"); "Not available" khi tài sản không có trên Hyperliquid hoặc không có ví nghiên cứu nào đọc được trong 60 phút. How it works không ghi số K ("the top of the leaderboard"). Snapshot context-v1 đã lưu (ví được follow) vẫn hiện câu "tracked wallets". PNG chưa chụp lại.

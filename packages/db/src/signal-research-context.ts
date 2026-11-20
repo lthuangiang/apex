@@ -2,6 +2,7 @@ import {
   compareContext,
   contextGroupOf,
   dec,
+  H23_SAME_AS_CURRENT,
   h2ThresholdOf,
   NEWS_RULES,
   SIGNAL_CONTEXT_RULES,
@@ -23,6 +24,7 @@ import { and, count, eq, gte, inArray } from "drizzle-orm";
 
 import type { Db } from "./client";
 import type { DbTx } from "./read-only";
+import { latestResearchWalletSet } from "./research-wallets";
 import { signalContexts, type signalPaperTrades } from "./schema";
 import type { SignalVersionScope } from "./signal-research-versions";
 
@@ -73,6 +75,8 @@ export function signalContextOf(r: ContextRow): ResearchSignalContext {
     h1: {
       status: h1Of(r.h1Status),
       walletsChecked: r.h1WalletsChecked,
+      walletSetVersion: r.h1WalletSetVersion,
+      walletSetSize: r.h1WalletSetSize,
       assetOnHyperliquid: r.h1AssetOnHyperliquid,
       agreeingWallets: r.h1AgreeingWallets,
       opposingWallets: r.h1OpposingWallets,
@@ -120,8 +124,9 @@ const KEYS = ["h1", "h2", "h3"] as const;
 /**
  * "Does context help?" của một version: `closed` = lệnh thật đã đóng ĐƯỢC TÍNH của version (cùng tập với cổng chính,
  * classifier đã qua cổng precision). Mỗi lệnh nối snapshot của bài đã mở nó, chỉ khi snapshot đúng nguồn `source` (#344:
- * `live` và `backfilled` không bao giờ trộn); `na` không vào nhóm nào. Độ phủ đếm mọi snapshot của nguồn đó thuộc version
- * quy tắc hiện tại (từ lúc lưu version; Baseline: mọi lúc).
+ * `live` và `backfilled` không bao giờ trộn); `na` không vào nhóm nào. H1 chỉ tính snapshot của context version hiện tại;
+ * H2 / H3 gộp các context version cùng hàm tính (`H23_SAME_AS_CURRENT`, #353 / review #365). Độ phủ đếm mọi snapshot của
+ * nguồn đó thuộc version quy tắc hiện tại (từ lúc lưu version; Baseline: mọi lúc), cùng quy tắc gộp.
  */
 export async function loadContextSummary(
   q: Q,
@@ -146,9 +151,16 @@ export async function loadContextSummary(
       continue;
     }
     const obs: DayObs = { v: dec(t.resultPct), at: t.openedAt.getTime() };
-    const statuses = { h1: h1Of(c.h1Status), h2: h2Of(c.h2Status), h3: h3Of(c.h3Status) };
+    // #353 / review #365: H1 chỉ snapshot của context version hiện tại (context-v1 = ví được follow, không gộp với v2);
+    // H2 / H3 gộp các version có cùng hàm tính (`H23_SAME_AS_CURRENT`). Live / Backfilled vẫn tách (điều kiện ở trên).
+    const statuses = {
+      h1: c.contextVersion === SIGNAL_CONTEXT_VERSION ? h1Of(c.h1Status) : null,
+      h2: H23_SAME_AS_CURRENT.includes(c.contextVersion) ? h2Of(c.h2Status) : null,
+      h3: H23_SAME_AS_CURRENT.includes(c.contextVersion) ? h3Of(c.h3Status) : null,
+    };
     for (const k of KEYS) {
-      const g = contextGroupOf(statuses[k]);
+      const st = statuses[k];
+      const g = st === null ? null : contextGroupOf(st);
       if (g !== null) groups[k][g].push(obs);
     }
   }
@@ -172,10 +184,15 @@ export async function loadContextSummary(
 
   const since =
     scope === null || scope.isBaseline ? undefined : gte(signalContexts.decidedAt, scope.createdAt);
-  const base = and(eq(signalContexts.ruleVersion, NEWS_RULES.version), since);
+  const base = and(
+    eq(signalContexts.ruleVersion, NEWS_RULES.version),
+    inArray(signalContexts.contextVersion, [...H23_SAME_AS_CURRENT]),
+    since,
+  );
   const cov = await q
     .select({
       source: signalContexts.source,
+      version: signalContexts.contextVersion,
       h1: signalContexts.h1Status,
       h2: signalContexts.h2Status,
       h3: signalContexts.h3Status,
@@ -185,21 +202,25 @@ export async function loadContextSummary(
     .where(base)
     .groupBy(
       signalContexts.source,
+      signalContexts.contextVersion,
       signalContexts.h1Status,
       signalContexts.h2Status,
       signalContexts.h3Status,
     );
   const own = cov.filter((r) => r.source === source);
   const sum = (rows: typeof cov) => rows.reduce((s, r) => s + r.n, 0);
+  const set = await latestResearchWalletSet(q);
   return {
     contextVersion: SIGNAL_CONTEXT_VERSION,
+    researchWalletsTop: set?.size ?? null,
     source,
     minClosedPerGroup: SIGNAL_CONTEXT_RULES.compareMinClosed,
     questions,
     closedWithoutSnapshot: missing,
     coverage: {
       signals: sum(own),
-      whale: sum(own.filter((r) => r.h1 !== "na")),
+      // H1 chỉ version hiện tại; tín hiệu, funding, price run gộp các version cùng hàm H2 / H3.
+      whale: sum(own.filter((r) => r.version === SIGNAL_CONTEXT_VERSION && r.h1 !== "na")),
       funding: sum(own.filter((r) => r.h2 !== "na")),
       priceRun: sum(own.filter((r) => r.h3 !== "na")),
       backfilled: sum(cov.filter((r) => r.source === "backfilled")),

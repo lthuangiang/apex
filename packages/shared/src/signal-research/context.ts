@@ -10,10 +10,24 @@ import { TradeDirection } from "./rules";
 // Review PR #349 (trước khi có lệnh nào được tính, nên sửa định nghĩa là hợp lệ): H1 chỉ xét ví DeskLabs ĐANG THEO DÕI
 // (được follow, và đã có trong leaderboard trước thời điểm đó), vì sự kiện live chỉ có cho các ví này (DEC-321), không phải
 // toàn leaderboard; H3 đo từ giờ đăng của bài ĐẦU TIÊN của story, cùng con số với `moved_before_entry` (#312).
+// #353 (context-v2, sửa định nghĩa H1 đã đăng ký trước; hợp lệ vì chưa có lệnh live nào được tính): tập ví của H1 là TẬP VÍ
+// NGHIÊN CỨU cố định (top-K ví tab Top của lần xếp hạng `ok` gần nhất, chụp theo phiên bản), không còn phụ thuộc người dùng
+// có follow ví nào. Snapshot context-v1 giữ nguyên; so sánh / độ phủ chỉ tính version hiện tại, không gộp v1 với v2.
 // Mọi hàm ở đây thuần, không I/O; nơi gọi chỉ đưa vào dữ liệu có timestamp < thời điểm quyết định (không nhìn trước).
 
 /** Version của cách tính ngữ cảnh; đổi ngưỡng / định nghĩa = version mới, snapshot cũ giữ nguyên. */
-export const SIGNAL_CONTEXT_VERSION = "context-v1";
+export const SIGNAL_CONTEXT_VERSION = "context-v2";
+
+/** context-v1 (#349): H1 trên ví được follow. Chỉ để đọc snapshot cũ; không ghi mới. */
+export const SIGNAL_CONTEXT_V1 = "context-v1";
+
+/**
+ * Các context version có CÙNG hàm tính H2 và H3 (#353, PM duyệt ở review #365): "Does context help?" và độ phủ gộp H2 / H3
+ * của các version này (H1 thì chỉ version hiện tại; Live và Backfilled vẫn luôn tách). **Chỉ gộp khi hàm tính không đổi:**
+ * đổi `h2Of` / `h3Of`, ngưỡng H2 / H3 trong `SIGNAL_CONTEXT_RULES`, hay cách lấy dữ liệu đầu vào của chúng thì phải ra version
+ * mới và KHÔNG thêm nó vào danh sách này (test "H2 / H3 unchanged across merged context versions" giữ điều kiện này).
+ */
+export const H23_SAME_AS_CURRENT: readonly string[] = [SIGNAL_CONTEXT_V1, SIGNAL_CONTEXT_VERSION];
 
 export const SIGNAL_CONTEXT_RULES = {
   /** H1: cửa sổ trước quyết định để tìm ví mở / tăng vị thế cùng chiều. */
@@ -65,8 +79,8 @@ const HOUR_MS = 3_600_000;
 // ── H1 cá voi cùng chiều ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Một lần mở / tăng vị thế của một ví đang theo dõi (được follow, đã có trong leaderboard trước quyết định); nơi gọi đã lọc
- * ví, loại, cửa sổ, seen_at.
+ * Một lần mở / tăng vị thế của một ví trong tập của H1 (context-v2: tập ví nghiên cứu có hiệu lực trước quyết định, ví đọc
+ * thành công trong 60 phút); nơi gọi đã lọc ví, loại, cửa sổ, seen_at.
  */
 export interface WhaleMove {
   address: string;
@@ -81,9 +95,9 @@ export interface WhaleMove {
 export interface H1Result {
   status: H1Status;
   /**
-   * N = số ví thật sự được kiểm: ví DeskLabs đang theo dõi (được follow trước quyết định, đã có trong một lần xếp hạng xong
-   * trước quyết định) mà marketdata đọc thành công trong 60 phút trước quyết định ("N wallets checked"; không bao giờ là số
-   * ví của cả leaderboard).
+   * N = số ví thật sự được kiểm: ví trong tập ví nghiên cứu có hiệu lực trước quyết định (context-v2; v1: ví được follow)
+   * mà marketdata đọc thành công trong 60 phút trước quyết định ("N wallets checked"; không bao giờ là số ví của cả
+   * leaderboard).
    */
   walletsChecked: number;
   /** Tài sản có trên Hyperliquid (theo dữ liệu đã lưu trước quyết định). */
@@ -97,9 +111,9 @@ export interface H1Result {
 }
 
 /**
- * H1: ít nhất 1 ví DeskLabs đang theo dõi (được follow, và đã có trong leaderboard trước thời điểm đó) mở / tăng vị thế cùng
+ * H1 (context-v2, #353): ít nhất 1 ví trong research set (ví đã có trong leaderboard trước thời điểm đó) mở / tăng vị thế cùng
  * chiều trong 60 phút trước quyết định → `yes`; chỉ ví ngược chiều → `against`; tài sản không có trên Hyperliquid, hoặc số ví
- * theo dõi có dữ liệu = 0 → `na`; còn lại → `no` (N ví đã kiểm đều im lặng).
+ * được kiểm (đọc thành công trong 60 phút) = 0 → `na`; còn lại → `no` (N ví đã kiểm đều im lặng).
  */
 export function h1Of(input: {
   direction: TradeDirection;

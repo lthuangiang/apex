@@ -1,5 +1,5 @@
-import type { HlClearinghouse, HlFill, HlPriority } from "@drift/hyperliquid";
-import { toLeaderFill } from "@drift/hyperliquid";
+import type { HlCallOptions, HlClearinghouse, HlFill, HlPriority } from "@drift/hyperliquid";
+import { HyperliquidError, HyperliquidRateLimitedError, toLeaderFill } from "@drift/hyperliquid";
 import {
   dec,
   groupLeaderEvents,
@@ -17,6 +17,9 @@ import {
 // - T0: ví có bot copy đang chạy → WS `userFills` (≤ 8 ví / IP), đọc lại vị thế mỗi vòng sync; publish tín hiệu cho engine
 //   với market đã đổi sang symbol SoDEX (coin SoDEX không có thì không publish).
 // - T1: ví có người theo dõi (không thuộc T0) → poll `userFillsByTime` từ con trỏ, mỗi 2 phút, ≤ 40 ví.
+// - Ví nghiên cứu (Signal research H1, #353): top-K leaderboard, poll SAU ví được follow trong cùng vòng và cùng trần 40 ví,
+//   ưu tiên `background` và không chờ bucket: chạm rate limit thì nhường (dừng phần còn lại của vòng), không bao giờ làm ví
+//   được follow / copy chậm đi. Ví đã được follow hoặc đang stream không poll lần nữa.
 // - Fill của cả hai tầng gộp 60 giây thành sự kiện (Trader profile, Following, big move).
 // Mỗi ví chỉ được theo dõi một lần cho cả hệ thống: tracker chạy trong bản marketdata đang giữ lease.
 
@@ -32,10 +35,17 @@ export interface HlStream {
 export interface HlLeaderTrackerDeps {
   copied(): Promise<string[]>;
   followed(): Promise<string[]>;
+  /** Ví nghiên cứu của tập mới nhất, theo hạng (#353); rỗng = không poll. */
+  research(): Promise<string[]>;
   stream: HlStream;
   hl: {
     clearinghouseState(user: string, priority: HlPriority, dex?: string): Promise<HlClearinghouse>;
-    userFillsByTime(user: string, startTime: number, priority: HlPriority): Promise<HlFill[]>;
+    userFillsByTime(
+      user: string,
+      startTime: number,
+      priority: HlPriority,
+      call?: HlCallOptions,
+    ): Promise<HlFill[]>;
   };
   index(): CoinIndex;
   publish(subject: string, payload: LeaderFillMessage | LeaderPositionMessage): void;
@@ -142,31 +152,64 @@ export class HlLeaderTracker {
     }
   }
 
-  /** Vòng 2 phút: poll ví được theo dõi không thuộc T0 (≤ 40). Lần đầu chỉ đặt con trỏ, không đọc lùi. */
+  /**
+   * Vòng 2 phút: poll ví được theo dõi không thuộc T0 (≤ 40), rồi ví nghiên cứu (#353) trong phần trần còn lại. Lần đầu chỉ
+   * đặt con trỏ, không đọc lùi. Ví nghiên cứu nhường khi chạm rate limit: dừng phần còn lại của vòng, không ghi
+   * `last_polled_at` (H1 không đếm ví không đọc được).
+   */
   async poll(): Promise<void> {
-    const followed = [...new Set((await this.#d.followed()).map((a) => a.toLowerCase()))]
+    const cap = this.#d.maxPolled ?? HL_TRACKER.maxPolled;
+    const followedAll = new Set((await this.#d.followed()).map((a) => a.toLowerCase()));
+    const followed = [...followedAll]
       .filter((a) => !this.#t0.includes(a))
       .sort()
-      .slice(0, this.#d.maxPolled ?? HL_TRACKER.maxPolled);
+      .slice(0, cap);
     for (const address of followed) {
       try {
-        const cursor = await this.#d.getCursor(address);
-        if (cursor === null) {
-          const now = this.#d.now();
-          await this.#d.setCursor(address, now);
-          await this.#d.markPolled(address, now);
-          continue;
-        }
-        const fills = await this.#d.hl.userFillsByTime(address, cursor + 1, "realtime");
-        for (const f of fills) this.#buffer(address, toLeaderFill(f, address));
-        const last = fills.at(-1);
-        if (last !== undefined) await this.#d.setCursor(address, last.time);
-        // Poll thành công, kể cả không có fill mới.
-        await this.#d.markPolled(address, this.#d.now());
+        await this.#pollOne(address, "realtime");
       } catch (error) {
         this.#d.warn({ err: error, address }, "hyperliquid follow poll failed");
       }
     }
+    const room = cap - followed.length;
+    if (room <= 0) return;
+    const research = [...new Set((await this.#d.research()).map((a) => a.toLowerCase()))]
+      .filter((a) => !followedAll.has(a) && !this.#t0.includes(a))
+      .slice(0, room);
+    for (const [i, address] of research.entries()) {
+      try {
+        await this.#pollOne(address, "background", { yieldOnLimit: true });
+      } catch (error) {
+        if (
+          error instanceof HyperliquidRateLimitedError ||
+          (error instanceof HyperliquidError && error.status === 429)
+        ) {
+          this.#d.warn(
+            { skipped: research.length - i },
+            "hyperliquid rate limit: research wallets yielded",
+          );
+          return;
+        }
+        this.#d.warn({ err: error, address }, "hyperliquid research poll failed");
+      }
+    }
+  }
+
+  /** Một lần đọc ví T1 từ con trỏ; thành công (kể cả không có fill mới) thì ghi `last_polled_at`. */
+  async #pollOne(address: string, priority: HlPriority, call?: HlCallOptions): Promise<void> {
+    const cursor = await this.#d.getCursor(address);
+    if (cursor === null) {
+      const now = this.#d.now();
+      await this.#d.setCursor(address, now);
+      await this.#d.markPolled(address, now);
+      return;
+    }
+    const fills = await this.#d.hl.userFillsByTime(address, cursor + 1, priority, call);
+    for (const f of fills) this.#buffer(address, toLeaderFill(f, address));
+    const last = fills.at(-1);
+    if (last !== undefined) await this.#d.setCursor(address, last.time);
+    // Poll thành công, kể cả không có fill mới.
+    await this.#d.markPolled(address, this.#d.now());
   }
 
   /** Vòng 10 s: khép nhóm fill đã quá 60 giây thành sự kiện. */

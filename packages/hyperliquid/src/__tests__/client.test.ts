@@ -6,6 +6,7 @@ import {
   HlUserFillsStream,
   HyperliquidClient,
   HyperliquidError,
+  HyperliquidRateLimitedError,
   toLeaderFill,
   type HlFill,
 } from "..";
@@ -116,6 +117,22 @@ describe("HyperliquidClient", () => {
     // 12 × 60 = 720 > 1.200 − 500 dự trữ → job nền phải chờ.
     for (let i = 0; i < 12; i += 1) await c.isVault("0xabc", "background");
     expect(slept.length).toBeGreaterThan(0);
+  });
+
+  it("yields instead of waiting when asked and the bucket is short, without sending or charging (#353)", async () => {
+    const { c, sent, slept } = client(() => []);
+    // Phần không dự trữ của job nền = 1.200 − 500 = 700 = 35 lần đọc fill (weight 20).
+    for (let i = 0; i < 35; i += 1)
+      await c.userFillsByTime("0xabc", 0, "background", { yieldOnLimit: true });
+    const before = sent.length;
+    await expect(
+      c.userFillsByTime("0xabc", 0, "background", { yieldOnLimit: true }),
+    ).rejects.toBeInstanceOf(HyperliquidRateLimitedError);
+    expect(sent.length).toBe(before);
+    expect(slept).toEqual([]);
+    // Lời gọi realtime vẫn dùng được phần dự trữ ngay (không bị lời gọi nhường lấy mất token).
+    await c.userFillsByTime("0xabc", 0, "realtime");
+    expect(slept).toEqual([]);
   });
 
   it("detects vaults from userRole", async () => {

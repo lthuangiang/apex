@@ -5,6 +5,7 @@ import {
   researchArticlesPageSchema,
   researchArticleTraceSchema,
   researchSummarySchema,
+  SIGNAL_CONTEXT_V1,
   SIGNAL_CONTEXT_VERSION,
   type ResearchContextSummary,
 } from "@drift/shared";
@@ -28,19 +29,32 @@ interface Ctx {
   h2: string;
   h3: string;
   source?: "live" | "backfilled";
+  /** Mặc định version hiện tại (`context-v2`, tập ví nghiên cứu 7, 30 ví); `context-v1` = H1 trên ví được follow. */
+  version?: string;
 }
 
 async function snapshot(articleId: string, decidedAt: string, c: Ctx) {
   await env.pool.query(
     `insert into signal_contexts (id, article_id, market, direction, decided_at, source, context_version, rule_version,
-       h1_status, h1_wallets_checked, h1_asset_on_hyperliquid, h1_agreeing_wallets, h1_opposing_wallets, h1_agreeing_usdc, h1_first_at,
+       h1_status, h1_wallets_checked, h1_asset_on_hyperliquid, h1_wallet_set_version, h1_wallet_set_size,
+       h1_agreeing_wallets, h1_opposing_wallets, h1_agreeing_usdc, h1_first_at,
        h2_status, h2_funding_rate, h2_funding_time, h2_percentile, h2_samples, h2_payer, h2_interval_hours,
        h3_status, h3_moved_pct, h3_typical_move_pct, volume_vs_24h, range_breakout)
-     values (gen_random_uuid(), $1, 'ETH-USD', 'long', $2, $3, 'context-v1', 'news-v3',
-       $4, 12, true, 2, 0, 1400000, $2::timestamptz - interval '39 minutes',
+     values (gen_random_uuid(), $1, 'ETH-USD', 'long', $2, $3, $7, 'news-v3',
+       $4, 12, true, $8, $9, 2, 0, 1400000, $2::timestamptz - interval '39 minutes',
        $5, 0.0001, $2::timestamptz - interval '2 hours', 56, 90, 'long', 8,
        $6, 0.2, 0.6, 1.8, 'none')`,
-    [articleId, decidedAt, c.source ?? "live", c.h1, c.h2, c.h3],
+    [
+      articleId,
+      decidedAt,
+      c.source ?? "live",
+      c.h1,
+      c.h2,
+      c.h3,
+      c.version ?? SIGNAL_CONTEXT_VERSION,
+      c.version === SIGNAL_CONTEXT_V1 ? null : 7,
+      c.version === SIGNAL_CONTEXT_V1 ? null : 30,
+    ],
   );
 }
 
@@ -170,6 +184,8 @@ describe("trace step 4 and feed flags (#329)", () => {
       h1: {
         status: "yes",
         walletsChecked: 12,
+        walletSetVersion: 7,
+        walletSetSize: 30,
         assetOnHyperliquid: true,
         agreeingWallets: 2,
         opposingWallets: 0,
@@ -232,6 +248,8 @@ describe("summary context block (#329)", () => {
     let c = await summary(versionId);
     expect(c).toMatchObject({
       contextVersion: SIGNAL_CONTEXT_VERSION,
+      // Chưa có tập ví nghiên cứu nào trong môi trường test này.
+      researchWalletsTop: null,
       source: "live",
       minClosedPerGroup: 30,
       closedWithoutSnapshot: 3,
@@ -400,5 +418,78 @@ describe("funnel step 4 counts in totals mode (#358, refs #343)", () => {
     // 1 ngày: ctx-a1 (yes / no / na, test đầu) + fc-live.
     expect(await funnel("1d")).toEqual({ reached: 2, h1Yes: 2, h2Yes: 1, h3Yes: 1 });
     expect(await funnel("7d")).toEqual({ reached: 3, h1Yes: 3, h2Yes: 1, h3Yes: 1 });
+  });
+});
+
+describe("context-v1 and context-v2 stay apart for H1, H2 / H3 merge (#353, review #365)", () => {
+  it("H1 uses current-version snapshots only; H2 / H3 and their coverage merge versions with the same formula", async () => {
+    const versionId = randomUUID();
+    await env.pool.query(
+      `insert into signal_bot_versions (id, number, name, config, status, created_at, updated_at, status_changed_at)
+       select $1, 42, 'Ctx v2', config, 'stopped', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'
+         from signal_bot_versions where is_baseline`,
+      [versionId],
+    );
+    const before = await summary(versionId);
+    const from = "2026-10-20T00:00:00Z";
+    const v1 = (h1: string) => ({ h1, h2: "no", h3: "no", version: SIGNAL_CONTEXT_V1 });
+    // context-v1 (ví được follow): H1 đủ mẫu ở cả hai nhóm nếu bị gộp, nhưng không bao giờ vào H1 của v2.
+    await bulk(versionId, "v1-w", 30, from, 1, v1("yes"));
+    await bulk(versionId, "v1-o", 30, from, 0, v1("no"));
+    let c = await summary(versionId);
+    const q = (k: "h1" | "h2" | "h3") => c.questions.find((x) => x.key === k);
+    expect(c.contextVersion).toBe(SIGNAL_CONTEXT_VERSION);
+    expect(c.closedWithoutSnapshot).toBe(before.closedWithoutSnapshot);
+    expect(q("h1")).toMatchObject({
+      with: { closed: 0 },
+      without: { closed: 0 },
+      status: "collecting",
+    });
+    // H2 / H3 cùng hàm tính ở v1 và v2: gộp.
+    expect(q("h2")).toMatchObject({ with: { closed: 0 }, without: { closed: 60 } });
+    expect(q("h3")).toMatchObject({ with: { closed: 0 }, without: { closed: 60 } });
+    expect(c.coverage).toMatchObject({
+      signals: before.coverage.signals + 60,
+      whale: before.coverage.whale,
+      funding: before.coverage.funding + 60,
+      priceRun: before.coverage.priceRun + 60,
+    });
+
+    await bulk(versionId, "v2-w", 5, from, 1, { h1: "yes", h2: "no", h3: "no" });
+    c = await summary(versionId);
+    expect(q("h1")).toMatchObject({ with: { closed: 5 }, without: { closed: 0 } });
+    expect(q("h2")).toMatchObject({ without: { closed: 65 } });
+    expect(c.coverage).toMatchObject({
+      signals: before.coverage.signals + 65,
+      whale: before.coverage.whale + 5,
+    });
+    // Live và Backfilled vẫn tách: khối backfilled không thấy các lệnh live này.
+    const bf = await summary(versionId, "backfilled");
+    expect(bf.questions.find((x) => x.key === "h2")).toMatchObject({
+      with: { closed: 0 },
+      without: { closed: 0 },
+    });
+
+    // Tập ví nghiên cứu mới nhất → "top {K} of the leaderboard".
+    await env.pool.query(
+      `insert into research_wallet_sets (version, run_date, k, size, created_at) values (1, '2026-11-16', 30, 28, now())`,
+    );
+    expect((await summary(versionId)).researchWalletsTop).toBe(28);
+
+    // Phễu tầng 4: bài có snapshot v1 trong khoảng không được đếm.
+    const r0 = researchSummarySchema.parse(
+      (await team.request("GET", `${base}/summary?range=1d`)).json(),
+    );
+    await env.pool.query(
+      `insert into signal_articles (id, source, title, content, published_at, collected_at, matched_currencies, candidates, content_hash,
+         status, classification, claude_prompt_version, rule_version)
+       values ('fc-v1', 'Reuters', 'Title fc-v1', 'Body', $1, $1, '[]', '[]', 'hash-fc-v1', 'classified', null, $2, 'news-v3')`,
+      [ago(30), CLS],
+    );
+    await snapshot("fc-v1", ago(29), v1("yes"));
+    const r1 = researchSummarySchema.parse(
+      (await team.request("GET", `${base}/summary?range=1d`)).json(),
+    );
+    expect(r1.funnel?.context).toEqual(r0.funnel?.context);
   });
 });

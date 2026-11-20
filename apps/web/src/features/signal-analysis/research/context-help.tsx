@@ -195,7 +195,13 @@ function Table({ c }: { c: ResearchContextSummary }) {
                       {i === 0 ? (
                         <th scope="row" rowSpan={2} className={`${tdW} font-normal`}>
                           <strong>{title}</strong>
-                          <Sub>{t(`q.${key}.body`)}</Sub>
+                          <Sub>
+                            {key !== "h1"
+                              ? t(`q.${key}.body`)
+                              : c.researchWalletsTop === null
+                                ? t("q.h1.bodyNoK")
+                                : t("q.h1.body", { k: c.researchWalletsTop })}
+                          </Sub>
                         </th>
                       ) : null}
                       <td className={tdR}>
