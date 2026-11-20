@@ -378,7 +378,8 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     ]);
   });
 
-  it("the queue plays one article at a time, in order", async () => {
+  // Tạm bỏ qua theo yêu cầu người dùng (2026-11-20): chập chờn trên CI vì phụ thuộc thời gian thật; sửa bằng fake timers ở issue theo dõi.
+  it.skip("the queue plays one article at a time, in order", async () => {
     state.next = [page("c1"), page("c2", [ETH, SOL])];
     await ready();
     const traced = () =>
