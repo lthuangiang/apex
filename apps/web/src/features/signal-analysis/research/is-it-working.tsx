@@ -22,6 +22,7 @@ import { useBotsLabels } from "./bots-labels-context";
 import { ContextHelp } from "./context-help";
 import { pctPlain, pctSigned, tone } from "./format";
 import { HelpButton } from "./how-it-works";
+import { ByMarket } from "./market-state";
 import type { Tr } from "./text";
 import {
   Bar,
@@ -46,7 +47,7 @@ import { classifierShort } from "./version-text";
 // By level / Does context help?. Mọi số từ API tổng kết / versions / classifiers; thiếu thì "Not available", không bao giờ 0
 // (quy tắc 1.8). Trung bình sau phí chỉ hiện khi đã có 30 lệnh đóng được tính ("Average shows at 30 closed").
 
-export const JUDGE_TABS = ["overall", "levels", "context"] as const;
+export const JUDGE_TABS = ["overall", "levels", "market", "context"] as const;
 export type JudgeTab = (typeof JUDGE_TABS)[number];
 
 /** Lệnh đóng ĐƯỢC TÍNH của một dòng (News: classifier đã qua cổng; replay: mọi lệnh đóng). */
@@ -135,6 +136,8 @@ export function IsItWorking({
           <Overall v={v} tz={tz} />
         ) : tab === "levels" ? (
           <Levels levels={v.levels} />
+        ) : tab === "market" ? (
+          <ByMarket live={v.marketSplit} backfilled={v.marketSplitBackfilled} />
         ) : (
           <ContextHelp live={v.context} backfilled={v.contextBackfilled} picked={picked} />
         )}

@@ -43,6 +43,7 @@ import {
   useLiveArticles,
   useLiveSwitch,
 } from "./live-drop";
+import { MarketAtDecision } from "./market-state";
 import type { Tr } from "./text";
 import {
   BAND_COUNT,
@@ -1163,6 +1164,10 @@ function Steps({
               </dl>
             )}
             {s.key === "collect" && collectExtra !== null ? collectExtra : null}
+            {/* #376: trạng thái thị trường lúc quyết định (chỉ ghi lại, không đổi quyết định). */}
+            {s.key === "decide" && context !== null ? (
+              <MarketAtDecision state={context.marketState} market={context.market} />
+            ) : null}
             {s.key === "score" && scoreExtra !== null ? (
               <div className="mt-3">{scoreExtra}</div>
             ) : null}

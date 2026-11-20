@@ -8445,7 +8445,8 @@
         "shadowPnl": "Would have: {outcome} · {pnl}",
         "olderRules": "Show older rules ({versions}) · {n}",
         "olderRulesShort": "Older rules",
-        "olderTag": "Rules v{v} · not counted"
+        "olderTag": "Rules v{v} · not counted",
+        "colMarket": "Market at entry"
       },
       "detail": {
         "close": "Close",
@@ -8992,6 +8993,7 @@
             "context": "Context questions",
             "versions": "Versions",
             "labels": "Labels",
+            "market": "Market state",
             "experiments": "Experiments"
           },
           "off": "Off",
@@ -9125,7 +9127,8 @@
         "tabs": {
           "overall": "Overall",
           "levels": "By level",
-          "context": "Does context help?"
+          "context": "Does context help?",
+          "market": "By market"
         },
         "closedTitle": "Closed trades counted",
         "closedAria": "Closed trades",
@@ -9293,6 +9296,52 @@
       },
       "traders": {
         "noDesk": "Turn on AI Desk to open trader pages"
+      },
+      "market": {
+        "title": "Market at decision",
+        "na": "Not available",
+        "trend": {
+          "up": "up",
+          "flat": "flat",
+          "down": "down"
+        },
+        "vol": {
+          "low": "low",
+          "normal": "normal",
+          "high": "high"
+        },
+        "chipBtc": "BTC trend: {v}",
+        "chipVol": "Volatility ({asset}): {v}",
+        "btcLine": "BTC {pct} in the last {h} h",
+        "rankLine": "{asset} 30-day move rank: {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} percentile",
+        "how": "How it works › Market state",
+        "entry": "BTC trend: {btc} · volatility: {vol}",
+        "entryNa": "Market: Not available",
+        "sub": "Same closed trades as Overall, split by the market at decision. A group needs {min} closed trades before its average shows.",
+        "byBtc": "By BTC trend",
+        "byVol": "By volatility of the traded asset",
+        "colState": "Market at decision",
+        "colClosed": "Closed trades",
+        "colAvg": "Average after fees",
+        "rowVol": "Volatility: {v}",
+        "needs": "Not enough trades · needs {n} more",
+        "notRecorded": "Not recorded (before Phase 0)",
+        "notCompared": "Not compared",
+        "drawer": {
+          "intro": "<b>Market state is saved with every decision.</b> It describes the market at that moment. It never changes a decision; it’s only used to split the results in Is it working? › By market.",
+          "btcTitle": "BTC trend",
+          "btcBody": "BTC-USD change over the last {h} h, from SoDEX prices:",
+          "btcUp": "· <b>up</b>: more than {pct}",
+          "btcDown": "· <b>down</b>: less than {pct}",
+          "btcFlat": "· <b>flat</b>: in between",
+          "volTitle": "Volatility (of the traded asset)",
+          "volBody": "The asset’s move over the last {h} h, ranked against its own last {days} days:",
+          "volLow": "· <b>low</b>: below the {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} percentile",
+          "volHigh": "· <b>high</b>: above the {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} percentile",
+          "volNormal": "· <b>normal</b>: in between",
+          "missing": "No price data at that moment: “Not available”. Trades opened before market state was recorded show “Not available” too.",
+          "candles": "Volatility is “Not available” too when the last {h} h has fewer than {pct}% of its 1-minute candles, or no trades at all."
+        }
       },
       "latency": {
         "title": "Where the time goes",

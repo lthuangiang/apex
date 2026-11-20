@@ -497,6 +497,13 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
     expect(mark("claudeDone")).toHaveTextContent("Claude done+8 s10:20:19");
     expect(mark("decided")).toHaveTextContent("Decided: Long ETH+1 s10:20:20");
     expect(mark("opened")).toHaveTextContent("Paper trade opened+40 ms10:20:20");
+    // #376: thẻ Decide có "Market at decision"; snapshot này ghi trước #376 nên cả hai chip là Not available.
+    const market = within(list).getByRole("region", { name: "Market at decision" });
+    const decide = market.closest("li");
+    if (decide === null) throw new Error("Decide card");
+    expect(within(decide).getByRole("heading")).toHaveTextContent("6. Decide");
+    expect(within(market).getByText("BTC trend: Not available")).toBeInTheDocument();
+    expect(within(market).getByText("Volatility (ETH): Not available")).toBeInTheDocument();
     // Thẻ bước 4: giá trị lưu lúc quyết định; Yes màu xanh dương trung tính, không phải xanh lá.
     expect(within(list).getByText("Recorded · does not change the trade")).toBeInTheDocument();
     const h1 = within(list).getByTestId("sr-ctx-card-h1");
