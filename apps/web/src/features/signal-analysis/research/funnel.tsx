@@ -27,6 +27,8 @@ export interface FunnelBandView {
   onClick?: (() => void) | undefined;
   pressed?: boolean | undefined;
   ariaLabel?: string | undefined;
+  /** Thay `note` khi cần định dạng (tầng 4 ở chế độ tổng: từng cặp nhãn–số không ngắt dòng). */
+  noteNode?: ReactNode | undefined;
   /** #345: số đếm vừa đổi vì bài mới live: chữ bên phải nảy một lần khi đổi. */
   bump?: boolean | undefined;
 }
@@ -104,7 +106,7 @@ export function FunnelBands({
           ["--w" as string]: `${String(widths[i] ?? 38)}%`,
           ["--mw" as string]: `${String(WIDTHS_MOBILE[i] ?? 64)}%`,
         };
-        const cls = `flex h-[30px] w-[var(--mw)] min-w-0 items-center justify-between gap-2 border-0 text-xs font-extrabold whitespace-nowrap transition-[background-color,color,filter] duration-300 md:h-9 md:w-[var(--w)] md:text-[13px] ${
+        const cls = `@container flex h-[30px] w-[var(--mw)] min-w-0 items-center justify-between gap-2 border-0 text-xs font-extrabold whitespace-nowrap transition-[background-color,color,filter] duration-300 md:h-9 md:w-[var(--w)] md:text-[13px] ${
           ctx
             ? `rounded-md border-2 border-dashed px-[3%] md:px-[4%] ${on ? "border-accent" : "border-[color-mix(in_srgb,var(--accent)_25%,var(--surface))]"}`
             : "px-[5%]"
@@ -118,7 +120,11 @@ export function FunnelBands({
               {b.extra}
             </span>
             {/* #343: không cắt "…"; kết quả dài thì xuống tối đa 2 dòng trong tầng (cao cố định). */}
-            {b.note === null ? null : (
+            {b.noteNode !== undefined ? (
+              <span className="min-w-0 text-right leading-[1.15] font-bold whitespace-normal">
+                {b.noteNode}
+              </span>
+            ) : b.note === null ? null : (
               <span
                 key={b.bump === true ? b.note : undefined}
                 className={`min-w-0 text-right leading-[1.15] font-bold whitespace-normal ${b.bump === true ? "motion-safe:animate-[sr-bump_.5s_ease_both]" : ""}`}

@@ -19,7 +19,9 @@ import { CONTEXT_BAND } from "./trace-player";
 // `useStepPlayer`, hiển thị ở FunnelBands / ContextPanel như trace). File này chỉ giữ nguồn bài và hàng đợi:
 // - hỏi `GET /articles/new?since=` mỗi 15 s, CHỈ khi công tắc Live bật, tab hiển thị và phễu ở chế độ tổng (không trace);
 // - mỗi bài chỉ rơi một lần (bỏ bài đã thấy theo id); hàng đợi tối đa 3 bài, phần còn lại chỉ cộng số ("+N more");
-// - lần hỏi đầu sau khi dừng (tab ẩn, đang trace, Live tắt) và lúc phễu ngoài màn hình: chỉ cập nhật số, không rơi;
+// - lần hỏi đầu tiên khi mở trang chỉ đặt con trỏ (bài có trước đó không rơi); phễu ngoài màn hình: chỉ cập nhật số;
+// - lần hỏi đầu sau khi dừng (tab ẩn, đang trace, Live tắt): lấy hết bài đã lỡ, thả tối đa 3 bài MỚI NHẤT, phần còn lại
+//   cộng vào "+N more" (sửa lỗi người dùng báo: SoSoValue nạp theo đợt 5 phút, quay lại tab thì cả đợt chỉ cộng số);
 // - không bao giờ cắt ngang trace người dùng đang xem: bài chờ ở chip "N new articles · play".
 // Số đếm và feed luôn lấy lại từ API (làm mới query), không tự cộng.
 
@@ -31,6 +33,9 @@ export const LIVE_QUEUE_MAX = 3;
 export const LIVE_STEP_MS = 380;
 /** Bước 4 khi bài có snapshot: đủ cho hiệu ứng H1 / H2 / H3 (≤ 1.2 s). */
 export const LIVE_CONTEXT_MS = 1300;
+/** Lần hỏi bù sau khi dừng: mỗi trang tối đa (trần của API) và số trang tối đa, để lấy được bài mới nhất của khoảng lỡ. */
+export const LIVE_CATCH_UP_LIMIT = 50;
+export const LIVE_CATCH_UP_PAGES = 5;
 /** Giữ khung cuối trước khi sang bài sau. */
 export const LIVE_HOLD_MS = 900;
 
@@ -61,6 +66,16 @@ export function enqueue(s: LiveQueue, items: readonly ResearchArticle[]): LiveQu
     queue: all.slice(0, LIVE_QUEUE_MAX),
     extra: s.extra + Math.max(0, all.length - LIVE_QUEUE_MAX),
   };
+}
+
+/**
+ * Bài đã lỡ khi quay lại (tab ẩn, trace, Live tắt): giữ LIVE_QUEUE_MAX bài mới nhất (cả bài đang chờ sẵn), cũ trước mới;
+ * phần còn lại cộng `extra`.
+ */
+export function enqueueNewest(s: LiveQueue, items: readonly ResearchArticle[]): LiveQueue {
+  const all = [...s.queue, ...items];
+  const queue = all.slice(-LIVE_QUEUE_MAX);
+  return { ...s, queue, extra: s.extra + all.length - queue.length };
 }
 
 /** Lấy bài kế tiếp khi rảnh (không trace, không có bài đang rơi). Hết bài thì xoá "+N more". */
@@ -199,21 +214,35 @@ export function useLiveArticles({
     if (!listening) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // Lần hỏi đầu sau khi dừng chỉ cập nhật số: bài tới lúc không xem không rơi dồn một lúc.
+    // Lần hỏi đầu sau khi dừng: hỏi bù mọi bài đã lỡ, thả các bài mới nhất (xem `enqueueNewest`).
     let catchUp = true;
     const tick = async () => {
       const version = since.current.version;
       try {
-        const r = await fetchNewArticles(since.current.cursor, version);
-        if (stopped || since.current.version !== version) return;
-        const first = since.current.cursor === null;
-        since.current = { version, cursor: r.since };
-        const items = r.items.filter((a) => !seen.current.has(a.id));
+        // Lần đầu khi mở trang (chưa có con trỏ): API chỉ trả con trỏ, không có bài.
+        const opening = since.current.cursor === null;
+        const bulk = catchUp && !opening;
+        const got: ResearchArticle[] = [];
+        let cursor = since.current.cursor;
+        for (let page = 0; page < (bulk ? LIVE_CATCH_UP_PAGES : 1); page++) {
+          const r = await fetchNewArticles(cursor, version, bulk ? LIVE_CATCH_UP_LIMIT : null);
+          if (stopped || since.current.version !== version) return;
+          const moved = r.since !== cursor;
+          cursor = r.since;
+          since.current = { version, cursor };
+          got.push(...r.items);
+          if (r.items.length < LIVE_CATCH_UP_LIMIT || !moved) break;
+        }
+        const items = got.filter((a) => !seen.current.has(a.id));
         for (const a of items) seen.current.add(a.id);
         if (items.length > 0) {
           setFresh((f) => new Set([...f, ...items.map((a) => a.id)]));
-          if (catchUp || first || !inViewRef.current) refresh();
-          else setState((s) => enqueue(s, items));
+          if (opening || !inViewRef.current) refresh();
+          else if (bulk) {
+            setState((s) => enqueueNewest(s, items));
+            // Bài chỉ đếm ("+N more") vào số đếm ngay.
+            if (items.length > LIVE_QUEUE_MAX) refresh();
+          } else setState((s) => enqueue(s, items));
         }
         catchUp = false;
       } catch {

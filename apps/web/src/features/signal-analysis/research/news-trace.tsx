@@ -119,8 +119,11 @@ interface Totals {
   counts: (string | null)[];
   notes: (string | null)[];
   reasons: { reason: ResearchDropReason; n: number }[];
-  /** #358: tầng 4 · Context ("Whales agree N · …"); null khi API chưa có snapshot live trong khoảng ("records only"). */
-  context: string | null;
+  /**
+   * #358: tầng 4 · Context, số tín hiệu có H1 / H2 / H3 = yes (đã định dạng); null khi API chưa có snapshot live trong
+   * khoảng ("records only").
+   */
+  context: { h1: string; h2: string; h3: string } | null;
 }
 
 function totals(f: ResearchFunnel | null, t: Tr): Totals {
@@ -189,11 +192,11 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
     context:
       f.context === null
         ? null
-        : t("context.funnelCounts", {
+        : {
             h1: count(f.context.h1Yes),
             h2: count(f.context.h2Yes),
             h3: count(f.context.h3Yes),
-          }),
+          },
   };
 }
 
@@ -212,13 +215,34 @@ function totalBands(
 ): FunnelBandView[] {
   return BANDS.map((key, n) => {
     const label = t("trace.band", { n: n + 1, name: t(`trace.stages.${key}`) });
-    if (key === "context")
+    if (key === "context") {
+      const c = tot.context;
+      if (c === null)
+        return { key, label, note: t("context.recordsOnly"), state: "total" as const };
+      // #345: không ngắt dòng giữa nhãn và số (mỗi cặp nowrap); tầng hẹp (dưới 480 px) dùng câu ngắn.
+      const pair = (chunk: ReactNode) => (
+        <span data-pair="" className="whitespace-nowrap">
+          {chunk}
+        </span>
+      );
       return {
         key,
         label,
-        note: tot.context ?? t("context.recordsOnly"),
+        note: null,
+        noteNode: (
+          <>
+            <span className="hidden @[480px]:inline">
+              {t.rich("context.funnelCounts", { ...c, p: pair })}
+            </span>
+            <span className="@[480px]:hidden">
+              {t.rich("context.funnelCountsShort", { ...c, p: pair })}
+            </span>
+          </>
+        ),
+        title: t.markup("context.funnelCounts", { ...c, p: (x) => x }),
         state: "total" as const,
       };
+    }
     const i = STAGES.indexOf(key);
     const name = t(`trace.stages.${key}`);
     return {
