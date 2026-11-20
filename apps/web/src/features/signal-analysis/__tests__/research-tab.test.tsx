@@ -629,7 +629,8 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(screen.getByText(/each trade costs about Not available/)).toBeInTheDocument();
     const trades = await screen.findByRole("table", { name: "Signal research trades" });
     const sol = within(trades).getByRole("row", { name: /SEC delays decision/ });
-    expect(within(sol).getAllByText("Not available")).toHaveLength(2);
+    // + #376: "Market at entry" của lệnh không có trạng thái thị trường.
+    expect(within(sol).getAllByText("Not available")).toHaveLength(3);
     expect(within(sol).queryByText("$0.00")).not.toBeInTheDocument();
     expect(screen.getByText("Open", { selector: "b" })).toBeInTheDocument();
     expect(screen.queryByText(/unrealized/)).not.toBeInTheDocument();
@@ -978,6 +979,7 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
       "Take profit / Stop loss",
       "When a signal passes",
       "Context questions",
+      "Market state",
       "Versions",
       "Labels",
     ]);
@@ -1156,6 +1158,17 @@ describe("Is it working? redesign (#344) and older rules (#321)", { timeout: 30_
     const r = await screen.findByRole("region", { name: "Is it working?" });
     const overall = within(r).getByRole("tab", { name: "Overall" });
     expect(overall).toHaveAttribute("aria-selected", "true");
+    // #376: tab By market giữa By level và Does context help? (mockup catalyst-market-state-1440).
+    expect(
+      within(r)
+        .getAllByRole("tab")
+        .map((x) => x.textContent),
+    ).toEqual(["Overall", "By level", "By market", "Does context help?"]);
+    await userEvent.click(within(r).getByRole("tab", { name: "By market" }));
+    // Tổng kết không có marketSplit: Not available, không có bảng số 0.
+    expect(within(within(r).getByRole("tabpanel")).getByText("Not available")).toBeInTheDocument();
+    expect(within(within(r).getByRole("tabpanel")).queryByRole("table")).toBeNull();
+    await userEvent.click(overall);
     overall.focus();
     await userEvent.keyboard("{ArrowRight}");
     expect(within(r).getByRole("tab", { name: "By level" })).toHaveAttribute(

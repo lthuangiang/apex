@@ -2,6 +2,7 @@
 
 import {
   CLASSIFIER_GATE,
+  MARKET_STATE_RULES,
   RESEARCH_LEVELS,
   SIGNAL_CATALYSTS,
   versionHoldHours,
@@ -24,7 +25,7 @@ import { count } from "../format";
 
 import { useResearchClassifiers } from "./api";
 import { useBotsLabels } from "./bots-labels-context";
-import { hold } from "./format";
+import { hold, pctSigned } from "./format";
 import { LEVEL_TONE, Na, Note, Pill, Sub, tdR, tdW, thR } from "./ui";
 import {
   catalystName,
@@ -38,7 +39,7 @@ import {
 // nội dung cũ của khối "What counts as a news signal" chuyển vào đây, chia tab, theo luật của version đang chọn ở đầu trang.
 // Không bao giờ tự mở; Esc đóng; Radix giữ focus trong drawer và trả focus về nút đã mở (BottomSheet). Desktop: bám cạnh
 // phải (`side`); dưới 768px: chiếm màn hình như sheet của version. Trang gọn (2026-11-20): giải thích dài của Paper bots và
-// Classifier quality chuyển vào tab Versions và tab Labels (mới); 7 tab cuộn ngang, mép phải mờ khi còn tab phía sau.
+// Classifier quality chuyển vào tab Versions và tab Labels (mới), Market state (#376); các tab cuộn ngang, mép phải mờ khi còn tab phía sau.
 
 export const HOW_TABS = [
   "news",
@@ -46,6 +47,7 @@ export const HOW_TABS = [
   "tpsl",
   "gate",
   "context",
+  "market",
   "versions",
   "labels",
 ] as const;
@@ -53,6 +55,8 @@ export type HowTab = (typeof HOW_TABS)[number];
 
 const HowContext = createContext<((tab: HowTab) => void) | null>(null);
 export const HowItWorksProvider = HowContext.Provider;
+/** Mở drawer đúng tab; null ngoài provider (component đứng riêng trong test). */
+export const useHowItWorks = () => useContext(HowContext);
 
 /** Nút "?" nhỏ cạnh "Rules v3" / chip level: mở drawer đúng tab. Ngoài provider thì không hiện. */
 export function HelpButton({ tab }: { tab: HowTab }) {
@@ -97,7 +101,7 @@ export function HowItWorksDrawer({
   const tn = useTranslations("signalAnalysis.research");
   const refs = useRef(new Map<HowTab, HTMLButtonElement>());
   const cur = tab ?? "news";
-  // 7 tab cuộn ngang khi drawer hẹp: mép phải mờ khi còn tab phía sau; tab đang chọn luôn cuộn vào khung.
+  // Các tab cuộn ngang khi drawer hẹp: mép phải mờ khi còn tab phía sau; tab đang chọn luôn cuộn vào khung.
   const [list, setList] = useState<HTMLDivElement | null>(null);
   const [more, setMore] = useState(false);
   useEffect(() => {
@@ -348,9 +352,42 @@ function Panel({
           )}
         </>
       );
+    case "market":
+      return <MarketStatePanel />;
     case "labels":
       return <LabelsPanel onClose={onClose} />;
   }
+}
+
+/** Tab Market state (#376, mockup catalyst-drawer-market-state-1440.png): ngưỡng lấy từ `MARKET_STATE_RULES`. */
+
+function MarketStatePanel() {
+  const t = useTranslations("signalAnalysis.research.market.drawer");
+  const r = MARKET_STATE_RULES;
+  const box = "flex flex-col gap-1.5 rounded-tile border border-border p-3.5";
+  return (
+    <>
+      <p className="m-0">{t.rich("intro", { b })}</p>
+      <div className={box}>
+        <b className="text-ink">{t("btcTitle")}</b>
+        <span>{t("btcBody", { h: r.btcHours })}</span>
+        <span>{t.rich("btcUp", { pct: pctSigned(r.btcUpPct, 1), b })}</span>
+        <span>{t.rich("btcDown", { pct: pctSigned(r.btcDownPct, 1), b })}</span>
+        <span>{t.rich("btcFlat", { b })}</span>
+      </div>
+      <div className={box}>
+        <b className="text-ink">{t("volTitle")}</b>
+        <span>{t("volBody", { h: r.volHours, days: r.volLookbackDays })}</span>
+        <span>{t.rich("volLow", { n: r.volLowPercentile, b })}</span>
+        <span>{t.rich("volHigh", { n: r.volHighPercentile, b })}</span>
+        <span>{t.rich("volNormal", { b })}</span>
+      </div>
+      <p className="m-0 text-xs text-muted">{t("missing")}</p>
+      <p className="m-0 text-xs text-muted">
+        {t("candles", { pct: Math.round(r.volMinCoverage * 100), h: r.volHours })}
+      </p>
+    </>
+  );
 }
 
 /** Tab Labels (mới, trang gọn): nhãn là gì, vì sao tính theo Claude reader, khi nào lệnh bắt đầu được tính. */

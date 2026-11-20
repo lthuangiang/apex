@@ -19,6 +19,7 @@ import { clock, count, monthDay } from "../format";
 import { RESEARCH_DEFAULT, useResearchTrades, type ResearchFilters } from "./api";
 import { ResearchTradeDetail } from "./detail";
 import { delay, hold, pctSigned, priceText, tickPrice, tone, usdSigned } from "./format";
+import { MarketEntry } from "./market-state";
 import { rulesList, skipText, sourcesText, tradeTitle, type Tr } from "./text";
 import { Block, Dash, Na, Pill, RetryTag, SIDE_TONE, Sub, tdR, tdW, thR, thW } from "./ui";
 
@@ -402,17 +403,19 @@ export function ResearchTrades({
 }
 
 /** Độ rộng cột của bảng từ 1280 px (#297): Signal, Seen, What, Moved, Entry, TP, SL, Max hold, Result, Trace. */
+// #376: cột "Market at entry" sau "What happened"; các cột khác hẹp lại để tổng vẫn 100%.
 const COL_WIDTHS = [
-  "xl:w-[12%]",
   "xl:w-[10%]",
-  "xl:w-[22%]",
-  "xl:w-[7%]",
+  "xl:w-[9%]",
+  "xl:w-[18%]",
+  "xl:w-[11%]",
+  "xl:w-[6%]",
   "xl:w-[8%]",
-  "xl:w-[9%]",
-  "xl:w-[9%]",
+  "xl:w-[8%]",
+  "xl:w-[8%]",
   "xl:w-[6%]",
   "xl:w-[9%]",
-  "xl:w-[8%]",
+  "xl:w-[7%]",
 ] as const;
 
 const traceBtn =
@@ -466,6 +469,7 @@ function TradesTable({
     "colSignal",
     "colSeen",
     "colWhat",
+    "colMarket",
     "colMoved",
     "colEntry",
     "colTp",
@@ -476,7 +480,7 @@ function TradesTable({
   return (
     // #297: từ 1280 px bảng vừa khung (table-fixed, độ rộng cột theo %), không cuộn ngang; dưới 1280 px mới cuộn.
     <ScrollTable label={t("trades.table")}>
-      <table className="w-full min-w-[1100px] border-collapse xl:min-w-0 xl:table-fixed">
+      <table className="w-full min-w-[1240px] border-collapse xl:min-w-0 xl:table-fixed">
         <caption className="sr-only">{t("trades.table")}</caption>
         <colgroup>
           {COL_WIDTHS.map((w, i) => (
@@ -531,6 +535,9 @@ function TradesTable({
                     {title}
                   </button>
                   <WhatSub x={x} tz={tz} />
+                </td>
+                <td className={tdW}>
+                  <MarketEntry state={x.marketState} />
                 </td>
                 <td className={tdR}>
                   {skipped ? (
@@ -655,6 +662,9 @@ function TradeCards({
               )}
             </span>
             <span className="text-sm">{tradeTitle(x, t)}</span>
+            <span>
+              <MarketEntry state={x.marketState} short />
+            </span>
             {skip !== null ? (
               <>
                 <span className="text-xs font-bold text-warn">{skip}</span>
