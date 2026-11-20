@@ -128,7 +128,8 @@ export function HowItWorksDrawer({
     const el = refs.current.get(cur);
     // jsdom (test) không có scrollIntoView.
     if (el !== undefined && "scrollIntoView" in el)
-      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+      // Giữa dải (#376): tab ở giữa danh sách (Market state) không nằm dưới mép mờ bên phải.
+      el.scrollIntoView({ block: "nearest", inline: "center" });
   }, [cur, list]);
   const name =
     version === null
