@@ -71,6 +71,50 @@ async function measure(page: Page): Promise<Box[]> {
   );
 }
 
+interface Chip {
+  tone: string;
+  overflowX: number;
+  overflowY: number;
+  overlaps: string[];
+  outsideFunnel: boolean;
+}
+
+/** Chip trace (#361: bài bị loại đỗ trong rãnh bên phải; vào lệnh / gộp đỗ dưới Decide): không đè tầng nào, chữ không tràn. */
+async function chip(page: Page): Promise<Chip | null> {
+  return page.getByTestId("sr-funnel-bands").evaluate((root) => {
+    const el = root.querySelector<HTMLElement>("[data-testid='sr-token']");
+    if (el === null || getComputedStyle(el).opacity === "0") return null;
+    const c = el.getBoundingClientRect();
+    const box = root.getBoundingClientRect();
+    const hit = (b: DOMRect) =>
+      c.left < b.right - 0.5 &&
+      c.right > b.left + 0.5 &&
+      c.top < b.bottom - 0.5 &&
+      c.bottom > b.top + 0.5;
+    return {
+      tone: el.dataset.tone ?? "",
+      overflowX: el.scrollWidth - el.clientWidth,
+      overflowY: el.scrollHeight - el.clientHeight,
+      overlaps: [...root.querySelectorAll<HTMLElement>("[data-band]")]
+        .filter((b) => hit(b.getBoundingClientRect()))
+        .map((b) => b.dataset.band ?? ""),
+      outsideFunnel: c.left < box.left - 0.5 || c.right > box.right + 0.5,
+    };
+  });
+}
+
+function expectChip(c: Chip | null) {
+  expect(c, "the chip is shown").not.toBeNull();
+  if (c === null) return;
+  expect.soft(c.overlaps, `${c.tone} chip covers no band`).toEqual([]);
+  expect.soft(c.outsideFunnel, `${c.tone} chip stays inside the funnel box`).toBe(false);
+  // Chip đang chạy / đã vào lệnh có thể cắt "…" (truncate); chip bị loại xuống dòng, không được tràn.
+  if (c.tone === "dropped") {
+    expect.soft(c.overflowX, "dropped chip: scrollWidth ≤ clientWidth").toBeLessThanOrEqual(0);
+    expect.soft(c.overflowY, "dropped chip: scrollHeight ≤ clientHeight").toBeLessThanOrEqual(0);
+  }
+}
+
 function expectFits(boxes: Box[]) {
   expect(boxes).toHaveLength(6);
   for (const x of boxes) {
@@ -97,4 +141,5 @@ for (const title of ["SEC approves in-kind", "Solana Foundation", "Bithumb will 
       /Reached Decide|Stopped at|Merged at/,
     );
     expectFits(await measure(page));
+    expectChip(await chip(page));
   });

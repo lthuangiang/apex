@@ -7961,12 +7961,12 @@
           "normalize": "{n, plural, one {# article on SoDEX} other {# articles on SoDEX}}",
           "score": "{n, plural, one {# signal} other {# signals}}",
           "filter": "{n} left",
-          "decide": "Long {long} · Short {short}"
+          "decide": "<p>Long {long}</p> · <p>Short {short}</p>"
         },
         "countsShort": {
           "collect": "{n}",
           "normalize": "{n} on SoDEX",
-          "decide": "L {long} · S {short}"
+          "decide": "<p>L {long}</p> · <p>S {short}</p>"
         },
         "notes": {
           "collect": "every SoSoValue article",

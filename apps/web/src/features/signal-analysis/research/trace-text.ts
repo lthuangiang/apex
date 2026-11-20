@@ -80,6 +80,8 @@ export interface Row {
   label: string;
   /** null = "Not available". */
   value: string | null;
+  /** Mã nội bộ (chỉ ở tooltip, không bao giờ in ra thẻ). */
+  title?: string | undefined;
 }
 
 export type StepStatus = ResearchTraceStep["status"];
@@ -115,12 +117,21 @@ export interface TraceView {
 const PCT_NA = (v: number | null, f: (n: number) => string): string | null =>
   v === null ? null : f(v);
 
+/**
+ * "Result: Dropped: Not on SoDEX": cùng câu với "Why they dropped out". Mã nội bộ (`NO_SODEX_MARKET`…) không in ra thẻ, chỉ
+ * ở tooltip (#343 review).
+ */
 function droppedRow(s: ResearchTraceStep, t: Tr): Row {
   const r: ResearchDropReason | null = s.reason;
-  const code = s.code ?? (r === null ? null : t(`trace.reasonLabels.${r}`));
   return {
     label: t("trace.rows.result"),
-    value: code === null ? null : t("trace.values.dropped", { code }),
+    value:
+      r !== null
+        ? t("trace.values.dropped", { code: t(`trace.reasonLabels.${r}`) })
+        : s.code !== null
+          ? t("trace.status.drop")
+          : null,
+    title: s.code ?? undefined,
   };
 }
 
@@ -525,7 +536,13 @@ function stepView(
                         .join(", "),
                     }),
           });
-        if (d.error !== null) rows.push({ label: t("trace.rows.claudeError"), value: d.error });
+        // Mã lỗi của Claude chỉ ở tooltip; thẻ ghi "Not understood".
+        if (d.error !== null)
+          rows.push({
+            label: t("trace.rows.claudeError"),
+            value: t("trace.reasonLabels.notUnderstood"),
+            title: d.error,
+          });
       }
       if (drop) rows.push(droppedRow(s, t));
       if (a.sentToClaude || u !== null) rows.push(...claudeRows(u, t));

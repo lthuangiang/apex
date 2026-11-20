@@ -126,6 +126,8 @@ interface Totals {
   context: { h1: string; h2: string; h3: string } | null;
   /** Câu ngắn của số trong tầng khi tầng hẹp (null = dùng câu thường). */
   countsShort: (string | null)[];
+  /** Tầng Decide: số Long / Short (đã định dạng), để mỗi cặp nhãn–số không ngắt dòng. */
+  decide: { long: string; short: string } | null;
 }
 
 function totals(f: ResearchFunnel | null, t: Tr): Totals {
@@ -136,6 +138,7 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
       reasons: [],
       context: null,
       countsShort: STAGES.map(() => null),
+      decide: null,
     };
   const dropped = f.articleStops.filter((s) => s.outcome === "dropped" && s.reason !== null);
   const byReason = new Map<ResearchDropReason, { n: number; stage: number }>();
@@ -182,14 +185,15 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
       t("trace.counts.normalize", { n: passed(1) }),
       t("trace.counts.score", { n: passed(2) }),
       t("trace.counts.filter", { n: count(passed(3)) }),
-      t("trace.counts.decide", { long: count(f.long), short: count(f.short) }),
+      t.markup("trace.counts.decide", { long: count(f.long), short: count(f.short), p: (x) => x }),
     ],
+    decide: { long: count(f.long), short: count(f.short) },
     countsShort: [
       t("trace.countsShort.collect", { n: count(steps[0]?.in ?? 0) }),
       t("trace.countsShort.normalize", { n: count(passed(1)) }),
       null,
       null,
-      t("trace.countsShort.decide", { long: count(f.long), short: count(f.short) }),
+      null,
     ],
     notes: [
       t("trace.notes.collect"),
@@ -212,6 +216,13 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
 
 /* ---------------------------------------------------------------- Bands */
 
+/** Một cặp nhãn–số trong tầng: không ngắt dòng giữa nhãn và số. */
+const pair = (chunk: ReactNode) => (
+  <span data-pair="" className="whitespace-nowrap">
+    {chunk}
+  </span>
+);
+
 /**
  * Tầng ở chế độ tổng: số bài trong tầng, chú thích (rê chuột), bấm để lọc feed. Tầng Context: số tín hiệu có H1 / H2 / H3
  * = yes (#358), chưa có thì "records only".
@@ -230,11 +241,6 @@ function totalBands(
       if (c === null)
         return { key, label, note: t("context.recordsOnly"), state: "total" as const };
       // #345: không ngắt dòng giữa nhãn và số (mỗi cặp nowrap); tầng hẹp dùng câu ngắn (FunnelBands, SHORT_AT).
-      const pair = (chunk: ReactNode) => (
-        <span data-pair="" className="whitespace-nowrap">
-          {chunk}
-        </span>
-      );
       return {
         key,
         label,
@@ -252,6 +258,13 @@ function totalBands(
       label,
       note: tot.counts[i] ?? t("na"),
       noteShort: tot.countsShort[i] ?? undefined,
+      // Decide: "Long N" / "Short N" không bao giờ tách nhãn khỏi số.
+      ...(key === "decide" && tot.decide !== null
+        ? {
+            noteNode: t.rich("trace.counts.decide", { ...tot.decide, p: pair }),
+            noteShort: t.rich("trace.countsShort.decide", { ...tot.decide, p: pair }),
+          }
+        : {}),
       state: "total" as const,
       title: tot.notes[i] ?? undefined,
       onClick: () => {
@@ -631,7 +644,7 @@ export function NewsTrace({
         <div
           id="sr-trace"
           ref={funnelRef}
-          className="flex min-w-0 scroll-mt-4 flex-col gap-3 max-md:order-1 md:col-span-2 xl:flex-row xl:items-stretch"
+          className="flex min-w-0 scroll-mt-4 flex-col gap-3 max-md:order-1 md:col-span-2 min-[1400px]:flex-row min-[1400px]:items-stretch"
         >
           <div className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-[14px] border border-border bg-surface-2 px-3 py-3.5 md:px-4">
             <div className="flex flex-1 flex-col justify-center">
@@ -671,7 +684,7 @@ export function NewsTrace({
               asset={asset}
               tz={ctx.tz}
               playKey={`${sel}:${String(run)}`}
-              className="xl:w-[300px] xl:flex-none"
+              className="min-[1400px]:w-[300px] min-[1400px]:flex-none"
             />
           ) : liveOn ? (
             <ContextPanel
@@ -680,7 +693,7 @@ export function NewsTrace({
               asset={liveData?.article.asset ?? liveData?.context?.market ?? liveView.assets}
               tz={ctx.tz}
               playKey={`live:${liveId}:${String(livePlayer.run)}`}
-              className="xl:w-[300px] xl:flex-none"
+              className="min-[1400px]:w-[300px] min-[1400px]:flex-none"
             />
           ) : (
             <p className="m-0 text-xs leading-normal text-ink-2 md:hidden">
@@ -1119,7 +1132,9 @@ function Steps({
                 {s.rows.map((r) => (
                   <div key={r.label} className="flex justify-between gap-3">
                     <dt className="text-muted">{r.label}</dt>
-                    <dd className="m-0 text-right font-bold text-ink">{r.value ?? <Na />}</dd>
+                    <dd title={r.title} className="m-0 text-right font-bold text-ink">
+                      {r.value ?? <Na />}
+                    </dd>
                   </div>
                 ))}
               </dl>
