@@ -27,6 +27,7 @@ import type { z } from "zod";
 import messages from "../../../../messages/en.json";
 import { SignalAnalysisPage } from "../components/signal-analysis-page";
 
+import { LATENCY_EMPTY } from "./news-trace-fixtures";
 import {
   JUDGE,
   NEWS_DETAIL,
@@ -152,6 +153,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
       if (p.endsWith("/signal-research/classifiers"))
         return Promise.resolve(schema.parse(CLASSIFIERS));
       if (p.endsWith("/signal-research/markets")) return Promise.resolve(schema.parse(MARKETS));
+      // #375: độ trễ theo chặng có test riêng (news-trace.test.tsx, latency.test.tsx); ở đây cửa sổ chưa đo được gì.
+      if (p.endsWith("/signal-research/latency"))
+        return Promise.resolve(schema.parse(LATENCY_EMPTY));
       if (p.endsWith("/signal-research/summary")) {
         if (m === "error") return Promise.reject(new real.ApiError("INTERNAL_ERROR", 500));
         if (m === "empty")
@@ -622,7 +626,11 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     // version tải ngay ở đầu trang.)
     expect(within(bots).queryByText(/^0\.0$/)).not.toBeInTheDocument();
     const f = region(/From headline to trade/);
-    expect(within(f).getAllByText("Not available")).toHaveLength(2);
+    // #375: ô Delay cũ ("Not available") nay là "Where the time goes": chặng chưa đo ghi "Not measured yet", không bao giờ 0.
+    expect(within(f).getAllByText("Not available")).toHaveLength(1);
+    expect(
+      within(within(f).getByTestId("sr-latency")).getAllByText("Not measured yet"),
+    ).toHaveLength(5); // 4 chặng + dòng Total
     const tbl = screen.getByRole("table", { name: "Where each signal type stands" });
     const whales = within(tbl).getByRole("row", { name: /Whales/ });
     expect(within(whales).getAllByText("Not available")).toHaveLength(2);

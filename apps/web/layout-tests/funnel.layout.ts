@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import {
   ARTICLES,
+  LATENCY_1D,
   SUMMARY_1D,
   TRACES,
 } from "../src/features/signal-analysis/__tests__/news-trace-fixtures";
@@ -22,6 +23,7 @@ async function open(page: Page, baseURL: string | undefined) {
     if (p.endsWith("/signal-research/summary")) return json(SUMMARY_1D);
     if (p.endsWith("/signal-research/trades")) return json(RESEARCH_TRADES);
     if (p.endsWith("/signal-research/articles/new")) return json({ items: [], since: "c1" });
+    if (p.endsWith("/signal-research/latency")) return json(LATENCY_1D);
     if (p.endsWith("/signal-research/articles"))
       return json({ items: ARTICLES, nextCursor: null, total: ARTICLES.length, totalInRange: 58 });
     const m = /\/signal-research\/articles\/([^/]+)\/trace$/.exec(p);
@@ -181,4 +183,44 @@ test("totals: the short Decide counts stay on one line when the band is narrow",
       .soft(r?.overflowX ?? 0, `decide band at ${String(px)} px does not overflow`)
       .toBeLessThanOrEqual(0);
   }
+});
+
+/**
+ * #375: ô "Where the time goes" (chế độ tổng) và dòng thời gian của thẻ Collect (trace): không tràn ngang, giá trị từng
+ * dòng nằm trong khung của nó.
+ */
+async function latencyFits(page: Page, testId: string) {
+  const r = await page.getByTestId(testId).evaluate((box) => {
+    const b = box.getBoundingClientRect();
+    const outside: string[] = [];
+    for (const el of box.querySelectorAll<HTMLElement>("dd, [data-mark] > div > div")) {
+      const x = el.getBoundingClientRect();
+      if (x.width === 0) continue;
+      if (x.left < b.left - 0.5 || x.right > b.right + 0.5) outside.push(el.textContent);
+    }
+    return { overflowX: box.scrollWidth - box.clientWidth, outside };
+  });
+  expect.soft(r.overflowX, `${testId}: scrollWidth ≤ clientWidth`).toBeLessThanOrEqual(0);
+  expect.soft(r.outside, `${testId}: values inside the box`).toEqual([]);
+}
+
+test("totals: Where the time goes fits, every leg value inside the card", async ({
+  page,
+  baseURL,
+}) => {
+  await open(page, baseURL);
+  await expect(page.getByTestId("sr-latency")).toContainText("5 min 45 s");
+  await latencyFits(page, "sr-latency");
+  // Phễu vẫn không tràn khi có ô mới.
+  expectFits(await measure(page));
+});
+
+test("trace: the Collect card timeline fits", async ({ page, baseURL }) => {
+  await open(page, baseURL);
+  await page
+    .getByRole("button", { name: /SEC approves in-kind/ })
+    .first()
+    .click();
+  await expect(page.getByTestId("sr-latency-timeline")).toContainText("Paper trade opened");
+  await latencyFits(page, "sr-latency-timeline");
 });

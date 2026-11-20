@@ -8,6 +8,7 @@ import {
   researchVersionSchema,
   researchVersionsSchema,
   researchArticleTraceSchema,
+  researchLatencySchema,
   researchNewArticlesSchema,
   researchSummarySchema,
   researchTradeDetailSchema,
@@ -49,6 +50,7 @@ export const RESEARCH_PATHS = {
   trade: (id: string) => `${RESEARCH_BASE}/trades/${encodeURIComponent(id)}`,
   articles: `${RESEARCH_BASE}/articles`,
   newArticles: `${RESEARCH_BASE}/articles/new`,
+  latency: `${RESEARCH_BASE}/latency`,
   trace: (id: string) => `${RESEARCH_BASE}/articles/${encodeURIComponent(id)}/trace`,
   versions: `${RESEARCH_BASE}/versions`,
   versionStatus: (id: string) => `${RESEARCH_BASE}/versions/${encodeURIComponent(id)}/status`,
@@ -100,6 +102,21 @@ export function useResearchSummary(range: ResearchRange, versionId: VersionId = 
         "GET",
         `${RESEARCH_PATHS.summary}?${query({}, { range, ...ver(versionId) })}`,
         researchSummarySchema,
+      ),
+    placeholderData: keepPreviousData,
+    retry,
+  });
+}
+
+/** #375: median từng chặng độ trễ trong cửa sổ 1 ngày / 7 ngày (ô "Where the time goes"). */
+export function useResearchLatency(range: ResearchRange, versionId: VersionId = null) {
+  return useQuery({
+    queryKey: [...KEY, "latency", range, versionId],
+    queryFn: () =>
+      api(
+        "GET",
+        `${RESEARCH_PATHS.latency}?${query({}, { range, ...ver(versionId) })}`,
+        researchLatencySchema,
       ),
     placeholderData: keepPreviousData,
     retry,
@@ -216,6 +233,7 @@ export function fetchNewArticles(
 export const LIVE_REFRESH_KEYS: readonly QueryKey[] = [
   [...KEY, "summary"],
   [...KEY, "articles"],
+  [...KEY, "latency"],
 ];
 
 // ── News bot versions (#306, API #305; thiết kế docs/mockups/signal-research/bot-versions*.html) ─────────────────────

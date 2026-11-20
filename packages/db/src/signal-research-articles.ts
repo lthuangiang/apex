@@ -859,9 +859,23 @@ export async function loadSignalResearchArticleTrace(
       ? new Set<string>()
       : await walletsWithProfile(q, contextWalletAddresses(context));
   check();
+  // #375: mốc độ trễ (đồng hồ scheduler). Decided = lần quyết định Filter / Decide đầu tiên của version cho bài.
+  const decidedMs = events
+    .filter((e) => (e.stage === "filter" || e.stage === "decide") && e.decidedClockAt !== null)
+    .map((e) => e.decidedClockAt?.getTime() ?? Infinity)
+    .reduce((m, x) => Math.min(m, x), Infinity);
+  const decidedAt = Number.isFinite(decidedMs) ? new Date(decidedMs) : null;
+  const liveTrade = trade?.label === "live" ? trade : null;
   return {
     article: articleItem(a, s, scope, context),
     context: context === undefined ? null : signalContextOf(context, profiles),
+    latency: {
+      claudeDoneAt: a.claudeDoneAt === null ? null : iso(a.claudeDoneAt),
+      decidedAt: decidedAt === null ? null : iso(decidedAt),
+      decision:
+        decidedAt === null ? null : s.trade_id !== null ? ("open" as const) : ("noTrade" as const),
+      openedAt: liveTrade?.openedClockAt == null ? null : iso(liveTrade.openedClockAt),
+    },
     steps: stepsOf({
       a,
       s,
