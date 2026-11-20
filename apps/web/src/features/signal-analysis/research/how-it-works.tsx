@@ -2,6 +2,7 @@
 
 import {
   CLASSIFIER_GATE,
+  EXPERIMENT_PAIRS,
   MARKET_STATE_RULES,
   RESEARCH_LEVELS,
   SIGNAL_CATALYSTS,
@@ -39,7 +40,8 @@ import {
 // nội dung cũ của khối "What counts as a news signal" chuyển vào đây, chia tab, theo luật của version đang chọn ở đầu trang.
 // Không bao giờ tự mở; Esc đóng; Radix giữ focus trong drawer và trả focus về nút đã mở (BottomSheet). Desktop: bám cạnh
 // phải (`side`); dưới 768px: chiếm màn hình như sheet của version. Trang gọn (2026-11-20): giải thích dài của Paper bots và
-// Classifier quality chuyển vào tab Versions và tab Labels (mới), Market state (#376); các tab cuộn ngang, mép phải mờ khi còn tab phía sau.
+// Classifier quality chuyển vào tab Versions và tab Labels (mới), Market state (#376), Experiments (#377); các tab cuộn
+// ngang, mép phải mờ khi còn tab phía sau.
 
 export const HOW_TABS = [
   "news",
@@ -50,6 +52,7 @@ export const HOW_TABS = [
   "market",
   "versions",
   "labels",
+  "experiments",
 ] as const;
 export type HowTab = (typeof HOW_TABS)[number];
 
@@ -84,6 +87,7 @@ export function HowItWorksDrawer({
   version,
   rulesVersion,
   maxRunning = null,
+  baselineNumber = null,
 }: {
   /** null = đóng. */
   tab: HowTab | null;
@@ -95,6 +99,8 @@ export function HowItWorksDrawer({
   rulesVersion: number | null;
   /** Số version chạy cùng lúc (API versions); null khi chưa tải. */
   maxRunning?: number | null;
+  /** #377: số của Baseline (đối chứng cố định của thí nghiệm); null khi chưa tải. */
+  baselineNumber?: number | null;
 }) {
   const t = useTranslations("signalAnalysis.research.page.drawer");
   const tv = useTranslations("signalAnalysis.research.versions");
@@ -107,7 +113,8 @@ export function HowItWorksDrawer({
   useEffect(() => {
     if (list === null) return;
     const check = () => {
-      setMore(list.scrollWidth - list.clientWidth - list.scrollLeft > 1);
+      // > 6 px: lề p-1 (4 px) của dải tab còn lại khi tab cuối được cuộn vào khung không tính là "còn tab phía sau".
+      setMore(list.scrollWidth - list.clientWidth - list.scrollLeft > 6);
     };
     check();
     list.addEventListener("scroll", check, { passive: true });
@@ -197,6 +204,7 @@ export function HowItWorksDrawer({
           name={name}
           rulesVersion={rulesVersion}
           maxRunning={maxRunning}
+          baselineNumber={baselineNumber}
           onClose={onClose}
         />
       </div>
@@ -212,6 +220,7 @@ function Panel({
   name,
   rulesVersion,
   maxRunning,
+  baselineNumber,
   onClose,
 }: {
   tab: HowTab;
@@ -219,6 +228,7 @@ function Panel({
   name: string | null;
   rulesVersion: number | null;
   maxRunning: number | null;
+  baselineNumber: number | null;
   onClose: () => void;
 }) {
   const t = useTranslations("signalAnalysis.research.page.drawer");
@@ -356,6 +366,24 @@ function Panel({
       return <MarketStatePanel />;
     case "labels":
       return <LabelsPanel onClose={onClose} />;
+    case "experiments": {
+      // #377: luật "một giả thuyết, một thay đổi" và cách đọc kết quả (mockup catalyst-drawer-experiments-1440.png).
+      const baseline =
+        baselineNumber === null
+          ? t("experimentsBaseline")
+          : tn("page.baselineOption", { n: baselineNumber });
+      const max = maxRunning ?? tn("na");
+      return (
+        <>
+          <p className="m-0">{t.rich("experiments1", { baseline, b })}</p>
+          <p className="m-0">{t.rich("experiments2", { pairs: EXPERIMENT_PAIRS, b })}</p>
+          <p className="m-0">{t.rich("experiments3", { pairs: EXPERIMENT_PAIRS, max, b })}</p>
+          <p className="m-0">{t.rich("experiments4", { b })}</p>
+          <p className="m-0">{t.rich("experiments5", { b })}</p>
+          <p className="m-0 text-xs text-muted">{t("experimentsNote")}</p>
+        </>
+      );
+    }
   }
 }
 
