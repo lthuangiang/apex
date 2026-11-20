@@ -14,6 +14,8 @@ const BASE: ResearchSignalContext = {
   h1: {
     status: "yes",
     walletsChecked: 12,
+    walletSetVersion: null,
+    walletSetSize: null,
     assetOnHyperliquid: true,
     agreeingWallets: 2,
     opposingWallets: 0,
@@ -114,4 +116,13 @@ export const CTX_NA_WALLETS = context({
 export const CTX_BACKFILLED = context({
   source: "backfilled",
   h1: { ...H1_NA, status: "na", assetOnHyperliquid: true, walletsChecked: null },
+});
+
+/**
+ * context-v2 (#353): cùng snapshot ETH nhưng H1 trên tập ví nghiên cứu version 3 (top 30 của leaderboard). Fixture gốc ở
+ * trên là context-v1 (ví được follow) để giữ câu chữ cũ cho snapshot đã lưu.
+ */
+export const CTX_V2 = context({
+  contextVersion: "context-v2",
+  h1: { walletSetVersion: 3, walletSetSize: 30 },
 });

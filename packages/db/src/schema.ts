@@ -1237,6 +1237,37 @@ export const leaderPositionAlertState = pgTable(
   (t) => [primaryKey({ columns: [t.source, t.address, t.coin] })],
 );
 
+/**
+ * Tập ví nghiên cứu (Signal research H1, #353): top-K ví tab "Top" (xếp theo lợi nhuận 30 ngày) của lần `leaderboard_runs`
+ * `ok` gần nhất, chụp lại theo phiên bản. Chỉ đổi khi có leaderboard mới (hoặc đổi K): mỗi lần đổi là một version mới, không
+ * sửa version cũ. Chỉ phục vụ nghiên cứu: không hiện cho người dùng, không ảnh hưởng copy trade. marketdata poll các ví của
+ * version mới nhất (sau ví được follow, cùng trần poll).
+ */
+export const researchWalletSets = pgTable("research_wallet_sets", {
+  version: integer("version").primaryKey(),
+  /** Ngày của lần xếp hạng (`leaderboard_runs.date`) đã dùng để chọn ví. */
+  runDate: date("run_date").notNull(),
+  /** K cấu hình lúc chụp (`SIGNAL_RESEARCH_WALLETS_K`); 0 = tắt poll ví nghiên cứu. */
+  k: integer("k").notNull(),
+  /** Số ví thật sự có trong tập (≤ K khi tab Top ít ví hơn). */
+  size: integer("size").notNull(),
+  /** Lúc tập có hiệu lực: H1 tại thời điểm t chỉ dùng version có `created_at` < t (không nhìn trước). */
+  createdAt: tstz("created_at").notNull().defaultNow(),
+});
+
+/** Ví của một version tập ví nghiên cứu, `rank` 1 = lợi nhuận cao nhất. */
+export const researchWalletSetMembers = pgTable(
+  "research_wallet_set_members",
+  {
+    setVersion: integer("set_version")
+      .notNull()
+      .references(() => researchWalletSets.version),
+    address: text("address").notNull(),
+    rank: integer("rank").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.setVersion, t.address] })],
+);
+
 /** Lần cảnh báo "big move" gần nhất theo (ví, coin): cách nhau ≥ 10 phút (DEC-163 mục 11). */
 export const leaderAlertState = pgTable(
   "leader_alert_state",
@@ -2090,14 +2121,19 @@ export const signalContexts = pgTable(
     contextVersion: text("context_version").notNull(),
     ruleVersion: text("rule_version").notNull(),
     /**
-     * H1 cá voi cùng chiều (ví DeskLabs đang theo dõi: được follow, đã có trong leaderboard trước đó): `yes` | `no` |
-     * `against` (chỉ ví ngược chiều, lưu riêng cho phân tích khám phá) | `na` (không có trên Hyperliquid, hoặc N = 0).
+     * H1 cá voi cùng chiều: `yes` | `no` | `against` (chỉ ví ngược chiều, lưu riêng cho phân tích khám phá) | `na` (không có
+     * trên Hyperliquid, hoặc N = 0). Tập ví theo `context_version`: v1 = ví DeskLabs đang theo dõi (được follow), v2 (#353) =
+     * ví trong tập ví nghiên cứu (top-K leaderboard) có hiệu lực trước quyết định. Hai version không bao giờ gộp số.
      */
     h1Status: text("h1_status").notNull(),
-    /** N = số ví theo dõi có dữ liệu thật sự được kiểm lúc quyết định ("N wallets checked"). */
+    /** N = số ví thật sự được kiểm lúc quyết định (đọc thành công trong 60 phút trước; "N wallets checked"). */
     h1WalletsChecked: integer("h1_wallets_checked"),
     /** Tài sản có trên Hyperliquid theo dữ liệu đã lưu trước quyết định; null với dòng không ghi giá trị này. */
     h1AssetOnHyperliquid: boolean("h1_asset_on_hyperliquid"),
+    /** context-v2 (#353): version tập ví nghiên cứu đã dùng; null ở context-v1 (ví được follow) hoặc khi chưa có tập. */
+    h1WalletSetVersion: integer("h1_wallet_set_version"),
+    /** context-v2: số ví của tập đó ("top {K} of the leaderboard"); null như trên. */
+    h1WalletSetSize: integer("h1_wallet_set_size"),
     h1AgreeingWallets: integer("h1_agreeing_wallets"),
     h1OpposingWallets: integer("h1_opposing_wallets"),
     h1AgreeingUsdc: money("h1_agreeing_usdc"),

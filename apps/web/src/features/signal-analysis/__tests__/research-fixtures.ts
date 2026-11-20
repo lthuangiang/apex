@@ -748,6 +748,7 @@ const ctxBlock = (
   signals: number,
 ): ResearchContextSummary => ({
   contextVersion: "context-v1",
+  researchWalletsTop: null,
   source,
   minClosedPerGroup: 30,
   questions,

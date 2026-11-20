@@ -1,4 +1,4 @@
-import type { ResearchSignalContext } from "@drift/shared";
+import { SIGNAL_CONTEXT_V1, type ResearchSignalContext } from "@drift/shared";
 
 import { clock } from "../format";
 
@@ -51,18 +51,31 @@ function badgeOf(key: "h1" | "h2" | "h3", a: ContextAnswer, t: Tr): string {
   return t(`context.answer.${a}`);
 }
 
-/** H1 · Whales agree. `asset`: tên ngắn của tài sản ("ETH"). */
+/** Câu H1 có ở cả hai bộ (v1 "tracked wallets" và "research wallets"). */
+type H1Key = "yes" | "no" | "noNa" | "against" | "naWallets" | "naAny" | "tagNaWallets";
+
+/**
+ * H1 · Whales agree. `asset`: tên ngắn của tài sản ("ETH"). Câu chữ theo context version của snapshot (#353): context-v1
+ * (ví được follow) giữ câu "tracked wallets"; version hiện tại ghi "research wallets (top {K} of the leaderboard)" với K =
+ * số ví của tập ví nghiên cứu đã dùng (thiếu thì "top of the leaderboard", không bao giờ bịa số).
+ */
 export function h1Text(c: ResearchSignalContext, asset: string, tz: string, t: Tr): AnswerText {
   const h = c.h1;
   const side = t(`sides.${c.side}`);
   const mins = h.windowMinutes;
   const badge = badgeOf("h1", h.status, t);
   const checked = h.walletsChecked;
+  const v1 = c.contextVersion === SIGNAL_CONTEXT_V1;
+  const top =
+    h.walletSetSize === null ? t("context.h1.topNoK") : t("context.h1.top", { k: h.walletSetSize });
+  /** Khoá câu theo version: v1 `context.h1.<k>`, hiện tại `context.h1.research.<k>` (kèm `top`). */
+  const say = (k: H1Key, v: Record<string, string | number> = {}) =>
+    v1 ? t(`context.h1.${k}`, v) : t(`context.h1.research.${k}`, { ...v, top });
   switch (h.status) {
     case "yes": {
       const n = h.agreeingWallets ?? 0;
       const usd = h.agreeingUsdc === null ? null : usdCompact(h.agreeingUsdc);
-      const parts = [t("context.h1.yes", { n, side, asset, mins })];
+      const parts = [say("yes", { n, side, asset, mins })];
       if (usd !== null) parts.push(usd);
       if (h.firstAt !== null)
         parts.push(t("context.h1.first", { time: clock(h.firstAt, tz, false) }));
@@ -82,9 +95,7 @@ export function h1Text(c: ResearchSignalContext, asset: string, tz: string, t: T
         badge,
         tag: checked === null ? t("context.h1.tagNoNa") : t("context.h1.tagNo", { n: checked }),
         text:
-          checked === null
-            ? t("context.h1.noNa", { asset, mins })
-            : t("context.h1.no", { n: checked, asset, mins }),
+          checked === null ? say("noNa", { asset, mins }) : say("no", { n: checked, asset, mins }),
       };
     case "against": {
       const n = h.opposingWallets ?? 0;
@@ -93,14 +104,15 @@ export function h1Text(c: ResearchSignalContext, asset: string, tz: string, t: T
         answer: "against",
         badge,
         tag: t("context.h1.tagAgainst", { n, side: opp }),
-        text: t("context.h1.against", { n, opp, asset, mins, side }),
+        text: say("against", { n, opp, asset, mins, side }),
       };
     }
     case "na": {
       // Snapshot dựng lại sau (#354): không dựng lại được việc theo dõi ví trong quá khứ, nên H1 luôn `na`.
       if (c.source === "backfilled")
         return { answer: "na", badge, tag: badge, text: t("context.h1.naBackfilled") };
-      // Hai lý do (#349): tài sản không có trên Hyperliquid, hoặc 0 ví theo dõi có dữ liệu. Dòng cũ không lưu lý do.
+      // Hai lý do (#349): tài sản không có trên Hyperliquid, hoặc 0 ví được kiểm (v1: ví theo dõi; hiện tại: ví nghiên cứu
+      // đọc được trong 60 phút). Dòng cũ không lưu lý do.
       const why =
         h.assetOnHyperliquid === false ? "naAsset" : checked === 0 ? "naWallets" : "naAny";
       return {
@@ -110,9 +122,9 @@ export function h1Text(c: ResearchSignalContext, asset: string, tz: string, t: T
           why === "naAsset"
             ? t("context.h1.tagNaAsset", { asset })
             : why === "naWallets"
-              ? t("context.h1.tagNaWallets")
+              ? say("tagNaWallets")
               : t("context.h1.tagNaAny"),
-        text: t(`context.h1.${why}`),
+        text: why === "naAsset" ? t("context.h1.naAsset") : say(why, { mins }),
       };
     }
   }

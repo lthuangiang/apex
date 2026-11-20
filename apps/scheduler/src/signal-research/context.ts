@@ -24,9 +24,10 @@ import { movedBeforeEntry } from "./store";
 // một dòng `signal_contexts` (không bao giờ tính lại: insert-or-nothing + trigger chặn UPDATE). Chỉ ghi: không có giá trị nào
 // ở đây đi vào Filter / Decide.
 // Không nhìn trước: mọi truy vấn chỉ lấy dữ liệu có timestamp < `decidedAt` (leader_events.seen_at, lần xếp hạng xong trước
-// đó, leader_follows.created_at, funding_time, nến 1 phút đã ĐÓNG trước đó). Giá lúc quyết định là giá giữa của báo giá mà
-// chu kỳ dùng để vào lệnh. Chỉ đọc bảng do marketdata / scheduler / api ghi (leader_events, leader_follows, leader_wallets,
-// leaderboard_runs, leader_stats_daily, funding_rates, candles_1m); không gọi SoDEX, Hyperliquid hay dịch vụ ngoài nào.
+// đó, research_wallet_sets.created_at, funding_time, nến 1 phút đã ĐÓNG trước đó). Giá lúc quyết định là giá giữa của báo giá
+// mà chu kỳ dùng để vào lệnh. Chỉ đọc bảng do marketdata / scheduler ghi (leader_events, leader_wallets, research_wallet_sets,
+// research_wallet_set_members, leaderboard_runs, leader_stats_daily, funding_rates, candles_1m); không gọi SoDEX, Hyperliquid
+// hay dịch vụ ngoài nào.
 
 type Exec = Db;
 
@@ -52,15 +53,14 @@ const toMs = (v: Date | string) => (v instanceof Date ? v.getTime() : Date.parse
 const closedBefore = (t: number) => new Date(t - MIN_MS);
 
 /**
- * H1 (review PR #349): tập ví = ví DeskLabs ĐANG THEO DÕI lúc quyết định, vì sự kiện live chỉ có cho các ví này (DEC-321):
- * - được follow trên Hyperliquid (`leader_follows.created_at` < quyết định);
- * - đã có trong một lần xếp hạng `ok` XONG trước quyết định (chống survivorship #263);
- * - có dữ liệu: marketdata đọc ví THÀNH CÔNG trong 60 phút trước quyết định (`leader_wallets.last_polled_at` ≥ quyết định −
- *   60 phút; poll lỗi không đổi mốc này). Không chặn trên: bước 4 chạy ngay sau giờ quyết định của chu kỳ (sau phân loại),
- *   marketdata có thể vừa poll lại ví trong khoảng đó và mốc chỉ tiến lên; sự kiện vẫn chỉ tính khi `seen_at` < quyết định.
- * N = số ví này ("N wallets checked"). Tài sản có trên Hyperliquid = có trong `markets` của một ví ở lần xếp hạng `ok` gần
- * nhất xong trước quyết định, hoặc đã có sự kiện cá voi trên market đó thấy trước quyết định. Sự kiện tính: của các ví trong
- * tập, loại mở / tăng, trong 60 phút trước, thấy trước quyết định.
+ * H1 context-v2 (#353): tập ví = TẬP VÍ NGHIÊN CỨU có hiệu lực lúc quyết định (version mới nhất có `created_at` < quyết định,
+ * chọn từ một lần xếp hạng `ok` đã XONG trước quyết định: chống survivorship #263, ví vào top sau quyết định không tính).
+ * N = số ví của tập mà marketdata đọc THÀNH CÔNG trong 60 phút trước quyết định (`leader_wallets.last_polled_at` ≥ quyết định
+ * − 60 phút; poll lỗi hay ví nhường khi chạm rate limit không đổi mốc này). Không chặn trên: bước 4 chạy ngay sau giờ quyết
+ * định của chu kỳ (sau phân loại), marketdata có thể vừa poll lại ví trong khoảng đó và mốc chỉ tiến lên; sự kiện vẫn chỉ tính
+ * khi `seen_at` < quyết định. Tài sản có trên Hyperliquid = có trong `markets` của một ví ở lần xếp hạng `ok` gần nhất xong
+ * trước quyết định, hoặc đã có sự kiện cá voi trên market đó thấy trước quyết định. Sự kiện tính: của các ví được kiểm, loại
+ * mở / tăng, trong 60 phút trước, thấy trước quyết định.
  */
 async function whaleInputs(db: Exec, market: string, t: number) {
   const at = new Date(t);
@@ -69,16 +69,20 @@ async function whaleInputs(db: Exec, market: string, t: number) {
     SIGNAL_CONTEXT_RULES.h1Kinds.map((k) => sql`${k}`),
     sql`, `,
   );
+  const [set] = rowsOf(
+    await db.execute<{ version: number; size: number }>(sql`
+      select s.version, s.size from research_wallet_sets s
+        join leaderboard_runs r on r.date = s.run_date and r.status = 'ok' and r.finished_at is not null
+       where s.created_at < ${at} and r.finished_at < ${at}
+       order by s.version desc limit 1`),
+  );
+  const setVersion = set === undefined ? null : set.version;
   const tracked = sql`
-    select distinct lower(f.address) as address
-      from leader_follows f
+    select distinct lower(m.address) as address
+      from research_wallet_set_members m
       join leader_wallets w
-        on w.source = f.source and lower(w.address) = lower(f.address) and w.last_polled_at >= ${from}
-     where f.source = 'hyperliquid' and f.created_at < ${at}
-       and exists (
-         select 1 from leader_stats_daily s
-           join leaderboard_runs r on r.date = s.date and r.status = 'ok' and r.finished_at is not null
-          where s.source = f.source and lower(s.address) = lower(f.address) and r.finished_at < ${at})`;
+        on w.source = 'hyperliquid' and lower(w.address) = lower(m.address) and w.last_polled_at >= ${from}
+     where m.set_version = ${setVersion ?? -1}`;
   const [head] = rowsOf(
     await db.execute<{ wallets: number | string; on_hl: boolean }>(sql`
       with tracked as (${tracked}),
@@ -110,6 +114,8 @@ async function whaleInputs(db: Exec, market: string, t: number) {
        order by e.at, e.id`),
   );
   return {
+    setVersion,
+    setSize: set === undefined ? null : set.size,
     walletsChecked: Number(head?.wallets ?? 0),
     assetOnHyperliquid: head?.on_hl === true,
     moves: moves.map((m) => ({
@@ -187,8 +193,8 @@ type ContextValues = Omit<typeof signalContexts.$inferInsert, "id" | "createdAt"
 /**
  * Tính giá trị ngữ cảnh của một tín hiệu tại `decidedAt` (chưa ghi). `decisionPrice` = giá lúc quyết định để đo H3 (live: giá
  * giữa của báo giá chu kỳ; backfill: giá đóng nến 1 phút đã đóng trước quyết định); null → H3 `na`. `whales = false` (backfill
- * #333): không tái dựng được tập ví theo dõi / lần poll trong quá khứ một cách trung thực, nên H1 `na` và mọi số H1 null
- * (không phải 0).
+ * #333 / #354): không tái dựng được lần poll ví trong quá khứ một cách trung thực (`last_polled_at` chỉ giữ lần mới nhất), nên
+ * H1 `na` và mọi số H1 null (không phải 0).
  */
 export async function computeSignalContext(
   db: Exec,
@@ -200,12 +206,12 @@ export async function computeSignalContext(
   const fx = (d: Decimal | null) => (d === null ? null : d.toFixed(18));
   const h1Values = opts.whales
     ? await (async () => {
-        const h1 = h1Of({
-          direction: s.direction,
-          ...(await whaleInputs(db, s.market, decidedAt)),
-        });
+        const w = await whaleInputs(db, s.market, decidedAt);
+        const h1 = h1Of({ direction: s.direction, ...w });
         return {
           h1Status: h1.status,
+          h1WalletSetVersion: w.setVersion,
+          h1WalletSetSize: w.setSize,
           h1WalletsChecked: h1.walletsChecked,
           h1AssetOnHyperliquid: h1.assetOnHyperliquid,
           h1AgreeingWallets: h1.agreeingWallets,
@@ -216,6 +222,8 @@ export async function computeSignalContext(
       })()
     : {
         h1Status: "na" as const,
+        h1WalletSetVersion: null,
+        h1WalletSetSize: null,
         h1WalletsChecked: null,
         h1AssetOnHyperliquid: null,
         h1AgreeingWallets: null,

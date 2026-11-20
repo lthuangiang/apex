@@ -1,10 +1,12 @@
 import {
   candles1m,
   createDb,
+  ensureResearchWalletSet,
+  latestResearchWallets,
+  researchWalletSetMembers,
   fundingRates,
   leaderboardRuns,
   leaderEvents,
-  leaderFollows,
   leaderStatsDaily,
   leaderWallets,
   runMigrations,
@@ -13,7 +15,6 @@ import {
   signalEvents,
   signalPaperTrades,
   signalStories,
-  users,
   type Db,
 } from "@drift/db";
 import { dec, SIGNAL_CONTEXT_VERSION, TradeDirection, type Quote } from "@drift/shared";
@@ -95,7 +96,10 @@ async function seedCandles() {
 /** `markets` = market SoDEX ví đã giao dịch trên Hyperliquid (dấu hiệu tài sản có trên Hyperliquid). */
 const stats = { winRate: "0.6", medianEntryNotional: "1000", markets: ["BTC-USD", "SOL-USD"] };
 
-/** Một lần xếp hạng `ok` xong lúc `finishedAt` với các ví. */
+/**
+ * Một lần xếp hạng `ok` xong lúc `finishedAt` với các ví, đều ở tab Top; lợi nhuận giảm dần theo thứ tự truyền vào (ví đầu
+ * là hạng 1).
+ */
 async function leaderboardRun(date: string, finishedAt: number, wallets: string[]) {
   await db.insert(leaderboardRuns).values({
     date,
@@ -106,47 +110,42 @@ async function leaderboardRun(date: string, finishedAt: number, wallets: string[
   });
   if (wallets.length > 0)
     await db.insert(leaderStatsDaily).values(
-      wallets.map((address) => ({
+      wallets.map((address, i) => ({
         source: "hyperliquid" as const,
         address,
         date,
         stats,
         hidden: [],
-        tabs: ["all"],
+        tabs: ["top", "all"],
         steadyScore: 1,
-        profit: "1000",
+        profit: String(10_000 - i * 100),
         typicalHoldMs: HOUR,
         computedAt: new Date(finishedAt),
       })),
     );
 }
 
-let userId = "";
+/** Tập ví nghiên cứu top-`k` của lần xếp hạng `ok` mới nhất, có hiệu lực từ `at` (#353). */
+async function researchSet(k: number, at: number) {
+  const set = await ensureResearchWalletSet(db, k, at);
+  if (set === null) throw new Error("no leaderboard run");
+  return set;
+}
 
-/**
- * Ví DeskLabs theo dõi: được follow (lúc `followedAt`); `polledAt` = lần marketdata đọc ví thành công gần nhất (mặc định
- * 2 phút trước T0; null = chưa đọc thành công lần nào).
- */
-async function track(
-  address: string,
-  followedAt = T0 - 3 * DAY,
-  polledAt: number | null = T0 - 2 * MIN,
-) {
-  await db.insert(leaderFollows).values({
-    userId,
-    source: "hyperliquid",
-    address,
-    createdAt: new Date(followedAt),
-  });
+/** Lần marketdata đọc ví thành công gần nhất (mặc định 2 phút trước T0; null = chưa đọc thành công lần nào). */
+async function polled(address: string, at: number | null = T0 - 2 * MIN) {
   await db
     .insert(leaderWallets)
     .values({
       source: "hyperliquid",
       address,
-      fillCursor: followedAt,
-      lastPolledAt: polledAt === null ? null : new Date(polledAt),
+      fillCursor: T0 - DAY,
+      lastPolledAt: at === null ? null : new Date(at),
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: [leaderWallets.source, leaderWallets.address],
+      set: { lastPolledAt: at === null ? null : new Date(at) },
+    });
 }
 
 let tid = 0;
@@ -189,23 +188,25 @@ async function seedFunding(market: string, last: string) {
 }
 
 /**
- * Thị trường BTC chuẩn: 2 ví theo dõi trong leaderboard trước T0 (A, B); ví C được follow nhưng chỉ vào leaderboard SAU T0;
- * ví E có trong leaderboard nhưng không ai follow (không có sự kiện live, không tính vào N).
+ * Thị trường BTC chuẩn: lần xếp hạng xong 2 ngày trước T0 (A, B, E theo hạng); tập ví nghiên cứu top 2 (A, B) có hiệu lực
+ * ngay sau đó; E hạng 3, ngoài tập. Lần xếp hạng xong SAU T0 đưa C lên hạng 1 và tạo tập mới sau T0: không dùng lúc T0.
  */
 async function seedWhales() {
   await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xaaa", "0xbbb", "0xeee"]);
-  await leaderboardRun("2026-11-18", T0 + HOUR, ["0xaaa", "0xbbb", "0xccc", "0xeee"]);
-  for (const a of ["0xaaa", "0xbbb", "0xccc"]) await track(a);
+  await researchSet(2, T0 - 2 * DAY + MIN);
+  for (const a of ["0xaaa", "0xbbb", "0xccc", "0xeee"]) await polled(a);
   await whale("0xAAA", "BTC-USD", "2", T0 - 30 * MIN, T0 - 29 * MIN, "open", "900000");
   await whale("0xaaa", "BTC-USD", "3", T0 - 20 * MIN, T0 - 19 * MIN, "add", "500000");
   await whale("0xbbb", "BTC-USD", "-1", T0 - 10 * MIN, T0 - 9 * MIN);
-  // Ví C cùng chiều, thấy trước T0, nhưng chỉ vào leaderboard sau T0: không tính (chống survivorship #263).
+  // Ví C cùng chiều, thấy trước T0, nhưng chỉ vào top (và tập mới) sau T0: không tính (chống survivorship #263).
   await whale("0xccc", "BTC-USD", "5", T0 - 15 * MIN, T0 - 14 * MIN);
-  // Ví E cùng chiều nhưng không được theo dõi: không tính.
+  // Ví E cùng chiều nhưng ngoài top 2: không tính.
   await whale("0xeee", "BTC-USD", "5", T0 - 12 * MIN, T0 - 11 * MIN);
   // Ngoài cửa sổ 60 phút, và giảm vị thế: không tính.
   await whale("0xbbb", "BTC-USD", "4", T0 - 61 * MIN, T0 - 60 * MIN);
   await whale("0xbbb", "BTC-USD", "1", T0 - 5 * MIN, T0 - 4 * MIN, "reduce");
+  await leaderboardRun("2026-11-18", T0 + HOUR, ["0xccc", "0xaaa", "0xbbb"]);
+  await researchSet(2, T0 + HOUR + MIN);
 }
 
 const snapshot = async (articleId: string) => {
@@ -252,11 +253,6 @@ beforeAll(async () => {
   container = await new PostgreSqlContainer("timescale/timescaledb:2.16.1-pg16").start();
   await runMigrations(container.getConnectionUri());
   ({ db, pool } = createDb(container.getConnectionUri()));
-  const [u] = await db
-    .insert(users)
-    .values({ email: "context@test.local" })
-    .returning({ id: users.id });
-  userId = u?.id ?? "";
 });
 afterAll(async () => {
   await pool.end();
@@ -264,7 +260,8 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await db.execute(
-    sql`truncate candles_1m, funding_rates, leader_events, leader_follows, leader_wallets, leader_stats_daily, leaderboard_runs, signal_contexts,
+    sql`truncate candles_1m, funding_rates, leader_events, leader_wallets, leader_stats_daily, leaderboard_runs, signal_contexts,
+        research_wallet_set_members, research_wallet_sets,
         signal_articles, signal_events, signal_stories, signal_paper_trades, signal_research_usage, signal_source_health`,
   );
   await seedCandles();
@@ -283,6 +280,8 @@ describe("context capture values", () => {
       contextVersion: SIGNAL_CONTEXT_VERSION,
       h1Status: "yes",
       h1WalletsChecked: 2,
+      h1WalletSetVersion: 1,
+      h1WalletSetSize: 2,
       h1AssetOnHyperliquid: true,
       h1AgreeingWallets: 1,
       h1OpposingWallets: 1,
@@ -306,10 +305,11 @@ describe("context capture values", () => {
     expect(r.volumeVs24h).not.toBeNull();
   });
 
-  it("H1: against is stored apart from no; no with quiet tracked wallets", async () => {
+  it("H1: against is stored apart from no; no with quiet research wallets", async () => {
     await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xaaa", "0xbbb"]);
-    await track("0xaaa");
-    await track("0xbbb");
+    await researchSet(30, T0 - DAY);
+    await polled("0xaaa");
+    await polled("0xbbb");
     await whale("0xbbb", "BTC-USD", "-1", T0 - 10 * MIN, T0 - 9 * MIN);
     await whale("0xaaa", "SOL-USD", "1", T0 - 3 * DAY, T0 - 3 * DAY);
     await captureSignalContext(db, btcLong("against"), T0, quote("100"));
@@ -319,10 +319,11 @@ describe("context capture values", () => {
     expect(h1(await snapshot("quiet"))).toMatchObject({ s: "no", w: 2, a: 0, o: 0 });
   });
 
-  it("H1: na when the asset is not on Hyperliquid, even with tracked wallets", async () => {
+  it("H1: na when the asset is not on Hyperliquid, even with research wallets read", async () => {
     await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xaaa", "0xbbb"]);
-    await track("0xaaa");
-    await track("0xbbb");
+    await researchSet(30, T0 - DAY);
+    await polled("0xaaa");
+    await polled("0xbbb");
     await captureSignalContext(db, { ...btcLong("meta"), market: "META-USD" }, T0, null);
     expect(await snapshot("meta")).toMatchObject({
       h1Status: "na",
@@ -337,82 +338,115 @@ describe("context capture values", () => {
     });
   });
 
-  it("H1: na when no tracked wallet has data, even if leaderboard wallets traded the asset", async () => {
-    // Leaderboard có 3 ví, BTC có trên Hyperliquid, có ví cùng chiều; nhưng không ví nào vừa được follow vừa đã được đọc fill.
-    await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xaaa", "0xbbb", "0xeee"]);
-    await track("0xaaa", T0 - 3 * DAY, null);
-    await track("0xbbb", T0 + MIN);
-    await whale("0xeee", "BTC-USD", "5", T0 - 12 * MIN, T0 - 11 * MIN);
+  it("H1: na with no research set yet, even if leaderboard wallets traded the asset", async () => {
+    await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xaaa"]);
+    await polled("0xaaa");
+    await whale("0xaaa", "BTC-USD", "5", T0 - 12 * MIN, T0 - 11 * MIN);
     await captureSignalContext(db, btcLong("none"), T0, quote("100"));
     expect(await snapshot("none")).toMatchObject({
       h1Status: "na",
       h1WalletsChecked: 0,
+      h1WalletSetVersion: null,
+      h1WalletSetSize: null,
       h1AssetOnHyperliquid: true,
       h1AgreeingWallets: 0,
       h1AgreeingUsdc: null,
     });
   });
 
-  it("H1: N counts only wallets with a successful poll in the 60 min before; none left → na", async () => {
+  it("H1: N counts only research wallets read successfully in the 60 min before; none left → na", async () => {
     await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xp1", "0xp2", "0xp3"]);
-    await track("0xp1", T0 - 3 * DAY, T0 - 30 * MIN); // poll thành công 30 phút trước: đếm
-    await track("0xp2", T0 - 3 * DAY, T0 - 90 * MIN); // poll thành công cuối cùng 90 phút trước: không đếm
-    // Poll lỗi không đổi `last_polled_at` (marketdata chỉ ghi khi đọc thành công): ví có con trỏ fill nhưng không có lần đọc
-    // thành công nào trong cửa sổ.
-    await track("0xp3", T0 - 3 * DAY, null);
+    const set = await researchSet(30, T0 - DAY);
+    await polled("0xp1", T0 - 30 * MIN); // đọc thành công 30 phút trước: đếm
+    await polled("0xp2", T0 - 90 * MIN); // đọc thành công lần cuối 90 phút trước: không đếm
+    // Poll lỗi / nhường khi chạm rate limit không ghi `last_polled_at`: ví chưa có lần đọc thành công nào.
+    await polled("0xp3", null);
     await whale("0xp2", "BTC-USD", "5", T0 - 12 * MIN, T0 - 11 * MIN);
     await captureSignalContext(db, btcLong("window"), T0, quote("100"));
     expect(await snapshot("window")).toMatchObject({
       h1Status: "no",
       h1WalletsChecked: 1,
+      h1WalletSetVersion: set.version,
+      h1WalletSetSize: 3,
       h1AgreeingWallets: 0,
     });
 
-    // Ví còn lại hợp lệ cũng chỉ poll thành công lần cuối 61 phút trước: không còn ví nào → na.
-    await db.execute(
-      sql`update leader_wallets set last_polled_at = ${new Date(T0 - 61 * MIN)} where address = '0xp1'`,
-    );
+    // Ví còn lại cũng chỉ đọc thành công lần cuối 61 phút trước: không còn ví nào → na.
+    await polled("0xp1", T0 - 61 * MIN);
     await captureSignalContext(db, btcLong("stale"), T0, quote("100"));
     expect(await snapshot("stale")).toMatchObject({
       h1Status: "na",
       h1WalletsChecked: 0,
+      h1WalletSetVersion: set.version,
       h1AssetOnHyperliquid: true,
     });
   });
 
-  it("H1: stores N = the tracked wallets with data actually checked", async () => {
-    await leaderboardRun("2026-11-16", T0 - 2 * DAY, [
-      "0xa1",
-      "0xa2",
-      "0xa3",
-      "0xa4",
-      "0xa5",
-      "0xa6",
-    ]);
-    await leaderboardRun("2026-11-18", T0 + HOUR, ["0xa7"]);
-    await track("0xa1");
-    await track("0xA2");
-    await track("0xa3");
-    await track("0xa4", T0 - DAY, null); // follow nhưng chưa đọc thành công lần nào: không có dữ liệu
-    await track("0xa5", T0 + MIN); // follow sau quyết định
-    await track("0xa7"); // chỉ vào leaderboard sau quyết định
-    // 0xa6: trong leaderboard, không ai follow. Hai người cùng follow một ví vẫn là một ví.
-    const [u2] = await db
-      .insert(users)
-      .values({ email: "n-wallets@test.local" })
-      .returning({ id: users.id });
-    await db.insert(leaderFollows).values({
-      userId: u2?.id ?? "",
+  it("H1: a set version change applies from its creation time; earlier decisions keep the old set", async () => {
+    await leaderboardRun("2026-11-15", T0 - 3 * DAY, ["0xold"]);
+    const v1 = await researchSet(30, T0 - 3 * DAY + MIN);
+    await leaderboardRun("2026-11-16", T0 - 2 * HOUR, ["0xnew"]);
+    const v2 = await researchSet(30, T0 - HOUR);
+    expect(v2.version).toBe(v1.version + 1);
+    await polled("0xold");
+    await polled("0xnew");
+    await whale("0xnew", "BTC-USD", "5", T0 - 70 * MIN, T0 - 69 * MIN);
+    await whale("0xold", "BTC-USD", "-5", T0 - 80 * MIN, T0 - 79 * MIN);
+    // Quyết định trước khi tập mới có hiệu lực: tập cũ (0xold ngược chiều).
+    await captureSignalContext(db, btcLong("early"), T0 - 65 * MIN, quote("100"));
+    // Quyết định sau: tập mới (0xnew cùng chiều).
+    await captureSignalContext(db, btcLong("late"), T0 - 30 * MIN, quote("100"));
+    expect(await snapshot("early")).toMatchObject({
+      h1WalletSetVersion: v1.version,
+      h1Status: "against",
+    });
+    expect(await snapshot("late")).toMatchObject({
+      h1WalletSetVersion: v2.version,
+      h1Status: "yes",
+      h1AgreeingWallets: 1,
+    });
+  });
+});
+
+describe("research wallet set versions (#353)", () => {
+  it("takes the top K of the Top tab by profit; same run and K keep the version, a new run or K makes a new one", async () => {
+    expect(await ensureResearchWalletSet(db, 30, T0)).toBeNull();
+    await leaderboardRun("2026-11-16", T0 - 2 * DAY, ["0xa", "0xb", "0xc"]);
+    // Ví bị ẩn (không ở tab Top) không vào tập dù lợi nhuận cao nhất.
+    await db.insert(leaderStatsDaily).values({
       source: "hyperliquid",
-      address: "0xa1",
-      createdAt: new Date(T0 - DAY),
+      address: "0xHIDDEN",
+      date: "2026-11-16",
+      stats,
+      hidden: ["fast"],
+      tabs: [],
+      steadyScore: null,
+      profit: "999999",
+      typicalHoldMs: HOUR,
+      computedAt: new Date(T0 - 2 * DAY),
     });
-    await captureSignalContext(db, btcLong("n"), T0, quote("100"));
-    expect(await snapshot("n")).toMatchObject({
-      h1Status: "no",
-      h1WalletsChecked: 3,
-      h1AssetOnHyperliquid: true,
-    });
+    const v1 = await researchSet(2, T0 - DAY);
+    expect(v1).toMatchObject({ version: 1, runDate: "2026-11-16", k: 2, size: 2, created: true });
+    expect(await latestResearchWallets(db)).toEqual(["0xa", "0xb"]);
+    expect(await researchSet(2, T0)).toMatchObject({ version: 1, created: false });
+
+    const v2 = await researchSet(3, T0);
+    expect(v2).toMatchObject({ version: 2, k: 3, size: 3, created: true });
+    await leaderboardRun("2026-11-17", T0 + HOUR, ["0xc", "0xd"]);
+    const v3 = await researchSet(3, T0 + 2 * HOUR);
+    expect(v3).toMatchObject({ version: 3, runDate: "2026-11-17", size: 2, created: true });
+    expect(await latestResearchWallets(db)).toEqual(["0xc", "0xd"]);
+    // K = 0: version rỗng (tắt poll ví nghiên cứu); version cũ giữ nguyên.
+    expect(await researchSet(0, T0 + 3 * HOUR)).toMatchObject({ version: 4, size: 0 });
+    expect(await latestResearchWallets(db)).toEqual([]);
+    const members = await db
+      .select()
+      .from(researchWalletSetMembers)
+      .where(eq(researchWalletSetMembers.setVersion, 1));
+    expect(members.map((m) => [m.address, m.rank]).sort()).toEqual([
+      ["0xa", 1],
+      ["0xb", 2],
+    ]);
   });
 });
 
@@ -422,18 +456,13 @@ describe("no lookahead: data stamped at or after the decision never changes the 
     await seedFunding("BTC-USD", "-0.0001");
   });
 
-  it("H1: events seen after the decision and wallets that joined the leaderboard later are ignored", async () => {
+  it("H1: events seen after the decision and wallets that entered the top later are ignored", async () => {
     await captureSignalContext(db, btcLong("before"), T0, quote("102"));
-    // Ví B (trong leaderboard) quay sang cùng chiều nhưng DeskLabs thấy sau quyết định; ví D thấy trước nhưng chỉ có trong
-    // lần xếp hạng xong sau; một lần xếp hạng xong đúng lúc quyết định (không tính, phải < quyết định).
+    // Ví B (trong tập) quay sang cùng chiều nhưng DeskLabs thấy sau quyết định: không tính. Ví C đứng hạng 1 của tập mới nhất
+    // (seedWhales), nhưng tập đó có hiệu lực sau quyết định: sự kiện cùng chiều của C trước T0 vẫn không tính.
     await whale("0xbbb", "BTC-USD", "7", T0 - 2 * MIN, T0 + 30_000, "flip");
-    await leaderboardRun("2026-11-17", T0, ["0xddd"]);
-    await track("0xddd");
-    await whale("0xddd", "BTC-USD", "9", T0 - 8 * MIN, T0 - 7 * MIN);
-    // Ví F trong leaderboard trước, cùng chiều, nhưng được follow SAU quyết định.
-    await leaderboardRun("2026-11-15", T0 - 3 * DAY, ["0xfff"]);
-    await track("0xfff", T0 + MIN);
-    await whale("0xfff", "BTC-USD", "9", T0 - 8 * MIN, T0 - 7 * MIN);
+    expect(await latestResearchWallets(db)).toEqual(["0xccc", "0xaaa"]);
+    expect(h1(await snapshot("before"))).toMatchObject({ s: "yes", w: 2, a: 1, o: 1 });
     await whale("0xaaa", "BTC-USD", "9", T0 + MIN, T0 + 2 * MIN, "add");
     await captureSignalContext(db, btcLong("after"), T0, quote("102"));
     expect(h1(await snapshot("after"))).toEqual(h1(await snapshot("before")));

@@ -2,8 +2,10 @@ import {
   builderBalanceSnapshots,
   createDb,
   createSodexCallSink,
+  ensureResearchWalletSet,
   leaderboardRuns,
   marketStatsDaily,
+  RESEARCH_WALLETS_MAX_K,
 } from "@drift/db";
 import { HyperliquidClient } from "@drift/hyperliquid";
 import { Lease, runAsLeader } from "@drift/runtime";
@@ -57,6 +59,18 @@ const env = z
       .transform((v) => v === "true"),
     /** Giờ UTC bắt đầu lượt hằng ngày (rải ban đêm). */
     COPY_LEADERBOARD_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(1),
+    /**
+     * Signal research H1 (#353): số ví nghiên cứu (top-K tab Top của leaderboard) marketdata poll, dùng chung trần poll T1
+     * (≤ 40). 30 × 1 lần đọc `userFillsByTime` (weight 20) / 2 phút ≈ 300 weight / phút trên 1.200 / phút của IP. 0 = tắt.
+     */
+    // Sai giá trị thì dùng mặc định, không bao giờ làm scheduler dừng (như các biến SIGNAL_* khác, DEC-322).
+    SIGNAL_RESEARCH_WALLETS_K: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(RESEARCH_WALLETS_MAX_K)
+      .default(30)
+      .catch(30),
     /** Ví builder của DRIFT (đối soát builder revenue); trống thì bỏ qua đối soát. */
     DRIFT_BUILDER_ADDRESS: z
       .string()
@@ -177,8 +191,22 @@ async function revenueTick() {
   log.info({ date: today }, "builder balances snapshotted, yesterday reconciled");
 }
 
+/** #353: tập ví nghiên cứu theo lần xếp hạng `ok` gần nhất; chỉ tạo version mới khi có leaderboard mới hoặc đổi K. */
+async function researchWalletsTick() {
+  const set = await ensureResearchWalletSet(db, env.SIGNAL_RESEARCH_WALLETS_K, Date.now());
+  if (set?.created === true)
+    log.info(
+      { version: set.version, runDate: set.runDate, k: set.k, size: set.size },
+      "signal research: research wallet set updated",
+    );
+}
+
 let leaderboardBusy = false;
 async function leaderboardTick() {
+  // Kể cả khi tắt lượt leaderboard (dữ liệu xếp hạng có sẵn vẫn dùng được).
+  await researchWalletsTick().catch((error: unknown) => {
+    log.warn({ err: error }, "signal research: research wallet set failed");
+  });
   if (!env.COPY_LEADERBOARD_ENABLED || leaderboardBusy) return;
   const now = Date.now();
   if (new Date(now).getUTCHours() < env.COPY_LEADERBOARD_HOUR_UTC) return;
@@ -202,7 +230,10 @@ async function leaderboardTick() {
       { status: r.status, candidates: r.candidates, computed: r.computed, failed: r.failed.length },
       "leaderboard computed",
     );
-    if (r.status === "ok") await noteMinHoldChanges(db, utcDate(now), Date.now());
+    if (r.status === "ok") {
+      await noteMinHoldChanges(db, utcDate(now), Date.now());
+      await researchWalletsTick();
+    }
   } finally {
     leaderboardBusy = false;
   }

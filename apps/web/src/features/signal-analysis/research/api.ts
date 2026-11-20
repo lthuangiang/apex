@@ -190,10 +190,22 @@ export function useResearchTrace(id: string | null, versionId: VersionId = null)
  * #345: bài mới sau con trỏ `since` (null = lần đầu: không có bài, chỉ lấy con trỏ). Không qua react-query: con trỏ đi
  * tới sau mỗi lần hỏi, nơi gọi (live-drop.ts) giữ con trỏ và hẹn giờ 15 s.
  */
-export function fetchNewArticles(since: string | null, versionId: VersionId = null) {
+export function fetchNewArticles(
+  since: string | null,
+  versionId: VersionId = null,
+  /** null = mặc định của API (20). */
+  limit: number | null = null,
+) {
   return api(
     "GET",
-    `${RESEARCH_PATHS.newArticles}?${query({}, { ...ver(versionId), ...(since === null ? {} : { since }) })}`,
+    `${RESEARCH_PATHS.newArticles}?${query(
+      {},
+      {
+        ...ver(versionId),
+        ...(since === null ? {} : { since }),
+        ...(limit === null ? {} : { limit: String(limit) }),
+      },
+    )}`,
     researchNewArticlesSchema,
   );
 }

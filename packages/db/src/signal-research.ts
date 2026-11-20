@@ -12,6 +12,7 @@ import {
   NEWS_RULES,
   paperBalance,
   RESEARCH_BOT_START_USDC,
+  SIGNAL_CONTEXT_VERSION,
   SOURCE_HEALTH,
   summarizeByDay,
   tradesNeeded,
@@ -452,6 +453,8 @@ export async function loadSignalResearchSummary(
       and(
         eq(signalContexts.source, "live"),
         eq(signalContexts.ruleVersion, v),
+        // #353: chỉ context version hiện tại (không gộp H1 context-v1 với v2).
+        eq(signalContexts.contextVersion, SIGNAL_CONTEXT_VERSION),
         eq(signalArticles.ruleVersion, v),
         since === null ? undefined : gte(signalArticles.collectedAt, since),
       ),
