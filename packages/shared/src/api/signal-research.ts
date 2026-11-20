@@ -1329,6 +1329,21 @@ export const researchTraceStepSchema = z.discriminatedUnion("key", [
   }),
 ]);
 
+/**
+ * #375: mốc độ trễ của MỘT bài (đồng hồ scheduler, DEC-349), cho dòng thời gian trong thẻ Collect. Mốc nào chưa có (bài
+ * trước migration 0054, chưa tới bước đó) thì null ("Not measured yet"); published / collected nằm ở bước Collect.
+ */
+export const researchTraceLatencySchema = z.object({
+  /** Claude xong lần classify của bài; null = bài không qua Claude hoặc bài cũ. */
+  claudeDoneAt: iso.nullable(),
+  /** Lần quyết định Filter / Decide đầu tiên của version cho bài. */
+  decidedAt: iso.nullable(),
+  /** Kết quả của lần quyết định đó: mở lệnh paper (`open`) hay không (`noTrade`); null khi chưa quyết định. */
+  decision: z.enum(["open", "noTrade"]).nullable(),
+  /** Lệnh paper thật (không gồm shadow) đã ghi; null khi không mở lệnh hoặc lệnh cũ chưa có mốc. */
+  openedAt: iso.nullable(),
+});
+
 export const researchArticleTraceSchema = z.object({
   article: researchArticleSchema,
   /** Luôn đủ 5 bước theo thứ tự collect → decide. */
@@ -1338,6 +1353,8 @@ export const researchArticleTraceSchema = z.object({
    * hoặc bài trước khi có bước này): web hiện bước Context "not reached".
    */
   context: researchSignalContextSchema.nullable(),
+  /** #375: mốc độ trễ của bài (dòng thời gian trong thẻ Collect). */
+  latency: researchTraceLatencySchema,
 });
 
 export type ResearchRange = (typeof RESEARCH_RANGES)[number];
@@ -1358,6 +1375,7 @@ export type ResearchTraceStory = z.infer<typeof researchTraceStorySchema>;
 export type ResearchTraceCheck = z.infer<typeof researchTraceCheckSchema>;
 export type ResearchTraceStep = z.infer<typeof researchTraceStepSchema>;
 export type ResearchArticleTrace = z.infer<typeof researchArticleTraceSchema>;
+export type ResearchTraceLatency = z.infer<typeof researchTraceLatencySchema>;
 export type ResearchMyLabel = z.infer<typeof researchMyLabelSchema>;
 export type ResearchLabelBody = z.infer<typeof researchLabelBodySchema>;
 export type ResearchLabelNext = z.infer<typeof researchLabelNextSchema>;

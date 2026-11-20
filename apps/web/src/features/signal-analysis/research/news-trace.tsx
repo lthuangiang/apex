@@ -31,9 +31,10 @@ import {
   type ContextPanelState,
 } from "./context-panel";
 import { contextYesCount } from "./context-text";
-import { delay, delayLong } from "./format";
+import { delay } from "./format";
 import { DOT, FunnelBands, type BandState, type FunnelBandView, type FunnelToken } from "./funnel";
 import { LabelForm } from "./labels";
+import { LatencyCard, LatencyTimeline } from "./latency";
 import {
   LIVE_HOLD_MS,
   liveDuration,
@@ -732,11 +733,22 @@ export function NewsTrace({
           asset={asset}
           tz={ctx.tz}
           scoreExtra={labelBox(data, ctx.tz)}
+          collectExtra={
+            data === null ? null : (
+              <LatencyTimeline
+                article={data.article}
+                latency={data.latency}
+                pollSecs={funnel?.pollSecs ?? null}
+                tz={ctx.tz}
+              />
+            )
+          }
         />
       ) : (
         <>
           <TotalsPanel
             funnel={funnel}
+            versionId={versionId}
             range={range}
             reasons={tot.reasons}
             reason={reason}
@@ -1064,6 +1076,7 @@ function Steps({
   asset,
   tz,
   scoreExtra = null,
+  collectExtra = null,
 }: {
   bands: TraceBand[];
   context: ResearchSignalContext | null;
@@ -1071,6 +1084,8 @@ function Steps({
   tz: string;
   /** Thêm vào cuối thẻ Score (hộp gắn nhãn, #306). */
   scoreExtra?: ReactNode;
+  /** #375: dòng thời gian độ trễ ở cuối thẻ Collect. */
+  collectExtra?: ReactNode;
 }) {
   const t = useTranslations("signalAnalysis.research");
   const canOpenTraders = useCanOpenTraders();
@@ -1147,6 +1162,7 @@ function Steps({
                 ))}
               </dl>
             )}
+            {s.key === "collect" && collectExtra !== null ? collectExtra : null}
             {s.key === "score" && scoreExtra !== null ? (
               <div className="mt-3">{scoreExtra}</div>
             ) : null}
@@ -1171,12 +1187,14 @@ export function claudeCostShown(cc: ResearchFunnel["claudeCost"] | null): string
 
 function TotalsPanel({
   funnel: f,
+  versionId,
   range,
   reasons,
   reason,
   onReason,
 }: {
   funnel: ResearchFunnel | null;
+  versionId: string | null;
   range: ResearchRange;
   reasons: { reason: ResearchDropReason; n: number }[];
   reason: ResearchDropReason | null;
@@ -1188,17 +1206,16 @@ function TotalsPanel({
   // đều không biết chi phí → "Not available"; có bài không biết → cộng bài biết và ghi số bài thiếu.
   const cc = f?.claudeCost ?? null;
   const cost = claudeCostShown(cc);
-  const median = f?.delayMedianSecs ?? null;
   const read = f?.articlesRead ?? null;
   return (
     <div className="flex flex-wrap gap-3">
-      <div className={`flex-[1_1_180px] ${card}`}>
-        <div className="text-xs text-muted">{t("trace.delay")}</div>
-        <div className="text-[22px] font-extrabold">
-          {median === null ? <Na /> : delayLong(median)}
-        </div>
-        {f === null ? null : <Sub>{t("trace.delaySub", { every: delay(f.pollSecs) })}</Sub>}
-      </div>
+      {/* #375: "Where the time goes" thay ô "Delay, news out → collected" (median từng chặng, chặng chậm nhất). */}
+      <LatencyCard
+        range={range}
+        versionId={versionId}
+        pollSecs={f?.pollSecs ?? null}
+        className="flex-[2_1_320px]"
+      />
       <div className={`flex-[1_1_180px] ${card}`}>
         <div className="text-xs text-muted">{t("trace.cost")}</div>
         <div className="text-[22px] font-extrabold">

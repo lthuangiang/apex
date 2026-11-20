@@ -1,4 +1,5 @@
 import type {
+  ResearchLatency,
   ResearchArticle,
   ResearchArticleTrace,
   ResearchClaudeUsage,
@@ -217,6 +218,13 @@ const check = (
 export const ETH_TRACE: ResearchArticleTrace = {
   article: ETH,
   context: CTX_ETH,
+  // #375: mốc đồng hồ scheduler (Claude xong 8 s sau khi thu, quyết định 1 s sau, lệnh ghi 40 ms sau).
+  latency: {
+    claudeDoneAt: "2026-11-19T03:20:19.000Z",
+    decidedAt: "2026-11-19T03:20:20.000Z",
+    decision: "open",
+    openedAt: "2026-11-19T03:20:20.040Z",
+  },
   steps: [
     collect(ETH, { ETH: "ETHEREUM" }),
     {
@@ -317,6 +325,12 @@ export const SOL_TRACE: ResearchArticleTrace = {
   article: SOL,
   // #343: tín hiệu tới bước 4 rồi bị Filter loại; cả ba câu trả lời No ("no signal").
   context: CTX_NONE,
+  latency: {
+    claudeDoneAt: "2026-11-19T02:58:12.000Z",
+    decidedAt: "2026-11-19T02:58:14.000Z",
+    decision: "noTrade",
+    openedAt: null,
+  },
   steps: [
     collect(SOL, {}),
     {
@@ -389,6 +403,7 @@ export const SOL_TRACE: ResearchArticleTrace = {
 export const KNTQ_TRACE: ResearchArticleTrace = {
   article: KNTQ,
   context: null,
+  latency: { claudeDoneAt: null, decidedAt: null, decision: null, openedAt: null },
   steps: [
     collect(KNTQ, {}),
     {
@@ -409,6 +424,7 @@ export const KNTQ_TRACE: ResearchArticleTrace = {
 export const HYPE_TRACE: ResearchArticleTrace = {
   article: HYPE,
   context: null,
+  latency: { claudeDoneAt: null, decidedAt: null, decision: null, openedAt: null },
   steps: [
     collect(HYPE, { BTC: "BITCOIN", HYPE: "HYPERLIQUID" }),
     {
@@ -461,4 +477,25 @@ export const TRACES: Record<string, ResearchArticleTrace> = {
   [SOL.id]: SOL_TRACE,
   [KNTQ.id]: KNTQ_TRACE,
   [HYPE.id]: HYPE_TRACE,
+};
+
+/** #375: độ trễ theo chặng (1 ngày): chặng chờ lần hỏi SoSoValue chậm nhất, chặng decided → opened chưa đo được. */
+export const LATENCY_1D: ResearchLatency = {
+  range: "1d",
+  computedAt: "2026-11-19T04:00:00.000Z",
+  stages: [
+    { key: "sourceToSoso", medianMs: null, n: null },
+    { key: "publishedToCollected", medianMs: 345_000, n: 58 },
+    { key: "collectedToClaudeDone", medianMs: 9_000, n: 21 },
+    { key: "claudeDoneToDecided", medianMs: 1_000, n: 3 },
+    { key: "decidedToOpened", medianMs: null, n: 0 },
+  ],
+};
+
+/** Chưa đo được chặng nào (cửa sổ trống). */
+export const LATENCY_EMPTY: ResearchLatency = {
+  ...LATENCY_1D,
+  stages: LATENCY_1D.stages.map((s) =>
+    s.key === "sourceToSoso" ? s : { ...s, medianMs: null, n: 0 },
+  ),
 };
