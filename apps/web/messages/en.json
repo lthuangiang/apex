@@ -2890,18 +2890,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "signalAnalysis.research.experiments.runningTable",
-    "signalAnalysis.research.experiments.finishedTable",
-    "signalAnalysis.research.experiments.noneRunning",
-    "signalAnalysis.research.experiments.noneFinished",
-    "signalAnalysis.research.experiments.noChange",
-    "signalAnalysis.research.experiments.readerNotChecked",
-    "signalAnalysis.research.experiments.notCleanNone",
-    "signalAnalysis.research.experiments.notCleanNoneShort",
-    "signalAnalysis.research.experiments.thing",
-    "signalAnalysis.research.botsLabels.metaWithExperiments",
-    "signalAnalysis.research.page.drawer.experimentsBaseline"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
