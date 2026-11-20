@@ -309,9 +309,10 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
 
   it("sources show Live / Delayed / Down with the replay gap left out", async () => {
     wrap();
-    // #342: nguồn nằm trong dải "Research only · fake money" (ẩn dưới 768px như mockup 390).
+    // #342: nguồn nằm trong dải "Research only · fake money"; trang gọn (2026-11-20): hiện cả trên điện thoại, mỗi nguồn
+    // một chấm (Live xanh dương).
     const src = await screen.findByRole("list", { name: "Sources" });
-    expect(src).toHaveClass("max-md:hidden");
+    expect(src).not.toHaveClass("max-md:hidden");
     expect(within(src).getByText("SoSoValue news · Live · 2 min ago")).toBeInTheDocument();
     expect(within(src).getByText("Macro calendar · Live")).toBeInTheDocument();
     expect(
@@ -324,8 +325,8 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
 
   it("paper bots: News bot versions, replay bots with balance, last run and rule version", async () => {
     wrap();
-    await screen.findByRole("region", { name: "Paper bots" });
-    const bots = region("Paper bots");
+    await screen.findByRole("region", { name: "Bots & labels" });
+    const bots = region("Bots & labels");
     // #306: lane News là các News bot version; Baseline có balance của API versions.
     const baseline = await within(bots).findByRole("article", { name: "News bot v3 · Baseline" });
     expect(within(baseline).getByText("10,024.6")).toBeInTheDocument();
@@ -394,7 +395,7 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(
       screen.getByText("Short · 9 trades · Not enough trades · needs 21 more"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/cost of a trade ≈ 0.10%/)).toBeInTheDocument();
+    expect(screen.getByText(/each trade costs about 0.10%/)).toBeInTheDocument();
     expect(
       screen.getByText(
         /64 big-news windows of the last 30 days, the cost per \$1M would have been 6% lower and volume 3% lower\./,
@@ -486,7 +487,7 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     wrap();
     const src = await screen.findByRole("list", { name: "Sources" });
     expect(within(src).getAllByRole("listitem")).toHaveLength(2);
-    const bots = region("Paper bots");
+    const bots = region("Bots & labels");
     expect(
       await within(bots).findByRole("article", { name: "News bot v3 · Baseline" }),
     ).toBeInTheDocument();
@@ -613,8 +614,8 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
   it("missing values show Not available, never 0", async () => {
     state.mode = "nulls";
     wrap();
-    await screen.findByRole("region", { name: "Paper bots" });
-    const bots = region("Paper bots");
+    await screen.findByRole("region", { name: "Bots & labels" });
+    const bots = region("Bots & labels");
     // Whales balance, Funding balance, Price patterns balance (lane News: News bot versions).
     expect(within(bots).getAllByText("Not available").length).toBeGreaterThanOrEqual(3);
     // Số dư thiếu không bao giờ thành "0.0". (Số đếm 0 thật của API versions, như Closed 0, vẫn hiện: từ #342 danh sách
@@ -625,7 +626,7 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     const tbl = screen.getByRole("table", { name: "Where each signal type stands" });
     const whales = within(tbl).getByRole("row", { name: /Whales/ });
     expect(within(whales).getAllByText("Not available")).toHaveLength(2);
-    expect(screen.getByText(/cost of a trade ≈ Not available/)).toBeInTheDocument();
+    expect(screen.getByText(/each trade costs about Not available/)).toBeInTheDocument();
     const trades = await screen.findByRole("table", { name: "Signal research trades" });
     const sol = within(trades).getByRole("row", { name: /SEC delays decision/ });
     expect(within(sol).getAllByText("Not available")).toHaveLength(2);
@@ -716,7 +717,6 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
 // docs/mockups/signal-research/redesign-full-page*.html.
 describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
   const picker = () => screen.findByRole("combobox", { name: "Version" });
-  const progress = () => screen.getByRole("navigation", { name: "Progress" });
 
   it("one Version picker drives the page and lives in ?version=", async () => {
     wrap();
@@ -738,7 +738,7 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
         );
     });
     // Thẻ version vẫn chọn được, và đổi cả bộ chọn lẫn URL.
-    const bots = region("Paper bots");
+    const bots = region("Bots & labels");
     const base = await within(bots).findByRole("article", { name: "News bot v3 · Baseline" });
     await userEvent.click(within(base).getByRole("button", { name: "News bot v3 · Baseline" }));
     expect(await picker()).toHaveValue(BASELINE_ID);
@@ -764,39 +764,202 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
     });
   });
 
-  it("Progress: closed trades, classifier labels, context and open trades, each a link", async () => {
+  it("summary strip: one line per running / paused version (max 3), the picked one marked, a plain-words label row", async () => {
     wrap();
     await picker();
-    const p = progress();
-    const links = within(p).getAllByRole("link");
-    expect(links.map((l) => [l.textContent, l.getAttribute("href")])).toEqual([
-      ["0 of ~100 closed trades", "#sr-sum"],
-      ["Classifier v2: 37 of 50 labels · 84% right", "#sr-labels"],
-      ["Context: Not available", "#sr-sum"],
-      ["7 open trades", "#sr-trades"],
+    const strip = screen.getByRole("region", { name: "Summary" });
+    // Dải "Research only · fake money" nằm trong dải tóm tắt.
+    expect(within(strip).getByRole("note")).toHaveTextContent("Research only · fake money");
+    const lines = await within(strip).findByRole("list", { name: "Running News bot versions" });
+    const items = within(lines).getAllByRole("listitem");
+    // v6 đã dừng: không có dòng. v5 tạm dừng, có kết luận; v3 là version đang hiện ở dưới.
+    expect(items.map((li) => li.textContent)).toEqual([
+      "News bot · Majors only (v5) · Paused · Balance 10,105.2 · 0 open · Verdict: Passed once · repeat 40 / 100",
+      "News bot · Strict subject (v4) · Running · Balance 10,000.0 · 0 open",
+      "News bot · Baseline (v3) · Running · Balance 10,024.6 (+$3.25 unrealized) · 7 open · shown below",
     ]);
+    expect(items[2]).toHaveAttribute("aria-current", "true");
+    // Running dùng xanh dương (trung tính), không xanh lá.
+    expect(within(items[2] ?? strip).getByText("Running")).toHaveClass("bg-accent-tint");
+    const row = within(strip).getByTestId("sr-label-row");
+    expect(row).toHaveAttribute("data-state", "needs");
+    expect(row).toHaveClass("bg-accent-tint");
+    expect(row).toHaveTextContent(
+      "Not counting yet: label 13 signals to check Claude (37 done)Context: Not available",
+    );
+    for (const b of ["Label signals", "Manage versions", "How it works"])
+      expect(within(strip).getByRole("button", { name: b })).toBeInTheDocument();
+    // Không còn dòng Progress.
+    expect(screen.queryByRole("navigation", { name: "Progress" })).toBeNull();
     // Theo version đang chọn.
     await userEvent.selectOptions(await picker(), V4_ID);
-    expect(within(progress()).getByRole("link", { name: "0 open trades" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(lines)
+          .getAllByRole("listitem")
+          .find((li) => li.getAttribute("aria-current") === "true"),
+      ).toHaveTextContent(/^News bot · Strict subject \(v4\)/);
+    });
+    await noViolations();
+    expect(intlErrors).toEqual([]);
   });
 
-  it("Progress says Not available when the versions and classifier APIs fail, never 0", async () => {
+  it("summary strip says Not available when the versions and classifier APIs fail, never 0", async () => {
     state.mode = "noVersions";
     wrap();
     await screen.findByRole("region", { name: "Is it working?" });
+    const strip = screen.getByRole("region", { name: "Summary" });
     await waitFor(() => {
-      expect(
-        within(progress())
-          .getAllByRole("link")
-          .map((l) => l.textContent),
-      ).toEqual([
-        "Closed trades: Not available",
-        "Classifier: Not available",
-        "Context: Not available",
-        "Open trades: Not available",
-      ]);
+      expect(within(strip).getByText("News bot versions:").closest("p")).toHaveTextContent(
+        "News bot versions: Not available",
+      );
     });
+    const row = within(strip).getByTestId("sr-label-row");
+    expect(row).toHaveAttribute("data-state", "na");
+    expect(row).toHaveTextContent("Claude check: Not available");
+    expect(row).toHaveTextContent("Context: Not available");
+    expect(strip).not.toHaveTextContent(/\b0 open\b|\b0 done\b/);
     expect(screen.queryByRole("combobox", { name: "Version" })).not.toBeInTheDocument();
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("Bots & labels starts folded; Manage versions opens it and scrolls there", async () => {
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      wrap();
+      const bl = await screen.findByRole("region", { name: "Bots & labels" });
+      const details = bl.querySelector("details");
+      if (details === null) throw new Error("details");
+      expect(details.open).toBe(false);
+      const summary = within(bl).getByText("Show").closest("summary");
+      expect(summary).toHaveTextContent(
+        "Bots & labels2 of 3 slots in use · 4 versions tried · Claude reader v2: 37 of 50 labelsShow",
+      );
+      // Thứ tự trang: dải tóm tắt → From headline to trade → Is it working? → Paper trades → Bots & labels.
+      const order = [
+        screen.getByRole("region", { name: "Summary" }),
+        region(/From headline to trade/),
+        region("Is it working?"),
+        await screen.findByRole("region", { name: "Paper trades" }),
+        bl,
+      ];
+      for (let i = 1; i < order.length; i++)
+        expect(
+          (order[i - 1] as Element).compareDocumentPosition(order[i] as Element) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      await userEvent.click(screen.getByRole("button", { name: "Manage versions" }));
+      await waitFor(() => {
+        expect(details.open).toBe(true);
+      });
+      expect(within(bl).getByText("Hide")).toBeInTheDocument();
+      expect(scrolled).toContain(bl);
+      expect(document.activeElement).toBe(details.querySelector("summary"));
+      // Bên trong: thẻ version, bảng All versions, chất lượng Claude reader, kiểm tra thêm.
+      expect(within(bl).getByRole("article", { name: "News bot v3 · Baseline" })).toBeVisible();
+      expect(within(bl).getByRole("table", { name: "All News bot versions" })).toBeInTheDocument();
+      expect(
+        within(bl).getByRole("region", { name: "Is Claude reading news right?" }),
+      ).toBeInTheDocument();
+      expect(within(bl).getByText(/Extra check is on\./)).toBeInTheDocument();
+      await noViolations();
+      // Bấm lại tiêu đề thì gập.
+      if (summary === null) throw new Error("summary");
+      await userEvent.click(summary);
+      await waitFor(() => {
+        expect(details.open).toBe(false);
+      });
+    } finally {
+      Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    }
+  });
+
+  it("Label signals opens Bots & labels, starts labelling and moves focus to it", async () => {
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      wrap();
+      const strip = await screen.findByRole("region", { name: "Summary" });
+      await screen.findByRole("region", { name: "Bots & labels" });
+      await userEvent.click(within(strip).getByRole("button", { name: "Label signals" }));
+      const heading = screen.getByRole("heading", { name: "Is Claude reading news right?" });
+      await waitFor(() => {
+        expect(heading.closest("details")?.open).toBe(true);
+      });
+      expect(scrolled).toContain(heading);
+      expect(heading).toHaveFocus();
+      // Luồng gắn nhãn ngẫu nhiên đã bắt đầu: đã hỏi labels/next (API giả không có route này → thông báo lỗi).
+      await waitFor(() => {
+        expect(state.paths.some((p) => p.includes("/labels/next"))).toBe(true);
+      });
+      expect(
+        await screen.findByText("Couldn’t load a signal to label.", {}, { timeout: 5_000 }),
+      ).toBeInTheDocument();
+    } finally {
+      Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    }
+  });
+
+  it("no “classifier” anywhere on the UI: page, Bots & labels open, every drawer tab", async () => {
+    wrap();
+    await picker();
+    await screen.findByRole("region", { name: "Paper trades" });
+    await userEvent.click(screen.getByRole("button", { name: "Manage versions" }));
+    await screen.findByRole("table", { name: "Claude reader quality by version" });
+    expect(document.body.textContent).not.toMatch(/classifier/i);
+    await userEvent.click(screen.getByRole("button", { name: "How it works" }));
+    const dlg = await screen.findByRole("dialog", { name: "How it works" });
+    for (const tab of within(dlg).getAllByRole("tab")) {
+      await userEvent.click(tab);
+      expect(dlg.textContent).not.toMatch(/classifier|\bgate\b/i);
+    }
+    // Mọi câu chữ của tab trong en.json cũng vậy (kể cả câu chưa hiện trong fixture này).
+    const words: string[] = [];
+    const walk = (o: unknown) => {
+      if (typeof o === "string") words.push(o);
+      else if (o !== null && typeof o === "object") Object.values(o).forEach(walk);
+    };
+    walk(messages.signalAnalysis.research);
+    expect(words.filter((w) => /classifier/i.test(w))).toEqual([]);
+  });
+
+  it("How it works › Labels: what a label is, which labels count, the current reader and Label signals", async () => {
+    wrap();
+    await picker();
+    await userEvent.click(screen.getByRole("button", { name: "How it works" }));
+    const dlg = await screen.findByRole("dialog", { name: "How it works" });
+    const list = within(dlg).getByRole("tablist", { name: "How it works sections" });
+    expect(list).toHaveClass("overflow-x-auto");
+    await userEvent.click(within(dlg).getByRole("tab", { name: "Labels" }));
+    expect(within(dlg).getByRole("tab", { name: "Labels" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      within(dlg)
+        .getByText(/^What a label is\./)
+        .closest("p"),
+    ).toHaveTextContent(
+      "What a label is. A person reads an article Claude called a signal and marks Claude’s reading Right or Wrong. The trade result stays hidden until you save, so it can’t sway the label.",
+    );
+    expect(
+      within(dlg)
+        .getByText(/^Which labels count\./)
+        .closest("p"),
+    ).toHaveTextContent(/Only labels from Label signals count toward the 50\./);
+    expect(await within(dlg).findByText(/Claude reader v2 \(current\)/)).toBeInTheDocument();
+    expect(within(dlg).getByText(/37 of 50 labels · marked right 84%/)).toBeInTheDocument();
+    expect(within(dlg).getByRole("button", { name: "Label signals" })).toBeInTheDocument();
+    await userEvent.click(within(dlg).getByRole("tab", { name: "Versions" }));
+    expect(within(dlg).getByText(/^One Claude read per article\./)).toBeInTheDocument();
+    expect(within(dlg).getByText(/Up to 3 versions run at once/)).toBeInTheDocument();
+    expect(within(dlg).getByText(/^Saved versions never change\./)).toBeInTheDocument();
+    await noViolations();
     expect(intlErrors).toEqual([]);
   });
 
@@ -813,9 +976,10 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
       "News types",
       "Levels",
       "Take profit / Stop loss",
-      "The gate",
+      "When a signal passes",
       "Context questions",
       "Versions",
+      "Labels",
     ]);
     expect(within(dlg).getByRole("tab", { name: "News types" })).toHaveAttribute(
       "aria-selected",
@@ -855,10 +1019,10 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
     expect(within(d2).getByText(/the asset’s typical move/)).toHaveTextContent(
       "TP = 1.5 × and SL = 0.75 × the asset’s typical move over the max hold (from its last 30 days). If TP is under 2× the cost of a trade, the signal is skipped.",
     );
-    await userEvent.click(within(d2).getByRole("tab", { name: "The gate" }));
+    await userEvent.click(within(d2).getByRole("tab", { name: "When a signal passes" }));
     // Cổng nêu đủ điều kiện đã chốt, gồm so với vào lệnh ngẫu nhiên và cùng dấu ở hai nửa.
-    expect(within(d2).getByText(/passes the gate/)).toHaveTextContent(
-      "A signal type gets a page for users only after it passes the gate: 100 trades or more, average result after fees at least 2× the cost of a trade, a likely range that stays above 0, it beats random entries at the same moments, and the result has the same sign in both halves.",
+    expect(within(d2).getByText(/passes these checks/)).toHaveTextContent(
+      "A signal type gets a page for users only after it passes these checks: 100 trades or more, average result after fees at least 2× the cost of a trade, a likely range that stays above 0, it beats random entries at the same moments, and the result has the same sign in both halves.",
     );
     await userEvent.click(within(d2).getByRole("tab", { name: "Context questions" }));
     expect(within(d2).getByText(/Where the other signals go/)).toBeInTheDocument();
@@ -907,17 +1071,18 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
   it("section titles follow the redesign; on phones the tab row scrolls with a fade edge", async () => {
     wrap();
     await screen.findByRole("region", { name: "Is it working?" });
-    expect(region("Paper bots")).toBeInTheDocument();
+    expect(region("Bots & labels")).toBeInTheDocument();
     expect(region(/From headline to trade/)).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "Paper trades" })).toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "Strategy" })).toHaveClass(
       "overflow-x-auto",
       "max-md:mask-r-from-85%",
     );
-    // Thanh Version + How it works đứng trước Paper bots (thứ tự của mockup 390).
+    // Trang gọn: How it works (trong dải tóm tắt) đứng trước phễu; Bots & labels ở cuối trang.
     const how = screen.getByRole("button", { name: "How it works" });
     expect(
-      how.compareDocumentPosition(region("Paper bots")) & Node.DOCUMENT_POSITION_FOLLOWING,
+      how.compareDocumentPosition(region(/From headline to trade/)) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 });
@@ -941,27 +1106,22 @@ describe("Is it working? redesign (#344) and older rules (#321)", { timeout: 30_
     const labels = within(r).getByRole("progressbar", { name: "Labels" });
     expect(labels).toHaveAttribute("aria-valuenow", "37");
     expect(labels).toHaveAttribute("aria-valuemax", "50");
-    expect(within(r).getByText("Classifier v2 labels")).toBeInTheDocument();
+    expect(within(r).getByText("Labels for Claude reader v2")).toBeInTheDocument();
     expect(within(r).getByText("84% right so far")).toBeInTheDocument();
-    expect(within(r).getAllByRole("link", { name: "Label a random signal" })[0]).toHaveAttribute(
-      "href",
-      "#sr-labels",
-    );
-    expect(within(r).getByText("Context (H1 whales)")).toBeInTheDocument();
-    expect(within(r).getByText("each group needs 30")).toBeInTheDocument();
+    expect(within(r).getAllByRole("button", { name: "Label signals" }).length).toBeGreaterThan(0);
+    expect(within(r).getByText("Context: whales agree")).toBeInTheDocument();
+    expect(within(r).getByText("30 trades each")).toBeInTheDocument();
     const w = within(r).getByRole("progressbar", {
-      name: "Context (H1 whales) · With · closed trades",
+      name: "Context: whales agree · With · closed trades",
     });
     expect(w).toHaveAttribute("aria-valuenow", "12");
     expect(w).toHaveAttribute("aria-valuemax", "30");
     expect(within(r).getByText("12 / 30")).toBeInTheDocument();
     expect(within(r).getByText("21 / 30")).toBeInTheDocument();
-    // Progress ở đầu trang theo khối context.
-    expect(
-      within(screen.getByRole("navigation", { name: "Progress" })).getByRole("link", {
-        name: "Context: collecting",
-      }),
-    ).toBeInTheDocument();
+    // Dải tóm tắt ở đầu trang theo khối context.
+    expect(screen.getByTestId("sr-label-row")).toHaveTextContent(
+      "Context: still collecting answers · see Is it working?",
+    );
   });
 
   it("Overall hides the average under 30 counted closed trades; cost says no v3 trade reached the cost check", async () => {
@@ -969,15 +1129,15 @@ describe("Is it working? redesign (#344) and older rules (#321)", { timeout: 30_
     const tbl = await screen.findByRole("table", { name: "Where each signal type stands" });
     const news = within(tbl).getByRole("row", { name: /News · Live paper/ });
     expect(
-      within(news).getByText("Average shows at 30 closed (18 more); the gate needs 100"),
+      within(news).getByText("Shows after 30 closed trades (18 more) · a verdict needs 100"),
     ).toBeInTheDocument();
-    expect(within(news).getByText("Shown at 30 closed")).toBeInTheDocument();
+    expect(within(news).getByText("Shows after 30 closed")).toBeInTheDocument();
     // API có trung bình (+0.40%) nhưng chưa đủ 30: không hiện.
     expect(within(news).queryByText("+0.40%")).not.toBeInTheDocument();
     expect(within(news).getByText("Collecting")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /cost of a trade ≈ Not available yet · no v3 trade has reached the cost check/,
+        /each trade costs about Not available yet · no v3 trade has reached the cost check/,
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Live paper · 12 trades · needs 88 more")).toBeInTheDocument();
@@ -1025,7 +1185,7 @@ describe("Is it working? redesign (#344) and older rules (#321)", { timeout: 30_
     expect(
       within(r).getByText("Baseline (v3) · from the page's version picker"),
     ).toBeInTheDocument();
-    expect(within(r).getByText(/Slower than the main gate\./)).toBeInTheDocument();
+    expect(within(r).getByText(/Slower than the main verdict\./)).toBeInTheDocument();
     const tbl = within(r).getByRole("table", { name: "Does context make news signals better?" });
     const rows = (q: string) =>
       [...tbl.querySelectorAll(`tr[data-question="${q}"]`)] as HTMLElement[];
@@ -1119,9 +1279,11 @@ describe("Is it working? redesign (#344) and older rules (#321)", { timeout: 30_
     await waitFor(() => {
       expect(within(t2).getAllByText("Rules v2 · not counted")).toHaveLength(1);
     });
-    // Paper bots ghi số lệnh rules cũ còn theo dõi.
+    // Bots & labels ghi số lệnh rules cũ còn theo dõi.
     expect(
-      within(region("Paper bots")).getByText("4 trades from older rules (v2) still tracked below"),
+      within(region("Bots & labels")).getByText(
+        "4 trades from older rules (v2) are still listed in Paper trades.",
+      ),
     ).toBeInTheDocument();
     // Phễu: rules v3 chạy chưa hết 1 ngày.
     expect(
@@ -1130,7 +1292,7 @@ describe("Is it working? redesign (#344) and older rules (#321)", { timeout: 30_
     await noViolations();
   });
 
-  it("no older rules: no toggle, no Paper bots line", async () => {
+  it("no older rules: no toggle, no older-rules line in Bots & labels", async () => {
     state.mode = "ok";
     wrap();
     await screen.findByRole("table", { name: "Signal research trades" });

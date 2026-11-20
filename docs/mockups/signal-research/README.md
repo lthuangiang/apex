@@ -65,3 +65,26 @@ Mở thẳng file HTML trong trình duyệt. Các trang có tương tác dùng `
 **Định nghĩa H1 / H3 sửa ở review PR #349:** H1 chỉ xét ví DeskLabs đang theo dõi (được follow, và đã có trong leaderboard trước thời điểm đó), nên HTML ghi "tracked wallets" và "N wallets checked" với N là số ví thật sự được kiểm (mẫu dùng 12, không phải 214 của leaderboard); "Not available" khi tài sản không có trên Hyperliquid hoặc không có ví theo dõi nào có dữ liệu. H3 đo từ giờ đăng của bài đầu tiên của story (cùng số với "moved before entry"). Ảnh PNG chụp trước khi sửa nên còn câu cũ; HTML là bản đúng.
 
 **H1 context-v2 (#353):** tập ví của H1 là tập ví nghiên cứu cố định: top K ví tab Top của lần xếp hạng gần nhất (K = 30 mặc định), chụp theo phiên bản. HTML ghi "research wallets (top {K} of the leaderboard)" (mẫu: top 30, 27 ví đọc được trong giờ trước nên "27 wallets checked"); "Not available" khi tài sản không có trên Hyperliquid hoặc không có ví nghiên cứu nào đọc được trong 60 phút. How it works không ghi số K ("the top of the leaderboard"). Snapshot context-v1 đã lưu (ví được follow) vẫn hiện câu "tracked wallets". PNG chưa chụp lại.
+
+## Trang Signal research gọn (người dùng duyệt 2026-11-20)
+
+Người dùng thấy khu Paper bots và Classifier quality quá to mà khó hiểu. Bản gọn gom chúng lại. Số trong khung A, B, D, E lấy từ ảnh UI thật lúc 06:46; khung C là số minh hoạ (lấy từ mockup #340). HTML tự chứa (font nhúng sẵn), mở thẳng trong trình duyệt.
+
+| File | Nội dung |
+|---|---|
+| `compact-desktop.html`, `compact-1440.png` | Khung A: toàn trang 1440, Bots & labels đang gập |
+| `compact-1440-expanded.png` | Khung B: Bots & labels đang mở |
+| `compact-strip-states-1440.png` | Khung C: dải tóm tắt khi đã đếm (2 version) và khi đủ 3 version, một version thiếu số |
+| `compact-drawer-labels-1440.png`, `compact-drawer-versions-1440.png` | Khung D, E: drawer How it works › Labels (tab mới) và › Versions |
+| `compact-mobile.html`, `compact-390.png`, `compact-390-expanded.png` | Toàn trang 390, gập và mở |
+| `compact-copy-changes.md` | Bảng câu cũ → câu mới đã duyệt, câu mới hoàn toàn |
+
+**Quy tắc PM chốt khi code (DEC-TBD-sr-compact-page):**
+- Thứ tự trang: dải tóm tắt → From headline to trade → Is it working? → Paper trades → Bots & labels (gập sẵn bằng `<details>`).
+- Dải tóm tắt thay Paper bots, Classifier quality và dòng Progress: banner "Research only · fake money" có chấm nguồn, bộ chọn Version, mỗi version đang chạy / tạm dừng một dòng (tối đa 3; version đang chọn luôn có mặt), rồi hàng nhãn bằng lời thường với [Label signals] [Manage versions]. Thiếu số thì "Not available", không bao giờ 0.
+- Claude reader dưới 80%: "Not counting yet: Claude reader is right {pct}% of the time on {n} labels; it needs 80% on 50. Label more signals." trên nền amber nhạt, có nút Label signals. Chưa đủ nhãn / đã qua: nền xanh nhạt.
+- Trên UI không còn chữ "classifier": dùng "Claude reader"; "gate" thành "verdict" / "counting"; tab drawer "The gate" thành "When a signal passes". Code và DB giữ tên cũ.
+- Một tên nút duy nhất: "Label signals" (dải tóm tắt, Is it working?, khu Bots & labels, drawer › Labels). Bấm thì mở Bots & labels, bắt đầu gắn nhãn ngẫu nhiên và cuộn tới. "Manage versions" mở Bots & labels và cuộn tới.
+- Running và Live dùng xanh dương (trung tính); xanh lá chỉ cho lệnh đã vào / có lãi.
+- Bỏ 3 ô giải thích Context dưới phễu (nội dung đã có ở drawer › Context questions). Mọi thứ khác của From headline to trade giữ nguyên, chỉ đổi vị trí.
+- Giải thích dài của Paper bots / Classifier quality dời vào drawer: tab Versions và tab Labels (mới). Drawer có 7 tab, cuộn ngang khi hẹp, mép phải mờ khi còn tab phía sau.

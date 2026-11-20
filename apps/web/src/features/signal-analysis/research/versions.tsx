@@ -23,11 +23,13 @@ import {
   useVersionStatus,
   type VersionStatusVars,
 } from "./api";
+import { useBotsLabels } from "./bots-labels-context";
 import { balance, pctSigned, tone, usdSigned } from "./format";
 import { NotEnough, Pill, tdR, tdW, thR, thW, type PillTone } from "./ui";
 import { saveErrorText, VersionSheet, type SheetMode } from "./version-sheet";
 import {
   changedCell,
+  classifierShort,
   classifiersUsed,
   configLine,
   effectiveNote,
@@ -43,7 +45,8 @@ import {
 // một version (tiêu đề thẻ hoặc ô Version của bảng) đổi `versionId` của tổng kết, News feed, trace và bảng Trades.
 
 const STATE_TONE: Record<ResearchVersion["status"], PillTone> = {
-  running: "pos",
+  // Trạng thái chạy là trung tính (xanh dương); xanh lá chỉ cho lệnh đã vào / có lãi (trang gọn, 2026-11-20).
+  running: "accent",
   paused: "neutral",
   stopped: "neutral",
   retired: "neutral",
@@ -72,6 +75,7 @@ export function NewsVersions({
   unrealized: { versionId: string; value: string | null } | null;
 }) {
   const t = useTranslations("signalAnalysis.research.versions");
+  const tbl = useTranslations("signalAnalysis.research.botsLabels");
   const tc = useTranslations("common.errors");
   const q = useResearchVersions();
   const cls = useResearchClassifiers();
@@ -99,8 +103,8 @@ export function NewsVersions({
   const data = q.data;
 
   const header = (
-    <>
-      <p className="m-0 text-[15px] leading-normal text-ink-2">{t("intro")}</p>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h3 className="m-0 text-[17px] font-extrabold">{tbl("versionsTitle")}</h3>
       <div>
         <Button
           disabled={data === undefined}
@@ -112,7 +116,7 @@ export function NewsVersions({
           {t("new")}
         </Button>
       </div>
-    </>
+    </div>
   );
 
   if (data === undefined)
@@ -138,7 +142,6 @@ export function NewsVersions({
   const active = data.items.filter((v) => v.status === "running" || v.status === "paused");
   const slots = data.maxRunning - data.running;
   const next = Math.max(0, ...data.items.map((v) => v.number)) + 1;
-  const shownVersion = data.items.find((v) => v.id === current) ?? null;
 
   return (
     <>
@@ -152,14 +155,6 @@ export function NewsVersions({
       {notice === null ? null : (
         <p role="status" className="m-0 text-sm font-semibold text-pos">
           {notice}
-        </p>
-      )}
-      {shownVersion === null ? null : (
-        <p className="m-0 text-sm text-ink-2">
-          {t.rich("showing", {
-            name: versionTitle(shownVersion, t),
-            b: (c: ReactNode) => <b>{c}</b>,
-          })}
         </p>
       )}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(290px,1fr))] gap-3.5">
@@ -245,23 +240,36 @@ export function NewsVersions({
 function Bar({ data }: { data: ResearchVersions }) {
   const t = useTranslations("signalAnalysis.research.versions");
   const tn = useTranslations("signalAnalysis.research");
+  const open = useBotsLabels();
   const b = (c: ReactNode) => <b>{c}</b>;
   const c = data.classifier;
+  const name = classifierShort(c.current);
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 rounded-tile bg-surface-2 px-4 py-3 text-sm text-ink-2">
       <span>{t.rich("running", { n: data.running, max: data.maxRunning, b })}</span>
       <b className="text-ink">{t("tried", { n: data.versionsTried })}</b>
       <span>
-        {t.rich("classifier", {
-          name: c.current,
-          pct: c.precisionPct === null ? tn("na") : `${String(Math.round(c.precisionPct))}%`,
-          n: c.labeled,
-          b,
-        })}
+        {c.labeled === 0 || c.precisionPct === null
+          ? t("classifierNone", { name })
+          : t("classifier", {
+              name,
+              pct: `${String(Math.round(c.precisionPct))}%`,
+              n: c.labeled,
+            })}
         {tn("trades.sep")}
-        <a href="#sr-labels" className="font-semibold text-accent-ink underline">
-          {t("labelMore")}
-        </a>
+        {open === null ? (
+          <a href="#sr-labels" className="font-semibold text-accent-ink underline">
+            {t("labelMore")}
+          </a>
+        ) : (
+          <button
+            type="button"
+            onClick={open.openLabels}
+            className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent-ink underline"
+          >
+            {t("labelMore")}
+          </button>
+        )}
       </span>
     </div>
   );
@@ -359,7 +367,15 @@ function VersionCard({
         <Stat label={t("closed")} value={count(v.closed)} />
         <Stat
           label={t("count")}
-          value={v.gate.status === "waits_for_labels" ? t("waitsForLabels") : count(v.counted)}
+          value={
+            v.gate.classifierStatus === "needsLabels" ? (
+              <span className="text-[13px]">{t("waitsForLabels", { k: v.gate.labelsToGo })}</span>
+            ) : v.gate.classifierStatus === "underPrecision" ? (
+              <span className="text-[13px]">{t("countUnder")}</span>
+            ) : (
+              count(v.counted)
+            )
+          }
         />
       </dl>
       <p className="m-0 text-[13px] text-ink-2">
@@ -368,7 +384,12 @@ function VersionCard({
           max: max ?? tn("na"),
           today: v.todayTrades,
           // null = Off; config không đọc được thì không biết giới hạn (quy tắc 1.8).
-          limit: v.config === null ? tn("na") : (v.maxNewTradesPerDay ?? t("noLimit")),
+          limit:
+            v.config === null
+              ? tn("na")
+              : v.maxNewTradesPerDay === null
+                ? t("noLimit")
+                : t("dayLimit", { n: v.maxNewTradesPerDay }),
           blocked: v.blockedByLimit,
           b: (c: ReactNode) => <b className="text-ink">{c}</b>,
         })}
@@ -552,7 +573,6 @@ function AllVersions({
           </tbody>
         </table>
       </ScrollTable>
-      <p className="m-0 text-xs text-muted">{t("allNote")}</p>
     </div>
   );
 }
