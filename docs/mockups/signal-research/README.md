@@ -88,3 +88,20 @@ Người dùng thấy khu Paper bots và Classifier quality quá to mà khó hi�
 - Running và Live dùng xanh dương (trung tính); xanh lá chỉ cho lệnh đã vào / có lãi.
 - Bỏ 3 ô giải thích Context dưới phễu (nội dung đã có ở drawer › Context questions). Mọi thứ khác của From headline to trade giữ nguyên, chỉ đổi vị trí.
 - Giải thích dài của Paper bots / Classifier quality dời vào drawer: tab Versions và tab Labels (mới). Drawer có 7 tab, cuộn ngang khi hẹp, mép phải mờ khi còn tab phía sau.
+
+## Catalyst Intelligence Phase 0 (#374)
+
+Người dùng duyệt bố cục và 4 quy tắc nghiên cứu ngày 2026-11-20 ("Duyệt cả"). Câu chữ do PM duyệt. Số trong ảnh là số minh hoạ, có ghi "Sample". Viền tím đứt kèm nhãn "NEW" đánh dấu chỗ dữ liệu mới sẽ hiện. Ô vàng `[confirm]` trong ảnh đã được chốt theo DEC.
+
+- `catalyst-latency-{1440,390}.png` (#375):
+  - Ô "Where the time goes" ở chế độ tổng hiện median từng chặng và làm nổi chặng chậm nhất.
+  - Thẻ Collect của trace có dòng thời gian 6 mốc.
+  - Chặng chưa đo được ghi "Not measured yet"; chặng nguồn → SoSoValue ghi "Not provided".
+- `catalyst-market-state-{1440,390}.png` và `catalyst-drawer-market-state-1440.png` (#376):
+  - Chip "BTC trend / Volatility" trên thẻ Decide; cột "Market at entry" trong Paper trades.
+  - Tab "By market" trong Is it working?; tab Market state trong drawer.
+- `catalyst-experiments-{1440,390}.png` và `catalyst-drawer-experiments-1440.png` (#377):
+  - Khối Experiments ở đầu Bots & labels, chia hai nhóm Running và Finished.
+  - Cảnh báo "Not a clean test"; ô Hypothesis trong sheet New version.
+- `catalyst-desktop.html`, `catalyst-mobile.html`: bản HTML tự chứa của các khung trên.
+- `catalyst-copy.md`: toàn bộ câu chữ mới.
