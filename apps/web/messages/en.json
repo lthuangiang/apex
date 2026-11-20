@@ -8851,7 +8851,8 @@
           "baselineChanges": "Changes from Baseline (v{n}): <b>{list}</b>",
           "notClean": "<b>This version changes {n} things from Baseline.</b> If its result differs, you won’t know which change caused it. Keep one change per version.",
           "saveAnyway": "Save and start anyway",
-          "backToEdit": "Back to edit"
+          "backToEdit": "Back to edit",
+          "savedAnyway": "Saved anyway: the experiment shows “Not a clean test” in Bots & labels › Experiments."
         },
         "picker": {
           "search": "Search SoDEX markets",
@@ -8990,7 +8991,8 @@
             "gate": "When a signal passes",
             "context": "Context questions",
             "versions": "Versions",
-            "labels": "Labels"
+            "labels": "Labels",
+            "experiments": "Experiments"
           },
           "off": "Off",
           "minLevel": "This version trades level <b>{level}</b> and up.",
@@ -9011,7 +9013,14 @@
           "labels4": "<b>When trades start counting.</b> A trade counts only when the Claude reader that made it has {min} labels and at least {pct}% are marked right. With few labels the real share could be well above or below what you see, so this is a minimum, not proof.",
           "labels5": "<b>Which labels count.</b> Only labels from <b>Label signals</b> count toward the {min}. It picks articles at random, so the share isn’t skewed by which ones people choose. Labels saved while tracing an article show as “from traces” and still count in Most common mistakes.",
           "labelsRule": "One label per person per article · change it any time",
-          "labelsNow": "<b>Claude reader {v} (current)</b> · {n} of {min} labels · marked right {pct}"
+          "labelsNow": "<b>Claude reader {v} (current)</b> · {n} of {min} labels · marked right {pct}",
+          "experiments1": "<b>One hypothesis, one experiment, one result.</b> Each new version states one hypothesis and changes one thing from {baseline}. Then any difference in the result comes from that change.",
+          "experiments2": "<b>Paired with Baseline.</b> Baseline and the experiment see the same articles. For every article both traded, DeskLabs compares the two results after fees. The comparison needs {pairs} paired closed trades.",
+          "experiments3": "<b>Running and Finished.</b> An experiment stops by itself when it has {pairs} paired closed trades and moves to Finished with its stop date and result. So no more than {max} versions run at once (Baseline included), and a finished result doesn’t change.",
+          "experiments4": "<b>Results.</b> <b>Better</b> or <b>Worse</b>: the likely range of the paired difference stays above or below 0. <b>No clear difference</b>: the range crosses 0 after the paired trades are in. <b>Collecting</b>: still running, not enough paired trades yet.",
+          "experiments5": "<b>Not a clean test.</b> A version that changes more than one thing from Baseline still runs, but its result can’t show which change caused it.",
+          "experimentsNote": "A result is about the past trades only. It isn’t a forecast.",
+          "experimentsBaseline": "Baseline"
         }
       },
       "context": {
@@ -9258,7 +9267,9 @@
         "versionsTitle": "Bot versions",
         "more": "Why labels and versions work this way:",
         "howVersions": "How it works › Versions",
-        "howLabels": "How it works › Labels"
+        "howLabels": "How it works › Labels",
+        "metaWithExperiments": "{n} of {max} slots in use · {experiments} · Claude reader {v}: {labeled} of {min} labels",
+        "metaExperiments": "{running, plural, one {# experiment} other {# experiments}} running · {unclean} not a clean test · {finished} finished"
       },
       "researchWallets": {
         "title": "Research wallets (top {k})",
@@ -9325,6 +9336,63 @@
           "opened": "Paper trade opened",
           "gap": "+{duration}",
           "gapWait": "+{duration} · waited for the {n}-min check"
+        }
+      },
+      "experiments": {
+        "title": "Experiments",
+        "tagline": "One hypothesis, one change, one result",
+        "intro": "Each version tests one change against Baseline (v{n}) on the same articles. When it has {pairs} paired closed trades it stops by itself and moves to Finished, so no more than {max} versions run at once (Baseline included).",
+        "how": "How it works › Experiments",
+        "runningTitle": "Running · {n, plural, one {# experiment} other {# experiments}} + Baseline = {used} of {max} versions",
+        "free": "{k, plural, one {# slot free} other {# slots free}}",
+        "full": "No free slot: the next experiment can start when one finishes",
+        "finishedTitle": "Finished · {n}",
+        "finishedSub": "Stopped at {n} paired closed trades · results don’t change after that",
+        "runningTable": "Running experiments",
+        "finishedTable": "Finished experiments",
+        "noneRunning": "No experiments running.",
+        "noneFinished": "No finished experiments yet.",
+        "cols": {
+          "hypothesis": "Hypothesis",
+          "version": "Version · control",
+          "started": "Started",
+          "stopped": "Stopped",
+          "measured": "Measured by",
+          "pairs": "Paired trades<br></br>have / need",
+          "result": "Result"
+        },
+        "vsBaseline": "vs Baseline (v{n})",
+        "change": "Change: {change}",
+        "changes": "Changes: {list}",
+        "noChange": "No changes from Baseline",
+        "measuredBy": "Result after fees, paired with Baseline",
+        "pairsValue": "{have} / {need}",
+        "verdict": {
+          "collecting": "Collecting",
+          "better": "Better",
+          "worse": "Worse",
+          "no_clear_difference": "No clear difference"
+        },
+        "readerNotChecked": "Claude reader not yet checked",
+        "notClean": "<b>Not a clean test.</b> Changes {n} things from Baseline: {fields}. A result can’t show which change caused it. <copy>Copy to new version</copy> and change one thing.",
+        "notCleanShort": "<b>Not a clean test.</b> Changes {n} things from Baseline: {fields}. A result can’t show which change caused it.",
+        "notCleanNone": "<b>Not a clean test.</b> Changes nothing from Baseline, so there is no change to test. <copy>Copy to new version</copy> and change one thing.",
+        "notCleanNoneShort": "<b>Not a clean test.</b> Changes nothing from Baseline, so there is no change to test.",
+        "mOneChange": "vs Baseline (v{n}) · one change: {change}",
+        "mChanges": "vs Baseline (v{n}) · changes: {list}",
+        "mSince": "Since {start} · Result after fees, paired with Baseline · {have} / {need} paired trades",
+        "mFinished": "{start} → stopped {stop} · Result after fees, paired with Baseline · {have} / {need} paired trades",
+        "thing": {
+          "minLevel": "Lowest level",
+          "maxSourceDelayMinutes": "Skip after",
+          "sizeUsdc": "Size",
+          "tpMultiple": "TP",
+          "slMultiple": "SL",
+          "minTpCostMultiple": "Take profit at least",
+          "maxOpenTrades": "Max open trades",
+          "maxNewTradesPerDay": "Max new trades per day",
+          "onOppositeNews": "Opposite news",
+          "assets": "Assets"
         }
       }
     },

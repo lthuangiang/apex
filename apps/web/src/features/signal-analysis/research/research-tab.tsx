@@ -229,6 +229,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
           version={picked}
           rulesVersion={v?.newsRulesVersion ?? null}
           maxRunning={versions.data?.maxRunning ?? null}
+          baselineNumber={versions.data?.items.find((x) => x.isBaseline)?.number ?? null}
         />
       </BotsLabelsProvider>
     </HowItWorksProvider>

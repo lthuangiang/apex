@@ -7,7 +7,7 @@ import {
 } from "@drift/shared";
 import { Button, ConfirmDialog } from "@drift/ui";
 import { useTranslations } from "next-intl";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api";
 import { uncertainOutcome } from "@/lib/financial-action";
@@ -24,6 +24,7 @@ import {
   type VersionStatusVars,
 } from "./api";
 import { useBotsLabels } from "./bots-labels-context";
+import { Experiments } from "./experiments";
 import { balance, pctSigned, tone, usdSigned } from "./format";
 import { NotEnough, Pill, tdR, tdW, thR, thW, type PillTone } from "./ui";
 import { saveErrorText, VersionSheet, type SheetMode } from "./version-sheet";
@@ -82,15 +83,16 @@ export function NewsVersions({
   const [sheet, setSheet] = useState<SheetMode | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // #377: lần lưu đang chờ đi qua "Save and start anyway" → thêm câu "Saved anyway…" vào thông báo.
+  const anyway = useRef(false);
   const markets = useResearchMarkets(sheet?.kind === "new" || sheet?.kind === "rules");
   const create = useCreateVersion((v) => {
     setSheet(null);
     setSaveError(null);
-    setNotice(
-      v.warnings.includes("market_list_stale")
-        ? t("staleNotice", { n: v.number, name: v.name })
-        : t("savedNotice", { n: v.number, name: v.name }),
-    );
+    const saved = v.warnings.includes("market_list_stale")
+      ? t("staleNotice", { n: v.number, name: v.name })
+      : t("savedNotice", { n: v.number, name: v.name });
+    setNotice(anyway.current ? `${saved} ${t("sheet.savedAnyway")}` : saved);
     onSelect(v.id);
   });
   const labels = useMemo(
@@ -145,7 +147,16 @@ export function NewsVersions({
 
   return (
     <>
-      {header}
+      {/* #377: sổ thí nghiệm ở đầu khu Bots & labels, trước Bot versions. */}
+      <Experiments
+        data={data}
+        tz={tz}
+        onCopy={(v) => {
+          setSaveError(null);
+          setSheet({ kind: "new", from: v });
+        }}
+      />
+      <div className="border-t border-border pt-4">{header}</div>
       <Bar data={data} />
       {data.extraCheck ? (
         <p className="m-0 rounded-tile bg-warn-bg px-4 py-3 text-sm leading-normal text-warn">
@@ -224,7 +235,8 @@ export function NewsVersions({
           onClose={() => {
             setSheet(null);
           }}
-          onSave={(body) => {
+          onSave={(body, viaAnyway) => {
+            anyway.current = viaAnyway;
             setSaveError(null);
             create.mutate(body, {
               onError: (e) => {

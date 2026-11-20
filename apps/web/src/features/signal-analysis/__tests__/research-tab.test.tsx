@@ -844,7 +844,9 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
       expect(details.open).toBe(false);
       const summary = within(bl).getByText("Show").closest("summary");
       expect(summary).toHaveTextContent(
-        "Bots & labels2 of 3 slots in use · 4 versions tried · Claude reader v2: 37 of 50 labelsShow",
+        // #377: phần thí nghiệm thay "N versions tried" (desktop), rồi bản điện thoại chỉ có phần thí nghiệm.
+        "Bots & labels2 of 3 slots in use · 0 experiments running · 0 not a clean test · 0 finished · Claude reader v2: 37 of 50 labels" +
+          "0 experiments running · 0 not a clean test · 0 finishedShow",
       );
       // Thứ tự trang: dải tóm tắt → From headline to trade → Is it working? → Paper trades → Bots & labels.
       const order = [
@@ -988,6 +990,7 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
       "Context questions",
       "Versions",
       "Labels",
+      "Experiments",
     ]);
     expect(within(dlg).getByRole("tab", { name: "News types" })).toHaveAttribute(
       "aria-selected",
