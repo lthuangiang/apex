@@ -38,6 +38,7 @@ const BASE: ResearchSignalContext = {
   },
   h3: { status: "no", movedPct: 0.2, typicalMovePct: 0.6, thresholdPct: 0.6 },
   exploratory: { volumeVs24h: 1.8, rangeBreakout: "none" },
+  marketState: null,
 };
 
 /** Ghép một snapshot, parse qua schema để fixture không lệch API. */

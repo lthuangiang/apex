@@ -17,7 +17,13 @@ import {
   signalStories,
   type Db,
 } from "@drift/db";
-import { dec, SIGNAL_CONTEXT_VERSION, TradeDirection, type Quote } from "@drift/shared";
+import {
+  dec,
+  MARKET_STATE_VERSION,
+  SIGNAL_CONTEXT_VERSION,
+  TradeDirection,
+  type Quote,
+} from "@drift/shared";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -509,6 +515,106 @@ describe("no lookahead: data stamped at or after the decision never changes the 
     await captureSignalContext(db, btcLong("after"), T0, quote("102"));
     expect(h3(await snapshot("after"))).toEqual(h3(await snapshot("before")));
     expect(values(await snapshot("after"))).toEqual(values(await snapshot("before")));
+  });
+});
+
+// ── Trạng thái thị trường lúc quyết định (Catalyst P0, #376) ────────────────────────────────────────────────────────
+
+/** Một nến 1 phút (giá mở / cao / thấp / đóng như nhau); ghi đè nếu đã có. */
+async function candle(market: string, ts: number, close: string) {
+  await db
+    .insert(candles1m)
+    .values({ market, ts: new Date(ts), open: close, high: close, low: close, close, volume: "1" })
+    .onConflictDoUpdate({
+      target: [candles1m.market, candles1m.ts],
+      set: { open: close, high: close, low: close, close },
+    });
+}
+const market = (r: typeof signalContexts.$inferSelect) => ({
+  v: r.marketVersion,
+  btc: r.marketBtcChange24hPct === null ? null : dec(r.marketBtcChange24hPct).toFixed(),
+  trend: r.marketBtcTrend,
+  move: r.marketVol4hPct === null ? null : dec(r.marketVol4hPct).toFixed(),
+  pctl: r.marketVolPercentile === null ? null : Number(r.marketVolPercentile),
+  vol: r.marketVolatility,
+});
+
+describe("market state at decision (#376)", () => {
+  /** BTC: giá 24 h trước = 100 (nến đóng trước T0 − 24 h), giá lúc quyết định = `now` (nến T0 − 2 phút). */
+  async function btc(now: string) {
+    await candle("BTC-USD", T0 - 24 * HOUR - 2 * MIN, "100");
+    await candle("BTC-USD", T0 - 2 * MIN, now);
+  }
+
+  it("BTC trend: exactly +1.5% is flat, above is up, below −1.5% is down", async () => {
+    await btc("101.5");
+    await captureSignalContext(db, btcLong("flat"), T0, quote("101.5"));
+    await btc("101.51");
+    await captureSignalContext(db, btcLong("up"), T0, quote("101.51"));
+    await btc("98.49");
+    await captureSignalContext(db, btcLong("down"), T0, quote("98.49"));
+    await btc("98.5");
+    await captureSignalContext(db, btcLong("flat-down"), T0, quote("98.5"));
+    expect(market(await snapshot("flat"))).toMatchObject({
+      v: MARKET_STATE_VERSION,
+      btc: "1.5",
+      trend: "flat",
+    });
+    expect(market(await snapshot("up"))).toMatchObject({ btc: "1.51", trend: "up" });
+    expect(market(await snapshot("down"))).toMatchObject({ btc: "-1.51", trend: "down" });
+    expect(market(await snapshot("flat-down"))).toMatchObject({ btc: "-1.5", trend: "flat" });
+  });
+
+  it("volatility: the asset's 4 h move ranked in its own 30 days (SOL moves 2% once a day → a 2% move is high)", async () => {
+    await btc("100");
+    // SOL: 100 / 102 xen kẽ theo ngày (seedCandles), nên biến động 4 h thường là 0%, chỉ ~1 / 6 cặp là 2%.
+    await candle("SOL-USD", T0 - 4 * HOUR - 2 * MIN, "100");
+    await candle("SOL-USD", T0 - 2 * MIN, "102");
+    await captureSignalContext(db, { ...btcLong("sol"), market: "SOL-USD" }, T0, quote("102"));
+    const m = market(await snapshot("sol"));
+    expect(m).toMatchObject({ v: MARKET_STATE_VERSION, move: "2", vol: "high", trend: "flat" });
+    expect(m.pctl).toBeGreaterThan(67);
+    // Không đổi giá trong 4 h → 0%, bằng phần lớn lịch sử: hạng giữa đặt nó ở giữa nhóm bằng nhau → normal (không bị đẩy
+    // về low chỉ vì hoà, như percentile của H2).
+    await candle("SOL-USD", T0 - 2 * MIN, "100");
+    await captureSignalContext(db, { ...btcLong("sol-calm"), market: "SOL-USD" }, T0, quote("100"));
+    const calm = market(await snapshot("sol-calm"));
+    expect(calm).toMatchObject({ move: "0", vol: "normal" });
+    expect(calm.pctl).toBeGreaterThanOrEqual(33);
+    expect(calm.pctl).toBeLessThanOrEqual(67);
+  });
+
+  it("is null (never 0) when prices are missing, but marks the snapshot as recorded", async () => {
+    // BTC thiếu giá 24 h trước; META không có nến nào.
+    await captureSignalContext(db, { ...btcLong("meta"), market: "META-USD" }, T0, null);
+    expect(market(await snapshot("meta"))).toEqual({
+      v: MARKET_STATE_VERSION,
+      btc: null,
+      trend: null,
+      move: null,
+      pctl: null,
+      vol: null,
+    });
+  });
+
+  it("does not look ahead: a candle closing at the decision time or later never changes the state", async () => {
+    await btc("101");
+    await candle("SOL-USD", T0 - 4 * HOUR - 2 * MIN, "100");
+    await candle("SOL-USD", T0 - 2 * MIN, "102");
+    const sol = { ...btcLong("before"), market: "SOL-USD" };
+    await captureSignalContext(db, sol, T0, quote("102"));
+    // Nến bắt đầu lúc T0 − 1 phút đóng ĐÚNG lúc quyết định (không phải trước): không dùng. Nến sau quyết định cũng vậy.
+    for (const m of ["BTC-USD", "SOL-USD"]) {
+      await candle(m, T0 - MIN, "500");
+      await candle(m, T0 + MIN, "1");
+    }
+    await captureSignalContext(db, { ...sol, articleId: "after" }, T0, quote("102"));
+    expect(market(await snapshot("after"))).toEqual(market(await snapshot("before")));
+    expect(market(await snapshot("before"))).toMatchObject({
+      btc: "1",
+      trend: "flat",
+      vol: "high",
+    });
   });
 });
 

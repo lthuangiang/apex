@@ -71,7 +71,12 @@ import {
   signalStories,
 } from "./schema";
 import { loadArticleStops, rangeSince } from "./signal-research-articles";
-import { loadContextSummary } from "./signal-research-context";
+import {
+  loadContextSummary,
+  loadMarketSplit,
+  loadSignalContexts,
+  marketStateOf,
+} from "./signal-research-context";
 import { DROP, newsTypeOf, oppositeOf, reasonLimitOf } from "./signal-research-keys";
 import { classifierStatusOf, loadClassifierGates } from "./signal-research-labels";
 import {
@@ -607,6 +612,8 @@ export async function loadSignalResearchSummary(
   // #329: "Does context help?" trên cùng tập lệnh với cổng chính (lệnh đã đóng được tính); #344: live và backfilled riêng.
   const context = on ? await loadContextSummary(q, scope, counted, "live") : null;
   const contextBackfilled = on ? await loadContextSummary(q, scope, counted, "backfilled") : null;
+  // #376: cùng tập lệnh đóng được tính, tách theo trạng thái thị trường lúc quyết định.
+  const marketSplit = on ? await loadMarketSplit(q, counted) : null;
   check();
   // #321: chưa có lệnh nào của quy tắc hiện tại thì chi phí một lệnh lấy từ các tín hiệu đã tới bước kiểm TP vs chi phí
   // (event Filter có `costPct`, cùng cách tính); vẫn không có → null ("no v3 trade has reached the cost check").
@@ -772,6 +779,7 @@ export async function loadSignalResearchSummary(
     assets: [...new Set(all.map((t) => t.market))].sort(),
     context,
     contextBackfilled,
+    marketSplit,
     newsRulesSince: enabledSince === null ? null : iso(enabledSince),
     olderRules: {
       trades: older.reduce((acc, r) => acc + r.n, 0),
@@ -880,6 +888,8 @@ interface Ctx {
   configs: ReadonlyMap<string, BotVersionConfig>;
   /** #305: lệnh shadow theo id (tín hiệu bị giới hạn chặn). */
   shadows: ReadonlyMap<string, TradeRow>;
+  /** #376: snapshot ngữ cảnh theo bài (trạng thái thị trường lúc quyết định). */
+  contexts: ReadonlyMap<string, typeof signalContexts.$inferSelect>;
 }
 
 async function contextOf(
@@ -927,8 +937,13 @@ async function contextOf(
     gates: await loadClassifierGates(q),
     configs,
     shadows: new Map(sh.map((x) => [x.id, x])),
+    contexts: await loadSignalContexts(q, articleIds),
   };
 }
+
+/** #376: trạng thái thị trường lúc quyết định của bài (cột "Market at entry"); null = không có / trước #376. */
+const marketAt = (articleId: string | null, ctx: Ctx) =>
+  marketStateOf(articleId === null ? undefined : ctx.contexts.get(articleId));
 
 const SHADOW_REASON: ReadonlyMap<string, "limitOpen" | "limitDay" | "noBalance"> = new Map([
   ["LIMIT_OPEN", "limitOpen"],
@@ -1025,6 +1040,7 @@ function tradeItem(t: TradeRow, ctx: Ctx, now: number, px: SrQuotesSnapshot = {}
     shadow: shadowOf(t, ctx),
     opposite: oppositeOf(t),
     rulesVersion: versionNumberOf(t.ruleVersion),
+    marketState: marketAt(t.articleId, ctx),
   };
 }
 
@@ -1085,6 +1101,7 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
     shadow: null,
     opposite: null,
     rulesVersion: versionNumberOf(e.ruleVersion),
+    marketState: marketAt(e.articleId, ctx),
   };
 }
 

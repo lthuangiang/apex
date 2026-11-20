@@ -379,6 +379,13 @@
       "when": 1795147729937,
       "tag": "0053_sr_context_wallet_addresses",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1795157520950,
+      "tag": "0055_sr_market_state",
+      "breakpoints": true
     }
   ]
 }

@@ -2161,6 +2161,22 @@ export const signalContexts = pgTable(
     volumeVs24h: money("volume_vs_24h"),
     /** `up` | `down` | `none`. */
     rangeBreakout: text("range_breakout"),
+    /**
+     * Trạng thái thị trường lúc quyết định (Catalyst P0, #376): chỉ để tách kết quả, không đổi quyết định. Từ nến 1 phút đã
+     * đóng trước `decided_at`; thiếu dữ liệu → null. Dòng ghi trước #376 có mọi cột này null ("Not recorded").
+     * BTC: % đổi giá BTC-USD trong 24 h và `up` | `flat` | `down` (ngưỡng ±1.5%).
+     */
+    /**
+     * `MARKET_STATE_VERSION` lúc chụp; null = snapshot ghi trước #376 ("Not recorded"). Có version mà trường null = thiếu dữ
+     * liệu lúc đó ("Not available").
+     */
+    marketVersion: text("market_version"),
+    marketBtcChange24hPct: money("market_btc_change_24h_pct"),
+    marketBtcTrend: text("market_btc_trend"),
+    /** Biến động 4 h của chính tài sản (%), phân vị trong 30 ngày, `low` | `normal` | `high` (ngưỡng 33 / 67). */
+    marketVol4hPct: money("market_vol_4h_pct"),
+    marketVolPercentile: numeric("market_vol_percentile", { precision: 10, scale: 4 }),
+    marketVolatility: text("market_volatility"),
     createdAt: tstz("created_at").notNull().defaultNow(),
   },
   (t) => [
@@ -2178,6 +2194,14 @@ export const signalContexts = pgTable(
     check(
       "signal_contexts_breakout_ck",
       sql`${t.rangeBreakout} is null or ${t.rangeBreakout} in ('up', 'down', 'none')`,
+    ),
+    check(
+      "signal_contexts_btc_trend_ck",
+      sql`${t.marketBtcTrend} is null or ${t.marketBtcTrend} in ('up', 'flat', 'down')`,
+    ),
+    check(
+      "signal_contexts_volatility_ck",
+      sql`${t.marketVolatility} is null or ${t.marketVolatility} in ('low', 'normal', 'high')`,
     ),
   ],
 );
