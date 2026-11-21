@@ -4,7 +4,9 @@ import {
   CLASSIFIER_GATE,
   EXPERIMENT_PAIRS,
   MARKET_STATE_RULES,
+  READER_NEW_BADGE,
   RESEARCH_LEVELS,
+  RULES_NEW_BADGE,
   SIGNAL_CATALYSTS,
   versionHoldHours,
   type ResearchVersion,
@@ -35,6 +37,7 @@ import {
   classifierShort,
   configLine,
   readerBadgeShown,
+  rulesBadgeShown,
   versionShort,
 } from "./version-text";
 
@@ -435,7 +438,10 @@ function MarketStatePanel() {
   );
 }
 
-/** #395: nhãn "New in v4" / "v3 → v4", chỉ hiện trong 14 ngày đầu của Claude reader v4 (`readerBadgeShown`). */
+/**
+ * #395, #399: nhãn "New in v{n}" / "v3 → v4". Hộp reader theo reader hiện tại (`READER_NEW_BADGE`, `readerBadgeShown`);
+ * hộp "Not counted" và chip theo Rules v4 (`RULES_NEW_BADGE`, `rulesBadgeShown`). Mỗi nhãn hiện trong 14 ngày đầu.
+ */
 function NewBadge({ children }: { children: ReactNode }) {
   return (
     <span className="ml-1.5 inline-block rounded-full bg-pos-bg px-[7px] py-px align-[1px] text-[10.5px] font-extrabold text-pos">
@@ -450,7 +456,8 @@ function NewsSub({ rulesVersion }: { rulesVersion: number | null }) {
   const q = useResearchClassifiers();
   if (rulesVersion === null) return null;
   const cur = q.data?.items.find((r) => r.current) ?? null;
-  const fresh = readerBadgeShown(q.data?.items, Date.now());
+  // Chip "v{v−1} → v{v}" nói về Rules nên theo mốc của Rules (`RULES_NEW_BADGE`): đổi reader không làm chip hiện lại.
+  const fresh = rulesBadgeShown(q.data?.items, Date.now());
   return (
     <Sub>
       {cur === null
@@ -465,40 +472,54 @@ function NewsSub({ rulesVersion }: { rulesVersion: number | null }) {
 
 /**
  * #395 (mockup docs/mockups/signal-research/reader-v4.html): hai hộp của tab News types. "Not counted" = luật cố định trong
- * code (`etfExcludedMarkets`, `treasuryExcludedMarkets`); hộp thứ hai = thay đổi trong prompt của Claude reader v4.
+ * code (`etfExcludedMarkets`, `treasuryExcludedMarkets`); hộp thứ hai = thay đổi trong prompt của Claude reader hiện tại
+ * (#399: tên reader lấy từ classifier đang chạy, dòng của v5 đứng đầu, rồi các dòng của v4).
  */
 function NewsBoxes() {
   const tr = useTranslations("signalAnalysis.research.rules");
   const q = useResearchClassifiers();
-  const fresh = readerBadgeShown(q.data?.items, Date.now());
-  const badge = fresh ? <NewBadge>{tr("newIn")}</NewBadge> : null;
+  const now = Date.now();
+  const rulesFresh = rulesBadgeShown(q.data?.items, now);
+  const readerFresh = readerBadgeShown(q.data?.items, now);
+  const cur = q.data?.items.find((r) => r.current) ?? null;
+  const rulesBadge = rulesFresh ? (
+    <NewBadge>{tr("newIn", { name: classifierShort(RULES_NEW_BADGE.classifierVersion) })}</NewBadge>
+  ) : null;
+  const readerBadge = readerFresh ? (
+    <NewBadge>
+      {tr("newIn", { name: classifierShort(READER_NEW_BADGE.classifierVersion) })}
+    </NewBadge>
+  ) : null;
   const box = "flex flex-col gap-2 rounded-tile border px-3.5 py-3";
   const list = "m-0 flex list-disc flex-col gap-1.5 pl-[18px] text-ink-2";
   return (
     <>
       <section
         aria-labelledby="hiw-not-counted"
-        className={`${box} ${fresh ? "border-pos bg-surface" : "border-border bg-surface-2"}`}
+        className={`${box} ${rulesFresh ? "border-pos bg-surface" : "border-border bg-surface-2"}`}
       >
         <h3 id="hiw-not-counted" className="m-0 text-sm font-extrabold text-ink">
           {tr("notCounted.title")}
-          {badge}
+          {rulesBadge}
         </h3>
         <ul className={list}>
           <li>{tr.rich("notCounted.etf", { b })}</li>
           <li>{tr.rich("notCounted.treasury", { b })}</li>
         </ul>
       </section>
-      <section aria-labelledby="hiw-reader-v4" className={`${box} border-border bg-surface-2`}>
-        <h3 id="hiw-reader-v4" className="m-0 text-sm font-extrabold text-ink">
-          {tr("readerV4.title")}
-          {badge}
+      <section aria-labelledby="hiw-reader" className={`${box} border-border bg-surface-2`}>
+        <h3 id="hiw-reader" className="m-0 text-sm font-extrabold text-ink">
+          {cur === null
+            ? tr("reader.titleAny")
+            : tr("reader.title", { name: classifierShort(cur.classifierVersion) })}
+          {readerBadge}
         </h3>
         <ul className={list}>
-          <li>{tr.rich("readerV4.bug", { b })}</li>
-          <li>{tr.rich("readerV4.stolen", { b })}</li>
-          <li>{tr.rich("readerV4.laundering", { b })}</li>
-          <li>{tr.rich("readerV4.etf", { b })}</li>
+          <li>{tr.rich("reader.stocks", { b })}</li>
+          <li>{tr.rich("reader.bug", { b })}</li>
+          <li>{tr.rich("reader.stolen", { b })}</li>
+          <li>{tr.rich("reader.laundering", { b })}</li>
+          <li>{tr.rich("reader.etf", { b })}</li>
         </ul>
       </section>
     </>
