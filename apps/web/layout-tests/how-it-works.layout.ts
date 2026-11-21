@@ -120,8 +120,8 @@ test("overview at 390: full-screen drawer, the diagram scrolls inside its own bo
     await page.screenshot({ path: `${shots}/overview-390.png` });
 });
 
-/** #395: reader v4 chạy được 2 ngày (nhãn "New in v4" còn hiện), reader v3 đã retired. */
-function readerV4() {
+/** #395, #399: reader v5 chạy được 1 ngày (nhãn "New in v5"), reader v4 lên cùng Rules v4 2 ngày trước ("New in v4"). */
+function readerV5() {
   const [cur, old] = CLASSIFIERS.items;
   if (cur === undefined || old === undefined) throw new Error("fixture");
   return {
@@ -129,24 +129,29 @@ function readerV4() {
     items: [
       {
         ...cur,
+        classifierVersion: "news-classifier-v5",
+        startedAt: new Date(Date.now() - 86_400_000).toISOString(),
+      },
+      {
+        ...old,
         classifierVersion: "news-classifier-v4",
         startedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
       },
-      { ...old, classifierVersion: "news-classifier-v3" },
     ],
   };
 }
 
 for (const width of [1440, 390]) {
-  test(`news types at ${String(width)}: the two v4 boxes keep their height, nothing overflows`, async ({
+  test(`news types at ${String(width)}: the two boxes keep their height, nothing overflows`, async ({
     page,
     baseURL,
   }, info) => {
     if (width === 390) await page.setViewportSize({ width: 390, height: 844 });
-    const dlg = await open(page, baseURL, readerV4());
+    const dlg = await open(page, baseURL, readerV5());
     await dlg.getByRole("tab", { name: "News types" }).click();
     await expect(dlg.getByRole("region", { name: /^Not counted/ })).toBeVisible();
-    await expect(dlg.getByText("New in v4")).toHaveCount(2);
+    await expect(dlg.getByText("New in v4")).toHaveCount(1);
+    await expect(dlg.getByText("New in v5")).toHaveCount(1);
     const m = await dlg.evaluate((el) => {
       const boxes = [...el.querySelectorAll<HTMLElement>("[role='tabpanel'] section")];
       return {
@@ -162,7 +167,7 @@ for (const width of [1440, 390]) {
     expect.soft(m.overflowX, "no horizontal scroll inside the drawer").toBeLessThanOrEqual(0);
     const shots = process.env.HIW_SHOTS;
     if (shots !== undefined && info.project.name === "w1440") {
-      await dlg.getByRole("region", { name: /^What Claude reader v4/ }).scrollIntoViewIfNeeded();
+      await dlg.getByRole("region", { name: /^What Claude reader v5/ }).scrollIntoViewIfNeeded();
       await page.screenshot({ path: `${shots}/news-types-${String(width)}.png` });
     }
   });

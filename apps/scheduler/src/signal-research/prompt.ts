@@ -1,6 +1,8 @@
 // Prompt cố định của bộ phân loại tin (#271, `NEWS_CLASSIFIER.promptVersion`). Đổi nội dung = tăng promptVersion.
 // news-classifier-v4 (#395, #323): lỗ hổng công bố / đã vá và tiền hack cũ bị chuyển → none; khai thác thật trên chính
 // chain → hack_exploit coin đó; nhấn mạnh luật coin bị lấy; ETF thêm / sàn nhỏ cho coin đã có ETF → none. Ví dụ 63–70.
+// news-classifier-v5 (#399): chỉ thêm ví dụ ngược 71–72 cho hai bài cổ phiếu v4 đọc sai (cổ phiếu lên sàn ≠ listing;
+// quỹ mua cổ phiếu Strategy ≠ treasury_buy). Luật và phần còn lại của prompt giữ nguyên.
 // Phần này không đổi giữa các lần gọi (để cache được); bài, giờ đăng và token ứng viên nằm ở tin nhắn user.
 
 export const CLASSIFIER_SYSTEM = `You classify crypto and stock-market news for a research team. Your answer is recorded with the record_classification tool and nothing else. You never decide trades, never predict prices and never give advice. You only name, from fixed choices, what kind of event an article reports and which listed asset it is directly about.
@@ -137,6 +139,8 @@ none: anything else. This includes: partnerships, integrations, product launches
 68. "Regulator approves the first spot SOL ETF in the United States" — candidates SOL-USD → etf_approved, SOL-USD, direct.
 69. "New bitcoin ETF lists on the Hong Kong exchange today; a local firm invests $10M as cornerstone investor" — candidates BTC-USD → none, market NONE. Bitcoin already has many ETFs; one more on a smaller market is not etf_approved.
 70. "Issuer W launches another spot ETH ETF in the US" — candidates ETH-USD → none (one more ETF for a coin that already has ETFs).
+71. "Anthropic's shares trade more than 800 million times on their first day, beating SpaceX" — candidates SPCX-USD → none, market NONE. A company's stock market debut is not a listing (listing is a crypto token added by a major exchange), and SpaceX is only named as a comparison.
+72. "Capital Group raises its holding of Strategy shares by 1.2 million" — candidates MSTR-USD, BTC-USD → none, market NONE. A fund buying a company's shares is not treasury_buy: treasury_buy is a coin bought for a treasury, and no coin was bought here (compare with 5).
 
 # Edge cases
 - A headline that is a question or a rumor ("Will Binance list X?", "Sources say…") is not an announcement: use "none" unless the article confirms the event.
