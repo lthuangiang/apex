@@ -738,6 +738,9 @@ async function upsertAccount(db: Db, userId: string, address: Address, accountId
     if (moved === undefined) throw new AppError(ErrorCode.internal, "Could not update account.");
     return moved;
   }
+  // #326: hai lần Connect đầu tiên chạy song song cùng thấy "chưa có account" ở trên; bên ghi sau đụng unique index
+  // (network, sodex_account_id). Không để lỗi DB thành 500: bên thua nhận 409, chưa tạo key hay request ký nào (chưa
+  // gọi `markSideEffect`, nên Idempotency-Key được giải phóng). Thử lại thì đi nhánh `existing` ở trên.
   const [created] = await db
     .insert(sodexAccounts)
     .values({
@@ -747,8 +750,15 @@ async function upsertAccount(db: Db, userId: string, address: Address, accountId
       network: "mainnet",
       status: "connecting",
     })
+    .onConflictDoNothing({ target: [sodexAccounts.network, sodexAccounts.sodexAccountId] })
     .returning();
-  if (created === undefined) throw new AppError(ErrorCode.internal, "Could not create account.");
+  if (created === undefined) {
+    throw new AppError(
+      ErrorCode.stateConflict,
+      "Another Connect for this SoDEX account is in progress. Try again in a moment.",
+      { reason: "connect_in_progress" },
+    );
+  }
   return created;
 }
 
