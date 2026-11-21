@@ -147,4 +147,3 @@ export {
   COPY_MAX_MARKETS,
   type CopyTradeConfig,
 } from "./copy-trade/schema";
-// #414 (tạm): commit kiểm CI, đổi strategies thì test engine / backtest phải chạy lại. Sẽ revert.
