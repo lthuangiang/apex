@@ -10050,3 +10050,425 @@ describe("worker-wide REST budget for order lookups (DEC-310)", () => {
     await db.update(orders).set({ status: "cancelled" }).where(eq(orders.market, "BUD-USD"));
   });
 });
+
+// ---------- #224: bước clock chạy song song theo account, có giới hạn ----------
+describe("clock runs accounts in parallel, bounded (#224)", { timeout: 120_000 }, () => {
+  let url = "";
+  let clockPool: ReturnType<typeof createDb>["pool"];
+  let clockDb: Db;
+  beforeAll(async () => {
+    const admin = createDb(pg.getConnectionUri());
+    await admin.pool.query("CREATE DATABASE clock_parallel");
+    await admin.pool.end();
+    url = pg.getConnectionUri().replace(/\/[^/?]+(\?|$)/, "/clock_parallel$1");
+    await runMigrations(url);
+    // Pool như engine thật (createDb: max 10), để đo hàng chờ kết nối.
+    ({ db: clockDb, pool: clockPool } = createDb(url));
+    cleanPools.push(clockPool);
+  });
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  /** Cổng giả có độ trễ: đếm lời gọi gửi lệnh đang chạy cùng lúc (cả worker và theo account). */
+  class ClockGateway extends FakeGateway {
+    submitDelayMs = 0;
+    inFlight = 0;
+    maxInFlight = 0;
+    /** Account mà lần gửi lệnh kế tiếp của nó ném lỗi (signer / mạng), một lần. */
+    readonly failNext = new Set<string>();
+    readonly calls: { account: string; clOrdIDs: string[]; start: number; end: number }[] = [];
+    override async submit(
+      a: AccountRef,
+      list: readonly OrderIntent[],
+      fence: Fence,
+      builderFeeRate?: number,
+    ): Promise<SubmitResult[]> {
+      this.inFlight += 1;
+      this.maxInFlight = Math.max(this.maxInFlight, this.inFlight);
+      const start = performance.now();
+      try {
+        await sleep(this.submitDelayMs);
+        if (this.failNext.delete(a.id)) throw new Error("signer unreachable");
+        return await super.submit(a, list, fence, builderFeeRate);
+      } finally {
+        this.inFlight -= 1;
+        this.calls.push({
+          account: a.id,
+          clOrdIDs: list.map((o) => o.clOrdID),
+          start,
+          end: performance.now(),
+        });
+      }
+    }
+  }
+
+  /** DB của engine có độ trễ trong mỗi transaction (giữ kết nối như ghi thật) và đếm transaction đang mở cùng lúc. */
+  const tx = { delayMs: 0, open: 0, maxOpen: 0, maxWaiting: 0, maxClients: 0 };
+  const slowDb = new Proxy(
+    {},
+    {
+      get(_t, key) {
+        if (key === "transaction")
+          return async (work: (t: Db) => Promise<unknown>) =>
+            clockDb.transaction(async (t) => {
+              tx.open += 1;
+              tx.maxOpen = Math.max(tx.maxOpen, tx.open);
+              try {
+                await sleep(tx.delayMs);
+                return await work(t);
+              } finally {
+                tx.open -= 1;
+              }
+            });
+        const v: unknown = Reflect.get(clockDb, key, clockDb);
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(clockDb) : v;
+      },
+    },
+  ) as Db;
+
+  const warned: string[] = [];
+  const clockEngine = (gw: Gateway, workerId: string, clockConcurrency?: number) =>
+    new Engine({
+      db: slowDb,
+      redis: newRedis(),
+      gateway: gw,
+      workerId,
+      log: {
+        ...log,
+        warn: (...args: unknown[]) => {
+          if (typeof args[1] === "string") warned.push(args[1]);
+        },
+      },
+      now,
+      leaseTtlMs: 30_000,
+      // Một shard: mọi account nằm chung một làn, nên song song đo được là song song TRONG shard.
+      shards: 1,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      ...(clockConcurrency === undefined ? {} : { clockConcurrency }),
+    });
+
+  const twapSpec = {
+    strategy: "twap",
+    market: "BTC-USD",
+    engine: "perps" as const,
+    config: {
+      market: "BTC-USD",
+      engine: "perps",
+      side: "buy",
+      totalSize: "1",
+      durationMinutes: 10,
+      slices: 10,
+      reduceOnly: false,
+      maxSlippagePct: "1",
+      onSkip: "leave_unfilled",
+    },
+  };
+  /** Thêm một bot TWAP vào account đã có. */
+  async function addTwap(accountId: string): Promise<string> {
+    const { eq } = await import("drizzle-orm");
+    const [a] = await clockDb.select().from(sodexAccounts).where(eq(sodexAccounts.id, accountId));
+    const [bot] = await clockDb
+      .insert(bots)
+      .values({
+        userId: a?.userId ?? "",
+        sodexAccountId: accountId,
+        strategy: twapSpec.strategy,
+        market: twapSpec.market,
+        engine: twapSpec.engine,
+        name: "TWAP",
+        state: "running",
+      })
+      .returning();
+    const [v] = await clockDb
+      .insert(botVersions)
+      .values({
+        botId: bot?.id ?? "",
+        version: 1,
+        paramSource: "manual",
+        status: "active",
+        config: twapSpec.config,
+      })
+      .returning();
+    await clockDb
+      .update(bots)
+      .set({ activeVersionId: v?.id ?? "" })
+      .where(eq(bots.id, bot?.id ?? ""));
+    return bot?.id ?? "";
+  }
+  /** `sizes[i]` bot TWAP trên account thứ i (mỗi account một user). */
+  async function seedAccounts(sizes: number[]) {
+    const out: { accountId: string; botIds: string[] }[] = [];
+    for (const n of sizes) {
+      const first = await seedBot("running", twapSpec, clockDb);
+      const botIds = [first.botId];
+      for (let i = 1; i < n; i += 1) botIds.push(await addTwap(first.accountId));
+      out.push({ accountId: first.accountId, botIds });
+    }
+    return out;
+  }
+  async function stopAll() {
+    const { ne } = await import("drizzle-orm");
+    await clockDb.update(bots).set({ state: "stopped" }).where(ne(bots.state, "stopped"));
+  }
+  /** Nạp bot, cho giá để TWAP bắt đầu (lát đầu chờ nhịp đồng hồ kế tiếp). */
+  async function start(e: RealEngine) {
+    await e.tick();
+    await e.onPrice("BTC-USD", "100", clock);
+  }
+  /** Một vòng: đồng hồ tới hạn lát kế tiếp, mọi bot đặt lát qua `clock`; trả thời gian của vòng (ms). */
+  async function round(e: RealEngine, gw: ClockGateway): Promise<number> {
+    const before = gw.received.length;
+    clock += 61_000;
+    const at = performance.now();
+    await e.tick();
+    const ms = performance.now() - at;
+    // Lát vừa đặt khớp đủ rồi kết thúc, như tin của user stream; lát sau đặt được ở vòng kế tiếp.
+    for (const call of gw.calls.filter((c) => c.end >= at))
+      for (const id of call.clOrdIDs) {
+        const o = gw.received.slice(before).find((x) => x.clOrdID === id);
+        if (o === undefined) continue;
+        await e.onFill(call.account, id, o.quantity, o.price ?? "100", "0", clock);
+        await e.onOrderClosed(call.account, id, "filled", clock);
+      }
+    return ms;
+  }
+  /** Lịch sử của một bot, không phụ thuộc id: lệnh (nhãn, khối lượng, trạng thái) và Decisions theo thứ tự ghi. */
+  async function historyOf(botId: string) {
+    const { eq, asc } = await import("drizzle-orm");
+    const os = await clockDb
+      .select()
+      .from(orders)
+      .where(eq(orders.botId, botId))
+      .orderBy(asc(orders.createdAt), asc(orders.tag));
+    const evs = await clockDb
+      .select()
+      .from(botEvents)
+      .where(eq(botEvents.botId, botId))
+      .orderBy(asc(botEvents.occurredAt), asc(botEvents.id));
+    const [rt] = await clockDb.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+    const st = rt?.state as { ledger?: unknown; filled?: string; sliceIndex?: number } | undefined;
+    return {
+      orders: os.map((o) => [
+        o.tag,
+        dec(o.size).toString(),
+        o.status,
+        dec(o.filledSize).toString(),
+      ]),
+      events: evs.map((x) => x.decision),
+      ledger: st?.ledger,
+      filled: st?.filled,
+      sliceIndex: st?.sliceIndex,
+    };
+  }
+
+  it("runs accounts in parallel up to the limit, never two bots of one account at once, and the same history as one at a time", async () => {
+    const run = async (concurrency: number) => {
+      const gw = new ClockGateway();
+      gw.submitDelayMs = 40;
+      const accounts = await seedAccounts([3, 1, 1, 1, 1, 1]);
+      const e = clockEngine(gw, `par-${String(concurrency)}`, concurrency);
+      await start(e);
+      gw.maxInFlight = 0;
+      for (let i = 0; i < 3; i += 1) await round(e, gw);
+      const histories = [];
+      for (const a of accounts) for (const id of a.botIds) histories.push(await historyOf(id));
+      await e.stop();
+      await stopAll();
+      return { gw, accounts, histories };
+    };
+    const one = await run(1);
+    const four = await run(4);
+    expect(one.gw.maxInFlight).toBe(1);
+    expect(four.gw.maxInFlight).toBeGreaterThan(1);
+    expect(four.gw.maxInFlight).toBeLessThanOrEqual(4);
+    // Bot cùng account không bao giờ gửi lệnh chồng nhau.
+    const shared = four.accounts[0]?.accountId ?? "";
+    const calls = four.gw.calls
+      .filter((c) => c.account === shared)
+      .sort((x, y) => x.start - y.start);
+    expect(calls).toHaveLength(9);
+    for (let i = 1; i < calls.length; i += 1)
+      expect(calls[i]?.start).toBeGreaterThanOrEqual(calls[i - 1]?.end ?? Infinity);
+    // Mỗi bot đặt đúng 3 lát; lịch sử (lệnh, Decisions, sổ cái) của từng bot y như khi chạy tuần tự.
+    expect(four.histories.every((h) => h.orders.length === 3)).toBe(true);
+    expect(four.histories.every((h) => h.sliceIndex === 3 && h.filled === "0.3")).toBe(true);
+    expect(four.histories).toEqual(one.histories);
+  });
+
+  it("an error of one bot skips only that bot, even next to a bot of the same account", async () => {
+    const gw = new ClockGateway();
+    const [shared, other] = await seedAccounts([2, 1]);
+    const e = clockEngine(gw, "par-error", 4);
+    await start(e);
+    warned.length = 0;
+    // Lần gửi lệnh đầu của account chung ném lỗi (signer không tới được): một bot của account đó lỗi ở vòng này.
+    gw.failNext.add(shared?.accountId ?? "");
+    await round(e, gw);
+    expect(
+      warned.filter((m) => m === "clock step failed for one bot; retrying next tick"),
+    ).toHaveLength(1);
+    // Bot còn lại của cùng account và bot của account khác vẫn đặt lát trong cùng vòng.
+    const sent = gw.calls.filter((c) => c.clOrdIDs.length > 0);
+    expect(sent.filter((c) => c.account === shared?.accountId)).toHaveLength(2);
+    expect(
+      gw.received.filter((o) =>
+        sent.some((c) => c.account === shared?.accountId && c.clOrdIDs.includes(o.clOrdID)),
+      ),
+    ).toHaveLength(1);
+    expect(sent.filter((c) => c.account === other?.accountId)).toHaveLength(1);
+    expect(warned).not.toContain("shard lost");
+    await e.stop();
+    await stopAll();
+  });
+
+  it("a fencing error still drops the shard", async () => {
+    const { eq, sql } = await import("drizzle-orm");
+    const gw = new ClockGateway();
+    await seedAccounts([1, 1, 1]);
+    const e = clockEngine(gw, "par-fenced", 4);
+    await start(e);
+    warned.length = 0;
+    // Worker khác đã nhận shard (epoch mới trong DB): mọi lần ghi của engine này bị từ chối.
+    await clockDb
+      .update(shardEpochs)
+      .set({ epoch: sql`${shardEpochs.epoch} + 1` })
+      .where(eq(shardEpochs.shard, 0));
+    await round(e, gw);
+    expect(warned).toContain("shard lost");
+    expect(warned).not.toContain("clock step failed for one bot; retrying next tick");
+    expect(e.ownedShards).not.toContain(0);
+    await e.stop();
+    await stopAll();
+  });
+
+  it("stays under the DB pool: open transactions never exceed the limit and nothing waits for a connection", async () => {
+    const gw = new ClockGateway();
+    await seedAccounts(Array.from({ length: 12 }, () => 1));
+    const e = clockEngine(gw, "par-pool", 4);
+    await start(e);
+    tx.delayMs = 30;
+    tx.maxOpen = 0;
+    tx.maxWaiting = 0;
+    tx.maxClients = 0;
+    const probe = setInterval(() => {
+      tx.maxWaiting = Math.max(tx.maxWaiting, clockPool.waitingCount);
+      tx.maxClients = Math.max(tx.maxClients, clockPool.totalCount);
+    }, 2);
+    try {
+      await round(e, gw);
+    } finally {
+      clearInterval(probe);
+      tx.delayMs = 0;
+    }
+    expect(gw.received.length).toBeGreaterThanOrEqual(12);
+    expect(tx.maxOpen).toBeGreaterThan(1);
+    expect(tx.maxOpen).toBeLessThanOrEqual(4);
+    expect(tx.maxClients).toBeLessThanOrEqual(10);
+    expect(tx.maxWaiting).toBe(0);
+    await e.stop();
+    await stopAll();
+  });
+
+  it("reads the order book of a market once for parallel Volume Farm bots of that market", async () => {
+    const { eq } = await import("drizzle-orm");
+    const market = "ARB-USD";
+    const end = clock - (clock % 60_000);
+    await clockDb
+      .insert(candles1m)
+      .values(
+        Array.from({ length: 30 }, (_, i) => ({
+          market,
+          ts: new Date(end - (30 - i) * 60_000),
+          open: "100",
+          high: "100.02",
+          low: "99.98",
+          close: "100.01",
+          volume: "10",
+        })),
+      )
+      .onConflictDoNothing();
+    for (let i = 0; i < 4; i += 1) {
+      const { botId } = await seedBot(
+        "running",
+        {
+          strategy: "volume_farm",
+          market,
+          engine: "perps",
+          config: {
+            market,
+            leverage: 5,
+            marginMode: "cross",
+            orderSizeMinUsd: "100",
+            orderSizeMaxUsd: "200",
+            minHoldSecs: 120,
+            maxHoldSecs: 180,
+            tpUsd: "0.5",
+            slPct: "5",
+            earlyProfitUsd: "0.15",
+            maxLoss: "20",
+          },
+        },
+        clockDb,
+      );
+      const [b] = await clockDb.select().from(bots).where(eq(bots.id, botId));
+      await clockDb
+        .update(users)
+        .set({ volumeBots: true })
+        .where(eq(users.id, b?.userId ?? ""));
+    }
+    let reads = 0;
+    const e = new Engine({
+      db: slowDb,
+      redis: newRedis(),
+      gateway: new ClockGateway(),
+      workerId: "par-book",
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: 1,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      clockConcurrency: 4,
+      orderbook: async (m) => {
+        if (m === market) reads += 1;
+        await sleep(30);
+        return { bid: "100", ask: "100.05", bidNotional: "50000", askNotional: "40000" };
+      },
+    });
+    await e.tick();
+    expect(reads).toBe(1);
+    // Hết hạn cache (FARM_SNAPSHOT_MS) thì đọc lại đúng một lần nữa.
+    clock += 3_000;
+    await e.tick();
+    expect(reads).toBe(2);
+    await e.stop();
+    await stopAll();
+  });
+
+  it("bench: a slice round of 24 bots on 24 accounts, one at a time vs 4 at once", async () => {
+    const bench = async (concurrency: number) => {
+      const gw = new ClockGateway();
+      gw.submitDelayMs = 40;
+      await seedAccounts(Array.from({ length: 24 }, () => 1));
+      const e = clockEngine(gw, `bench-${String(concurrency)}`, concurrency);
+      await start(e);
+      tx.delayMs = 10;
+      const ms: number[] = [];
+      try {
+        for (let i = 0; i < 2; i += 1) ms.push(await round(e, gw));
+      } finally {
+        tx.delayMs = 0;
+      }
+      await e.stop();
+      await stopAll();
+      return Math.min(...ms);
+    };
+    const one = await bench(1);
+    const four = await bench(4);
+    if (process.env.CLOCK_BENCH === "1")
+      process.stderr.write(
+        `clock bench (24 bots, submit 40 ms, tx 10 ms): 1 at a time ${String(Math.round(one))} ms, 4 at once ${String(Math.round(four))} ms\n`,
+      );
+    expect(four).toBeLessThan(one * 0.6);
+  });
+});

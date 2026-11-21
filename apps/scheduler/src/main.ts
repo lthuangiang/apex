@@ -43,6 +43,7 @@ import {
   parseSignalEnv,
   type PerpsSymbolInfo,
 } from "./signal-research";
+import { NEWS_SIGNAL_SUBJECT } from "./signal-research/news-signals";
 import { runSnapshotRetention } from "./snapshot-retention";
 import { checkNewMarkets, outboxEmitter, redisSeenStore } from "./sr-new-markets";
 import { redisIncidentReadStore, teamIncidentRunner } from "./team-incidents";
@@ -337,7 +338,22 @@ if (signalEnv.env !== null && signalEnv.warning !== null)
   log.warn({ warning: signalEnv.warning }, "signal research env");
 const signals =
   signalOff === null && signalEnv.env !== null
-    ? createSignalResearch({ db, redis, log, env: signalEnv.env, perps: () => perpsCache })
+    ? createSignalResearch({
+        db,
+        redis,
+        log,
+        env: signalEnv.env,
+        perps: () => perpsCache,
+        // #419: chuông `sr.signal.new` sau khi ghi `news_signals`; NATS chưa nối / lỗi thì engine vẫn đọc bảng mỗi nhịp.
+        notifySignal: (id) => {
+          if (nats === null) return;
+          try {
+            nats.publish(NEWS_SIGNAL_SUBJECT, JSON.stringify({ id }));
+          } catch (error) {
+            log.warn({ err: error, signalId: id }, "news signal: NATS publish failed");
+          }
+        },
+      })
     : null;
 if (signals !== null && signalEnv.env !== null) {
   log.info({ cycleMinutes: signalEnv.env.SIGNAL_NEWS_CYCLE_MINUTES }, "signal research enabled");
