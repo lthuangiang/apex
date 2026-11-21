@@ -2071,6 +2071,39 @@ describe("engine", () => {
       expect(state.open[id]).toBeUndefined();
       await b.stop();
     });
+
+    it("books a trade that arrives after SoDEX ended a partly filled grid order, across a restart, once (#426)", async () => {
+      const { eq } = await import("drizzle-orm");
+      const gw = new FakeGateway();
+      const { botId, accountId } = await seedBot("running");
+      const a = makeEngine(gw, "w-426");
+      await a.tick();
+      await a.onPrice("vBTC_vUSDC", "100", clock);
+      const buy95 = gw.received.find((o) => o.side === "buy" && o.price === "95");
+      const id = buy95?.clOrdID ?? "";
+      // Khớp 0.4 rồi SoDEX báo lệnh đã huỷ (xác nhận huỷ): đối ứng cho 0.4.
+      await a.onFill(accountId, id, "0.4", "95", "0", clock);
+      let sent = gw.received.length;
+      await a.onOrderClosed(accountId, id, "cancelled", clock + 1);
+      const show = (o: OrderIntent) => `${o.tag} ${o.side} ${o.price ?? "mkt"} ${o.quantity}`;
+      expect(gw.received.slice(sent).map(show)).toEqual(["grid:2:sell sell 100 0.4"]);
+      // Engine khởi động lại giữa lúc lệnh kết thúc và trade tới muộn.
+      await a.stop();
+      const b = makeEngine(gw, "w-426");
+      await b.tick();
+      sent = gw.received.length;
+      // Trade tới muộn (đối soát, DEC-303): SoDEX báo khối lượng luỹ kế 0.6.
+      await b.onFill(accountId, id, "0.6", "95", "0", clock + 2);
+      expect(gw.received.slice(sent).map(show)).toEqual(["grid:2:sell sell 100 0.2"]);
+      // Báo lại cùng trade: không ghi trùng, không đặt thêm lệnh.
+      sent = gw.received.length;
+      await b.onFill(accountId, id, "0.6", "95", "0", clock + 3);
+      expect(gw.received.length).toBe(sent);
+      const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      // Vị thế sổ cái = vị thế SoDEX giả lập (0.4 + 0.2 đã mua; lệnh khởi tạo chưa khớp).
+      expect((rt?.state as { ledger: { position: string } }).ledger.position).toBe("0.6");
+      await b.stop();
+    });
   });
 
   it("blocks orders above the per-trade risk limit before they reach SoDEX", async () => {
