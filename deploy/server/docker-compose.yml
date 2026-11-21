@@ -217,6 +217,10 @@ services:
   jobs:
     <<: *app
     image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:jobs-${DRIFT_TAG:-latest}
+    environment:
+      <<: *env
+      # Idempotency-Key đang chạy quá N phút → failed_unknown / ABANDONED (#319). Thiếu thì mặc định 10.
+      IDEMPOTENCY_ABANDONED_AFTER_MIN: ${IDEMPOTENCY_ABANDONED_AFTER_MIN:-10}
 
   reco:
     <<: *app

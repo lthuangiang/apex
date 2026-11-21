@@ -2,7 +2,13 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { Db } from "@drift/db";
 import { idempotencyKeys } from "@drift/db";
-import { AppError, ErrorCode, IDEMPOTENCY_KEY_HEADER, idempotencyKeySchema } from "@drift/shared";
+import {
+  AppError,
+  ErrorCode,
+  IDEMPOTENCY_FAILED_UNKNOWN,
+  IDEMPOTENCY_KEY_HEADER,
+  idempotencyKeySchema,
+} from "@drift/shared";
 import { and, eq, lte } from "drizzle-orm";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
@@ -41,8 +47,11 @@ export function idempotencyFingerprint(request: FastifyRequest, userId: string):
   );
 }
 
-/** Giá trị `idempotency_keys.outcome` khi handler lỗi mà không chắc chưa có tác dụng phụ. */
-export const IDEMPOTENCY_FAILED_UNKNOWN = "failed_unknown";
+/**
+ * Giá trị `idempotency_keys.outcome` khi handler lỗi mà không chắc chưa có tác dụng phụ. Hằng nằm ở `@drift/shared` vì
+ * jobs cũng ghi giá trị này cho dòng đang chạy bị bỏ dở (#319, `markAbandonedIdempotencyKeys`).
+ */
+export { IDEMPOTENCY_FAILED_UNKNOWN };
 
 /**
  * Mã lỗi mà handler chỉ ném ra từ bước kiểm tra, trước khi ghi hay gọi ra ngoài: input sai, auth / 2FA,
