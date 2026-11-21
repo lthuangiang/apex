@@ -10,7 +10,7 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-- Signal Research ra menu chính (BETA) cho vài tài khoản test: cờ `users.signal_research` (mặc định tắt, team bật ở Admin › Users, có audit), route `/signal-research` dùng lại trang Signal research của team (người dùng test chỉ không thấy Claude cost), My versions (version riêng, tối đa 3 chạy mỗi chủ, chỉ chủ thấy, không tính vào cổng của team), người dùng test chấm nhãn được nhưng cổng chỉ tính nhãn team (#423, DEC-TBD-sr-menu-beta). **Chưa merge.**
+- Signal Research ra menu chính (BETA) cho vài tài khoản test: cờ `users.signal_research` (mặc định tắt, team bật ở Admin › Users, có audit), route `/signal-research` dùng lại trang Signal research của team (người dùng test chỉ không thấy Claude cost), My versions (version riêng, tối đa 3 chạy mỗi chủ, chỉ chủ thấy, không tính vào cổng của team), người dùng test chấm nhãn được nhưng cổng chỉ tính nhãn team (#423, DEC-361). **Chưa merge.**
 - Signal research: đổi version Rules / reader không còn ẩn dữ liệu cũ. Feed và phễu theo khoảng Last 24 h / 7 days / 30 days gồm mọi version (chip "Rules vN", dòng ngăn cách, câu tóm tắt), trace bài cũ đọc theo luật của bài (banner, "counted under vN"), Paper trades có Current rules / All rules; Is it working? giữ nguyên (#413, DEC-357). **Chưa merge.**
 - Idempotency-Key: jobs đánh dấu dòng đang chạy quá `IDEMPOTENCY_ABANDONED_AFTER_MIN` phút (mặc định 10) là `failed_unknown` / `ABANDONED`; request lặp lại nhận 409 `unknown`, không chạy lại, không xoá key (#319, DEC-356). **Chưa merge.**
 - Backtest / Review this run / What-if: kết quả đổi khi stop của sàn và lệnh thoát khớp cùng nến (#412), lệnh reduce-only không còn đảo chiều vị thế.

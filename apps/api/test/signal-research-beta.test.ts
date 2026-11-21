@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// #423 (DEC-TBD-sr-menu-beta): Signal Research ra menu chính (BETA). Quyền "team HOẶC users.signal_research" cho phần trang
+// #423 (DEC-361): Signal Research ra menu chính (BETA). Quyền "team HOẶC users.signal_research" cho phần trang
 // người dùng test được dùng; phần chỉ team giữ nguyên. Version có chủ (My versions), trần 3 version chạy theo chủ, nhãn
 // của tester không tính cổng. Dữ liệu bài / event do scheduler ghi; ở đây chèn thẳng.
 

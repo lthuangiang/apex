@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from "react";
 
-// Người xem của trang Signal research (#423, DEC-TBD-sr-menu-beta). Cùng một bộ component cho trang team (Signal Analysis ›
+// Người xem của trang Signal research (#423, DEC-361). Cùng một bộ component cho trang team (Signal Analysis ›
 // Signal research) và trang Signal Research BETA ngoài /admin; chỉ khác ở vài phần chỉ team:
 // - `team`: như trước (mọi phần).
 // - `tester`: người dùng có cờ `users.signal_research`. Chỉ ẩn ô Claude cost và mọi chi phí / token Claude (PM review #428);

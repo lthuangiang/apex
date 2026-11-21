@@ -56,7 +56,7 @@ import { newsTypeOrNull } from "./signal-research-keys";
 // ghi chú) thì vẫn `random`; đổi Right / Wrong thì thành `trace` (có thể đã thấy kết quả lệnh). Mọi trường hợp khác (không
 // token, token sai / hết hạn / đã dùng / của bài khác) vẫn lưu, nhưng là `trace`. "Most common mistakes" đếm cả hai.
 //
-// Người chấm (#423, DEC-TBD-sr-menu-beta): `labeler` ghi lúc lưu theo role của người gọi (`team` / `tester`). Mọi số của
+// Người chấm (#423, DEC-361): `labeler` ghi lúc lưu theo role của người gọi (`team` / `tester`). Mọi số của
 // precision, cổng, "from traces" và "Most common mistakes" CHỈ tính nhãn `team`; nhãn `tester` chỉ vào `testers` (mức
 // đồng thuận với nhãn `random` của team, cùng tập với cổng) để đối chiếu.
 

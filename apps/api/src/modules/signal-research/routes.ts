@@ -98,7 +98,7 @@ import { requireAuth } from "../../plugins/session";
 // `POST /versions/:id/status` (Pause / Resume / Stop / Retire), bắt buộc Idempotency-Key, audit trong service DB. Danh sách
 // market SoDEX (`/markets`, kiểm tài sản khi lưu) chỉ đọc bản chụp Redis `sr:markets` do scheduler ghi.
 //
-// #423 (DEC-TBD-sr-menu-beta): Signal Research ra menu chính (BETA). Phần trang người dùng test được dùng mở cho "team HOẶC
+// #423 (DEC-361): Signal Research ra menu chính (BETA). Phần trang người dùng test được dùng mở cho "team HOẶC
 // `users.signal_research`" (`researchViewer`, kiểm trước khi parse và trước Idempotency-Key), gồm cả độ trễ theo chặng
 // (`/latency`) và sức khoẻ nguồn (`sources`). Với người dùng test, API chỉ bỏ chi phí / token Claude (ô Claude cost, chi phí
 // từng bài) trước khi trả (PM review #428). Version có chủ: version riêng của người khác → 404; version

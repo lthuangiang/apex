@@ -4,7 +4,7 @@ ALTER TABLE "users" ADD COLUMN "signal_research" boolean DEFAULT false NOT NULL;
 ALTER TABLE "signal_bot_versions" ADD CONSTRAINT "signal_bot_versions_owner_user_id_users_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "signal_bot_versions_owner_status_idx" ON "signal_bot_versions" USING btree ("owner_user_id","status");--> statement-breakpoint
 ALTER TABLE "signal_classification_labels" ADD CONSTRAINT "signal_classification_labels_labeler_ck" CHECK ("signal_classification_labels"."labeler" in ('team', 'tester'));--> statement-breakpoint
--- #423 (DEC-TBD-sr-menu-beta): Signal Research ra menu chính (BETA). `users.signal_research` mặc định tắt. Version có chủ
+-- #423 (DEC-361): Signal Research ra menu chính (BETA). `users.signal_research` mặc định tắt. Version có chủ
 -- (`owner_user_id`, null = team) và trần 3 version `running` tính RIÊNG cho từng chủ (team là một chủ, mỗi người dùng một
 -- chủ): khoá advisory theo chủ, đếm theo chủ. `owner_user_id` bất biến như config. Nhãn có `labeler` (team / tester) ghi
 -- lúc lưu; nhãn cũ là `team` vì trước đây chỉ role team gắn được. Phần còn lại của guard giữ nguyên như 0056.

@@ -163,7 +163,7 @@ Mục Signal Research có nhãn BETA trên sidebar, chỉ team và tài khoản 
 | `menu-beta.html` | Hai khung: sidebar + trang Signal Research của người dùng được bật (ô Version có nhóm "Team versions · view only" / "My versions · n of 3 running"), cột công tắc Signal Research ở Admin › Users |
 | `menu-beta-1440.png`, `menu-beta-390.png` | Ảnh chụp 1440 và 390 (Playwright, cả trang) |
 
-**Quy tắc khi code (DEC-TBD-sr-menu-beta):**
+**Quy tắc khi code (DEC-361):**
 - Route `/signal-research` (ngoài `/admin`), dùng lại đúng `ResearchTab` và các component con; người xem (`team` / `tester`) truyền qua context, không nhân bản component. Trang team trong Signal Analysis giữ nguyên.
 - Cờ `users.signal_research` (mặc định tắt). Tắt thì mục biến mất khỏi sidebar, route trả Not found, API trả 403 ngay request sau.
 - Ô Version là `<select>` gốc: nhóm dùng `<optgroup>`, trạng thái từng version (Running / Paused) không hiện trong danh sách như ảnh; tên version của mình là "My · {name} (v{n})".
