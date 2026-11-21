@@ -414,6 +414,13 @@
       "when": 1795274614789,
       "tag": "0058_sr_menu_beta",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1795298545363,
+      "tag": "0059_news_signal",
+      "breakpoints": true
     }
   ]
 }

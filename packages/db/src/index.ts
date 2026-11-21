@@ -16,3 +16,4 @@ export * from "./signal-research-experiments";
 export * from "./signal-research-labels";
 export * from "./signal-research-context";
 export * from "./research-wallets";
+export * from "./news-signals";
