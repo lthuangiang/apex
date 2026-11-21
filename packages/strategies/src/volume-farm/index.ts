@@ -1,4 +1,11 @@
-import { dec, Decimal, NORMAL_REJECT_CODES, ReasonCode, RoundMode } from "@drift/shared";
+import {
+  dec,
+  Decimal,
+  isNotSentReject,
+  NORMAL_REJECT_CODES,
+  ReasonCode,
+  RoundMode,
+} from "@drift/shared";
 
 import { clOrdId, fnv1a64 } from "../core/ids";
 import { applyFill, emptyLedger, type Ledger } from "../core/ledger";
@@ -17,6 +24,22 @@ import type {
 import type { VolumeFarmConfig } from "./schema";
 import { counterTrendBlocked, farmSignal, type FarmRegime } from "./signal";
 import { moveBeforeBps, safeEntrySnapshot } from "./snapshot";
+
+/** Dòng Decisions khi stop loss trên SoDEX (DEC-118) không đặt / dời được. */
+export const XSTOP_NOT_SET = "Stop loss on SoDEX not set";
+const XSTOP_KEEPS = "The bot keeps watching its own stop loss for this trade.";
+/**
+ * #260: lý do của dòng đó. Chỉ ghi "SoDEX rejected it" khi SoDEX thật sự từ chối lệnh DeskLabs đã gửi; lệnh không rời
+ * DeskLabs (`isNotSentReject`: engine `not_sent`, `NO_REAL_POSITION`, bot đang dừng) ghi đúng lý do thật. Hai câu mới
+ * (không có vị thế, không gửi được) chờ PM duyệt.
+ */
+export function xstopNotSetWhy(code: string): string {
+  if (code === "NO_REAL_POSITION")
+    return `DeskLabs didn't send it: SoDEX shows no open position for this bot. ${XSTOP_KEEPS}`;
+  if (isNotSentReject(code))
+    return `DeskLabs couldn't send it to SoDEX (code ${code}), so SoDEX never saw it. ${XSTOP_KEEPS}`;
+  return `SoDEX rejected it (code ${code}). ${XSTOP_KEEPS}`;
+}
 
 // S10 Volume Farm (DEC-80): vòng lặp FARM của bot "standard" trong apex (src/modules/Watcher.ts), viết lại dạng
 // hàm thuần cho engine của DRIFT.
@@ -1530,8 +1553,8 @@ export function stepVolumeFarm(
               : [
                   {
                     type: "log" as const,
-                    decision: "Stop loss on SoDEX not set",
-                    why: `SoDEX rejected it (code ${e.code}). The bot keeps watching its own stop loss for this trade.`,
+                    decision: XSTOP_NOT_SET,
+                    why: xstopNotSetWhy(e.code),
                   },
                 ]),
           ],
