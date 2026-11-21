@@ -27,6 +27,7 @@ COPY --chown=node:node packages/hyperliquid/package.json packages/hyperliquid/
 COPY --chown=node:node packages/runtime/package.json packages/runtime/
 COPY --chown=node:node packages/shared/package.json packages/shared/
 COPY --chown=node:node packages/sodex/package.json packages/sodex/
+COPY --chown=node:node packages/sodex-reconcile/package.json packages/sodex-reconcile/
 COPY --chown=node:node packages/strategies/package.json packages/strategies/
 COPY --chown=node:node packages/ui/package.json packages/ui/
 COPY --chown=node:node e2e/flows/package.json e2e/flows/
