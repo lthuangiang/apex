@@ -398,8 +398,7 @@ describe("experiments: paired with Baseline, Finished at 100 pairs (#377)", () =
       await env.pool.query(
         `update signal_bot_versions set running_periods = '[{"from":"2026-01-01T00:00:00.000Z","to":null}]' where is_baseline`,
       );
-      // Nhường chỗ chạy (tối đa 3) cho test sau.
-      await setSignalBotVersionStatus(env.db, { id: v.id, status: "stopped", userId: null });
+      // Version của test được afterEach dừng (nhường chỗ chạy cho test sau).
     }
   });
 
