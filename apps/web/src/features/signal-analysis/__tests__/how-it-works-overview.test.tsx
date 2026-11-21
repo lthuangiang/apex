@@ -71,7 +71,7 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 /** Trang thu nhỏ: nút "How it works" mở không chỉ định tab, nút "?" mở đúng tab, như research-tab.tsx. */
-function Page() {
+function Page({ cycleMinutes = 5 }: { cycleMinutes?: number | null }) {
   const [tab, setTab] = useState<HowTab | null>(null);
   return (
     <HowItWorksProvider value={setTab}>
@@ -95,6 +95,7 @@ function Page() {
         }}
         version={null}
         rulesVersion={3}
+        cycleMinutes={cycleMinutes}
       />
     </HowItWorksProvider>
   );
@@ -117,10 +118,10 @@ function reducedMotion(on: boolean) {
   });
 }
 
-async function openDrawer() {
+async function openDrawer(cycleMinutes: number | null = 5) {
   render(
     <Wrap>
-      <Page />
+      <Page cycleMinutes={cycleMinutes} />
     </Wrap>,
   );
   await userEvent.click(screen.getByRole("button", { name: "How it works" }));
@@ -237,7 +238,7 @@ describe("How it works › Overview", { timeout: 30_000 }, () => {
     const dlg = await openDrawer();
     const panel = within(dlg).getByRole("tabpanel");
     expect(panel).toHaveTextContent(
-      "Right after Normalize, in the same 5-minute run. Oldest article first. Each article passes 4 checks before Claude sees it:",
+      "Right after Normalize, in the same run. Oldest article first. Each article passes 4 checks before Claude sees it:",
     );
     expect(panel).toHaveTextContent("Published over 24 h ago → dropped, stale news");
     expect(panel).toHaveTextContent(
@@ -264,6 +265,44 @@ describe("How it works › Overview", { timeout: 30_000 }, () => {
     expect(panel).toHaveTextContent(
       "One trade per story (coin + news type) per 7 days, the version’s minimum level and max source delay, fresh SoDEX prices, one open trade per coin, TP at least 2× the cost of a trade, then the version’s limits.",
     );
+    expect(intlErrors).toEqual([]);
+  });
+
+  // #394: chu kỳ từ API (`cycleMinutes`), plural ICU; không có thì "Not available", không đoán.
+  it("cycle of 1 minute reads “Every minute”, never “1 minutes”", async () => {
+    reducedMotion(true);
+    const dlg = await openDrawer(1);
+    const panel = within(dlg).getByRole("tabpanel");
+    expect(within(dlg).getByTestId("hiw-intro")).toHaveTextContent(
+      /^Every minute DeskLabs reads new crypto news/,
+    );
+    expect(panel).toHaveTextContent("Every minute DeskLabs asks SoSoValue for new crypto news.");
+    expect(within(dlg).getByRole("img")).toHaveTextContent("every minute");
+    expect(panel).not.toHaveTextContent(/\b1 minutes?\b|\b1 min\b/);
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("cycle of 5 minutes reads “Every 5 minutes”", async () => {
+    reducedMotion(true);
+    const dlg = await openDrawer(5);
+    expect(within(dlg).getByTestId("hiw-intro")).toHaveTextContent(
+      /^Every 5 minutes DeskLabs reads new crypto news/,
+    );
+    expect(within(dlg).getByRole("img")).toHaveTextContent("every 5 min");
+  });
+
+  it("without a cycle from the API it says Not available, no number", async () => {
+    reducedMotion(true);
+    const dlg = await openDrawer(null);
+    const panel = within(dlg).getByRole("tabpanel");
+    expect(within(dlg).getByTestId("hiw-intro")).toHaveTextContent(
+      /^On a fixed schedule \(how often: Not available\) DeskLabs reads new crypto news/,
+    );
+    expect(panel).toHaveTextContent(
+      "On a fixed schedule (how often: Not available) DeskLabs asks SoSoValue for new crypto news.",
+    );
+    expect(within(dlg).getByRole("img")).toHaveTextContent("every: Not available");
+    expect(panel).not.toHaveTextContent(/Every \d/);
     expect(intlErrors).toEqual([]);
   });
 

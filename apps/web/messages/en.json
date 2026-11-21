@@ -2890,7 +2890,15 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch"
+    "signalAnalysis.research.live.batch",
+    "signalAnalysis.research.page.drawer.overview.intro",
+    "signalAnalysis.research.page.drawer.overview.introNa",
+    "signalAnalysis.research.page.drawer.overview.diagram.soso.l2",
+    "signalAnalysis.research.page.drawer.overview.diagram.soso.l2Na",
+    "signalAnalysis.research.page.drawer.overview.steps.collect.body",
+    "signalAnalysis.research.page.drawer.overview.steps.collect.bodyNa",
+    "signalAnalysis.research.page.drawer.overview.steps.score.whenIntro",
+    "signalAnalysis.research.latency.slowestWaitWhy"
   ],
   "beta": {
     "label": "Beta",
@@ -9025,7 +9033,8 @@
           "experimentsNote": "A result is about the past trades only. It isn’t a forecast.",
           "experimentsBaseline": "Baseline",
           "overview": {
-            "intro": "Every <b>{min} minutes</b> DeskLabs reads new crypto news, keeps articles about a coin listed on SoDEX, asks Claude what kind of news it is, then each running version decides whether to open a <b>fake-money</b> trade. A watcher closes trades at TP, SL or max hold.",
+            "intro": "Every <b>{min, plural, one {minute} other {# minutes}}</b> DeskLabs reads new crypto news, keeps articles about a coin listed on SoDEX, asks Claude what kind of news it is, then each running version decides whether to open a <b>fake-money</b> trade. A watcher closes trades at TP, SL or max hold.",
+            "introNa": "On a fixed schedule (how often: <b>Not available</b>) DeskLabs reads new crypto news, keeps articles about a coin listed on SoDEX, asks Claude what kind of news it is, then each running version decides whether to open a <b>fake-money</b> trade. A watcher closes trades at TP, SL or max hold.",
             "player": {
               "prev": "Previous step",
               "next": "Next step",
@@ -9054,7 +9063,8 @@
               "soso": {
                 "title": "SoSoValue",
                 "l1": "crypto news,",
-                "l2": "every {min} min"
+                "l2": "every {min, plural, one {minute} other {# min}}",
+                "l2Na": "every: Not available"
               },
               "market": {
                 "title": "Market data",
@@ -9124,7 +9134,8 @@
               "collect": {
                 "name": "Collect",
                 "sub": "new articles from SoSoValue",
-                "body": "Every {min} minutes DeskLabs asks SoSoValue for new crypto news. Each article keeps two times: when the source published it and when DeskLabs got it. The gap is the source delay.",
+                "body": "Every {min, plural, one {minute} other {# minutes}} DeskLabs asks SoSoValue for new crypto news. Each article keeps two times: when the source published it and when DeskLabs got it. The gap is the source delay.",
+                "bodyNa": "On a fixed schedule (how often: Not available) DeskLabs asks SoSoValue for new crypto news. Each article keeps two times: when the source published it and when DeskLabs got it. The gap is the source delay.",
                 "drops": "Dropped: same text as an article already saved."
               },
               "normalize": {
@@ -9137,7 +9148,7 @@
                 "name": "Score",
                 "sub": "Claude names the news type, the rules decide",
                 "whenTitle": "When Claude is called",
-                "whenIntro": "Right after Normalize, in the same {min}-minute run. Oldest article first. Each article passes {n} checks before Claude sees it:",
+                "whenIntro": "Right after Normalize, in the same run. Oldest article first. Each article passes {n} checks before Claude sees it:",
                 "checks": {
                   "stale": "Published over {h} h ago <m>→ dropped, stale news</m>",
                   "late": "Over {min} min since it was published <m>→ dropped without asking Claude: a trade now would be too late</m>",
@@ -9515,7 +9526,7 @@
         "notMeasured": "Not measured yet",
         "slowest": "<b>Slowest leg: {leg}.</b>",
         "slowestWait": "waiting for the {n}-min check",
-        "slowestWaitWhy": "SoSoValue is checked every {n} min, so most of the delay is the wait for the next check.",
+        "slowestWaitWhy": "SoSoValue is checked every {n, plural, one {minute} other {# min}}, so most of the delay is the wait for the next check.",
         "total": "Total, SoSoValue → paper trade opened: <b>{duration}</b>",
         "totalMissing": "Total, SoSoValue → paper trade opened: <b>Not measured yet</b> (one leg is missing)",
         "totalMedian": "Total, SoSoValue → paper trade opened: <b>{duration}</b> · median of the full time, {n, plural, one {# article} other {# articles}}",

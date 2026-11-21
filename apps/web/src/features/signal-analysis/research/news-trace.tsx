@@ -381,9 +381,12 @@ export function NewsTrace({
   request,
   versionId = null,
   rulesSince = null,
+  cycleMinutes = null,
 }: {
   ctx: PageCtx;
   funnel: ResearchFunnel | null;
+  /** #394: chu kỳ hỏi SoSoValue (phút) từ API tổng kết; null = không biết. */
+  cycleMinutes?: number | null;
   range: ResearchRange;
   onRange: (r: ResearchRange) => void;
   request: TraceRequest | null;
@@ -739,7 +742,7 @@ export function NewsTrace({
               <LatencyTimeline
                 article={data.article}
                 latency={data.latency}
-                pollSecs={funnel?.pollSecs ?? null}
+                cycleMinutes={cycleMinutes}
                 tz={ctx.tz}
               />
             )
@@ -749,6 +752,7 @@ export function NewsTrace({
         <>
           <TotalsPanel
             funnel={funnel}
+            cycleMinutes={cycleMinutes}
             versionId={versionId}
             range={range}
             reasons={tot.reasons}
@@ -1192,6 +1196,7 @@ export function claudeCostShown(cc: ResearchFunnel["claudeCost"] | null): string
 
 function TotalsPanel({
   funnel: f,
+  cycleMinutes,
   versionId,
   range,
   reasons,
@@ -1199,6 +1204,7 @@ function TotalsPanel({
   onReason,
 }: {
   funnel: ResearchFunnel | null;
+  cycleMinutes: number | null;
   versionId: string | null;
   range: ResearchRange;
   reasons: { reason: ResearchDropReason; n: number }[];
@@ -1218,7 +1224,7 @@ function TotalsPanel({
       <LatencyCard
         range={range}
         versionId={versionId}
-        pollSecs={f?.pollSecs ?? null}
+        cycleMinutes={cycleMinutes}
         className="flex-[2_1_320px]"
       />
       <div className={`flex-[1_1_180px] ${card}`}>

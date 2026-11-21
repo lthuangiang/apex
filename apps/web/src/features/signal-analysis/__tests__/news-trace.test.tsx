@@ -27,10 +27,14 @@ import { RESEARCH_TRADES } from "./research-fixtures";
 // News feed và funnel trace của tab Signal research (#292, thiết kế docs/mockups/signal-research/news-trace.html).
 // API giả (#291) trả fixture đã qua đúng zod schema; giờ hiển thị ở Asia/Ho_Chi_Minh (UTC+7) như mockup.
 
-const state = vi.hoisted((): { paths: string[]; reduced: boolean } => ({
-  paths: [],
-  reduced: false,
-}));
+const state = vi.hoisted(
+  (): { paths: string[]; reduced: boolean; cycleMinutes: number | null | undefined } => ({
+    paths: [],
+    reduced: false,
+    // #394: undefined = giữ `cycleMinutes` của fixture (5).
+    cycleMinutes: undefined,
+  }),
+);
 
 vi.mock("@/features/account/market-hours-time", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/features/account/market-hours-time")>();
@@ -61,10 +65,14 @@ vi.mock("@/lib/api", async (importOriginal) => {
       state.paths.push(path);
       const u = new URL(path, "http://x");
       const p = u.pathname;
-      if (p.endsWith("/signal-research/summary"))
+      if (p.endsWith("/signal-research/summary")) {
+        const base = u.searchParams.get("range") === "7d" ? SUMMARY_7D : SUMMARY_1D;
         return Promise.resolve(
-          schema.parse(u.searchParams.get("range") === "7d" ? SUMMARY_7D : SUMMARY_1D),
+          schema.parse(
+            state.cycleMinutes === undefined ? base : { ...base, cycleMinutes: state.cycleMinutes },
+          ),
         );
+      }
       if (p.endsWith("/signal-research/latency")) return Promise.resolve(schema.parse(LATENCY_1D));
       if (p.endsWith("/signal-research/trades"))
         return Promise.resolve(schema.parse(RESEARCH_TRADES));
@@ -137,6 +145,7 @@ function wrap() {
 beforeEach(() => {
   state.paths = [];
   state.reduced = false;
+  state.cycleMinutes = undefined;
   intlErrors.length = 0;
   scrolled.length = 0;
   window.history.replaceState(null, "", "/admin/signal-analysis?tab=research");
@@ -355,6 +364,33 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
       .querySelector("[data-band='context']");
     expect(ctx7).toHaveTextContent("saved, not used yet");
     expect(ctx7).not.toHaveTextContent(/Whales agree/);
+    expect(intlErrors).toEqual([]);
+  });
+
+  // #394: số phút của "Where the time goes" lấy từ API tổng kết (`cycleMinutes`), không từ hằng của web.
+  it("the check interval comes from the summary API: 1 minute reads “every minute”, missing leaves the number out", async () => {
+    state.cycleMinutes = 1;
+    await ready();
+    let lat = await within(funnel()).findByTestId("sr-latency");
+    await waitFor(() => {
+      expect(within(lat).getByTestId("sr-latency-slowest")).toHaveTextContent(
+        "Slowest leg: waiting for the 1-min check. SoSoValue is checked every minute, so most of the delay is the wait for the next check.",
+      );
+    });
+    expect(lat).not.toHaveTextContent("5-min");
+    expect(lat).not.toHaveTextContent("1 minutes");
+    cleanup();
+
+    state.cycleMinutes = null;
+    await ready();
+    lat = await within(funnel()).findByTestId("sr-latency");
+    await waitFor(() => {
+      expect(lat.querySelector("[data-stage='publishedToCollected']")).toHaveTextContent(
+        /^SoSoValue → DeskLabs collected5 min 45 s$/,
+      );
+    });
+    expect(lat).not.toHaveTextContent("-min check");
+    expect(lat).not.toHaveTextContent("checked every");
     expect(intlErrors).toEqual([]);
   });
 

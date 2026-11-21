@@ -50,6 +50,7 @@ export * from "./signal-research/versions";
 export * from "./signal-research/experiments";
 export * from "./signal-research/labels";
 export * from "./signal-research/markets";
+export * from "./signal-research/lane";
 export * from "./signal-research/quotes";
 export * from "./signal-research/context";
 export * from "./signal-research/market-state";

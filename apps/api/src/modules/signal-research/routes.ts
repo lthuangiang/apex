@@ -23,7 +23,9 @@ import {
   AppError,
   ErrorCode,
   NEWS_LIMIT_DEFAULTS,
+  parseSrLane,
   parseSrQuotes,
+  SR_LANE_KEY,
   SR_QUOTES_KEY,
   researchArticlesPageSchema,
   researchArticlesQuerySchema,
@@ -105,6 +107,11 @@ export interface SignalResearchDeps {
    * bao giờ chạm SoDEX (DEC-322 / DEC-327; PM chọn phương án (a) ở review #324).
    */
   srMarkets: () => Promise<string | null>;
+  /**
+   * #394: giá trị Redis `sr:lane` (chu kỳ và trần SoSoValue tháng scheduler đang dùng). Không truyền / không có / sai dạng
+   * → `cycleMinutes` null ("Not available"), trần tháng theo mặc định.
+   */
+  srLane?: () => Promise<string | null>;
 }
 
 const FORBIDDEN = "Signal research is for the DeskLabs team only.";
@@ -140,6 +147,24 @@ function quotesOf(deps: SignalResearchDeps): ExitQuotes | undefined {
   };
 }
 
+/** Bản chụp `sr:lane` (#394); Redis lỗi hay giá trị sai → null (không đoán chu kỳ), có log cảnh báo. */
+async function laneOf(deps: SignalResearchDeps) {
+  if (deps.srLane === undefined) return null;
+  try {
+    const raw = await deps.srLane();
+    const lane = parseSrLane(raw);
+    if (raw !== null && lane === null)
+      deps.log?.warn({ key: SR_LANE_KEY }, "signal research lane snapshot unreadable");
+    return lane;
+  } catch (e) {
+    deps.log?.warn(
+      { key: SR_LANE_KEY, err: e instanceof Error ? e.name : "error" },
+      "signal research lane snapshot unavailable",
+    );
+    return null;
+  }
+}
+
 function tx<T>(deps: SignalResearchDeps, fn: Parameters<typeof readOnlyTx<T>>[2]): Promise<T> {
   return readOnlyTx(
     deps.db,
@@ -155,13 +180,15 @@ export async function signalResearchSummary(
 ): Promise<ResearchSummary> {
   await requireTeam(deps.db, userId, FORBIDDEN);
   const { range, versionId } = parseOrThrow(researchSummaryQuerySchema, query);
+  const lane = await laneOf(deps);
   const out = await tx(deps, (q, check) =>
     loadSignalResearchSummary(
       q,
       deps.now(),
       {
-        sosoMonthlyLimit: NEWS_LIMIT_DEFAULTS.sosoMonthlyLimit,
+        sosoMonthlyLimit: lane?.sosoMonthlyLimit ?? NEWS_LIMIT_DEFAULTS.sosoMonthlyLimit,
         claudeDailyInputBudget: NEWS_LIMIT_DEFAULTS.claudeDailyInputBudget,
+        cycleMinutes: lane?.cycleMinutes ?? null,
       },
       check,
       range,

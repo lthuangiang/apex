@@ -106,7 +106,6 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
   funnel: {
     days: 7,
     delayMedianSecs: 190,
-    pollSecs: 300,
     claudeCostPerDay: "0.42",
     claudeCost: { usd: "2.94", articles: 900, unknown: 0 },
     articlesRead: 1240,
@@ -160,6 +159,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
     outcomes: { closed: 30, tp: 12, sl: 11, maxHold: 7, opposite: 0, open: 11 },
     context: null,
   },
+  cycleMinutes: 5,
   newsRulesVersion: 2,
   levels: [
     {

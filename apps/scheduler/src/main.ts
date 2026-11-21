@@ -9,13 +9,7 @@ import {
 } from "@drift/db";
 import { HyperliquidClient } from "@drift/hyperliquid";
 import { Lease, runAsLeader } from "@drift/runtime";
-import {
-  AppError,
-  ErrorCode,
-  NEWS_CYCLE_MINUTES,
-  SR_MARKETS_KEY,
-  srMarketsSnapshot,
-} from "@drift/shared";
+import { AppError, ErrorCode, SR_MARKETS_KEY, srMarketsSnapshot } from "@drift/shared";
 import {
   createSodexCallRecorder,
   loadSodexConfig,
@@ -42,6 +36,8 @@ import { snapshotAndCheck } from "./risk";
 import {
   createSignalResearch,
   disabledReason,
+  monthlyLimitWarning,
+  scheduleNewsCycle,
   parseSignalEnv,
   type PerpsSymbolInfo,
 } from "./signal-research";
@@ -338,8 +334,11 @@ const signals =
   signalOff === null && signalEnv.env !== null
     ? createSignalResearch({ db, redis, log, env: signalEnv.env, perps: () => perpsCache })
     : null;
-if (signals !== null) log.info("signal research enabled");
-else if (signalEnv.env === null || signalEnv.env.SIGNAL_RESEARCH_ENABLED)
+if (signals !== null && signalEnv.env !== null) {
+  log.info({ cycleMinutes: signalEnv.env.SIGNAL_NEWS_CYCLE_MINUTES }, "signal research enabled");
+  const quota = monthlyLimitWarning(signalEnv.env);
+  if (quota !== null) log.warn({ warning: quota }, "signal research env");
+} else if (signalEnv.env === null || signalEnv.env.SIGNAL_RESEARCH_ENABLED)
   log.warn({ reason: signalOff }, "signal research not started");
 let nats: NatsConnection | null = null;
 if (signals !== null && env.NATS_URL !== "") {
@@ -379,7 +378,8 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
         })
         .then(() => signals.runCycle())
         .then(() => signals.runContextBackfill());
-      signalTimer = setInterval(() => void signals.runCycle(), NEWS_CYCLE_MINUTES * 60_000);
+      // #394: chu kỳ từ `SIGNAL_NEWS_CYCLE_MINUTES` (1–5, mặc định 5; sai → 5 kèm cảnh báo lúc khởi động).
+      signalTimer = scheduleNewsCycle(() => void signals.runCycle(), signals.cycleMinutes);
       watchTimer = setInterval(() => {
         void signals.watcher.tick().catch((error: unknown) => {
           log.error({ err: error }, "signal research watcher failed");

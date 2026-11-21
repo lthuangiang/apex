@@ -1,3 +1,4 @@
+import { SOSO_RATE_LIMIT } from "@drift/shared";
 import { z } from "zod";
 
 // SoSoValue OpenAPI (https://sosovalue-1.gitbook.io/sosovalue-api-doc): `GET /news`, header `x-soso-api-key`, phong bì
@@ -56,10 +57,52 @@ export class SosoError extends Error {
   }
 }
 
+/** SoSoValue từ chối vì giới hạn tốc độ: HTTP 429 hoặc `code` 42901 trong phong bì (#394). */
+export function isSosoRateLimited(e: unknown): boolean {
+  return e instanceof SosoError && (e.status === 429 || e.code === SOSO_RATE_LIMIT.code);
+}
+
 export interface SosoPage {
   items: SosoNewsItem[];
   /** Bài trong trang không đọc được theo schema (bỏ qua, chỉ đếm). */
   invalid: number;
+  /** Header `X-RateLimit-Remaining` nếu SoSoValue trả (số nguyên ≥ 0); không có → null. */
+  rateRemaining?: number | null;
+}
+
+/**
+ * Chặn phía DeskLabs (#394): không quá `limit` request SoSoValue trong `windowMs` trượt (mặc định 20 / phút, theo key),
+ * đếm mọi request kể cả phân trang. Sống trong tiến trình scheduler (leader), dùng chung giữa các chu kỳ. `tryTake()` false
+ * = phải dừng, không gửi request.
+ */
+export class SosoRateLimiter {
+  private readonly sent: number[] = [];
+
+  constructor(
+    private readonly now: () => number,
+    private readonly limit: number = SOSO_RATE_LIMIT.perMinute,
+    private readonly windowMs: number = SOSO_RATE_LIMIT.windowMs,
+  ) {}
+
+  tryTake(): boolean {
+    const t = this.now();
+    while (this.sent.length > 0 && (this.sent[0] ?? 0) <= t - this.windowMs) this.sent.shift();
+    if (this.sent.length >= this.limit) return false;
+    this.sent.push(t);
+    return true;
+  }
+
+  /** Số request đã gửi trong cửa sổ hiện tại (test, log). */
+  inWindow(): number {
+    const t = this.now();
+    return this.sent.filter((x) => x > t - this.windowMs).length;
+  }
+}
+
+function remainingOf(res: Response): number | null {
+  const v = res.headers.get("x-ratelimit-remaining");
+  if (v === null || !/^\d+$/.test(v.trim())) return null;
+  return Number(v.trim());
 }
 
 export interface SosoClient {
@@ -101,7 +144,7 @@ export function sosoClient(
         if (p.success) items.push(p.data);
         else invalid += 1;
       }
-      return { items, invalid };
+      return { items, invalid, rateRemaining: remainingOf(res) };
     },
   };
 }

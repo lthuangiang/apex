@@ -119,7 +119,7 @@ describe("LatencyCard", () => {
       },
       { medianMs: 95_000, n: 4 },
     );
-    wrap(<LatencyCard range="7d" versionId={null} pollSecs={300} />);
+    wrap(<LatencyCard range="7d" versionId={null} cycleMinutes={5} />);
     const card = await screen.findByTestId("sr-latency-total");
     // Số của API (1 min 35 s), không phải tổng các median (1 min 23 s).
     expect(card).toHaveTextContent(
@@ -143,7 +143,7 @@ describe("LatencyCard", () => {
       claudeDoneToDecided: 2_000,
       decidedToOpened: 40,
     });
-    wrap(<LatencyCard range="1d" versionId={null} pollSecs={300} />);
+    wrap(<LatencyCard range="1d" versionId={null} cycleMinutes={5} />);
     const total = await screen.findByTestId("sr-latency-total");
     expect(total).toHaveTextContent("Total, SoSoValue → paper trade opened: Not measured yet");
     expect(total).not.toHaveTextContent("1 min 23 s");
@@ -151,7 +151,7 @@ describe("LatencyCard", () => {
 
   it("nothing measured: Not measured yet on every leg, Not provided on the source leg, no bar, no slowest, never 0", async () => {
     state.latency = LATENCY_EMPTY;
-    wrap(<LatencyCard range="1d" versionId={null} pollSecs={300} />);
+    wrap(<LatencyCard range="1d" versionId={null} cycleMinutes={5} />);
     const card = await screen.findByTestId("sr-latency");
     await waitFor(() => {
       expect(within(card).getAllByText("Not measured yet")).toHaveLength(5);
@@ -163,9 +163,30 @@ describe("LatencyCard", () => {
     await noViolations();
   });
 
+  // #394: số phút từ API (`cycleMinutes`), plural ICU.
+  it.each([
+    [1, "SoSoValue is checked every minute, so most of the delay", "waiting for the 1-min check"],
+    [5, "SoSoValue is checked every 5 min, so most of the delay", "waiting for the 5-min check"],
+  ])(
+    "slowest leg is the wait: the cycle of %i min comes from the API",
+    async (cycleMinutes, why, leg) => {
+      state.latency = withMs({
+        publishedToCollected: 200_000,
+        collectedToClaudeDone: 6_000,
+        claudeDoneToDecided: 2_000,
+        decidedToOpened: 40,
+      });
+      wrap(<LatencyCard range="1d" versionId={null} cycleMinutes={cycleMinutes} />);
+      const slow = await screen.findByTestId("sr-latency-slowest");
+      expect(slow).toHaveTextContent(why);
+      expect(slow).toHaveTextContent(leg);
+      expect(slow).not.toHaveTextContent("1 minutes");
+    },
+  );
+
   it("API error: Not available, never 0", async () => {
     state.fail = true;
-    wrap(<LatencyCard range="1d" versionId={null} pollSecs={null} />);
+    wrap(<LatencyCard range="1d" versionId={null} cycleMinutes={null} />);
     const card = await screen.findByTestId("sr-latency");
     await waitFor(
       () => {
@@ -192,7 +213,7 @@ describe("LatencyTimeline", () => {
           decision: "noTrade",
           openedAt: null,
         }}
-        pollSecs={300}
+        cycleMinutes={5}
         tz="UTC"
       />,
     );
@@ -215,7 +236,7 @@ describe("LatencyTimeline", () => {
       <LatencyTimeline
         article={ETH}
         latency={{ claudeDoneAt: null, decidedAt: null, decision: null, openedAt: null }}
-        pollSecs={300}
+        cycleMinutes={5}
         tz="UTC"
       />,
     );

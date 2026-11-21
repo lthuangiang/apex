@@ -408,7 +408,10 @@ export function catalystRule(c: SignalCatalyst): CatalystRule {
 /** Claude phân loại tin (#271): model cố định, bảng giá để tính chi phí / ngày (USD trên 1M token, giá 2026-11). */
 export const NEWS_CLASSIFIER = {
   model: "claude-haiku-4-5",
-  /** TTL của prompt cache: chu kỳ 5 phút đúng bằng TTL mặc định nên dùng 1 giờ (ghi 2×, đọc 0.1×). */
+  /**
+   * TTL của prompt cache: 1 giờ (ghi 2×, đọc 0.1×). Chu kỳ mặc định 5 phút đúng bằng TTL mặc định nên cần 1 giờ; chu kỳ
+   * 1 phút (`SIGNAL_NEWS_CYCLE_MINUTES`) vẫn giữ 1 giờ để giờ ít tin không làm cache hết hạn giữa hai lần gọi.
+   */
   cacheTtl: "1h",
   promptVersion: "news-classifier-v3",
   maxTokens: 400,
@@ -424,18 +427,56 @@ export const NEWS_CLASSIFIER = {
 } as const;
 
 /**
- * Chu kỳ của lane tin tức (phút): scheduler chạy Collect → Decide mỗi ngần này phút. Drawer How it works › Overview đọc cùng
- * hằng này để câu chữ không lệch nhịp thật (#391).
+ * Chu kỳ của lane tin tức (phút, #394): scheduler chạy Collect → Decide mỗi `SIGNAL_NEWS_CYCLE_MINUTES` phút (số nguyên
+ * `minMinutes`–`maxMinutes`, mặc định `defaultMinutes`; sai → mặc định kèm cảnh báo). Web không đọc hằng này: số phút thật
+ * đến từ API (`cycleMinutes` của tổng kết, scheduler ghi vào Redis `sr:lane`), thiếu thì "Not available".
  */
-export const NEWS_CYCLE_MINUTES = 5;
+export const NEWS_CYCLE = {
+  defaultMinutes: 5,
+  minMinutes: 1,
+  maxMinutes: 5,
+  /**
+   * `SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE` là trần cho ngần này phút (= một chu kỳ mặc định); chu kỳ ngắn hơn chia theo tỷ lệ
+   * (`claudeCallsForCycle`) để tổng lần gọi Claude mỗi giờ không tăng khi chạy 1 phút.
+   */
+  claudeCallsWindowMinutes: 5,
+} as const;
 
-/** Ngưỡng Live / Delayed / Down của từng nguồn (ms kể từ lần cuối thành công). */
+/**
+ * Giới hạn của SoSoValue theo từng API key (https://sosovalue-1.gitbook.io/sosovalue-api-doc/rate-limit, đọc 2026-11-21):
+ * 20 request / phút. Scheduler không bao giờ gửi quá `perMinute` request trong `windowMs` trượt, kể cả request phân trang.
+ * Gặp HTTP 429 hoặc `code` 42901 → dừng chu kỳ đó, nguồn ghi `rate_limited`, chu kỳ sau mới thử lại.
+ */
+export const SOSO_RATE_LIMIT = { perMinute: 20, windowMs: 60_000, code: 42901 } as const;
+/** `last_error` của nguồn `sosovalue` khi bị giới hạn tốc độ (SoSoValue trả 429 / 42901, hoặc DeskLabs tự chặn). */
+export const SOSO_RATE_LIMITED_ERROR = "rate_limited";
+
+/** Số lần gọi Claude tối đa của một chu kỳ: trần mỗi 5 phút chia theo độ dài chu kỳ, làm tròn lên, ít nhất 2 (một bài). */
+export function claudeCallsForCycle(perWindow: number, cycleMinutes: number): number {
+  return Math.max(2, Math.ceil((perWindow * cycleMinutes) / NEWS_CYCLE.claudeCallsWindowMinutes));
+}
+
+/** Ngưỡng Live / Delayed / Down của từng nguồn (ms kể từ lần cuối thành công), ở chu kỳ mặc định 5 phút. */
 export const SOURCE_HEALTH = {
   sosovalue: { liveMs: 7 * 60_000, delayedMs: 20 * 60_000 },
   claude: { liveMs: 30 * 60_000, delayedMs: 2 * 3_600_000 },
   sodex_prices: { liveMs: 2 * 60_000, delayedMs: 10 * 60_000 },
 } as const;
 export type SignalSourceKey = keyof typeof SOURCE_HEALTH;
+
+/**
+ * Ngưỡng của nguồn theo chu kỳ thật (#394). `sosovalue` được gọi mỗi chu kỳ nên Live = chu kỳ + 2 phút (5 → 7 phút như
+ * cũ, 1 → 3 phút); Delayed giữ 20 phút (thời gian thật người xem chịu được, không theo chu kỳ). Nguồn khác không phụ thuộc
+ * chu kỳ. `cycleMinutes` null (chưa biết) → ngưỡng của chu kỳ mặc định.
+ */
+export function sourceHealthOf(
+  key: SignalSourceKey,
+  cycleMinutes: number | null,
+): { liveMs: number; delayedMs: number } {
+  const t = SOURCE_HEALTH[key];
+  if (key !== "sosovalue" || cycleMinutes === null) return t;
+  return { liveMs: (cycleMinutes + 2) * 60_000, delayedMs: t.delayedMs };
+}
 
 /**
  * Hạn mức mặc định của lane tin tức (scheduler đọc env ghi đè: `SIGNAL_SOSO_MONTHLY_LIMIT`,

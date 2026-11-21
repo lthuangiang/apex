@@ -38,6 +38,7 @@ import {
   SignalReason,
   SignalStage,
   smallTreasury,
+  SOSO_RATE_LIMITED_ERROR,
   sourceTierOf,
   spreadPctOf,
   NEWS_ASSET_MAP_VERSION,
@@ -67,7 +68,13 @@ import {
   type NewsClassifier,
 } from "./classifier";
 import { captureSignalContext, type ContextSignal } from "./context";
-import { SOSO_PAGE_SIZE, type SosoClient, type SosoNewsItem } from "./soso";
+import {
+  isSosoRateLimited,
+  SOSO_PAGE_SIZE,
+  type SosoClient,
+  type SosoNewsItem,
+  type SosoRateLimiter,
+} from "./soso";
 import {
   addClaudeUsage,
   addSosoRequests,
@@ -107,7 +114,9 @@ export interface MarketInfo {
 export interface PipelineConfig {
   /** Đơn vị ngân sách ngày (token đầu vào quy đổi theo giá, `weightedInput`). */
   claudeDailyInputBudget: number;
-  /** Số lần gọi API Claude tối đa mỗi chu kỳ, kể cả thử lại. */
+  /**
+   * Số lần gọi API Claude tối đa của MỘT chu kỳ, kể cả thử lại (đã chia theo độ dài chu kỳ: `claudeCallsForCycle`).
+   */
   claudeMaxCallsPerCycle: number;
   sosoMaxPages: number;
   sosoMonthlyLimit: number;
@@ -130,6 +139,11 @@ export interface PipelineDeps {
   now: () => number;
   log: PipelineLog;
   config: PipelineConfig;
+  /**
+   * #394: trần 20 request SoSoValue / phút trượt, dùng chung giữa các chu kỳ. Thiếu (test cũ) → không chặn phía DeskLabs
+   * (429 / 42901 của SoSoValue vẫn được xử lý).
+   */
+  sosoLimiter?: Pick<SosoRateLimiter, "tryTake">;
   /** Gọi sau khi mở lệnh (để watcher nạp lại ngay). */
   onTradeOpened?: () => void;
   /**
@@ -160,6 +174,11 @@ export interface CycleReport {
   baselines: number;
   /** `MARKETS_UNKNOWN` khi chu kỳ chỉ Collect. */
   collectOnly: string | null;
+  /**
+   * #394: chu kỳ dừng vì giới hạn tốc độ: `sosovalue` (HTTP 429 / code 42901) hoặc `local` (DeskLabs tự chặn ở 20 / phút).
+   * Không lưu bài nào, con trỏ không tiến, chu kỳ sau mới thử lại.
+   */
+  rateLimited?: "sosovalue" | "local";
   skipped: Record<string, number>;
   watermarkAt: string | null;
   error?: string;
@@ -236,6 +255,11 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       sourceError = "monthly_quota";
       break;
     }
+    // #394: trần 20 request / phút của key, đếm cả trang sau. Hết lượt → dừng như bị 429, không gửi request.
+    if (deps.sosoLimiter !== undefined && !deps.sosoLimiter.tryTake()) {
+      report.rateLimited = "local";
+      break;
+    }
     await addSosoRequests(db, now, 1);
     report.pages += 1;
     try {
@@ -245,15 +269,30 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
         db,
         p.items.map((i) => i.id),
       );
-      // Trang sau chỉ khi trang đầy, cả trang đều mới và đều sau mốc dưới.
+      // Trang sau chỉ khi trang đầy, cả trang đều mới và đều sau mốc dưới, và SoSoValue chưa báo hết lượt.
       const more =
         p.items.length >= SOSO_PAGE_SIZE &&
-        p.items.every((i) => i.release_time > floor && !known.has(i.id));
+        p.items.every((i) => i.release_time > floor && !known.has(i.id)) &&
+        p.rateRemaining !== 0;
       if (!more) break;
     } catch (e) {
-      sourceError = e instanceof Error ? e.message : "error";
+      // #394: 429 / 42901 → dừng ngay, không thử lại trong chu kỳ này.
+      if (isSosoRateLimited(e)) report.rateLimited = "sosovalue";
+      else sourceError = e instanceof Error ? e.message : "error";
       break;
     }
+  }
+  if (report.rateLimited !== undefined) {
+    // Bỏ cả các trang đã lấy trong chu kỳ này: lưu một phần sẽ làm chu kỳ sau thấy trang 1 "đã biết" và không đọc tiếp
+    // trang 2 (mất bài). Không lưu gì, không đổi watermark / lastCycleAt, không Normalize → Decide; chu kỳ sau làm lại.
+    await markSource(db, "sosovalue", now, SOSO_RATE_LIMITED_ERROR);
+    deps.log.warn(
+      { error: SOSO_RATE_LIMITED_ERROR, by: report.rateLimited, pages: report.pages },
+      "signal research: sosovalue rate limited, waiting for the next cycle",
+    );
+    report.error = SOSO_RATE_LIMITED_ERROR;
+    await logCycle(deps, report, now);
+    return report;
   }
   const sourceOk = sourceError === null || fetched.length > 0;
   if (!sourceOk) {

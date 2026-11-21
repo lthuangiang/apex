@@ -94,6 +94,7 @@ export function HowItWorksDrawer({
   rulesVersion,
   maxRunning = null,
   baselineNumber = null,
+  cycleMinutes = null,
 }: {
   /** null = đóng. */
   tab: HowTab | null;
@@ -107,6 +108,8 @@ export function HowItWorksDrawer({
   maxRunning?: number | null;
   /** #377: số của Baseline (đối chứng cố định của thí nghiệm); null khi chưa tải. */
   baselineNumber?: number | null;
+  /** #394: chu kỳ lane tin tức (phút) từ API tổng kết; null = không biết ("Not available"). */
+  cycleMinutes?: number | null;
 }) {
   const t = useTranslations("signalAnalysis.research.page.drawer");
   const tv = useTranslations("signalAnalysis.research.versions");
@@ -212,6 +215,7 @@ export function HowItWorksDrawer({
           rulesVersion={rulesVersion}
           maxRunning={maxRunning}
           baselineNumber={baselineNumber}
+          cycleMinutes={cycleMinutes}
           onClose={onClose}
         />
       </div>
@@ -228,6 +232,7 @@ function Panel({
   rulesVersion,
   maxRunning,
   baselineNumber,
+  cycleMinutes,
   onClose,
 }: {
   tab: HowTab;
@@ -236,6 +241,7 @@ function Panel({
   rulesVersion: number | null;
   maxRunning: number | null;
   baselineNumber: number | null;
+  cycleMinutes: number | null;
   onClose: () => void;
 }) {
   const t = useTranslations("signalAnalysis.research.page.drawer");
@@ -245,7 +251,7 @@ function Panel({
   const cfg = version?.config ?? null;
   switch (tab) {
     case "overview":
-      return <OverviewPanel />;
+      return <OverviewPanel cycleMinutes={cycleMinutes} />;
     case "news":
       return (
         <>
