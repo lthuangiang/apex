@@ -23,7 +23,7 @@ const MIN_MS = 60_000;
 const PER_CYCLE = 20;
 
 /**
- * Nến đầu tiên lệnh ngẫu nhiên được xét (#405, DEC-TBD-sr-baseline-entry-clock): phút kế tiếp sau lúc vào lệnh THẬT
+ * Nến đầu tiên lệnh ngẫu nhiên được xét (#405, DEC-354): phút kế tiếp sau lúc vào lệnh THẬT
  * (`opened_clock_at`, #379), vì entry là giá live đọc lúc đó; nến trước entry (từ đầu chu kỳ tới lúc vào) không được chạm
  * TP / SL. Lệnh cũ chưa có `opened_clock_at` giữ `opened_at` (giờ đầu chu kỳ) như trước. Làm tròn lên phút kế tiếp như cũ
  * (không nhìn nến chứa lúc vào, vì nến đó có phần trước entry).

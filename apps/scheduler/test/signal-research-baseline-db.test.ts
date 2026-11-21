@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { fillRandomBaselines, randomReplayFrom } from "../src/signal-research/baseline";
 
-// #405 (DEC-TBD-sr-baseline-entry-clock): random baseline phát lại nến từ phút sau lúc vào lệnh THẬT (`opened_clock_at`),
+// #405 (DEC-354): random baseline phát lại nến từ phút sau lúc vào lệnh THẬT (`opened_clock_at`),
 // không từ đầu chu kỳ (`opened_at`). Lệnh cũ chưa có `opened_clock_at` vẫn chạy như trước. Postgres thật (testcontainers),
 // lệnh giấy chèn thẳng như scheduler ghi.
 
