@@ -213,6 +213,8 @@ services:
       SIGNAL_NEWS_CYCLE_MINUTES: ${SIGNAL_NEWS_CYCLE_MINUTES:-5}
       # Research wallets (#353 / #365): số ví K, trần 40, 0 = tắt. Chỉ scheduler đọc biến này.
       SIGNAL_RESEARCH_WALLETS_K: ${SIGNAL_RESEARCH_WALLETS_K:-30}
+      # #419: tín hiệu mainnet dùng chung (news_signals + NATS sr.signal.new). Mặc định tắt; chỉ scheduler đọc.
+      NEWS_SIGNAL_PUBLISH_ENABLED: ${NEWS_SIGNAL_PUBLISH_ENABLED:-false}
 
   jobs:
     <<: *app
