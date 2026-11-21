@@ -80,6 +80,45 @@ export function articleVerdict(votes: {
 }
 
 /**
+ * #423: người chấm của một nhãn, ghi lúc lưu: `team` (role team; chỉ nhãn này tính precision / cổng) | `tester` (người dùng
+ * có cờ `users.signal_research`; hiện riêng để đối chiếu).
+ */
+export const ClassificationLabeler = { team: "team", tester: "tester" } as const;
+export type ClassificationLabeler =
+  (typeof ClassificationLabeler)[keyof typeof ClassificationLabeler];
+
+/**
+ * #423: mức đồng thuận của nhãn tester với nhãn team, trên từng bài: kết luận mỗi bên theo `articleVerdict` (đa số, hoà tính
+ * Wrong). `labeled` = bài có ít nhất một nhãn tester; `compared` = bài có cả hai kết luận; `agree` = trùng nhau; `agreePct`
+ * = agree / compared × 100 (4 chữ số thập phân), null khi compared = 0 (không bao giờ hiện 0 thay cho "không có").
+ */
+export function testerAgreement(
+  articles: readonly {
+    team: { right: number; wrong: number };
+    tester: { right: number; wrong: number };
+  }[],
+): { labeled: number; compared: number; agree: number; agreePct: number | null } {
+  let labeled = 0;
+  let compared = 0;
+  let agree = 0;
+  for (const a of articles) {
+    const mine = articleVerdict(a.tester);
+    if (mine === null) continue;
+    labeled += 1;
+    const team = articleVerdict(a.team);
+    if (team === null) continue;
+    compared += 1;
+    if (team === mine) agree += 1;
+  }
+  return {
+    labeled,
+    compared,
+    agree,
+    agreePct: compared === 0 ? null : Math.round((agree / compared) * 1_000_000) / 10_000,
+  };
+}
+
+/**
  * Khoảng tin cậy Wilson (mặc định 95%, z = 1.96) của tỉ lệ `right / n`, theo đơn vị % (0–100). n = 0 → null. Ở 40 / 50
  * khoảng là ≈ 67.0–88.8% (khoảng xấp xỉ chuẩn ±11% của thiết kế, "69% to 91%", là cùng ý: 50 nhãn chỉ là mức sàn).
  */

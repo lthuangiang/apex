@@ -4,7 +4,7 @@
 -- news_signal_trades: mỗi account × market chỉ một lệnh open / closing (partial unique). Chỉ mainnet.
 -- news_signal_commands: Edit TP/SL / Close now, unique (trade_id, seq).
 -- bots.signal_version_id: version Signal research gốc của bot news_signal.
--- Số 0059 vì #423 (PR #428) dùng 0058; phải merge sau #428.
+-- Chạy sau 0058 (#423, PR #428).
 CREATE TABLE "news_signal_commands" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"trade_id" uuid NOT NULL,

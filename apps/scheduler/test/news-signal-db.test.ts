@@ -199,7 +199,7 @@ describe("news_signals", () => {
     ).toMatchObject({ constraint: "news_signals_expiry_ck" });
   });
 
-  it("reads only unexpired signals, oldest first", async () => {
+  it("reads signals until expires_at inclusive, oldest first", async () => {
     const base = Date.parse("2030-01-01T00:00:00Z");
     const live1 = await insertNewsSignal(
       db,
@@ -216,9 +216,11 @@ describe("news_signals", () => {
     const now = new Date(base + 60_000);
     const rows = await unexpiredNewsSignals(db, now);
     expect(rows.map((r) => r.id)).toEqual([live1.signal.id, live2.signal.id]);
-    // Đúng bằng `expires_at` là hết hạn.
+    // Đúng mốc `expires_at` vẫn còn hạn (khớp `newsSignalStale`); sau mốc 1 ms thì hết.
     const atExpiry = await unexpiredNewsSignals(db, new Date(base + 120_000));
-    expect(atExpiry.map((r) => r.id)).toEqual([live2.signal.id]);
+    expect(atExpiry.map((r) => r.id)).toEqual([live1.signal.id, live2.signal.id]);
+    const afterExpiry = await unexpiredNewsSignals(db, new Date(base + 120_001));
+    expect(afterExpiry.map((r) => r.id)).toEqual([live2.signal.id]);
     expect(await unexpiredNewsSignals(db, now, 1)).toHaveLength(1);
   });
 });

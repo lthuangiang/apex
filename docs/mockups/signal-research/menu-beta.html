@@ -1,0 +1,137 @@
+<title>Signal Research Menu</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+/* Mockup: Signal Research moved to the main sidebar with a Beta tag, visible only to accounts the team turns on; the user view of the page; the Users toggle. DeskLabs tokens, light only like the app. */
+:root{
+  --bg:#eef1fa; --surface:#ffffff; --surface-2:#f5f7fd; --border:#e3e7f5; --border-input:#d5dcf2;
+  --ink:#141a33; --ink-2:#3b4262; --muted:#5f6684; --accent:#2e62e8; --accent-ink:#1d47b8; --accent-tint:#e6ecfe;
+  --accent-mid:#7f9ff0; --accent-soft:#cbd8fa; --pos:#0f7a43; --pos-bg:#ddf4e7; --warn:#7a3e00; --warn-bg:#fdebd3;
+  --unknown:#5a2ca0; --unknown-bg:#f0e6ff; --note:#5a2ca0; --note-bg:#f0e6ff;
+  --f:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif; color-scheme:light;
+}
+body{background:var(--bg);color:var(--ink);font-family:var(--f);font-size:14px;line-height:1.5}
+.wrap{max-width:1440px;margin:0 auto;padding-block:24px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:20px}
+.intro h1{margin:0;font-size:22px;font-weight:800}
+.intro p{margin:4px 0 0;color:var(--ink-2);max-width:110ch}
+.note{border:2px dashed var(--note);background:var(--note-bg);color:var(--note);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600}
+.flabel{font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.frame{display:grid;gap:8px;min-width:0}
+.app{display:grid;grid-template-columns:260px minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:900px){.app{grid-template-columns:minmax(0,1fr)}}
+.side{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:16px;display:grid;gap:4px}
+.logo{font-weight:800;font-size:18px;padding:6px 10px 12px}
+.it{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;font-weight:700;color:var(--ink-2)}
+.it.on{background:var(--accent-tint);color:var(--accent-ink)}
+.ic{width:18px;height:18px;border-radius:5px;background:var(--border-input)}
+.it.on .ic{background:var(--accent)}
+.beta{margin-left:auto;font-size:10.5px;font-weight:800;letter-spacing:.04em;color:var(--unknown);background:var(--unknown-bg);border-radius:99px;padding:2px 7px}
+.sep{height:1px;background:var(--border);margin:8px 4px}
+.main{display:grid;gap:14px;min-width:0}
+.ph{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:flex-end}
+.ph h2{margin:0;font-size:28px;font-weight:800;display:flex;align-items:center;gap:10px}
+.ph p{margin:2px 0 0;color:var(--ink-2)}
+.chip{min-height:38px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border-radius:999px;background:var(--surface);border:1px solid var(--border);font-weight:700;font-size:13.5px;color:var(--ink-2)}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:22px;overflow:hidden}
+.strip{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:12px 22px;background:var(--warn-bg);color:var(--warn);font-size:14px}
+.strip b{font-weight:800}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:end;padding:16px 22px}
+.lbl{font-size:13px;font-weight:800;margin-bottom:4px}
+.sel{min-height:48px;min-width:220px;border:2px solid var(--accent);border-radius:14px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-weight:800}
+.bstrip{flex:1;min-width:260px;min-height:48px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:var(--surface-2);border-radius:14px;padding:6px 14px;border-left:3px solid var(--accent)}
+.pill{font-size:12px;font-weight:800;border-radius:99px;padding:3px 10px;background:var(--accent-tint);color:var(--accent-ink)}
+.btn{min-height:44px;padding:0 16px;border-radius:12px;border:2px solid var(--accent);background:var(--surface);font:800 14px var(--f);color:var(--accent-ink);display:inline-flex;align-items:center}
+.gate{margin:0 22px 18px;background:var(--accent-tint);border-radius:14px;padding:12px 16px;font-size:14px}
+.gate b{font-weight:800}
+.ghost{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:20px;display:grid;gap:10px}
+.ghost h3{margin:0;font-size:21px;font-weight:800}
+.bands{display:grid;gap:7px;justify-items:center;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:14px}
+.band{width:var(--w);height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;box-sizing:border-box;font-weight:800;font-size:13px;clip-path:polygon(0 0,100% 0,97% 100%,3% 100%)}
+.b1{background:var(--accent-ink);color:#fff}.b2{background:var(--accent);color:#fff}.b3{background:var(--accent-mid)}.b4{background:var(--surface);clip-path:none;border:2px dashed var(--accent);border-radius:8px}.b5{background:var(--accent-soft)}.b6{background:var(--pos);color:#fff}
+.hid{display:flex;flex-wrap:wrap;gap:8px}
+.hid span{font-size:12.5px;font-weight:700;border:1px dashed var(--border-input);border-radius:99px;padding:3px 10px;color:var(--muted);text-decoration:line-through}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:12.5px;color:var(--muted);font-weight:700;padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tg{width:40px;height:24px;border-radius:99px;background:var(--border-input);position:relative;display:inline-block;vertical-align:middle}
+.tg::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff}
+.tg.on{background:var(--accent)}.tg.on::after{left:19px}
+.new{outline:2px solid var(--unknown);outline-offset:2px;border-radius:6px}
+.scroll{overflow-x:auto}
+.menu{margin:-4px 22px 14px;max-width:420px;border:1px solid var(--border);border-radius:14px;box-shadow:0 14px 40px rgba(20,26,51,.14);background:var(--surface);padding:6px;display:grid;gap:2px}
+.mg{font-size:11.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:8px 10px 4px}
+.mi{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border-radius:10px;font-weight:700}
+.mi em{font-style:normal;font-weight:500;color:var(--muted);font-size:12.5px}
+.mi.on{background:var(--accent-tint)}
+</style>
+
+<div class="wrap">
+  <div class="intro">
+    <h1>Signal Research ra menu chính · Beta</h1>
+    <p>Bản 2, theo chốt của người dùng ngày 22/11: mục <b>Signal Research</b> có nhãn Beta trên sidebar, chỉ tài khoản được team bật mới thấy. <b>Giao diện giống hệt trang team, chỉ ẩn ô Claude cost.</b> Người dùng test có <b>My versions</b> (version của riêng họ, sửa / chạy thoải mái) và được chấm nhãn. Bot mainnet sẽ có khi Feature #418 xong. Khung tím là ghi chú cho người duyệt.</p>
+  </div>
+
+  <div class="frame">
+    <span class="flabel">1 · Sidebar và trang Signal Research của người dùng được bật</span>
+    <div class="app">
+      <nav class="side" aria-label="Main">
+        <div class="logo">DeskLabs</div>
+        <div class="it"><i class="ic"></i>AI Desk</div>
+        <div class="it on"><i class="ic"></i>Signal Research<span class="beta">BETA</span></div>
+        <div class="it"><i class="ic"></i>Strategy Lab</div>
+        <div class="it"><i class="ic"></i>Trading Agent</div>
+        <div class="it"><i class="ic"></i>Copy Trading</div>
+        <div class="sep"></div>
+        <div class="it"><i class="ic"></i>Settings</div>
+      </nav>
+      <div class="main">
+        <div class="ph">
+          <div><h2>Signal Research <span class="beta">BETA</span></h2><p>Crypto news turned into signals, tested with paper trades before any real money.</p></div>
+          <span class="chip">Times in your time zone: Asia/Saigon (UTC+7)</span>
+        </div>
+        <div class="panel">
+          <div class="strip"><b>Paper</b><span>Nothing here is sent to SoDEX. Still being tested.</span></div>
+          <div class="row">
+            <div><div class="lbl">Version</div><div class="sel">My · BTC only (v12) <span>⌄</span></div></div>
+            <div class="bstrip">News bot · My · BTC only (v12) · <span class="pill">Running</span> · Balance <b>10,000.0</b> · 0 open</div>
+            <span class="btn">How it works</span>
+          </div>
+          <div class="menu"><div class="mg">Team versions · view only</div><div class="mi">Baseline (v3) <em>Running</em></div><div class="mi">v7 · Whales agree <em>Running · experiment</em></div><div class="mg">My versions · 1 of 3 running</div><div class="mi on">BTC only (v12) <em>Running</em></div><div class="mi">High level only (v13) <em>Paused</em></div></div>
+          <div class="gate" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center"><span><b>Not counting yet:</b> label 50 signals to check Claude (0 done)</span><span style="display:flex;gap:8px"><span class="btn" style="background:var(--accent);color:#fff">Label signals</span><span class="btn">Manage versions</span></span></div>
+        </div>
+        <div class="ghost">
+          <h3>From headline to trade</h3>
+          <div class="bands">
+            <div class="band b1" style="--w:94%"><span>1 · Collect</span><span>65 articles</span></div>
+            <div class="band b2" style="--w:88%"><span>2 · Normalize</span><span>40 on SoDEX</span></div>
+            <div class="band b3" style="--w:82%"><span>3 · Score</span><span>1 signal</span></div>
+            <div class="band b4" style="--w:78%"><span>4 · Context</span><span>saved, not used yet</span></div>
+            <div class="band b5" style="--w:72%"><span>5 · Filter</span><span>1 left</span></div>
+            <div class="band b6" style="--w:66%"><span>6 · Decide</span><span>Long 0 · Short 1</span></div>
+          </div>
+          <p style="margin:0;color:var(--muted);font-size:13px">News feed, trace, Context, Is it working? và Paper trades giữ như bản team, chỉ xem.</p>
+        </div>
+        <div class="frame">
+          <span class="flabel" style="color:var(--note)">Ẩn với người dùng (chỉ team thấy)</span>
+          <div class="hid"><span>Claude cost</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Mục mới đặt ngay sau AI Desk, nhãn BETA dùng đúng màu Beta đang có. Trang nằm ở route riêng ngoài <code>/admin</code>, dùng lại đúng các component của trang team, chỉ ẩn ô Claude cost. <b>My versions:</b> người dùng tạo và sửa version của mình bằng Manage versions như team; tối đa 3 version chạy cùng lúc, tính riêng cho mỗi người; chỉ chủ của version thấy; không tính vào cổng của team. Team versions xem được, không sửa được. <b>Label signals:</b> nhãn lưu kèm người chấm; cổng 50 nhãn chỉ tính nhãn của team, nhãn của người dùng test hiện riêng để đối chiếu. Team vẫn dùng trang cũ trong Signal Analysis.</p>
+  </div>
+
+  <div class="frame">
+    <span class="flabel">2 · Bật cho từng tài khoản (Admin › Users)</span>
+    <div class="ghost">
+      <div class="scroll"><table>
+        <thead><tr><th>Email</th><th>SoDEX account</th><th>Bots</th><th>Volume bots</th><th>AI Desk</th><th>Adaptive DCA</th><th class="new">Signal Research</th></tr></thead>
+        <tbody>
+          <tr><td>a•••@gmail.com</td><td>••4f2a</td><td>3</td><td><span class="tg on"></span></td><td><span class="tg on"></span></td><td><span class="tg on"></span></td><td><span class="tg on"></span></td></tr>
+          <tr><td>b•••@gmail.com</td><td>Not connected</td><td>0</td><td><span class="tg on"></span></td><td><span class="tg on"></span></td><td><span class="tg on"></span></td><td><span class="tg"></span></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <p class="note">Thêm cột <b>Signal Research</b> cạnh AI Desk / Adaptive DCA, cùng kiểu công tắc, <b>mặc định tắt</b>. Bật / tắt ghi audit log như các cờ khác. Tắt thì mục biến mất khỏi sidebar và route trả về trang Not found. Team luôn thấy.</p>
+  </div>
+</div>

@@ -1,6 +1,6 @@
 {
-  "id": "22b1e417-e8a5-4c31-9dd1-2af32c56f35c",
-  "prevId": "c0049bd6-5c92-40d4-b87d-f80dc874e646",
+  "id": "8c59de08-7d9a-42e3-9700-8992c87a8878",
+  "prevId": "35174e2c-96f6-4971-b949-2b28122c3b70",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7879,6 +7879,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "owner_user_id": {
+          "name": "owner_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -7906,6 +7912,27 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "signal_bot_versions_owner_status_idx": {
+          "name": "signal_bot_versions_owner_status_idx",
+          "columns": [
+            {
+              "expression": "owner_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -7949,6 +7976,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "signal_bot_versions_owner_user_id_users_id_fk": {
+          "name": "signal_bot_versions_owner_user_id_users_id_fk",
+          "tableFrom": "signal_bot_versions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_user_id"
           ],
           "columnsTo": [
             "id"
@@ -8015,6 +8055,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'trace'"
+        },
+        "labeler": {
+          "name": "labeler",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'team'"
         },
         "created_at": {
           "name": "created_at",
@@ -8097,6 +8144,10 @@
         "signal_classification_labels_source_ck": {
           "name": "signal_classification_labels_source_ck",
           "value": "\"signal_classification_labels\".\"source\" in ('random', 'trace')"
+        },
+        "signal_classification_labels_labeler_ck": {
+          "name": "signal_classification_labels_labeler_ck",
+          "value": "\"signal_classification_labels\".\"labeler\" in ('team', 'tester')"
         },
         "signal_classification_labels_verdict_ck": {
           "name": "signal_classification_labels_verdict_ck",
@@ -11224,6 +11275,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "signal_research": {
+          "name": "signal_research",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "twofa_enabled": {
           "name": "twofa_enabled",

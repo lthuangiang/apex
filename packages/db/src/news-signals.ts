@@ -1,4 +1,4 @@
-import { and, asc, eq, gt } from "drizzle-orm";
+import { and, asc, eq, gte } from "drizzle-orm";
 
 import type { Db } from "./client";
 import type { DbTx } from "./read-only";
@@ -58,12 +58,15 @@ export async function insertNewsSignalDelivery(
   return rows.length > 0;
 }
 
-/** Tín hiệu còn hạn (`expires_at` > `now`), cũ trước, tối đa `limit` dòng. */
+/**
+ * Tín hiệu còn hạn (`expires_at` ≥ `now`), cũ trước, tối đa `limit` dòng. Đúng mốc `expires_at` vẫn còn hạn, khớp
+ * `newsSignalStale` (PM chốt khi review #435).
+ */
 export async function unexpiredNewsSignals(q: Q, now: Date, limit = 500): Promise<NewsSignalRow[]> {
   return q
     .select()
     .from(newsSignals)
-    .where(gt(newsSignals.expiresAt, now))
+    .where(gte(newsSignals.expiresAt, now))
     .orderBy(asc(newsSignals.decidedAt), asc(newsSignals.id))
     .limit(limit);
 }
