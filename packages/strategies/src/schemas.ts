@@ -30,7 +30,7 @@ export const STRATEGY_SCHEMAS = {
   [Strategy.volumeFarm]: volumeFarmSchema,
   [Strategy.adaptiveDca]: adaptiveDcaSchema,
   [Strategy.copyTrade]: copyTradeSchema,
-  // Bot tín hiệu tin tức mainnet (#419): chỉ có schema; module chạy và dòng trong `STRATEGIES` (engines: perps) thêm ở PR
-  // strategies. Không nằm trong `BOT_STRATEGIES`, nên route tạo bot chung không tạo được.
+  // Bot tín hiệu tin tức mainnet (#419): module ở `news-signal/`, dòng `STRATEGIES` engines perps. Không nằm trong
+  // `BOT_STRATEGIES`, nên route tạo bot chung không tạo được.
   [Strategy.newsSignal]: newsSignalConfigSchema,
 } as const satisfies Record<string, z.ZodType>;

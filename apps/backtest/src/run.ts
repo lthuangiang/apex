@@ -13,7 +13,7 @@ import {
   type BacktestResult,
 } from "@drift/shared";
 import type { SodexRestClient } from "@drift/sodex";
-import { backtest, marketsOf, type Candle } from "@drift/strategies";
+import { backtest, backtestSupported, marketsOf, type Candle } from "@drift/strategies";
 import { and, asc, eq, gte, lt } from "drizzle-orm";
 
 // Worker backtest (BACKTEST.md mục 11.2): đọc job, nạp nến + funding, chạy `backtest()` của packages/strategies
@@ -136,6 +136,8 @@ export async function loadBacktestData(
   from: number,
   to: number,
 ): Promise<Parameters<typeof backtest>[2]> {
+  // Chiến lược không có backtest (bot `news_signal`, #419): báo rõ `not_supported`, không chạy mô phỏng sai.
+  if (!backtestSupported(strategy)) throw new Unavailable("not_supported");
   const step = BACKTEST_INTERVALS[interval];
   const [spot, perps] = await Promise.all([
     waitOnLimit(() => deps.rest.getSpotSymbols()),

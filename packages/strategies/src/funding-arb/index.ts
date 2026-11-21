@@ -554,6 +554,10 @@ export function stepFundingArb(
     case "fair":
     case "book":
     case "leaderFill":
+    case "newsSignal":
+    case "newsCommand":
+    case "newsStop":
+    case "paused":
     case "leaderPosition":
       return { actions: [], state: s };
   }

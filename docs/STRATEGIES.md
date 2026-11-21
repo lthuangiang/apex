@@ -348,3 +348,84 @@ Thiết kế: canvas "AI Desk redesign", hàng "Copy Trading v1" (artboard `Lead
 - **Chỗ copy realtime:** tối đa 8 trader Hyperliquid toàn hệ thống (1 IP, DEC-163 mục 10). Trader đã có người copy luôn copy được; đầy thì nút thành "Follow · copy later".
 - **Không có** "Try with fake money" cho Copy Trade (DEC-105).
 
+
+## S13. News Signal (`news_signal`) · Perps · builder fee: mọi lần khớp (0.01%, DEC-360) · **chỉ mainnet, tạo từ trang Signal research**
+
+Bot tiền thật chạy theo tín hiệu tin tức dùng chung (`news_signals`, #419). Bot được tạo mới từ một Signal research version mà user thấy được, bằng hộp thoại "Start bot from a version": trình sửa version có sẵn, điền sẵn config của version, thêm các ô của bot. Không có thẻ ở Strategy Lab, không nằm trong `BOT_STRATEGIES`. **Không có backtest**: `backtest()` ném `BacktestNotSupportedError`, service backtest trả `unavailable` / `not_supported`. Lý do là tín hiệu đến từ tin tức, không suy ra được từ nến. Module: `packages/strategies/src/news-signal`. Schema: `newsSignalConfigSchema` (`packages/shared/src/signal-research/news-signal.ts`).
+
+Câu chữ theo mockup đã duyệt ("Start bot from a version", bản online https://claude.ai/artifact/78mjJu1uaiZgjQnGTScB7q). Các field của version (loại tin, TP / SL multiple, nguồn trễ…) giữ label của trình sửa version.
+
+| Step | Field | Default | Rule / help text | Error message |
+|---|---|---|---|---|
+| — | Version | version đang chọn | Chỉ chọn version mà user thấy được (team hoặc My versions); config được chép sang bot, version gốc vẫn chạy. Lưu ở `bots.signal_version_id` | — |
+| — | SoDEX account | account đã kết nối | Phải đã approve builder fee | — |
+| 2 | Markets (`assets`) | như version | All / Only these / All except + Crypto / Stocks; **chỉ được thu hẹp** so với version (`narrowsVersion`, kiểm ở API và engine) | — **[confirm]** câu lỗi khi mở rộng |
+| 2 | Min level (`minLevel`) | như version | Low / Medium / High; **chỉ được nâng** | — **[confirm]** |
+| 3 | Size per trade (`sizeUsdc`) | — | > 0, ≤ 200 USDC (`NEWS_SIGNAL_LIVE_MAX_USDC`); engine còn kiểm giá trần × khối lượng ≤ 200 | Must be above 0 / Above the 200 USDC cap |
+| 3 | Leverage (`leverage`) | 1× | Cố định 1× (`z.literal(1)`), engine `setLeverage(1)`, margin isolated | — |
+| 4 | Max open trades (`maxOpenTrades`) | như version | 1–1000 | như trình sửa version |
+| 4 | Max new trades a day (`maxNewTradesPerDay`) | như version | 1–1000 hoặc Off; đếm theo ngày UTC | như trình sửa version |
+| 4 | Opposite news (`onOppositeNews`) | Keep the trade | Keep / Close; không bao giờ đảo vị thế | — |
+
+**Lọc tín hiệu theo từng bot**, theo thứ tự. Mỗi lần bị loại, engine ghi `news_signal_deliveries` với reason code tương ứng:
+1. Tín hiệu đã xử lý thì không làm gì.
+2. Bot pause, hoặc đang Stop: `BOT_PAUSED`.
+3. Tín hiệu quyết định trước lúc Resume: `MISSED_WHILE_PAUSED`.
+4. Quá 120 s tính từ `decided_at`: `SIGNAL_STALE`. Đúng 120 s vẫn còn hạn.
+5. Loại tin bị tắt: `NEWS_TYPE_OFF`.
+6. Market không thuộc bot: `ASSET_NOT_IN_BOT`.
+7. Level thấp hơn Min level: `LEVEL_TOO_LOW`.
+8. Nguồn trễ quá `maxSourceDelayMinutes`: `SOURCE_LATE`.
+9. Story đã vào lệnh trong 7 ngày: `SAME_STORY`. Story chưa vào lệnh mà bài đầu đã quá 2 giờ: `STORY_TOO_OLD`.
+10. Bot đã có lệnh ở market đó:
+    - cùng chiều: `NEWS_TRADE_ALREADY_OPEN`;
+    - ngược chiều với Keep: `NEWS_TRADE_ALREADY_OPEN`;
+    - ngược chiều với Close: đóng lệnh bằng market (`OPPOSITE_NEWS`).
+11. Bot khác cùng account đang có lệnh ở market đó: `ACCOUNT_MARKET_BUSY`.
+12. Chạm Max open: `LIMIT_OPEN`. Chạm Max mỗi ngày: `LIMIT_DAY`.
+13. Không có biến động thường gặp theo giờ giữ của loại tin: `NOT_ENOUGH_HISTORY`.
+14. Không có giá:
+    - thiếu sổ lệnh: `NO_BOOK_DATA`;
+    - thiếu market rules: `NO_SODEX_PRICE`.
+15. TP < `minTpCostMultiple` × chi phí khứ hồi (taker + builder, cộng spread): `TOO_THIN_TO_TRADE` hoặc `MOVE_TOO_SMALL_FOR_COST`.
+16. Vượt trần 200: `NEWS_CAP_EXCEEDED`. Dưới min size SoDEX: `BELOW_MIN_ORDER_SIZE`.
+
+**Lệnh:**
+- **clOrdID:** `clOrdId(botId, seq, tag, attempt)`.
+  - `seq` là số thứ tự lệnh news của bot, không theo version bot.
+  - Tag:
+    - `ns:<signalId>:entry`
+    - `ns:<signalId>:e<n>:tp`
+    - `ns:<signalId>:e<n>:sl` (kết thúc bằng `:sl` để engine nhận ra stop gốc)
+    - `ns:<signalId>:hold`
+    - `ns:<signalId>:close:<cmdSeq>`
+    - `ns:<signalId>:stop`
+    - `ns:<signalId>:opposite`
+    - `ns:<signalId>:sl_rejected`
+  - Lần gửi lại sau khi khớp một phần thêm `:<round>`.
+  - `attempt` chỉ tăng khi lệnh bị từ chối rõ ràng (kể cả `NOT_PLACED`).
+- **Vào lệnh:** limit IOC tại `newsEntryLimitPrice`. Không khớp gì thì ghi `ENTRY_NOT_FILLED`, story không bị khoá.
+- **Lệnh vào kết thúc mà có khớp:**
+  - SL là stop gốc SoDEX: reduce-only, đóng cả vị thế, giá vào ∓ `slMultiple` × biến động thường gặp.
+  - TP là limit reduce-only GTC theo phần đã khớp, giá vào ± `tpMultiple` × biến động thường gặp.
+  - Cả hai làm tròn tick về phía gần giá vào.
+- **Fill muộn của lệnh vào:** đặt TP mới theo khối lượng mới (`e<n+1>`), SoDEX xác nhận rồi mới huỷ TP cũ.
+- **OCO:** vị thế về 0 thì huỷ mọi lệnh còn lại.
+- **Edit TP/SL:**
+  - Đặt lệnh mới, chờ `orderAck` của mọi chân, rồi mới huỷ lệnh cũ.
+  - Một chân bị từ chối: huỷ chân mới đã được nhận, giữ lệnh cũ, trả `rejected`.
+  - Lệnh mới chưa có kết quả: lần sửa sau trả `EDIT_IN_PROGRESS`.
+  - Giá sai phía: `INVALID_PRICE`.
+- **Đóng** (max hold, Close now, Opposite news Close, Stop Close all, SL bị từ chối):
+  - Gửi market IOC reduce-only, vị thế về 0 mới huỷ TP/SL.
+  - Bị từ chối 3 lần thì thôi và bật Needs attention. TP/SL vẫn còn trên SoDEX.
+  - Lệnh đóng đang chạy: không gửi lệnh đóng thứ hai (`CLOSE_IN_PROGRESS`).
+- **SL bị từ chối sau khi lệnh vào đã khớp:** đóng bằng market, rồi pause `ORDER_REJECTED`.
+- **TP bị từ chối hoặc mất:** không tự đặt lại. SL và max hold vẫn bảo vệ, bot bật Needs attention.
+- **Pause:** không mở lệnh mới. TP/SL vẫn ở lại và max hold vẫn chạy.
+- **Resume:** không vào bù tín hiệu đã lỡ.
+- **Stop "Keep open trades":** engine không huỷ các lệnh mà `keepOnStop` trả về, và từ đó không áp max hold nữa.
+- **Stop "Close all now":** đóng từng lệnh đang mở.
+- **Sửa bot** (`applyVersion`): chỉ áp khi không còn lệnh nào.
+
+Sự kiện riêng của chiến lược: `newsSignal`, `newsCommand`, `newsStop`, `paused`. Hành động riêng: `signalOutcome` (ghi `news_signal_deliveries`) và `commandResult` (ghi `news_signal_commands`). Engine nối các sự kiện và hành động này ở PR engine.
