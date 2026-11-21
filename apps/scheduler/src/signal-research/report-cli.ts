@@ -112,6 +112,8 @@ try {
           {
             sosoMonthlyLimit: env.SIGNAL_SOSO_MONTHLY_LIMIT,
             claudeDailyInputBudget: env.SIGNAL_CLAUDE_DAILY_INPUT_TOKENS,
+            // CLI chạy trong container scheduler: cùng env với scheduler.
+            cycleMinutes: env.SIGNAL_NEWS_CYCLE_MINUTES,
           },
           check,
         ),
