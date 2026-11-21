@@ -878,9 +878,6 @@ importers:
       '@drift/shared':
         specifier: workspace:*
         version: link:../shared
-      '@drift/sodex':
-        specifier: workspace:*
-        version: link:../sodex
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
@@ -890,9 +887,6 @@ importers:
       uuid:
         specifier: 14.0.3
         version: 14.0.3
-      viem:
-        specifier: 2.57.12
-        version: 2.57.12(typescript@6.0.3)(zod@4.6.7)
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -959,9 +953,15 @@ importers:
 
   packages/sodex:
     dependencies:
+      '@drift/db':
+        specifier: workspace:*
+        version: link:../db
       '@drift/shared':
         specifier: workspace:*
         version: link:../shared
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
       viem:
         specifier: 2.57.12
         version: 2.57.12(typescript@6.0.3)(zod@4.6.7)

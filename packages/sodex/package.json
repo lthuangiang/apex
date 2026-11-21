@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./reconcile": "./src/reconcile.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
@@ -12,7 +13,9 @@
     "test:smoke": "SODEX_SMOKE=1 vitest run"
   },
   "dependencies": {
+    "@drift/db": "workspace:*",
     "@drift/shared": "workspace:*",
+    "drizzle-orm": "0.45.4",
     "viem": "2.57.12",
     "zod": "4.6.7"
   },

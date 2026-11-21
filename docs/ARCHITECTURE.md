@@ -156,7 +156,8 @@ drift/
     web/ api/ realtime/ engine/ signer/ marketdata/ scheduler/ jobs/ reco/ backtest/
   packages/
     shared/    zod schema, type, enum (bot state, reason code, strategy, order status), reco config
-    sodex/     client REST/WS SoDEX, helper ký EIP-712, tính payload hash
+    sodex/     client REST/WS SoDEX, helper ký EIP-712, tính payload hash; subpath `@drift/sodex/reconcile`: đối soát request ký `unknown` (đọc SoDEX, ghi DB; api + jobs dùng chung, #336)
+    db/        chỉ truy cập DB (schema drizzle, migration, query); không phụ thuộc `@drift/sodex` hay viem
     strategies/logic thuần của 8 chiến lược (dùng chung cho engine và backtest)
     ui/        design token + component dùng chung
   docker-compose.yml

@@ -1,10 +1,3 @@
-import { AppError, ErrorCode, SignatureAction, SignatureRequestStatus } from "@drift/shared";
-import { blocksWithdrawAndTransfer, readDriftApproval, type SodexRestClient } from "@drift/sodex";
-import { and, asc, eq, ne, sql } from "drizzle-orm";
-import { getAddress, isAddressEqual, type Address } from "viem";
-import { z } from "zod";
-
-import type { Db } from "./client";
 import {
   apiKeys,
   auditLog,
@@ -12,11 +5,22 @@ import {
   outbox,
   sodexAccounts,
   sodexSignatureRequests,
-} from "./schema";
+  type Db,
+} from "@drift/db";
+import { AppError, ErrorCode, SignatureAction, SignatureRequestStatus } from "@drift/shared";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
+import { getAddress, isAddressEqual, type Address } from "viem";
+import { z } from "zod";
+
+import { readDriftApproval } from "./approvals";
+import { blocksWithdrawAndTransfer } from "./permissions";
+import type { SodexRestClient } from "./rest/client";
 
 // Đối soát request ký SoDEX đã gửi mà chưa rõ kết quả (`unknown`, quy tắc 1.7): chỉ ĐỌC lại trạng thái thật trên SoDEX
 // (key, builder approval), không bao giờ gửi lại. Một hàm dùng chung cho endpoint `POST .../reconciliation` của api và
-// vòng đối soát nền của jobs (#327), để hai đường luôn kết luận giống nhau.
+// vòng đối soát nền của jobs (#327), để hai đường luôn kết luận giống nhau. Nằm ở `@drift/sodex/reconcile` (#336), không
+// ở `@drift/db`: `@drift/db` chỉ truy cập DB, không phụ thuộc client SoDEX hay viem. Subpath riêng để entry chính của
+// `@drift/sodex` (signer, engine, marketdata…) không kéo theo DB.
 
 /** SoDEX chỉ nhận nonce trong (T − 2 ngày, T + 1 ngày) (SODEX.md mục 5.6): quá 2 ngày thì request không còn áp được. */
 export const SODEX_NONCE_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
