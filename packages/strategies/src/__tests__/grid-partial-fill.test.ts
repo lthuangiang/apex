@@ -330,7 +330,7 @@ describe("grid partial fills (#261)", () => {
   );
 });
 
-// #426 (DEC-TBD-grid-late-fills): fill của chính lệnh đó tới SAU khi SoDEX đã báo lệnh kết thúc (`orderDone` / xác nhận
+// #426 (DEC-362): fill của chính lệnh đó tới SAU khi SoDEX đã báo lệnh kết thúc (`orderDone` / xác nhận
 // huỷ). Lịch sử lệnh REST của SoDEX trễ hơn trade (DEC-303), nên đối soát có thể ghi trade sau khi lệnh đã kết thúc.
 describe("grid late fills after the order ended (#426)", () => {
   it("partial fill → orderDone → late fill: booked, and one more counter for just the late part", () => {

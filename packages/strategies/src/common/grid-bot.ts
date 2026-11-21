@@ -67,7 +67,7 @@ export interface GridOrder {
 }
 
 /**
- * Lệnh trong `cancelled` (#426, DEC-TBD-grid-late-fills). `level`: mức của lệnh; −1 = lệnh market mở vị thế ban đầu; −2 =
+ * Lệnh trong `cancelled` (#426, DEC-362). `level`: mức của lệnh; −1 = lệnh market mở vị thế ban đầu; −2 =
  * lệnh version cũ đã kết thúc (không có mức trong grid hiện tại). `countered`: tổng khối lượng đã có lệnh đối ứng; có
  * field này thì fill tới muộn được đặt thêm đối ứng cho phần chưa có (lệnh kết thúc / bị huỷ vì vượt giới hạn khi grid
  * đang chạy, DEC-359); thiếu thì fill muộn chỉ vào sổ cái (lệnh huỷ lúc dừng, lệnh version cũ, lệnh khởi tạo).
