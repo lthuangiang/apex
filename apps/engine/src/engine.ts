@@ -574,6 +574,12 @@ export interface EngineDeps {
    */
   lookupBudget?: number;
   /**
+   * Số bot tối đa cùng chạy bước `clock` trong cả worker, mọi shard cộng lại (#224). Account chạy song song, các bot của cùng
+   * một account vẫn tuần tự (nonce ký theo địa chỉ ví tăng đều như trước). `main.ts` đặt `ENGINE_CLOCK_CONCURRENCY`
+   * (mặc định 4, nhỏ hơn pool DB 10 kết nối); mặc định của class là 1 (tuần tự như trước).
+   */
+  clockConcurrency?: number;
+  /**
    * User stream SoDEX của các account (main.ts). Engine mở stream cho account ngay khi nạp bot thật. Lệnh mở / tăng vị
    * thế chỉ được gửi khi stream của engine (Spot / Perps) của lệnh đã được SoDEX nhận subscribe: SoDEX không gửi lại tin
    * khớp đã qua. Lệnh giảm vị thế, stop loss, lệnh đóng và Stop của người dùng luôn đi. Không truyền (test) thì coi như
@@ -944,6 +950,12 @@ export class Engine {
   /** Lần gần nhất gửi đỉnh sổ lệnh cho bot (`BOOKS_EVERY_MS`). */
   readonly #booksFed = new Map<string, number>();
   readonly #books = new Map<string, { at: number; book: BookTop | null }>();
+  /**
+   * Lần đọc đang chạy của `#snapshot` / `#bookTop` theo market (#224): bước `clock` chạy song song nên nhiều bot cùng market
+   * có thể cùng trượt cache; chúng chờ chung một lần đọc, số lời gọi SoDEX không tăng so với khi chạy tuần tự.
+   */
+  readonly #snapshotLoads = new Map<string, Promise<MarketSnapshot>>();
+  readonly #bookLoads = new Map<string, Promise<BookTop | null>>();
   readonly #openChecks = new Map<string, number>();
   /** Lần thử lại gần nhất cho lệnh đã bỏ cuộc mà chiến lược chưa được báo kết thúc (`TickSnapshot.gaveUp`). */
   readonly #gaveUpRetryAt = new Map<string, number>();
@@ -1022,6 +1034,8 @@ export class Engine {
   /** Shard đang chạy các bước của một vòng (có thể kéo dài qua vòng sau khi SoDEX chậm). */
   readonly #lanes = new Map<number, Promise<void>>();
   readonly #shardLimit = new Limiter(SHARD_CONCURRENCY);
+  /** Giới hạn bot cùng chạy bước `clock` của cả worker (#224); tạo trong constructor theo `clockConcurrency`. */
+  readonly #clockLimit: Limiter;
   /** Lần gia hạn lease do một làn shard gọi, dùng chung cho các làn khác cần cùng lúc. */
   #renewing: Promise<void> | null = null;
 
@@ -1034,6 +1048,7 @@ export class Engine {
       orderbook: () => Promise.resolve(null),
       tickWaitMs: Number.POSITIVE_INFINITY,
       lookupBudget: Number.POSITIVE_INFINITY,
+      clockConcurrency: 1,
       health: () => undefined,
       ...deps,
       builderExempt: deps.builderExempt ?? true,
@@ -1044,6 +1059,7 @@ export class Engine {
       userStreams: deps.userStreams,
     };
     this.#clockMono = deps.monotonic ?? (() => performance.now());
+    this.#clockLimit = new Limiter(Math.max(1, Math.floor(this.#d.clockConcurrency)));
     this.#leaseSet = new LeaseSet<number>({
       redis: this.#d.redis,
       ttlMs: this.#d.leaseTtlMs,
@@ -1305,41 +1321,70 @@ export class Engine {
   async #clock(shard: number): Promise<void> {
     const at = this.#d.now();
     const paper = this.#d.paper;
-    if (paper !== undefined)
-      for (const r of [...this.#runners.values()].filter((x) => x.shard === shard && x.paper)) {
-        if (at - (this.#paperSnapAt.get(r.botId) ?? 0) < PAPER_SNAPSHOT_MS) continue;
-        this.#paperSnapAt.set(r.botId, at);
-        await paper.snapshot(r.botId, at);
-      }
-    for (const r of [...this.#runners.values()].filter(
-      (x) => x.shard === shard && CLOCKED.has(x.strategy),
-    )) {
-      const every = SNAPSHOT_EVERY_MS[r.strategy];
-      if (every !== undefined) {
-        // Nhịp dữ liệu tính theo từng bot: nhiều bot (kể cả của khách khác) cùng market đều nhận được.
-        const due = at - (this.#snapshotFed.get(r.botId) ?? 0) >= every;
-        const market = due ? await this.#snapshot(r.market, at) : null;
-        if (due) this.#snapshotFed.set(r.botId, at);
-        await this.#feed(
-          r,
-          market === null ? { type: "timer", at } : { type: "timer", at, market },
-        );
-      } else {
-        const booksEvery = BOOKS_EVERY_MS[r.strategy];
-        const due =
-          booksEvery !== undefined && at - (this.#booksFed.get(r.botId) ?? 0) >= booksEvery;
-        if (!due) {
-          await this.#feed(r, { type: "timer", at });
-          continue;
-        }
-        this.#booksFed.set(r.botId, at);
-        const books: Record<string, BookTop | null> = {};
-        // Rebalancing chỉ có market Spot.
-        for (const m of this.#marketsOf(r.market, r.config))
-          books[m] = await this.#bookTop(m, at, "spot");
-        await this.#feed(r, { type: "timer", at, books });
-      }
+    const runners = [...this.#runners.values()].filter(
+      (x) => x.shard === shard && ((paper !== undefined && x.paper) || CLOCKED.has(x.strategy)),
+    );
+    // Song song theo account, tuần tự trong account (#224): việc của một bot thật có thể gửi lệnh, nonce ký theo địa chỉ ví
+    // của account nên các bot cùng account giữ đúng thứ tự cũ. Bot paper không ký gì (PaperGateway): mỗi bot một nhóm.
+    const groups = new Map<string, Runner[]>();
+    for (const r of runners) pushTo(groups, r.paper ? `paper:${r.botId}` : r.account.id, r);
+    let fenced = false;
+    await eachLimited([...groups.values()], Number.POSITIVE_INFINITY, async (list) => {
+      for (const r of list)
+        await this.#clockLimit.run(async () => {
+          // Shard đã bị fencing ở nhóm khác: không bước nào nữa (mọi lần ghi sau đều bị từ chối).
+          if (fenced) return;
+          // Lỗi của một bot (DB, SoDEX, mạng) chỉ bỏ nhịp của bot đó; bot sau, kể cả cùng account, vẫn chạy. Lỗi fencing:
+          // shard không còn của mình, ném lên để bỏ shard như cũ.
+          try {
+            await this.#clockOne(r, at);
+          } catch (error) {
+            if (error instanceof FencedError) {
+              fenced = true;
+              throw error;
+            }
+            this.#d.log.warn(
+              { err: error, botId: r.botId, accountId: r.account.id, phase: "clock" },
+              "clock step failed for one bot; retrying next tick",
+            );
+          }
+        });
+    });
+  }
+
+  /** Nhịp đồng hồ của một bot: chụp số dư paper (bot paper) rồi `timer` (chiến lược chạy theo thời gian). */
+  async #clockOne(r: Runner, at: number): Promise<void> {
+    const paper = this.#d.paper;
+    if (
+      paper !== undefined &&
+      r.paper &&
+      at - (this.#paperSnapAt.get(r.botId) ?? 0) >= PAPER_SNAPSHOT_MS
+    ) {
+      this.#paperSnapAt.set(r.botId, at);
+      await paper.snapshot(r.botId, at);
     }
+    if (!CLOCKED.has(r.strategy)) return;
+    const every = SNAPSHOT_EVERY_MS[r.strategy];
+    if (every !== undefined) {
+      // Nhịp dữ liệu tính theo từng bot: nhiều bot (kể cả của khách khác) cùng market đều nhận được.
+      const due = at - (this.#snapshotFed.get(r.botId) ?? 0) >= every;
+      const market = due ? await this.#snapshot(r.market, at) : null;
+      if (due) this.#snapshotFed.set(r.botId, at);
+      await this.#feed(r, market === null ? { type: "timer", at } : { type: "timer", at, market });
+      return;
+    }
+    const booksEvery = BOOKS_EVERY_MS[r.strategy];
+    const due = booksEvery !== undefined && at - (this.#booksFed.get(r.botId) ?? 0) >= booksEvery;
+    if (!due) {
+      await this.#feed(r, { type: "timer", at });
+      return;
+    }
+    this.#booksFed.set(r.botId, at);
+    const books: Record<string, BookTop | null> = {};
+    // Rebalancing chỉ có market Spot.
+    for (const m of this.#marketsOf(r.market, r.config))
+      books[m] = await this.#bookTop(m, at, "spot");
+    await this.#feed(r, { type: "timer", at, books });
   }
 
   /** Đỉnh sổ lệnh của một market, dùng chung giữa các bot trong `BOOK_CACHE_MS`; đọc lỗi → null. */
@@ -1347,9 +1392,20 @@ export class Engine {
     const key = `${engine}:${market}`;
     const hit = this.#books.get(key);
     if (hit !== undefined && at - hit.at < BOOK_CACHE_MS) return hit.book;
-    const book = await this.#d.orderbook(market, engine).catch(() => null);
-    this.#books.set(key, { at, book });
-    return book;
+    const loading = this.#bookLoads.get(key);
+    if (loading !== undefined) return loading;
+    const load = this.#d
+      .orderbook(market, engine)
+      .catch(() => null)
+      .then((book) => {
+        this.#books.set(key, { at, book });
+        return book;
+      })
+      .finally(() => {
+        this.#bookLoads.delete(key);
+      });
+    this.#bookLoads.set(key, load);
+    return load;
   }
 
   /**
@@ -1359,6 +1415,16 @@ export class Engine {
   async #snapshot(market: string, at: number): Promise<MarketSnapshot> {
     const hit = this.#snapshots.get(market);
     if (hit !== undefined && at - hit.at < FARM_SNAPSHOT_MS) return hit.snap;
+    const loading = this.#snapshotLoads.get(market);
+    if (loading !== undefined) return loading;
+    const load = this.#loadSnapshot(market, at).finally(() => {
+      this.#snapshotLoads.delete(market);
+    });
+    this.#snapshotLoads.set(market, load);
+    return load;
+  }
+
+  async #loadSnapshot(market: string, at: number): Promise<MarketSnapshot> {
     const rows = await this.#d.db
       .select()
       .from(candles1m)

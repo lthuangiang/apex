@@ -155,6 +155,8 @@ services:
       <<: *app-env
       ENGINE_SHARDS: "64"
       ENGINE_SHARD_LEASE_TTL_MS: "15000"
+      # Số bot cùng chạy bước clock trong một worker (#224), 1–8, dưới pool DB 10 kết nối.
+      ENGINE_CLOCK_CONCURRENCY: ${ENGINE_CLOCK_CONCURRENCY:-4}
       SIGNER_URL: https://signer:8090
       SIGNER_CLIENT_CERT: /certs/engine.crt
       SIGNER_CLIENT_KEY: /certs/engine.key

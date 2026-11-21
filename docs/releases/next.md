@@ -17,9 +17,10 @@ Not financial advice. Past results are not a forecast.
 - CI: test của package phụ thuộc chạy lại khi dependency đổi (bỏ `turbo run test --only`; ví dụ đổi `@drift/strategies` thì chạy lại test engine / backtest), PR chỉ đổi docs vẫn dùng cache (#414, DEC-358).
 - Signal research: random baseline phát lại nến từ phút sau lúc vào lệnh thật (`opened_clock_at`), không từ đầu chu kỳ; lệnh cũ không có cột này giữ `opened_at`, baseline đã lưu không tính lại (#405, DEC-354). **Chưa merge.**
 - Retention 45 ngày của scheduler bỏ thêm `bot_events.payload.quote` (snapshot báo giá Market Making, DEC-312); dòng Decisions và phần còn lại của payload giữ nguyên. Lượt đầu tự tạo index `bot_events_quote_idx` bằng CONCURRENTLY, không cần bước tay (#259, DEC-TBD, DEPLOY 2.14). **Chưa merge.**
+- Engine: bước `clock` (nhịp đồng hồ của Volume Farm, Market Making, TWAP, Recurring Buy, Rebalancing, Adaptive DCA, chụp số dư bot paper) chạy song song theo account, tối đa `ENGINE_CLOCK_CONCURRENCY` bot cùng lúc (mặc định 4); bot cùng account vẫn lần lượt; lỗi của một bot không còn bỏ nhịp của các bot khác trong shard; đọc sổ lệnh / nến của một market dùng chung một lần đọc (#224, DEC-TBD-engine-clock-parallel). **Chưa merge.**
 
 **Migration (chạy khi deploy):** `0057_sr_articles_collected_idx` (index `signal_articles(collected_at)`, #413); `0058_sr_menu_beta` (`users.signal_research`, `signal_bot_versions.owner_user_id` + trigger trần 3 version theo chủ, `signal_classification_labels.labeler`; #423).
 
 **Bật Signal Research cho tài khoản test (#423):** sau deploy, team vào Admin › Users, cột **Signal Research**, bấm **Turn on** ở dòng của tài khoản đó (ghi audit `admin.signal_research`). Người đó tải lại trang sẽ thấy mục Signal Research · BETA ngay sau AI Desk. Tắt bằng **Turn off**: mục biến mất, route trả Not found, API trả 403 ngay, version đang chạy của họ tự pause (audit `signal_research_disabled`). Bật lại không tự resume; người đó tự Resume từng version.
 
-**Biến môi trường mới:** `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, tuỳ chọn, mặc định 10; DEPLOY mục 2.17).
+**Biến môi trường mới:** `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, tuỳ chọn, mặc định 10; DEPLOY mục 2.17); `ENGINE_CLOCK_CONCURRENCY` (engine, tuỳ chọn, 1–8, mặc định 4; DEPLOY mục 2.18).
