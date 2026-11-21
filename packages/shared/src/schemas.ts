@@ -18,6 +18,13 @@ export const uuidSchema = z.uuid();
 /** Header `Idempotency-Key` bắt buộc với mọi POST/PATCH/DELETE thay đổi trạng thái. */
 export const idempotencyKeySchema = z.uuid();
 export const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+/**
+ * `idempotency_keys.outcome` khi kết quả không rõ (DEC-334): handler lỗi khi có thể đã có tác dụng phụ, hoặc dòng bị bỏ
+ * dở ở trạng thái đang chạy (#319). Cùng key sau đó nhận 409 `reason: "unknown"`, không chạy lại (quy tắc 1.7).
+ */
+export const IDEMPOTENCY_FAILED_UNKNOWN = "failed_unknown";
+/** `idempotency_keys.error_code` của dòng đang chạy quá lâu mà jobs đánh dấu `failed_unknown` (#319). */
+export const IDEMPOTENCY_ABANDONED = "ABANDONED";
 
 export const PAGE_LIMIT_DEFAULT = 50;
 

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createDb, runMigrations, type Db } from "@drift/db";
+import { createDb, markAbandonedIdempotencyKeys, runMigrations, type Db } from "@drift/db";
 import { AppError, ErrorCode, IDEMPOTENCY_KEY_HEADER } from "@drift/shared";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -186,6 +186,46 @@ describe("idempotent() releases the key only before a side effect (#316)", () =>
     };
     await send(failed, "a");
     expect(errorOf((await send(failed, "b")).body).details).toEqual({});
+  });
+
+  it("#319: a request left in progress, marked ABANDONED by jobs, answers 409 unknown and never runs again", async () => {
+    const key = randomUUID();
+    let entered!: () => void;
+    const inside = new Promise<void>((resolve) => (entered = resolve));
+    let finish!: () => void;
+    const gate = new Promise<void>((resolve) => (finish = resolve));
+    step = async () => {
+      entered();
+      await gate;
+      return { ok: true };
+    };
+    // Request đầu treo giữa handler (như process api chết): dòng ở "đang chạy" từ 11 phút trước.
+    const first = send(key);
+    await inside;
+    await pool.query("update idempotency_keys set created_at = $2 where key = $1", [
+      key,
+      new Date(now.getTime() - 11 * 60_000),
+    ]);
+    expect((await markAbandonedIdempotencyKeys(db, now, 10 * 60_000)).length).toBe(1);
+    expect(await rowOf(key)).toEqual({
+      status_code: null,
+      outcome: "failed_unknown",
+      error_code: "ABANDONED",
+    });
+    const retry = await send(key);
+    expect(retry.statusCode).toBe(409);
+    expect(errorOf(retry.body)).toMatchObject({
+      code: "IDEMPOTENCY_KEY_CONFLICT",
+      details: { reason: "unknown", errorCode: "ABANDONED" },
+    });
+    expect(calls).toBe(1);
+    // Handler đầu kết thúc muộn: kết quả vẫn được coi là không rõ, không phát lại, không chạy lại.
+    finish();
+    await first;
+    const later = await send(key);
+    expect(later.statusCode).toBe(409);
+    expect(errorOf(later.body).details).toMatchObject({ reason: "unknown" });
+    expect(calls).toBe(1);
   });
 
   it("frees a failed_unknown key after 24 h", async () => {
