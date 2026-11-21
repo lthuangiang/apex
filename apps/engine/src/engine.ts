@@ -44,6 +44,7 @@ import {
   leverageSpecsOf,
   type LeverageSpec,
   NORMAL_REJECT_CODES,
+  type NotSentRejectCode,
   REASON_CODE_META,
   ReasonCode,
   type ReasonCode as Reason,
@@ -146,6 +147,13 @@ export function isNativeStop(o: { type: string; tag: string; reduceOnly: boolean
 }
 /** Tiêu đề Decisions của lệnh `unknown` (chỉ để hiển thị; trạng thái bền nằm ở cột của `orders`). */
 const UNKNOWN_DECISION = "Order result unknown";
+/**
+ * #260 (bổ sung từ #225): câu Decisions của `#unknownGaveUp`. Câu được ghi TRƯỚC khi đọc trade của lệnh (`#farmGaveUp` đọc
+ * sau), nên không được khẳng định "has no trades": chỉ nói điều đã biết (SoDEX đã nhận, giờ không còn trong lịch sử lệnh) và
+ * phần chưa biết (đã khớp bao nhiêu). Câu chữ mới, chờ PM duyệt.
+ */
+export const unknownGaveUpWhy = (clOrdID: string) =>
+  `${clOrdID}: SoDEX accepted it, but it is no longer in the order history, so DeskLabs can't confirm how much of it filled. Check this bot's position on SoDEX.`;
 
 /**
  * Lệnh làm tăng |vị thế| của bot (người dùng chốt, DEC-303): chỉ loại này phải chờ user stream.
@@ -757,7 +765,7 @@ export const REPAIR_DONE_DECISION = "Position checked on SoDEX";
  * Mã `orderReject` engine báo cho Volume Farm khi bỏ một lệnh reduce-only vì vị thế thật bằng 0 trong lúc lệch (không gửi
  * gì, như `not_sent`; review #253).
  */
-export const NO_REAL_POSITION = "NO_REAL_POSITION";
+export const NO_REAL_POSITION = "NO_REAL_POSITION" satisfies NotSentRejectCode;
 /** Câu giải thích đi kèm (câu chữ PM duyệt 2026-11-18, #253). */
 export const REPAIR_DONE_WHY = "DeskLabs read this bot's position on SoDEX and checked its ledger.";
 
@@ -4913,7 +4921,7 @@ export class Engine {
         botId: r.botId,
         type: "reconcile",
         decision: UNKNOWN_DECISION,
-        why: `${o.clOrdId}: SoDEX accepted it, but it is not in the order history and has no trades. Check this bot's position on SoDEX.`,
+        why: unknownGaveUpWhy(o.clOrdId),
         occurredAt: new Date(now),
       });
       if (!r.paper)

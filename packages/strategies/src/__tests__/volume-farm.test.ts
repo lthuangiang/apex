@@ -1135,6 +1135,54 @@ describe("volume farm — stop loss on SoDEX (DEC-118, DEC-120, DEC-125)", () =>
     expect(last(places(r.all))).toMatchObject({ type: "market", reduceOnly: true });
   });
 
+  describe("Decisions line for the stop on SoDEX (#260)", () => {
+    const why = (code: string) => {
+      const o = opened(cfg());
+      const id = o.s.xstop?.id ?? "";
+      const r = run(cfg(), [{ type: "orderReject", at: T0 + 1500, clOrdID: id, code }], o.s);
+      // Hành vi giữ nguyên ở mọi trường hợp: huỷ bản cũ, bot tự giữ SL, không thử lại trong lượt này.
+      expect(r.all).toContainEqual({ type: "cancel", clOrdID: id });
+      expect(r.s).toMatchObject({ xstop: null, xstopOff: true });
+      const l = logs(r.all);
+      expect(l.map((x) => x.decision)).toEqual(["Stop loss on SoDEX not set"]);
+      return l[0]?.why ?? "";
+    };
+
+    it("sent and rejected by SoDEX: says SoDEX rejected it, with the code", () => {
+      expect(why("-1")).toBe(
+        "SoDEX rejected it (code -1). The bot keeps watching its own stop loss for this trade.",
+      );
+    });
+
+    it("never sent because SoDEX shows no real position: says DeskLabs didn't send it", () => {
+      const w = why("NO_REAL_POSITION");
+      expect(w).toBe(
+        "DeskLabs didn't send it: SoDEX shows no open position for this bot. The bot keeps watching its own stop loss for this trade.",
+      );
+      expect(w).not.toContain("SoDEX rejected");
+    });
+
+    it.each(["signer_unavailable", "key_unusable", "market_info_unavailable", "stale_epoch"])(
+      "never sent (%s): says DeskLabs couldn't send it, never that SoDEX rejected it",
+      (code) => {
+        const w = why(code);
+        expect(w).toBe(
+          `DeskLabs couldn't send it to SoDEX (code ${code}), so SoDEX never saw it. The bot keeps watching its own stop loss for this trade.`,
+        );
+        expect(w).not.toContain("SoDEX rejected");
+      },
+    );
+
+    it("sent and accepted: no 'not set' line at all", () => {
+      const o = opened(cfg());
+      const id = o.s.xstop?.id ?? "";
+      const r = run(cfg(), [{ type: "orderAck", at: T0 + 1500, clOrdID: id }], o.s);
+      expect(logs(r.all).filter((l) => l.decision === "Stop loss on SoDEX not set")).toEqual([]);
+      expect(r.s.xstop?.id).toBe(id);
+      expect(r.s.xstopOff).not.toBe(true);
+    });
+  });
+
   it("stops trying on Paper, quietly", () => {
     const o = opened(cfg());
     const id = o.s.xstop?.id ?? "";
