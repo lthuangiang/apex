@@ -407,6 +407,13 @@
       "when": 1795271177362,
       "tag": "0057_sr_articles_collected_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1795282326142,
+      "tag": "0059_news_signal",
+      "breakpoints": true
     }
   ]
 }

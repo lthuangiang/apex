@@ -18,4 +18,6 @@ Not financial advice. Past results are not a forecast.
 
 **Migration (chạy khi deploy):** `0057_sr_articles_collected_idx` (index `signal_articles(collected_at)`, #413).
 
+- `0059_news_signal`: bảng `news_signals` (bất biến, trigger chặn sửa / xoá), `news_signal_deliveries`, `news_signal_trades`, `news_signal_commands` và cột `bots.signal_version_id` cho bot `news_signal` mainnet (#419 PR 2). Chỉ thêm bảng / cột, chưa có code ghi. Phải chạy sau `0058` của #423. **Chưa merge.**
+
 **Biến môi trường mới:** `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, tuỳ chọn, mặc định 10; DEPLOY mục 2.17).
