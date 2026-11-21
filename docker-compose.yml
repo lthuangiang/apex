@@ -217,6 +217,8 @@ services:
       TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
       DRIFT_TELEGRAM_BOT_TOKEN: ${DRIFT_TELEGRAM_BOT_TOKEN:-}
       DRIFT_APP_URL: https://${APP_HOST}
+      # Idempotency-Key đang chạy quá N phút → failed_unknown / ABANDONED (#319). Hai bản jobs chạy cùng được (UPDATE có điều kiện).
+      IDEMPOTENCY_ABANDONED_AFTER_MIN: ${IDEMPOTENCY_ABANDONED_AFTER_MIN:-10}
     deploy: { replicas: 2 }
 
   reco:              # recommendation + AI parameters engine (stateless)
