@@ -47,6 +47,7 @@ export * from "./signal-research/report";
 export * from "./signal-research/usage";
 export * from "./signal-research/display";
 export * from "./signal-research/versions";
+export * from "./signal-research/news-signal";
 export * from "./signal-research/experiments";
 export * from "./signal-research/labels";
 export * from "./signal-research/markets";

@@ -17,16 +17,20 @@ export const DEFAULT_CATALOG_FEATURES: CatalogFeatures = {
   aiDesk: true,
 };
 
+/** Chiến lược có thẻ ở Strategy Lab. `news_signal` (#419) tạo từ trang Signal research, không bao giờ có thẻ. */
+export type CatalogStrategy = Exclude<Strategy, typeof Strategy.newsSignal>;
+
 const VOLUME: readonly Strategy[] = [Strategy.volumeMaker, Strategy.volumeFarm];
 const EXPERIMENTAL: readonly Strategy[] = [Strategy.adaptiveDca, Strategy.copyTrade];
+const isCatalog = (k: Strategy): k is CatalogStrategy => k !== Strategy.newsSignal;
 
 /** Thứ tự thẻ: Market Making, Volume Builder (DEC-133), các chiến lược chính, rồi chiến lược theo cờ. */
 export function catalogFor(
   f: CatalogFeatures,
-  base: readonly Strategy[] = Object.values(Strategy).filter(
-    (k) => !VOLUME.includes(k) && !EXPERIMENTAL.includes(k),
+  base: readonly CatalogStrategy[] = Object.values(Strategy).filter(
+    (k): k is CatalogStrategy => isCatalog(k) && !VOLUME.includes(k) && !EXPERIMENTAL.includes(k),
   ),
-): Strategy[] {
+): CatalogStrategy[] {
   return [
     ...(f.volumeMaker ? [Strategy.volumeMaker] : []),
     ...(f.volumeFarm ? [Strategy.volumeFarm] : []),

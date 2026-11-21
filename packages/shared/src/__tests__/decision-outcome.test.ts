@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { decisionOutcome, NORMAL_REJECT_CODES, outcomeOrder } from "../api/bots";
+import {
+  decisionOutcome,
+  isNotSentReject,
+  NORMAL_REJECT_CODES,
+  NOT_SENT_REJECT_CODES,
+  outcomeOrder,
+} from "../api/bots";
 
 // BD-02: kết quả của một quyết định theo trạng thái thật của các lệnh nó đặt. BD-05: mã reject bình thường.
 
@@ -62,5 +68,15 @@ describe("outcome order (BD-02 links)", () => {
   it("is null without orders or outcome", () => {
     expect(outcomeOrder([], "filled")).toBeNull();
     expect(outcomeOrder([p("a", "filled", "1")], null)).toBeNull();
+  });
+});
+
+describe("NOT_SENT_REJECT_CODES (#260)", () => {
+  it("lists the codes of orders that never left DeskLabs; SoDEX reject codes are not in it", () => {
+    for (const c of ["key_unusable", "signer_unavailable", "NO_REAL_POSITION", "BOT_NOT_RUNNING"])
+      expect(isNotSentReject(c), c).toBe(true);
+    for (const c of ["-1", "PostOnly", "SELF_TRADE_BLOCKED", "REJECTED", "NOT_PLACED", ""])
+      expect(isNotSentReject(c), c).toBe(false);
+    expect(new Set(NOT_SENT_REJECT_CODES).size).toBe(NOT_SENT_REJECT_CODES.length);
   });
 });

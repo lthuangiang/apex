@@ -5,6 +5,7 @@ import {
   deskPerformanceSchema,
   EXIT_NOTE_MIN_SHARE,
   EXIT_NOTE_MIN_TRADES,
+  formatDecimal,
   PERFORMANCE_MIN_FILLS,
   PERFORMANCE_WINDOW_HOURS,
   type DeskPerformance,
@@ -42,7 +43,23 @@ function volume(v: string): string {
   if (n >= 10_000) return `${formatInteger(Math.round(n / 1000))}K`;
   return formatInteger(Math.round(n));
 }
-const usdc = (v: string) => formatInteger(Math.round(Number(v)));
+/**
+ * USDC bằng decimal; câu tổng và từng phần dùng chung (#415). |x| < 10 hiện 2 chữ số thập phân ("0.42", "7.15") để số
+ * khác 0 không bao giờ thành "0"; từ 10 trở lên làm tròn đô ("19", "1,284"). Số 0 thật hiện "0".
+ */
+const usdc = (v: string) => {
+  const d = dec(v);
+  const small = !d.isZero() && d.abs().lt(10);
+  const digits = small ? 2 : 0;
+  return (
+    formatDecimal(v, {
+      locale: "en-US",
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+      signDisplay: "negative",
+    }) ?? ""
+  ).replace("-", "−");
+};
 const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
 
 function Compare({
@@ -304,18 +321,37 @@ function Headline({
             builder: usd(pm.builderFee),
             price: pm.priceMove === null ? t("bots.na") : usd(pm.priceMove),
           });
+  // #415: số trên thanh là chi phí / $1M, không phải tiền đã trả: ghi rõ "per $1M" và thêm USDC thật trong kỳ.
+  const unit = (
+    <span className="text-[12.5px] font-semibold text-muted"> {t("perMillionUnit")}</span>
+  );
+  const paid = (amount: string) => (
+    <span className="text-[13px] font-bold text-ink">
+      {t(`inPeriod.${period}`, { amount: usdc(amount) })}
+    </span>
+  );
   const legend = (
     key: "sodex" | "builder",
     color: string,
     value: string | null,
+    amount: string,
     before: string | null,
   ) => (
     <div className="flex gap-2">
       <span aria-hidden="true" className={`mt-1 size-3 flex-none rounded-[3px] ${color}`} />
       <div className="flex min-w-0 flex-col gap-0.5">
         <strong className="text-sm">
-          {t(key === "sodex" ? "sodexFee" : "builderFee")} · {value === null ? "" : usd(value)}
+          {t(key === "sodex" ? "sodexFee" : "builderFee")} ·{" "}
+          {value === null ? (
+            t("bots.na")
+          ) : (
+            <>
+              {usd(value)}
+              {unit}
+            </>
+          )}
         </strong>
+        {paid(amount)}
         <span className="text-[13px] text-ink-2">
           {t(key === "sodex" ? "sodexFeeBody" : "builderFeeBody")}
         </span>
@@ -343,6 +379,7 @@ function Headline({
         <p className="m-0 text-[12.5px] text-muted">{t("notPnl")}</p>
       </div>
       <div className="flex min-w-0 flex-col gap-3">
+        <p className="m-0 text-[12.5px] font-extrabold text-muted">{t("partsTitle")}</p>
         {parts.length === 0 ? null : (
           <div
             role="img"
@@ -361,8 +398,14 @@ function Headline({
           </div>
         )}
         <div className="grid gap-3 sm:grid-cols-3">
-          {legend("sodex", "bg-accent", pm.sodexFee, prev?.perMillion.sodexFee ?? null)}
-          {legend("builder", "bg-accent-ink", pm.builderFee, prev?.perMillion.builderFee ?? null)}
+          {legend("sodex", "bg-accent", pm.sodexFee, c.sodexFee, prev?.perMillion.sodexFee ?? null)}
+          {legend(
+            "builder",
+            "bg-accent-ink",
+            pm.builderFee,
+            c.builderFee,
+            prev?.perMillion.builderFee ?? null,
+          )}
           <div className="flex gap-2">
             <span
               aria-hidden="true"
@@ -370,12 +413,19 @@ function Headline({
             />
             <div className="flex min-w-0 flex-col gap-0.5">
               <strong className="text-sm">
-                {pm.priceMove === null
-                  ? t("priceNa")
-                  : favour
-                    ? t("priceFavour", { amount: usd(pm.priceMove) })
-                    : `${t("price")} · ${usd(pm.priceMove)}`}
+                {pm.priceMove === null ? (
+                  t("priceNa")
+                ) : (
+                  <>
+                    {favour
+                      ? t("priceFavour", { amount: usd(pm.priceMove) })
+                      : `${t("price")} · ${usd(pm.priceMove)}`}
+                    {unit}
+                  </>
+                )}
               </strong>
+              {/* Thiếu giá: chỉ "Not available" ở dòng trên, không hiện 0 USDC (quy tắc 1.8). */}
+              {c.priceMove === null ? null : paid(c.priceMove)}
               <span className="text-[13px] text-ink-2">
                 {favour ? t("priceFavourBody") : t("priceBody")}
               </span>
