@@ -14,7 +14,7 @@ import { futuresGridSchema, type FuturesGridConfig } from "../futures-grid/schem
 import { spotGrid } from "../spot-grid";
 import { spotGridSchema, type SpotGridConfig } from "../spot-grid/schema";
 
-// #261 (DEC-TBD-grid-partial-fill): lệnh của một mức grid khớp một phần nhiều lần. Mỗi lần khớp vào sổ cái, lệnh vẫn được
+// #261 (DEC-359): lệnh của một mức grid khớp một phần nhiều lần. Mỗi lần khớp vào sổ cái, lệnh vẫn được
 // theo dõi tới khi khớp hết hoặc kết thúc trên sàn; chỉ khi khớp hết mới đặt MỘT lệnh đối ứng bằng tổng đã khớp.
 
 const rules = { tickSize: "1", stepSize: "0.001", minQuantity: "0.001", minNotional: "5" };

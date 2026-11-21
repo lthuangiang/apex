@@ -55,7 +55,7 @@ export interface GridBotConfig {
 export type GridPhase = "idle" | "waiting_trigger" | "starting" | "running" | "halted";
 
 /**
- * Lệnh của một mức (#261, DEC-TBD-grid-partial-fill). `qty`: khối lượng đặt, thiếu = `qty` của grid (state cũ, và mọi
+ * Lệnh của một mức (#261, DEC-359). `qty`: khối lượng đặt, thiếu = `qty` của grid (state cũ, và mọi
  * lệnh đặt đủ một mức). `filled`: phần đã khớp, thiếu = 0. Lệnh khớp một phần vẫn nằm trong `open` tới khi khớp hết hoặc
  * kết thúc trên sàn; mỗi lần khớp đều vào sổ cái.
  */
@@ -506,7 +506,7 @@ function enforceCap(c: GridBotConfig, s: GridBotState, ctx: StepContext): StepRe
 }
 
 /**
- * Lệnh đối ứng của một lệnh mức (#261, DEC-TBD-grid-partial-fill): mua mức i → bán mức i+1, bán mức i → mua mức i−1,
+ * Lệnh đối ứng của một lệnh mức (#261, DEC-359): mua mức i → bán mức i+1, bán mức i → mua mức i−1,
  * khối lượng = phần đã khớp (không bao giờ hơn). Ngoài range thì không đặt.
  */
 function counter(
@@ -821,7 +821,7 @@ function stepGrid(
     }
     const o = s.open[e.clOrdID];
     if (o === undefined) return { actions: [], state: s };
-    // Mọi lần khớp vào sổ cái; khớp một phần thì lệnh vẫn mở, chưa đặt đối ứng (#261, DEC-TBD-grid-partial-fill).
+    // Mọi lần khớp vào sổ cái; khớp một phần thì lệnh vẫn mở, chưa đặt đối ứng (#261, DEC-359).
     const { state, filled } = bookLevelFill(s, e.clOrdID, o, e);
     const g = guards(c, state, e.price);
     if (g !== null) return g;
