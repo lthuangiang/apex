@@ -2789,10 +2789,6 @@
     }
   },
   "_pendingReview": [
-    "signalAnalysis.research.rules.reader.title",
-    "signalAnalysis.research.rules.reader.titleAny",
-    "signalAnalysis.research.rules.reader.stocks",
-    "signalAnalysis.research.rules.newIn",
     "signalAnalysis.filters.botKeys",
     "signalAnalysis.research.trace",
     "signalAnalysis.research.sources.names.claude",
