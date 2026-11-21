@@ -212,6 +212,35 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
       fee: fee.toString(),
     };
   };
+  /**
+   * #284: như SoDEX, lệnh reduce-only chỉ khớp tới |vị thế| ngược chiều còn lại (không bao giờ tăng vị thế hay đảo
+   * chiều); phần dư không khớp. Lệnh thường khớp đủ như trước.
+   */
+  const fillable = (o: OrderIntent): Decimal => {
+    const want = dec(o.quantity);
+    if (!o.reduceOnly) return want;
+    const q = pos.get(o.market) ?? new Decimal(0);
+    const left = o.side === "sell" ? Decimal.max(q, 0) : Decimal.max(q.neg(), 0);
+    return Decimal.min(want, left);
+  };
+  /**
+   * Khớp `o` theo phần khớp được. `done`: lệnh luôn kết thúc sau lần khớp này (market, IOC). Lệnh reduce-only bị cắt
+   * (khớp một phần hoặc không khớp gì vì vị thế đã về 0) cũng kết thúc: báo `orderDone`, phần còn lại không bao giờ khớp.
+   */
+  const execute = (
+    o: OrderIntent,
+    price: string,
+    maker: boolean,
+    at: number,
+    done: boolean,
+  ): StrategyEvent[] => {
+    const q = fillable(o);
+    const out: StrategyEvent[] = [];
+    if (q.gt(0))
+      out.push(fill(q.eq(o.quantity) ? o : { ...o, quantity: q.toString() }, price, maker, at));
+    if (done || q.lt(o.quantity)) out.push({ type: "orderDone", at, clOrdID: o.clOrdID });
+    return out;
+  };
   const slipped = (o: OrderIntent, price: string) =>
     dec(price)
       .mul(o.side === "buy" ? dec("1").add(input.slippage) : dec("1").sub(input.slippage))
@@ -259,14 +288,14 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
       }
       out.push({ type: "orderAck", at, clOrdID: o.clOrdID });
       if (o.timeInForce === "IOC") {
-        if (crossesNow) out.push(fill(o, o.price ?? price, false, at));
         // Khớp engine (DEC-229): IOC kết thúc ngay, khớp hay không đều báo `orderDone`.
-        out.push({ type: "orderDone", at, clOrdID: o.clOrdID });
+        if (crossesNow) out.push(...execute(o, o.price ?? price, false, at, true));
+        else out.push({ type: "orderDone", at, clOrdID: o.clOrdID });
         continue;
       }
       if (crossesNow) {
         // Limit GTC đặt xuyên giá hiện tại: khớp như taker ở giá đặt.
-        out.push(fill(o, o.price ?? price, false, at));
+        out.push(...execute(o, o.price ?? price, false, at, false));
         continue;
       }
       open.set(o.clOrdID, { order: o, placedAt: at, px: Number(o.price) });
@@ -315,11 +344,7 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
     for (const o of due) {
       const c = row.get(o.market);
       if (c === undefined) continue;
-      marketFills.push(fill(o, slipped(o, c.o), false, t), {
-        type: "orderDone",
-        at: t,
-        clOrdID: o.clOrdID,
-      });
+      marketFills.push(...execute(o, slipped(o, c.o), false, t, true));
     }
     if (marketFills.length > 0) feed(marketFills);
     // 2. Đi theo đường giá trong nến, từng market.
@@ -366,7 +391,7 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
           if (crossed.length > 1) crossed.sort((x, y) => (b < a ? y.px - x.px : x.px - y.px));
           for (const x of crossed) {
             open.delete(x.order.clOrdID);
-            hit.push(fill(x.order, x.order.price ?? p, true, t));
+            hit.push(...execute(x.order, x.order.price ?? p, true, t, false));
           }
         }
         feed([...stopHits, { type: "tick", at: t, market: m, price: p }, ...hit]);

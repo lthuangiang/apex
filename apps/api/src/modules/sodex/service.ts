@@ -8,12 +8,6 @@ import {
   users,
 } from "@drift/db";
 import {
-  addKeyMessageSchema,
-  approveMessageSchema,
-  reconcileSignatureRequest,
-  SODEX_NONCE_WINDOW_MS,
-} from "@drift/db/sodex-reconcile";
-import {
   AppError,
   isBuilderAccount,
   isBuilderFeeApproved,
@@ -43,6 +37,12 @@ import {
   type RevokeKeyRequest,
   type UniversalRequest,
 } from "@drift/sodex";
+import {
+  addKeyMessageSchema,
+  approveMessageSchema,
+  reconcileSignatureRequest,
+  SODEX_NONCE_WINDOW_MS,
+} from "@drift/sodex-reconcile";
 import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import { getAddress, type Address, type Hex } from "viem";
 import { z } from "zod";
@@ -531,7 +531,7 @@ export async function submitSignature(
 
 /**
  * Đọc lại trạng thái từ SoDEX cho request đã gửi (`unknown`). Chỉ đọc, không gửi lại. Cùng hàm với vòng đối soát nền
- * của jobs (`@drift/db/sodex-reconcile`, #327).
+ * của jobs (`@drift/sodex-reconcile`, #327).
  */
 export async function reconcile(
   deps: SodexDeps,
@@ -738,6 +738,9 @@ async function upsertAccount(db: Db, userId: string, address: Address, accountId
     if (moved === undefined) throw new AppError(ErrorCode.internal, "Could not update account.");
     return moved;
   }
+  // #326: hai lần Connect đầu tiên chạy song song cùng thấy "chưa có account" ở trên; bên ghi sau đụng unique index
+  // (network, sodex_account_id). Không để lỗi DB thành 500: bên thua nhận 409, chưa tạo key hay request ký nào (chưa
+  // gọi `markSideEffect`, nên Idempotency-Key được giải phóng). Thử lại thì đi nhánh `existing` ở trên.
   const [created] = await db
     .insert(sodexAccounts)
     .values({
@@ -747,8 +750,15 @@ async function upsertAccount(db: Db, userId: string, address: Address, accountId
       network: "mainnet",
       status: "connecting",
     })
+    .onConflictDoNothing({ target: [sodexAccounts.network, sodexAccounts.sodexAccountId] })
     .returning();
-  if (created === undefined) throw new AppError(ErrorCode.internal, "Could not create account.");
+  if (created === undefined) {
+    throw new AppError(
+      ErrorCode.stateConflict,
+      "Another Connect for this SoDEX account is in progress. Try again in a moment.",
+      { reason: "connect_in_progress" },
+    );
+  }
   return created;
 }
 

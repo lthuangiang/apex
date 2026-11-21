@@ -17,6 +17,7 @@
     "@drift/runtime": "workspace:*",
     "@drift/shared": "workspace:*",
     "@drift/sodex": "workspace:*",
+    "@drift/sodex-reconcile": "workspace:*",
     "@drift/strategies": "workspace:*",
     "@fastify/cookie": "11.1.5",
     "drizzle-orm": "0.45.4",
