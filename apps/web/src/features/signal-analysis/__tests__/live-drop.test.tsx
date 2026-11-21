@@ -20,8 +20,10 @@ import {
   LIVE_HOLD_MS,
   LIVE_POLL_MS,
   LIVE_STEP_MS,
+  liveDuration,
 } from "../research/live-drop";
 import { STEP_MS } from "../research/news-trace";
+import { BAND_COUNT, BANDS, CONTEXT_BAND } from "../research/trace-player";
 
 import {
   ARTICLES,
@@ -378,55 +380,69 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     ]);
   });
 
-  // Tạm bỏ qua theo yêu cầu người dùng (2026-11-20): chập chờn trên CI vì phụ thuộc thời gian thật; sửa bằng fake timers ở issue theo dõi.
-  it.skip("the queue plays one article at a time, in order", async () => {
+  it("the queue plays one article at a time, in order", async () => {
+    // Fake timers thuần (không `shouldAdvanceTime`): thời gian chỉ đi khi test tiến, nên mỗi bước kiểm được đúng một
+    // trạng thái dù máy CI chậm. Không có gì được hẹn trước lúc này, nên cài lại không mất hẹn giờ nào.
+    vi.useRealTimers();
+    vi.useFakeTimers();
     state.next = [page("c1"), page("c2", [ETH, SOL])];
-    await ready();
+    wrap();
     const traced = () =>
       state.paths
         .filter((x) => x.includes("/trace"))
         .map((x) => /articles\/([^/]+)\/trace/.exec(x)?.[1]);
-    // Ghi mọi lần dòng trạng thái đổi (MutationObserver), kèm số bài đã tải trace lúc đó. Không phụ thuộc mỗi lần tick
-    // tiến được bao nhiêu bước (fake timers `shouldAdvanceTime` cộng cả thời gian thật khi máy chậm, nên kiểm theo mốc
-    // tick bị chập chờn).
-    const log: { text: string; traced: number }[] = [];
-    const record = () => {
-      const text = verdict().textContent;
-      if (log.at(-1)?.text !== text) log.push({ text, traced: traced().length });
-    };
-    const obs = new MutationObserver(record);
-    obs.observe(funnel(), { subtree: true, childList: true, characterData: true });
-    try {
-      await poll();
-      record();
-      expect(verdict()).toHaveTextContent("New article · step 1 · Collect… · 1 waiting");
-      // SOL chỉ được tải khi ETH chạy xong.
-      expect(traced()).toEqual([ETH.id]);
-      // Chạy tới khi cả hàng đợi xong (về "Pick an article…"), rồi kiểm cả chuỗi.
-      for (let i = 0; i < 120; i++) {
-        if (traced().length === 2 && verdict().textContent.includes("Pick an article on the left"))
-          break;
-        await tick(LIVE_STEP_MS);
-        record();
+    const text = () => verdict().textContent;
+    // Fetch giả resolve ngay; react-query báo kết quả qua setTimeout 0. Chỉ chạy hẹn giờ tới hạn, đồng hồ không đi.
+    async function flushUntil(done: () => boolean) {
+      for (let i = 0; i < 50 && !done(); i++) await tick(0);
+      expect(done()).toBe(true);
+    }
+    await flushUntil(
+      () =>
+        screen.queryByRole("region", { name: /From headline to trade/ }) !== null &&
+        within(funnel()).queryByRole("button", { name: /SEC approves in-kind creations/ }) !== null,
+    );
+    expect(text()).toContain("Pick an article on the left");
+
+    const stage = (n: number) =>
+      messages.signalAnalysis.research.trace.stages[BANDS[n - 1] ?? "collect"];
+    // Một bài chạy hết các bước, mỗi lần tiến đúng thời gian của bước đang đứng (hằng thật của live-drop); sau mỗi bước
+    // kiểm dòng trạng thái, số bài chờ và các trace đã tải.
+    async function plays(stop: number, end: string, waiting: string, loaded: string[]) {
+      const dur = liveDuration(true);
+      for (let n = 0; n <= stop; n++) {
+        // Bước 0 (vừa rơi) hiện như bước 1.
+        const shown = Math.max(n, 1);
+        expect(text()).toBe(`New article · step ${String(shown)} · ${stage(shown)}…${waiting}`);
+        expect(traced()).toEqual(loaded);
+        await tick(dur(n));
       }
-    } finally {
-      obs.disconnect();
+      expect(text()).toBe(`${end}${waiting}`);
+      expect(traced()).toEqual(loaded);
     }
+
+    // Lần hỏi 15 s mang về ETH và SOL: ETH rơi trước, SOL chờ và chưa được tải trace.
+    await tick(LIVE_POLL_MS);
+    await flushUntil(() => text().startsWith("New article"));
+    expect(text()).toBe("New article · step 1 · Collect… · 1 waiting");
+    // ETH dừng ở Decide (6 tầng), có snapshot Context.
+    await plays(BAND_COUNT, "New article reached Decide: Long ETH", " · 1 waiting", [ETH.id]);
+
+    // Giữ khung cuối rồi mới sang SOL: không chạy chồng.
+    await tick(LIVE_HOLD_MS - 1);
+    expect(text()).toBe("New article reached Decide: Long ETH · 1 waiting");
+    expect(traced()).toEqual([ETH.id]);
+    await tick(1);
+    await flushUntil(() => text().startsWith("New article"));
+    // SOL chạy một mình (không còn bài chờ), từ bước 1; ETH không chạy lại.
     expect(traced()).toEqual([ETH.id, SOL.id]);
-    const playing = log.filter((x) => x.text.startsWith("New article"));
-    const firstSol = playing.findIndex((x) => !x.text.includes("waiting"));
-    // ETH chạy trước với SOL chờ ("1 waiting"), SOL chưa được tải trong suốt lúc đó.
-    expect(firstSol).toBeGreaterThan(0);
-    for (const x of playing.slice(0, firstSol)) {
-      expect(x.text).toContain("1 waiting");
-      expect(x.traced).toBe(1);
-    }
-    // Rồi SOL chạy một mình: không bao giờ quay lại có bài chờ (không chạy chồng, không chạy lại ETH).
-    const sol = playing.slice(firstSol);
-    expect(sol.length).toBeGreaterThan(0);
-    for (const x of sol) expect(x.text).not.toContain("waiting");
-    expect(sol[0]?.text).toMatch(/^New article · step [12] · /);
-    expect(log.at(-1)?.text).toContain("Pick an article on the left");
+    // SOL dừng ở Filter (tầng 5), có snapshot Context.
+    await plays(CONTEXT_BAND + 1, "New article stopped at Filter", "", [ETH.id, SOL.id]);
+
+    // Hết hàng đợi: về chế độ tổng.
+    await tick(LIVE_HOLD_MS);
+    await flushUntil(() => text().includes("Pick an article on the left"));
+    expect(traced()).toEqual([ETH.id, SOL.id]);
   });
 
   it("drops each article only once (same id again is ignored)", async () => {
