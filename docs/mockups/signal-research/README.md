@@ -153,3 +153,22 @@ Trang research giữ lại mọi bài và mọi lệnh khi đổi Rules hoặc C
 - Feed: bài version hiện tại không có chip; câu dưới phễu chỉ hiện khi khoảng có từ hai version trở lên.
 - Paper trades: hai nút chỉ hiện khi version đang xem có lệnh của Rules cũ. Chip version trên từng dòng chỉ hiện ở All rules (ở Current rules mọi dòng cùng version); bảng giữ các cột hiện có, chip nằm dưới tên lệnh, không thêm cột "Rules" như ảnh để không tràn ngang ở 1024 px.
 
+
+## Signal Research ra menu chính · BETA (#423, người dùng duyệt 2026-11-22)
+
+Mục Signal Research có nhãn BETA trên sidebar, chỉ team và tài khoản team bật cờ mới thấy. Giao diện của người dùng test giống hệt trang team, chỉ ẩn ô Claude cost; có My versions và được chấm nhãn. Câu chữ PM đã duyệt (không đưa vào `_pendingReview`; câu mới mà mockup không có thì có). Khung tím là ghi chú cho người duyệt. HTML tự chứa (chỉ có link Google Fonts).
+
+| File | Nội dung |
+|---|---|
+| `menu-beta.html` | Hai khung: sidebar + trang Signal Research của người dùng được bật (ô Version có nhóm "Team versions · view only" / "My versions · n of 3 running"), cột công tắc Signal Research ở Admin › Users |
+| `menu-beta-1440.png`, `menu-beta-390.png` | Ảnh chụp 1440 và 390 (Playwright, cả trang) |
+
+**Quy tắc khi code (DEC-TBD-sr-menu-beta):**
+- Route `/signal-research` (ngoài `/admin`), dùng lại đúng `ResearchTab` và các component con; người xem (`team` / `tester`) truyền qua context, không nhân bản component. Trang team trong Signal Analysis giữ nguyên.
+- Cờ `users.signal_research` (mặc định tắt). Tắt thì mục biến mất khỏi sidebar, route trả Not found, API trả 403 ngay request sau.
+- Ô Version là `<select>` gốc: nhóm dùng `<optgroup>`, trạng thái từng version (Running / Paused) không hiện trong danh sách như ảnh; tên version của mình là "My · {name} (v{n})".
+- Người dùng test: chỉ ẩn ô Claude cost và mọi chi phí / token Claude (feed, trace, Label signals); "Where the time goes" và dải sức khoẻ nguồn vẫn hiện (PM review #428). Version của team không có nút Pause / Resume / Stop (API 403), vẫn chép được thành version của mình.
+- Nhãn trên menu và tiêu đề trang dùng chip Beta chung của app (màu accent, chữ "Beta"), không dùng màu tím của ảnh (PM review #428).
+- Tắt cờ thì version đang chạy của người đó tự pause (audit `signal_research_disabled`); bật lại không tự resume.
+- Công tắc ở Users dùng đúng kiểu nút "Turn on / Turn off" của cột AI Desk hiện có (ảnh vẽ switch).
+- Nhãn của người dùng test hiện riêng dưới cột "Labelled" của bảng Claude reader ("Test users: n labels, not counted · agree with the team on a of b (p%)", PM đã duyệt); chỉ so với nhãn random của team.

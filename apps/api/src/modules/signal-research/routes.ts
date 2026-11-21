@@ -1,4 +1,6 @@
 import {
+  assertSignalTradeVisible,
+  assertSignalVersionVisible,
   createSignalBotVersion,
   issueLabelToken,
   loadNextLabelArticle,
@@ -14,15 +16,21 @@ import {
   loadResearchWallets,
   readOnlyTx,
   saveSignalClassificationLabel,
+  ownerFor,
   setSignalBotVersionStatus,
   signalBotVersions,
+  users,
+  versionHiddenFrom,
   type Db,
   type ExitQuotes,
+  type SignalVersionViewer,
 } from "@drift/db";
 import {
   AppError,
+  ClassificationLabeler,
   ErrorCode,
   NEWS_LIMIT_DEFAULTS,
+  UserRole,
   parseSrLane,
   parseSrQuotes,
   SR_LANE_KEY,
@@ -62,8 +70,10 @@ import {
   type ResearchMarkets,
   type ResearchVersion,
   type ResearchVersions,
+  type ResearchArticle,
   type ResearchArticlesPage,
   type ResearchArticleTrace,
+  type ResearchClaudeUsage,
   type ResearchLatency,
   type ResearchNewArticles,
   type ResearchClassifiers,
@@ -80,7 +90,6 @@ import { z } from "zod";
 import { parseOrThrow } from "../../lib/http";
 import { idempotent, markSideEffect } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
-import { requireTeam } from "../account/team";
 
 // Signal research, lane tin tức (#271): chỉ role team (401 chưa đăng nhập, 403 người ngoài team, kiểm trước khi parse
 // tham số), chỉ đọc (transaction READ ONLY, statement timeout). Không bao giờ chạm SoDEX (giá của lệnh đang mở chỉ đọc
@@ -88,6 +97,13 @@ import { requireTeam } from "../account/team";
 // bắt buộc Idempotency-Key, ghi audit; `GET /labels/next` ghi token gắn nhãn ngẫu nhiên (#348, sau khi đọc). #305: `POST /versions` (lưu News bot version bất biến) và
 // `POST /versions/:id/status` (Pause / Resume / Stop / Retire), bắt buộc Idempotency-Key, audit trong service DB. Danh sách
 // market SoDEX (`/markets`, kiểm tài sản khi lưu) chỉ đọc bản chụp Redis `sr:markets` do scheduler ghi.
+//
+// #423 (DEC-TBD-sr-menu-beta): Signal Research ra menu chính (BETA). Phần trang người dùng test được dùng mở cho "team HOẶC
+// `users.signal_research`" (`researchViewer`, kiểm trước khi parse và trước Idempotency-Key), gồm cả độ trễ theo chặng
+// (`/latency`) và sức khoẻ nguồn (`sources`). Với người dùng test, API chỉ bỏ chi phí / token Claude (ô Claude cost, chi phí
+// từng bài) trước khi trả (PM review #428). Version có chủ: version riêng của người khác → 404; version
+// của team → người dùng test chỉ xem (403 khi đổi trạng thái); lưu version mới thì chủ là người gọi (team → version team).
+// Nhãn ghi người chấm theo role lúc lưu (`team` / `tester`); cổng chỉ tính nhãn team.
 
 export interface SignalResearchDeps {
   db: Db;
@@ -114,7 +130,32 @@ export interface SignalResearchDeps {
   srLane?: () => Promise<string | null>;
 }
 
-const FORBIDDEN = "Signal research is for the DeskLabs team only.";
+const NOT_ENABLED = "Signal Research is not turned on for this account.";
+
+/**
+ * #423: người xem của phần trang mở cho người dùng test: role team → `team`; cờ `users.signal_research` → người dùng test;
+ * còn lại 403. Đọc role và cờ ngay lúc gọi (team tắt cờ thì request tiếp theo bị chặn).
+ */
+export async function researchViewer(db: Db, userId: string): Promise<SignalVersionViewer> {
+  const [u] = await db
+    .select({ role: users.role, on: users.signalResearch })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (u?.role === UserRole.team) return { userId, team: true };
+  if (u?.on === true) return { userId, team: false };
+  throw new AppError(ErrorCode.forbidden, NOT_ENABLED);
+}
+
+/** Chi phí / token Claude là dữ liệu chỉ team (#423): người dùng test nhận null, số lần gọi và model giữ nguyên. */
+function claudeFor<T extends ResearchClaudeUsage | null>(viewer: SignalVersionViewer, u: T): T {
+  if (viewer.team || u === null) return u;
+  return { ...u, tokens: null, costUsd: null };
+}
+
+function articleFor(viewer: SignalVersionViewer, a: ResearchArticle): ResearchArticle {
+  return viewer.team ? a : { ...a, claude: claudeFor(viewer, a.claude) };
+}
 const QUERY_TIMEOUT_MS = 10_000;
 /** `tz` chỉ để web dùng chung key cache; API trả giờ UTC. */
 const tzQuery = z.object({ tz: z.string().max(64).optional() });
@@ -178,8 +219,9 @@ export async function signalResearchSummary(
   userId: string,
   query: unknown,
 ): Promise<ResearchSummary> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  const viewer = await researchViewer(deps.db, userId);
   const { range, versionId } = parseOrThrow(researchSummaryQuerySchema, query);
+  await assertSignalVersionVisible(deps.db, versionId, viewer);
   const lane = await laneOf(deps);
   const out = await tx(deps, (q, check) =>
     loadSignalResearchSummary(
@@ -196,7 +238,16 @@ export async function signalResearchSummary(
       versionId,
     ),
   );
-  return researchSummarySchema.parse(out);
+  const parsed = researchSummarySchema.parse(out);
+  if (viewer.team) return parsed;
+  // Người dùng test: chỉ không có ô Claude cost (chỉ team).
+  return {
+    ...parsed,
+    funnel:
+      parsed.funnel === null
+        ? null
+        : { ...parsed.funnel, claudeCost: null, claudeCostPerDay: null },
+  };
 }
 
 export async function signalResearchTrades(
@@ -204,8 +255,9 @@ export async function signalResearchTrades(
   userId: string,
   query: unknown,
 ): Promise<ResearchTradesPage> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  const viewer = await researchViewer(deps.db, userId);
   const q = parseOrThrow(researchTradesQuerySchema, query);
+  await assertSignalVersionVisible(deps.db, q.versionId, viewer);
   const out = await tx(deps, (t) => loadSignalResearchTrades(t, q, deps.now(), quotesOf(deps)));
   return researchTradesPageSchema.parse(out);
 }
@@ -216,8 +268,9 @@ export async function signalResearchTrade(
   id: string,
   query: unknown,
 ): Promise<ResearchTradeDetail> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  const viewer = await researchViewer(deps.db, userId);
   parseOrThrow(tzQuery, query);
+  await assertSignalTradeVisible(deps.db, id, viewer);
   const out = await tx(deps, (t) => loadSignalResearchTrade(t, id, deps.now(), quotesOf(deps)));
   if (out === null) throw new AppError(ErrorCode.notFound, "Trade not found.");
   return researchTradeDetailSchema.parse(out);
@@ -229,10 +282,13 @@ export async function signalResearchArticles(
   userId: string,
   query: unknown,
 ): Promise<ResearchArticlesPage> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  const viewer = await researchViewer(deps.db, userId);
   const q = parseOrThrow(researchArticlesQuerySchema, query);
-  const out = await tx(deps, (t, check) => loadSignalResearchArticles(t, q, deps.now(), check));
-  return researchArticlesPageSchema.parse(out);
+  await assertSignalVersionVisible(deps.db, q.versionId, viewer);
+  const out = researchArticlesPageSchema.parse(
+    await tx(deps, (t, check) => loadSignalResearchArticles(t, q, deps.now(), check)),
+  );
+  return viewer.team ? out : { ...out, items: out.items.map((a) => articleFor(viewer, a)) };
 }
 
 /** Bài mới sau con trỏ `since` (#345): hiệu ứng bài rơi xuống phễu, web hỏi mỗi 15 s khi tab hiển thị. */
@@ -241,23 +297,27 @@ export async function signalResearchNewArticles(
   userId: string,
   query: unknown,
 ): Promise<ResearchNewArticles> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  const viewer = await researchViewer(deps.db, userId);
   const q = parseOrThrow(researchNewArticlesQuerySchema, query);
-  const out = await tx(deps, (t, check) => loadSignalResearchNewArticles(t, q, deps.now(), check));
-  return researchNewArticlesSchema.parse(out);
+  await assertSignalVersionVisible(deps.db, q.versionId, viewer);
+  const out = researchNewArticlesSchema.parse(
+    await tx(deps, (t, check) => loadSignalResearchNewArticles(t, q, deps.now(), check)),
+  );
+  return viewer.team ? out : { ...out, items: out.items.map((a) => articleFor(viewer, a)) };
 }
 
 /**
  * Độ trễ theo chặng (#375): median từng chặng published → collected → Claude done → decided → opened trong cửa sổ 1d / 7d,
- * kèm số bài đo được. Chặng nguồn gốc → SoSoValue luôn null (không có nguồn).
+ * kèm số bài đo được. Chặng nguồn gốc → SoSoValue luôn null (không có nguồn). #423: team hoặc người dùng test.
  */
 export async function signalResearchLatency(
   deps: SignalResearchDeps,
   userId: string,
   query: unknown,
 ): Promise<ResearchLatency> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  const viewer = await researchViewer(deps.db, userId);
   const q = parseOrThrow(researchLatencyQuerySchema, query);
+  await assertSignalVersionVisible(deps.db, q.versionId, viewer);
   const out = await tx(deps, (t, check) => loadSignalResearchLatency(t, q, deps.now(), check));
   return researchLatencySchema.parse(out);
 }
@@ -269,13 +329,24 @@ export async function signalResearchArticleTrace(
   id: string,
   query: unknown,
 ): Promise<ResearchArticleTrace> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  const viewer = await researchViewer(deps.db, userId);
   const { versionId } = parseOrThrow(researchTraceQuerySchema, query);
+  await assertSignalVersionVisible(deps.db, versionId, viewer);
   const out = await tx(deps, (t, check) =>
     loadSignalResearchArticleTrace(t, id, check, userId, versionId),
   );
   if (out === null) throw new AppError(ErrorCode.notFound, "Article not found.");
-  return researchArticleTraceSchema.parse(out);
+  const trace = researchArticleTraceSchema.parse(out);
+  if (viewer.team) return trace;
+  return {
+    ...trace,
+    article: articleFor(viewer, trace.article),
+    steps: trace.steps.map<ResearchArticleTrace["steps"][number]>((st) =>
+      st.key === "score" && st.detail !== null
+        ? { ...st, detail: { ...st.detail, claude: claudeFor(viewer, st.detail.claude) } }
+        : st,
+    ),
+  };
 }
 
 /**
@@ -289,24 +360,36 @@ export async function signalResearchLabelNext(
   userId: string,
   query: unknown,
 ): Promise<ResearchLabelNext> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  const viewer = await researchViewer(deps.db, userId);
   parseOrThrow(tzQuery, query);
   const out = await tx(deps, (t) => loadNextLabelArticle(t, userId));
   const labelToken =
     out.item === null
       ? null
       : await issueLabelToken(deps.db, { userId, articleId: out.item.article.id, now: deps.now() });
-  return researchLabelNextSchema.parse({ ...out, labelToken });
+  const next = researchLabelNextSchema.parse({ ...out, labelToken });
+  if (viewer.team || next.item === null) return next;
+  return {
+    ...next,
+    item: {
+      ...next.item,
+      classification: {
+        ...next.item.classification,
+        claude: claudeFor(viewer, next.item.classification.claude),
+      },
+    },
+  };
 }
 
 /** Lưu (upsert) nhãn của người gọi cho một bài tín hiệu; trả nhãn + kết quả lệnh của bài (đã lưu nên không còn ẩn). */
 export async function signalResearchSaveLabel(
   deps: SignalResearchDeps,
-  userId: string,
+  viewer: SignalVersionViewer,
   params: unknown,
   body: unknown,
   ip: string | null,
 ): Promise<ResearchLabelSaved> {
+  const userId = viewer.userId;
   const { id } = parseOrThrow(articleParams, params);
   const b = parseOrThrow(researchLabelBodySchema, body);
   const out = await saveSignalClassificationLabel(deps.db, {
@@ -316,6 +399,8 @@ export async function signalResearchSaveLabel(
     reason: b.reason ?? null,
     note: b.note ?? null,
     labelToken: b.labelToken ?? null,
+    // #423: người chấm theo role lúc lưu; cổng chỉ tính nhãn team.
+    labeler: viewer.team ? ClassificationLabeler.team : ClassificationLabeler.tester,
     ip,
     now: deps.now(),
   });
@@ -328,7 +413,7 @@ export async function signalResearchClassifiers(
   userId: string,
   query: unknown,
 ): Promise<ResearchClassifiers> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  await researchViewer(deps.db, userId);
   parseOrThrow(tzQuery, query);
   const out = await tx(deps, (t, check) => loadSignalClassifiers(t, check));
   return researchClassifiersSchema.parse(out);
@@ -343,7 +428,7 @@ export async function signalResearchWallets(
   userId: string,
   query: unknown,
 ): Promise<ResearchWallets> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  await researchViewer(deps.db, userId);
   parseOrThrow(tzQuery, query);
   const out = await tx(deps, (t) => loadResearchWallets(t, deps.now()));
   return researchWalletsSchema.parse(out);
@@ -351,20 +436,27 @@ export async function signalResearchWallets(
 
 // ── News bot versions (#305) ─────────────────────────────────────────────────────────────────────────────────────
 
-/** Mọi version, mới nhất trước, kèm số dư, giới hạn, lệnh bị chặn, cổng; số version đang chạy / đã thử; classifier. */
+/**
+ * Version người xem thấy được (team: version của team; người dùng test: version của team + My versions), mới nhất trước,
+ * kèm số dư, giới hạn, lệnh bị chặn, cổng; số version đang chạy / đã thử của chủ người xem; classifier.
+ */
 export async function signalResearchVersions(
   deps: SignalResearchDeps,
   userId: string,
   query: unknown,
 ): Promise<ResearchVersions> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  const viewer = await researchViewer(deps.db, userId);
   parseOrThrow(tzQuery, query);
-  const out = await tx(deps, (t, check) => loadSignalBotVersions(t, deps.now(), check));
+  const out = await tx(deps, (t, check) => loadSignalBotVersions(t, deps.now(), check, viewer));
   return researchVersionsSchema.parse(out);
 }
 
-async function versionItem(deps: SignalResearchDeps, id: string): Promise<ResearchVersion> {
-  const all = await tx(deps, (t, check) => loadSignalBotVersions(t, deps.now(), check));
+async function versionItem(
+  deps: SignalResearchDeps,
+  id: string,
+  viewer: SignalVersionViewer,
+): Promise<ResearchVersion> {
+  const all = await tx(deps, (t, check) => loadSignalBotVersions(t, deps.now(), check, viewer));
   const v = all.items.find((x) => x.id === id);
   if (v === undefined) throw new AppError(ErrorCode.notFound, "Version not found.");
   return researchVersionSchema.parse(v);
@@ -400,7 +492,7 @@ export async function signalResearchMarkets(
   userId: string,
   query: unknown,
 ): Promise<ResearchMarkets> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  await researchViewer(deps.db, userId);
   parseOrThrow(tzQuery, query);
   const snap = await readMarkets(deps);
   return researchMarketsSchema.parse(
@@ -418,22 +510,24 @@ export async function signalResearchMarkets(
  * Lưu một version mới (bất biến; không có route sửa). Kiểm: config (zod, TP tối thiểu ≥ 1× chi phí…), version gốc có
  * thật, mọi tài sản trong danh sách có trong bản chụp `sr:markets` (chỉ khi danh sách không rỗng: chưa có bản chụp →
  * 503 `MARKET_LIST_UNAVAILABLE`; bản chụp cũ vẫn kiểm theo nó và lưu được, kèm cảnh báo `market_list_stale`), tối đa 3
- * version chạy (409 `MAX_RUNNING_VERSIONS`, trong service DB).
+ * version chạy MỖI CHỦ (409 `MAX_RUNNING_VERSIONS`, trong service DB). #423: chủ = người gọi (team → version của team,
+ * người dùng test → My versions); version gốc phải là version người gọi thấy được (không thì như không có).
  */
 export async function signalResearchCreateVersion(
   deps: SignalResearchDeps,
-  userId: string,
+  viewer: SignalVersionViewer,
   body: unknown,
   ip: string | null,
 ): Promise<ResearchVersionCreated> {
+  const userId = viewer.userId;
   const b = parseOrThrow(researchVersionCreateBodySchema, body);
   const from = b.savedFromVersionId ?? null;
   if (from !== null) {
     const [row] = await deps.db
-      .select({ id: signalBotVersions.id })
+      .select({ id: signalBotVersions.id, owner: signalBotVersions.ownerUserId })
       .from(signalBotVersions)
       .where(eq(signalBotVersions.id, from));
-    if (row === undefined)
+    if (row === undefined || versionHiddenFrom(row.owner, viewer))
       throw new AppError(ErrorCode.validationFailed, "Invalid input.", {
         fieldErrors: { savedFromVersionId: ["not_found"] },
       });
@@ -464,27 +558,41 @@ export async function signalResearchCreateVersion(
     savedFromVersionId: from,
     start: b.start,
     hypothesis: b.hypothesis,
+    ownerUserId: ownerFor(viewer),
     ip,
     now: deps.now(),
   });
   // DEC-334: version đã commit; lỗi sau đây (đọc lại danh sách) không được giải phóng key, tránh lưu hai lần khi retry.
   markSideEffect();
-  return researchVersionCreatedSchema.parse({ ...(await versionItem(deps, v.id)), warnings });
+  return researchVersionCreatedSchema.parse({
+    ...(await versionItem(deps, v.id, viewer)),
+    warnings,
+  });
 }
 
-/** Pause / Resume / Stop / Retire (running ↔ paused; running / paused → stopped; stopped → retired). */
+/**
+ * Pause / Resume / Stop / Retire (running ↔ paused; running / paused → stopped; stopped → retired). #423: version riêng
+ * của người khác → 404; version của team mà người gọi không phải team → 403.
+ */
 export async function signalResearchSetVersionStatus(
   deps: SignalResearchDeps,
-  userId: string,
+  viewer: SignalVersionViewer,
   params: unknown,
   body: unknown,
   ip: string | null,
 ): Promise<ResearchVersion> {
   const { id } = parseOrThrow(researchVersionParamsSchema, params);
   const b = parseOrThrow(researchVersionStatusBodySchema, body);
-  await setSignalBotVersionStatus(deps.db, { id, status: b.status, userId, ip, now: deps.now() });
+  await setSignalBotVersionStatus(deps.db, {
+    id,
+    status: b.status,
+    userId: viewer.userId,
+    viewer,
+    ip,
+    now: deps.now(),
+  });
   markSideEffect();
-  return versionItem(deps, id);
+  return versionItem(deps, id, viewer);
 }
 
 export function registerSignalResearchRoutes(
@@ -530,20 +638,14 @@ export function registerSignalResearchRoutes(
     void reply.header("cache-control", "no-store");
     return signalResearchLabelNext(deps, requireAuth(request).userId, request.query);
   });
-  // Team kiểm TRƯỚC Idempotency-Key và trước khi parse tham số / body.
+  // Quyền (team hoặc cờ) kiểm TRƯỚC Idempotency-Key và trước khi parse tham số / body.
   app.put(`${base}/articles/:id/label`, async (request, reply) => {
     const auth = requireAuth(request);
-    await requireTeam(deps.db, auth.userId, FORBIDDEN);
+    const viewer = await researchViewer(deps.db, auth.userId);
     void reply.header("cache-control", "no-store");
     return idempotent(deps.db, request, reply, auth.userId, deps.now(), async () => ({
       status: 200,
-      body: await signalResearchSaveLabel(
-        deps,
-        auth.userId,
-        request.params,
-        request.body,
-        request.ip,
-      ),
+      body: await signalResearchSaveLabel(deps, viewer, request.params, request.body, request.ip),
     }));
   });
   app.get(`${base}/classifiers`, async (request, reply) => {
@@ -562,25 +664,25 @@ export function registerSignalResearchRoutes(
     void reply.header("cache-control", "no-store");
     return signalResearchMarkets(deps, requireAuth(request).userId, request.query);
   });
-  // Team kiểm TRƯỚC Idempotency-Key và trước khi parse tham số / body.
+  // Quyền (team hoặc cờ) kiểm TRƯỚC Idempotency-Key và trước khi parse tham số / body; quyền theo chủ ở service DB.
   app.post(`${base}/versions`, async (request, reply) => {
     const auth = requireAuth(request);
-    await requireTeam(deps.db, auth.userId, FORBIDDEN);
+    const viewer = await researchViewer(deps.db, auth.userId);
     void reply.header("cache-control", "no-store");
     return idempotent(deps.db, request, reply, auth.userId, deps.now(), async () => ({
       status: 201,
-      body: await signalResearchCreateVersion(deps, auth.userId, request.body, request.ip),
+      body: await signalResearchCreateVersion(deps, viewer, request.body, request.ip),
     }));
   });
   app.post(`${base}/versions/:id/status`, async (request, reply) => {
     const auth = requireAuth(request);
-    await requireTeam(deps.db, auth.userId, FORBIDDEN);
+    const viewer = await researchViewer(deps.db, auth.userId);
     void reply.header("cache-control", "no-store");
     return idempotent(deps.db, request, reply, auth.userId, deps.now(), async () => ({
       status: 200,
       body: await signalResearchSetVersionStatus(
         deps,
-        auth.userId,
+        viewer,
         request.params,
         request.body,
         request.ip,

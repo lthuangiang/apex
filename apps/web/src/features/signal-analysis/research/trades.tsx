@@ -13,7 +13,7 @@ import { useState, type ReactNode } from "react";
 import { useMarketNames } from "@/lib/markets";
 
 import { FilterSelect, ScrollTable, Seg } from "../components/bits";
-import type { PageCtx } from "../components/signal-analysis-page";
+import type { PageCtx } from "../components/page-ctx";
 import { clock, monthDay } from "../format";
 
 import { RESEARCH_DEFAULT, useResearchTrades, type ResearchFilters } from "./api";

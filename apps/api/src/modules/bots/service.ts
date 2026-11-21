@@ -39,6 +39,7 @@ import {
   ReasonCode,
   startOfDay,
   Strategy,
+  UserRole,
   VOLUME_STRATEGIES,
   EXPERIMENTAL_STRATEGIES,
   type BotDetail,
@@ -125,6 +126,16 @@ export async function aiDeskOn(db: Db, userId: string): Promise<boolean> {
     .where(eq(users.id, userId))
     .limit(1);
   return u?.on === true;
+}
+
+/** #423: Signal Research (BETA) trên menu chính: role team luôn có; người khác khi team đã bật cờ `signal_research`. */
+export async function signalResearchOn(db: Db, userId: string): Promise<boolean> {
+  const [u] = await db
+    .select({ role: users.role, on: users.signalResearch })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return u?.role === UserRole.team || u?.on === true;
 }
 
 /** AI Adaptive DCA (thử nghiệm, DEC-107): cờ riêng, không còn đi theo AI Desk (DEC-192). */

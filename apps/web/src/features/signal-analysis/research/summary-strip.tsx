@@ -14,6 +14,7 @@ import type { ReactNode } from "react";
 
 import { clock, count, monthDay } from "../format";
 
+import { useResearchAudience } from "./audience";
 import { balance, delay, tone, usdSigned } from "./format";
 import { DEFAULT_HOW_TAB, type HowTab } from "./how-it-works";
 import { Na, Pill } from "./ui";
@@ -188,7 +189,9 @@ function VersionLine({
         selected ? "border-accent bg-surface-2" : "border-transparent"
       }`}
     >
-      <b className="text-ink">{t("lineName", { name: v.name, n: v.number })}</b>
+      <b className="text-ink">
+        {t(v.owner === "me" ? "lineNameMine" : "lineName", { name: v.name, n: v.number })}
+      </b>
       <Sep />
       <Pill tone={v.status === "running" ? "accent" : "neutral"}>{tv(`state.${v.status}`)}</Pill>
       <Sep />
@@ -364,8 +367,18 @@ export function SummaryStrip({
   const ts = useTranslations("signalAnalysis.research.strip");
   const tv = useTranslations("signalAnalysis.research.versions");
   const tn = useTranslations("signalAnalysis.research");
+  const tester = useResearchAudience() === "tester";
   const optionName = (v: ResearchVersion) =>
-    v.isBaseline ? t("baselineOption", { n: v.number }) : versionShort(v, tv);
+    v.isBaseline
+      ? t("baselineOption", { n: v.number })
+      : v.owner === "me"
+        ? t("myOption", { name: v.name, n: v.number })
+        : versionShort(v, tv);
+  const option = (v: ResearchVersion) => (
+    <option key={v.id} value={v.id}>
+      {optionName(v)}
+    </option>
+  );
 
   let picker: ReactNode;
   if (versions === undefined)
@@ -385,11 +398,19 @@ export function SummaryStrip({
         className="min-h-11 w-full min-w-0 cursor-pointer rounded-control border-2 border-accent bg-surface px-3 text-sm font-extrabold text-ink md:w-auto md:min-w-[190px]"
       >
         {current === null ? <option value="">{tn("na")}</option> : null}
-        {versions.items.map((v) => (
-          <option key={v.id} value={v.id}>
-            {optionName(v)}
-          </option>
-        ))}
+        {tester ? (
+          // #423: người dùng test: version của team (chỉ xem) và My versions (của họ), như mockup menu-beta.
+          <>
+            <optgroup label={t("teamGroup")}>
+              {versions.items.filter((v) => v.owner === "team").map(option)}
+            </optgroup>
+            <optgroup label={t("myGroup", { n: versions.running, max: versions.maxRunning })}>
+              {versions.items.filter((v) => v.owner === "me").map(option)}
+            </optgroup>
+          </>
+        ) : (
+          versions.items.map(option)
+        )}
       </select>
     );
 
