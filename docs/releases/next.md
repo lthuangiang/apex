@@ -1,6 +1,6 @@
-# vTBD (sau v2.14.0)
+# vTBD (sau v2.15.0)
 
-PM đổi tên file theo tag khi người dùng gõ "release" (xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.14.0` (2026-11-20, `main` 0596de0). Mục nào ghi **chưa merge** là việc đang làm: khi PR merge thì bỏ chữ đó và thêm số PR; PR không vào bản này thì xoá dòng.
+PM đổi tên file theo tag khi người dùng gõ "release" (xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.15.0` (2026-11-21). Mục nào ghi **chưa merge** là việc đang làm: khi PR merge thì bỏ chữ đó và thêm số PR; PR không vào bản này thì xoá dòng.
 
 ## Cho người dùng (English, dùng được cho GitHub Release)
 
@@ -10,21 +10,8 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-**Signal research (chỉ team, paper trading, không bao giờ gửi lệnh tới SoDEX)**
-- Chu kỳ tin chỉnh bằng env (#394, DEC-352, **chưa merge**):
-  - `SIGNAL_NEWS_CYCLE_MINUTES` (1–5, mặc định 5) cho scheduler; đặt 1 thì cả vòng Collect → Decide chạy mỗi phút. Giá trị sai → 5 kèm cảnh báo.
-  - Tôn trọng 20 request / phút của SoSoValue: scheduler tự chặn (đếm cả trang sau); HTTP 429 / `code` 42901 → dừng chu kỳ, nguồn `rate_limited` ("Delayed"), không lưu bài của chu kỳ đó, con trỏ không tiến, chu kỳ sau thử lại.
-  - Trần gọi Claude chia theo chu kỳ (50 mỗi 5 phút → 10 mỗi chu kỳ 1 phút), ngưỡng Live của nguồn SoSoValue = chu kỳ + 2 phút.
-  - API `summary` có `cycleMinutes` (bỏ `funnel.pollSecs`), đọc từ Redis `sr:lane` do scheduler ghi; `funnel.soso.limit` là trần tháng scheduler đang dùng. Web (drawer Overview, ô "Where the time goes") lấy số phút từ API, plural ICU ("Every minute"), thiếu thì "Not available".
-- Claude reader v4 + Rules v4 (#395, gộp #323, DEC-353; mockup `docs/mockups/signal-research/reader-v4.html`; **chưa merge**).
-  - Prompt `news-classifier-v4`: lỗ hổng được công bố / đã vá mà không mất tiền → none; tiền bị chuyển / rửa từ vụ hack cũ → none; khai thác thật trên chính chain (vd ETH bị mint) → hack_exploit coin đó; nhắc lại luật coin bị đánh cắp; thêm một ETF hoặc ETF ở sàn nhỏ cho coin đã có ETF → none.
-  - Rules `news-v4`: luật mới `ETF_MAJOR_ASSET`, tin ETF (approved, delayed or rejected) trên BTC / ETH bị loại ở Score ("ETF on BTC or ETH"). Số nhãn, số lệnh và cổng đếm lại từ 0; lệnh v3 là lịch sử.
-  - Bài v3 còn `collected` / `pending` lúc deploy được chuyển sang v4 ở chu kỳ đầu (cùng event của chúng), không bài nào bị bỏ rơi.
-  - Web: hai hộp mới ở tab News types (nhãn "New in v4" ẩn sau 14 ngày tính từ lúc v4 chạy), thẻ "Claude reader v3 · Retired {date}" ở Is it working?, lý do loại mới trong phễu và trace.
-  - Is it working? ngay sau khi đổi: "0 / 100 · new rules and reader, count starts again" và pill "Collecting".
-  - API `/classifiers` thêm `closedTrades`. Script đánh giá prompt `signals:eval-classifier` (không chạy trong CI).
+Chưa có thay đổi.
 
 **Migration (chạy khi deploy):** chưa có.
 
-**Biến môi trường mới:**
-- `SIGNAL_NEWS_CYCLE_MINUTES` (scheduler, mặc định `5`; #394). Thêm vào khối `environment` của `scheduler` trong `/opt/drift/docker-compose.yml`: `SIGNAL_NEWS_CYCLE_MINUTES: ${SIGNAL_NEWS_CYCLE_MINUTES:-5}`. Chạy 1 phút cần `SIGNAL_SOSO_MONTHLY_LIMIT` khoảng `60000`; chỉ nâng khi người dùng đã xác nhận quota thật của key (`docs/DEPLOY.md` mục 2.16).
+**Biến môi trường mới:** chưa có.
