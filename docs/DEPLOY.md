@@ -411,7 +411,7 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 - Prompt cache và chi phí: mục 2.15 bước 4 (`claude_cache_read_tokens > 0` sau khoảng một giờ).
 - Báo cáo tổng: `docker compose exec scheduler pnpm --filter @drift/scheduler signals:report`.
 
-### 2.17 Idempotency-Key bị bỏ dở (#319, DEC-TBD-idempotency-abandoned)
+### 2.17 Idempotency-Key bị bỏ dở (#319, DEC-356)
 - Service `jobs` mỗi phút đánh dấu dòng `idempotency_keys` đang chạy (chưa có `status_code`, chưa có `outcome`) tạo quá `IDEMPOTENCY_ABANDONED_AFTER_MIN` phút trước là `outcome = failed_unknown`, `error_code = ABANDONED`. Request lặp lại cùng key nhận 409 `reason: "unknown"`, không chạy lại; key không bị xoá (vẫn hết hạn sau 24 h như cũ).
 - Biến: `IDEMPOTENCY_ABANDONED_AFTER_MIN` (số phút nguyên 5–1440, mặc định **10**; chỉ `jobs` đọc). Không đặt thì dùng mặc định, nên **không bắt buộc** sửa compose trên VPS. Muốn đổi: thêm `IDEMPOTENCY_ABANDONED_AFTER_MIN=<phút>` vào `/opt/drift/.env` và cho service `jobs` trong `/opt/drift/docker-compose.yml` khối `environment` như mẫu `deploy/server/docker-compose.yml` (`<<: *env` + dòng biến), rồi `cd /opt/drift && docker compose up -d jobs`.
 - Không có migration. Kiểm tra: log `jobs` có dòng warn `idempotency key stuck in progress marked failed_unknown (ABANDONED)` (kèm `traceId`) khi có dòng bị đánh dấu; DB: `docker compose exec postgres psql -U drift -d drift -c "select count(*) from idempotency_keys where error_code = 'ABANDONED';"`.

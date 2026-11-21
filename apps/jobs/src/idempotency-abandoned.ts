@@ -2,7 +2,7 @@ import { markAbandonedIdempotencyKeys, type Db } from "@drift/db";
 import { newTraceId } from "@drift/sodex";
 import { z } from "zod";
 
-// #319 (DEC-TBD-idempotency-abandoned): dòng `idempotency_keys` đang chạy quá N phút (process api chết giữa handler) chuyển
+// #319 (DEC-356): dòng `idempotency_keys` đang chạy quá N phút (process api chết giữa handler) chuyển
 // sang `failed_unknown` với `error_code = ABANDONED`. Request lặp lại cùng key nhận 409 `reason: "unknown"`, không chạy lại;
 // key không bị xoá (quy tắc 1.7). Chạy ở mọi bản jobs: UPDATE có điều kiện nên không cần lease, mỗi dòng chỉ một bản ghi.
 
