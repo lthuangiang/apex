@@ -451,3 +451,50 @@ describe("experiments: Baseline is never stopped (#377)", () => {
     expect(b.experiment).toBeNull();
   });
 });
+
+describe("experiments: Started is the first running period (#385)", () => {
+  it("saved and never run → null; first start → that moment, kept after pause / resume; old version without running periods → saved time", async () => {
+    await advance(30);
+    const saved = env.clock.now;
+    const v = await create("Started check", { ...cfg, tpMultiple: "1.3" });
+    expect(v.status).toBe("paused");
+    expect(v.experiment?.startedAt).toBeNull();
+    expect((await item(v.id)).experiment?.startedAt).toBeNull();
+
+    const first = new Date(saved.getTime() + 2 * 3_600_000);
+    await setSignalBotVersionStatus(env.db, {
+      id: v.id,
+      status: "running",
+      userId: null,
+      now: first,
+    });
+    expect((await item(v.id)).experiment?.startedAt).toBe(first.toISOString());
+    await setSignalBotVersionStatus(env.db, {
+      id: v.id,
+      status: "paused",
+      userId: null,
+      now: new Date(first.getTime() + 3_600_000),
+    });
+    await setSignalBotVersionStatus(env.db, {
+      id: v.id,
+      status: "running",
+      userId: null,
+      now: new Date(first.getTime() + 5 * 3_600_000),
+    });
+    const after = await item(v.id);
+    expect(after.createdAt).toBe(saved.toISOString());
+    expect(after.experiment?.startedAt).toBe(first.toISOString());
+    await setSignalBotVersionStatus(env.db, { id: v.id, status: "stopped", userId: null });
+
+    // Version lưu trước khi có running_periods (cột null): giữ mốc lưu.
+    const oldId = randomUUID();
+    const oldAt = new Date(saved.getTime() - 86_400_000).toISOString();
+    await env.pool.query(
+      `insert into signal_bot_versions (id, number, name, config, status, created_at, updated_at, status_changed_at)
+       select $1, max(number) + 1, 'Old, no periods', $2, 'paused', $3, $3, $3 from signal_bot_versions`,
+      [oldId, JSON.stringify({ ...cfg, tpMultiple: "1.4" }), oldAt],
+    );
+    const old = await item(oldId);
+    expect(old.experiment?.startedAt).toBe(oldAt);
+  });
+});

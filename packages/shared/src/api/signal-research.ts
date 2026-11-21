@@ -1507,6 +1507,11 @@ export const researchExperimentSchema = z.object({
   verdict: z.enum(EXPERIMENT_VERDICTS),
   /** Lúc tự dừng vì đủ cặp (Finished); null = chưa. */
   finishedAt: iso.nullable(),
+  /**
+   * #385: lần đầu version vào `running` (`experimentStartedAt`); null = đã lưu nhưng chưa từng chạy. Version lưu trước khi
+   * có `running_periods` dùng `createdAt`.
+   */
+  startedAt: iso.nullable(),
 });
 
 export const researchVersionSchema = z.object({
