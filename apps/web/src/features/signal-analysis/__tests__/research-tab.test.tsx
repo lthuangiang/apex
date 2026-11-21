@@ -984,6 +984,7 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
     expect(dlg).toHaveAccessibleDescription("Rules of Baseline (v3).");
     const tabs = within(dlg).getAllByRole("tab");
     expect(tabs.map((x) => x.textContent)).toEqual([
+      "Overview",
       "News types",
       "Levels",
       "Take profit / Stop loss",
@@ -994,10 +995,12 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
       "Labels",
       "Experiments",
     ]);
-    expect(within(dlg).getByRole("tab", { name: "News types" })).toHaveAttribute(
+    // #391: mở không chỉ định tab thì vào Overview.
+    expect(within(dlg).getByRole("tab", { name: "Overview" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
+    await userEvent.click(within(dlg).getByRole("tab", { name: "News types" }));
     const types = within(dlg).getByRole("table", { name: "News types, direction and max hold" });
     expect(within(types).queryByText("Off")).not.toBeInTheDocument();
     // Focus giữ trong drawer.
@@ -1027,6 +1030,7 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
     await userEvent.click(btn);
     const d2 = await screen.findByRole("dialog", { name: "How it works" });
     expect(d2).toHaveAccessibleDescription("Rules of v4 · Strict subject.");
+    await userEvent.click(within(d2).getByRole("tab", { name: "News types" }));
     expect(within(d2).getAllByText("Off")).toHaveLength(2);
     await userEvent.click(within(d2).getByRole("tab", { name: "Take profit / Stop loss" }));
     expect(within(d2).getByText(/the asset’s typical move/)).toHaveTextContent(

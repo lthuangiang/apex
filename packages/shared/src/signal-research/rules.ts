@@ -423,6 +423,12 @@ export const NEWS_CLASSIFIER = {
   },
 } as const;
 
+/**
+ * Chu kỳ của lane tin tức (phút): scheduler chạy Collect → Decide mỗi ngần này phút. Drawer How it works › Overview đọc cùng
+ * hằng này để câu chữ không lệch nhịp thật (#391).
+ */
+export const NEWS_CYCLE_MINUTES = 5;
+
 /** Ngưỡng Live / Delayed / Down của từng nguồn (ms kể từ lần cuối thành công). */
 export const SOURCE_HEALTH = {
   sosovalue: { liveMs: 7 * 60_000, delayedMs: 20 * 60_000 },

@@ -9,7 +9,13 @@ import {
 } from "@drift/db";
 import { HyperliquidClient } from "@drift/hyperliquid";
 import { Lease, runAsLeader } from "@drift/runtime";
-import { AppError, ErrorCode, SR_MARKETS_KEY, srMarketsSnapshot } from "@drift/shared";
+import {
+  AppError,
+  ErrorCode,
+  NEWS_CYCLE_MINUTES,
+  SR_MARKETS_KEY,
+  srMarketsSnapshot,
+} from "@drift/shared";
 import {
   createSodexCallRecorder,
   loadSodexConfig,
@@ -373,7 +379,7 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
         })
         .then(() => signals.runCycle())
         .then(() => signals.runContextBackfill());
-      signalTimer = setInterval(() => void signals.runCycle(), 5 * 60_000);
+      signalTimer = setInterval(() => void signals.runCycle(), NEWS_CYCLE_MINUTES * 60_000);
       watchTimer = setInterval(() => {
         void signals.watcher.tick().catch((error: unknown) => {
           log.error({ err: error }, "signal research watcher failed");

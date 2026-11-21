@@ -8986,6 +8986,7 @@
           "close": "Close",
           "tabsLabel": "How it works sections",
           "tabs": {
+            "overview": "Overview",
             "news": "News types",
             "levels": "Levels",
             "tpsl": "Take profit / Stop loss",
@@ -9022,7 +9023,159 @@
           "experiments4": "<b>Results.</b> <b>Better</b> or <b>Worse</b>: the likely range of the paired difference stays above or below 0. <b>No clear difference</b>: the range crosses 0 after the paired trades are in. <b>Collecting</b>: still running, not enough paired trades yet.",
           "experiments5": "<b>Not a clean test.</b> A version that changes more than one thing from Baseline still runs, but its result can’t show which change caused it.",
           "experimentsNote": "A result is about the past trades only. It isn’t a forecast.",
-          "experimentsBaseline": "Baseline"
+          "experimentsBaseline": "Baseline",
+          "overview": {
+            "intro": "Every <b>{min} minutes</b> DeskLabs reads new crypto news, keeps articles about a coin listed on SoDEX, asks Claude what kind of news it is, then each running version decides whether to open a <b>fake-money</b> trade. A watcher closes trades at TP, SL or max hold.",
+            "player": {
+              "prev": "Previous step",
+              "next": "Next step",
+              "pause": "Pause",
+              "play": "Play"
+            },
+            "stageTitle": "{n} · {name}",
+            "stages": {
+              "collect": "A new run starts. DeskLabs gets the article “SEC delays decision on SOL ETF” from SoSoValue and saves when it was published and when DeskLabs got it.",
+              "normalize": "The article names SOL and BTC. Both have a market on SoDEX, so it goes on. Articles with no coin on SoDEX stop here.",
+              "score": "Published 5 min ago, so Claude reads it: news type “ETF delayed”, coin SOL. The rules table sets the side to short. One low-tier source so far, so level Low.",
+              "context": "DeskLabs saves the moment: are research wallets long or short SOL, is funding against the crowd, has the price already run, BTC trend, volatility.",
+              "filter": "Each running version checks its own rules. A version that trades High only skips this Low signal. Another version takes it.",
+              "decide": "That version opens a fake-money short on SOL at mid + half the spread + the fee. TP and SL come from SOL’s typical move.",
+              "watcher": "The watcher keeps reading SoDEX bid and ask. The ask reaches TP, so it closes the trade with the result after fees.",
+              "results": "The closed trade shows on this page and counts toward the {n} trades a news type needs. It is compared with a random entry at the same moment."
+            },
+            "drops": {
+              "noCoin": "drop: no SoDEX coin",
+              "notCatalyst": "drop: not a catalyst",
+              "highOnly": "High-only bot: skip"
+            },
+            "diagram": {
+              "label": "Diagram of one Signal research run",
+              "step": "Step {n} {name}",
+              "soso": {
+                "title": "SoSoValue",
+                "l1": "crypto news,",
+                "l2": "every {min} min"
+              },
+              "market": {
+                "title": "Market data",
+                "l1": "funding, candles,",
+                "l2": "research wallets"
+              },
+              "prices": {
+                "title": "SoDEX prices",
+                "l1": "bid / ask, live"
+              },
+              "collect": {
+                "l1": "new articles, duplicates out",
+                "table": "signal_articles"
+              },
+              "normalize": {
+                "l1": "which coin? listed on SoDEX?",
+                "table": "candidate coins"
+              },
+              "score": {
+                "l1": "ask Claude, then the rules table",
+                "table": "signal_stories"
+              },
+              "context": {
+                "l1": "save the moment, block nothing",
+                "table": "signal_contexts"
+              },
+              "filter": {
+                "l1": "each version’s own rules",
+                "table": "shadow trades"
+              },
+              "decide": {
+                "l1": "open a fake-money trade",
+                "table": "signal_paper_trades"
+              },
+              "watcher": {
+                "title": "Watcher",
+                "l1": "keeps reading bid / ask: TP, SL, max hold",
+                "l2": "opposite news: Keep or Close"
+              },
+              "results": {
+                "title": "Results",
+                "l1": "this page, compared with",
+                "l2": "random entries"
+              },
+              "reader": {
+                "title": "Claude reader {v}",
+                "titleNa": "Claude reader",
+                "l1": "one article per call,",
+                "l2": "only if under {min} min old",
+                "l3": "never picks buy or sell"
+              },
+              "versions": {
+                "title": "Running versions",
+                "l1": "min level, delay, limits,",
+                "l2": "TP / SL multiples"
+              },
+              "working": {
+                "title": "Is it working?",
+                "l1": "{n} closed trades,",
+                "l2": "labels, experiments"
+              },
+              "sends": "sends",
+              "returns": "returns",
+              "never": "SoDEX: no order is ever sent. Fake money only."
+            },
+            "steps": {
+              "collect": {
+                "name": "Collect",
+                "sub": "new articles from SoSoValue",
+                "body": "Every {min} minutes DeskLabs asks SoSoValue for new crypto news. Each article keeps two times: when the source published it and when DeskLabs got it. The gap is the source delay.",
+                "drops": "Dropped: same text as an article already saved."
+              },
+              "normalize": {
+                "name": "Normalize",
+                "sub": "which coin, listed on SoDEX",
+                "body": "Finds the coins the article is about, from SoSoValue’s tags and DeskLabs’ list of other names, and keeps only coins with a market on SoDEX.",
+                "drops": "Dropped: no coin · not on SoDEX · duplicate."
+              },
+              "score": {
+                "name": "Score",
+                "sub": "Claude names the news type, the rules decide",
+                "whenTitle": "When Claude is called",
+                "whenIntro": "Right after Normalize, in the same {min}-minute run. Oldest article first. Each article passes {n} checks before Claude sees it:",
+                "checks": {
+                  "stale": "Published over {h} h ago <m>→ dropped, stale news</m>",
+                  "late": "Over {min} min since it was published <m>→ dropped without asking Claude: a trade now would be too late</m>",
+                  "calls": "This run has used its Claude calls <m>→ waits for the next run, in order</m>",
+                  "budget": "Today’s Claude budget is used up <m>→ dropped</m>"
+                },
+                "whenAfter": "Claude then gets one article per call: the title, the first {chars} characters, the source, the publish time and the candidate coins from step 2. It answers with one of those coins or none. A failed call is tried once more.",
+                "claude": "<b>Claude</b> picks one news type from a fixed list, the coin it directly hits, whether it is an ad, and the event date. Claude never decides to buy or sell.",
+                "checked": "<b>DeskLabs then checks</b> that the coin is written in the article, that it is not a treasury buy of BTC or ETH, and that the event is not over {h} h old.",
+                "rules": "<b>The rules table</b> sets the side and the max hold for that news type. The level comes from the sources carrying the story and how strong they are: High needs two or more independent sources including a top one; one top source or two mid sources is Medium; otherwise Low. It is fixed at the first article.",
+                "reader": "<b>Claude reader {v}</b> reads each article at step 3. Trades always open, but they only count once that reader has been checked: {min} random labels, at least {pct}% marked right. A new reader starts its count again. See <b>Labels</b>.",
+                "readerNa": "<b>Claude reader</b> reads each article at step 3. Trades always open, but they only count once that reader has been checked: {min} random labels, at least {pct}% marked right. A new reader starts its count again. See <b>Labels</b>."
+              },
+              "context": {
+                "name": "Context",
+                "sub": "save the moment, block nothing",
+                "body": "Saves the answers to the context questions (research wallets, funding, price already ran) and the market state (BTC trend over {btcH} h, volatility over {volH} h). Missing candles leave a blank, never a guess. See <b>Context questions</b> and <b>Market state</b>."
+              },
+              "filter": {
+                "name": "Filter",
+                "sub": "each version’s own rules",
+                "body": "One trade per story (coin + news type) per {days} days, the version’s minimum level and max source delay, fresh SoDEX prices, one open trade per coin, TP at least {x}× the cost of a trade, then the version’s limits.",
+                "drops": "A trade blocked only by a limit is saved as a <b>shadow trade</b>, so we can see what the limit cost."
+              },
+              "decide": {
+                "name": "Decide",
+                "sub": "open a fake-money trade",
+                "body": "Opens at mid + half the spread + the taker fee, like a real fill. TP and SL come from the version’s multiples of the coin’s typical move over the max hold. See <b>Take profit / Stop loss</b>."
+              },
+              "watch": {
+                "name": "Watcher and results",
+                "sub": "close, then measure",
+                "body1": "The watcher keeps reading SoDEX bid and ask and closes at TP, SL or max hold. Opposite news on the same coin: the version keeps or closes the trade, never flips it.",
+                "body2": "Closed trades show on this page and are compared with random entries at the same moments. See <b>When a signal passes</b>."
+              }
+            },
+            "never": "<b>Never:</b> no order is sent to SoDEX and no user money is touched. Claude only names the news type. The side, TP and SL come from the rules table and price data, so every decision can be replayed."
+          }
         }
       },
       "context": {

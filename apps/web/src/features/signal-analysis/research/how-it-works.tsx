@@ -27,6 +27,7 @@ import { count } from "../format";
 import { useResearchClassifiers } from "./api";
 import { useBotsLabels } from "./bots-labels-context";
 import { hold, pctSigned } from "./format";
+import { OverviewPanel } from "./how-it-works-overview";
 import { LEVEL_TONE, Na, Note, Pill, Sub, tdR, tdW, thR } from "./ui";
 import {
   catalystName,
@@ -42,8 +43,11 @@ import {
 // phải (`side`); dưới 768px: chiếm màn hình như sheet của version. Trang gọn (2026-11-20): giải thích dài của Paper bots và
 // Classifier quality chuyển vào tab Versions và tab Labels (mới), Market state (#376), Experiments (#377); các tab cuộn
 // ngang, mép phải mờ khi còn tab phía sau.
+// #391: tab Overview (một vòng chạy, how-it-works-overview.tsx) đứng đầu; nút "How it works" mở vào đây, nút "?" vẫn mở đúng
+// tab của nó. Dải tab và panel có `shrink-0`: BottomSheet side là cột tự cuộn, khối con không được bị ép dẹt.
 
 export const HOW_TABS = [
+  "overview",
   "news",
   "levels",
   "tpsl",
@@ -55,6 +59,8 @@ export const HOW_TABS = [
   "experiments",
 ] as const;
 export type HowTab = (typeof HOW_TABS)[number];
+/** #391: mở drawer mà không chỉ định tab (nút "How it works") thì vào Overview. */
+export const DEFAULT_HOW_TAB: HowTab = "overview";
 
 const HowContext = createContext<((tab: HowTab) => void) | null>(null);
 export const HowItWorksProvider = HowContext.Provider;
@@ -106,7 +112,7 @@ export function HowItWorksDrawer({
   const tv = useTranslations("signalAnalysis.research.versions");
   const tn = useTranslations("signalAnalysis.research");
   const refs = useRef(new Map<HowTab, HTMLButtonElement>());
-  const cur = tab ?? "news";
+  const cur = tab ?? DEFAULT_HOW_TAB;
   // Các tab cuộn ngang khi drawer hẹp: mép phải mờ khi còn tab phía sau; tab đang chọn luôn cuộn vào khung.
   const [list, setList] = useState<HTMLDivElement | null>(null);
   const [more, setMore] = useState(false);
@@ -145,7 +151,7 @@ export function HowItWorksDrawer({
     e.preventDefault();
     const next = end
       ? (HOW_TABS[HOW_TABS.length - 1] ?? "versions")
-      : (HOW_TABS[(i + d + HOW_TABS.length) % HOW_TABS.length] ?? "news");
+      : (HOW_TABS[(i + d + HOW_TABS.length) % HOW_TABS.length] ?? DEFAULT_HOW_TAB);
     onTab(next);
     refs.current.get(next)?.focus();
   };
@@ -165,7 +171,7 @@ export function HowItWorksDrawer({
         role="tablist"
         aria-label={t("tabsLabel")}
         data-more={more || undefined}
-        className={`flex gap-1 overflow-x-auto rounded-tile border border-border bg-surface-2 p-1 [scrollbar-width:none] ${more ? "mask-r-from-85%" : ""}`}
+        className={`flex shrink-0 gap-1 overflow-x-auto rounded-tile border border-border bg-surface-2 p-1 [scrollbar-width:none] ${more ? "mask-r-from-85%" : ""}`}
       >
         {HOW_TABS.map((k) => {
           const on = k === cur;
@@ -197,7 +203,7 @@ export function HowItWorksDrawer({
         id="hiw-panel"
         role="tabpanel"
         aria-labelledby={`hiw-tab-${cur}`}
-        className="flex flex-col gap-3 text-sm leading-normal text-ink-2"
+        className="flex shrink-0 flex-col gap-3 text-sm leading-normal text-ink-2"
       >
         <Panel
           tab={cur}
@@ -238,6 +244,8 @@ function Panel({
   const tn = useTranslations("signalAnalysis.research");
   const cfg = version?.config ?? null;
   switch (tab) {
+    case "overview":
+      return <OverviewPanel />;
     case "news":
       return (
         <>
