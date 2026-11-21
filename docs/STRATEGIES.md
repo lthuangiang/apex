@@ -21,6 +21,9 @@
 2. Lúc start: đặt lệnh mua limit ở mọi mức dưới giá hiện tại, lệnh bán limit ở mọi mức trên giá hiện tại (phần tài sản cơ sở để bán được mua bằng một lệnh market lúc start **[confirm cách khởi tạo]**).
    - First entry = Now (mặc định) chỉ vào khi giá đang nằm trong khoảng lower–upper; giá đang ngoài khoảng thì bot chờ giá vào khoảng (Trading Agent hiện "Waiting for price · {lower}–{upper}"), không mua market cả vốn. Màn Create cảnh báo "Price is outside your range. The bot waits until the price enters it." nhưng không chặn Start (DEC-235).
 3. Khi một lệnh mua ở mức *i* khớp → đặt lệnh bán ở mức *i+1*. Khi lệnh bán ở mức *i* khớp → đặt lệnh mua ở mức *i−1*.
+   - **Khớp một phần (DEC-TBD-grid-partial-fill, #261):** mỗi lần khớp ghi vào sổ cái ngay, đúng khối lượng và giá của lần khớp đó. Lệnh của mức vẫn được theo dõi, kèm phần đã khớp, tới khi khớp hết hoặc SoDEX báo lệnh kết thúc. Chỉ khi lệnh **khớp hết** mới đặt **một** lệnh đối ứng, khối lượng bằng tổng đã khớp; khớp đủ trong một lần thì như trên. Không bao giờ đặt lệnh đối ứng lớn hơn phần đã khớp.
+   - Lệnh khớp một phần rồi kết thúc (`orderDone`, hoặc bị huỷ vì vượt giới hạn khối lượng theo vị thế): đặt lệnh đối ứng cho phần đã khớp nếu đạt min size của SoDEX; dưới min size thì không đặt, phần vị thế đó để Resume hoặc lệnh đóng xử lý. Khi bot dừng (stop / pause) thì không đặt lệnh mới; fill tới sau vẫn vào sổ cái, Resume dựng lại lệnh theo vị thế thật.
+   - Giới hạn khối lượng lệnh đang mở theo vị thế (DEC-320) tính lệnh đã khớp một phần theo phần còn lại (khối lượng đặt − đã khớp).
 4. Giá ra ngoài range: không đặt lệnh mới, bot vẫn `running` với cờ `needs_attention`.
 5. Giá chạm stop → `stop(STOP_LOSS)`. Tổng lợi nhuận chạm take profit → `stop(TAKE_PROFIT)`. Lỗ chạm max loss → `pause(BOT_MAX_LOSS)`.
 

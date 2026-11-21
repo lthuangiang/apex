@@ -1915,8 +1915,9 @@ describe("engine", () => {
     // quá 30 s, chạy riêng ~7–10 s).
     useCleanDb("backtest_parity");
 
-    it("produces the same order sequence as the backtest on the same candles (BACKTEST.md 11.2)", async () => {
-      const MIN = 60_000;
+    const MIN = 60_000;
+    /** Spot grid chạy backtest trên 56 nến; trả về kết quả và chuỗi lệnh dạng "tag side price qty". */
+    const gridBacktest = () => {
       // 56 nến, sóng chu kỳ ~19 nến: đúng 16 lệnh như bản cũ 160 nến chu kỳ ~57 nến (mỗi mức giữa khớp hai chiều nhiều
       // vòng), nhưng ~230 event thay vì ~650 (#225). Mỗi nến giá đi tối đa ~3 < khoảng lưới 5, nên vẫn qua từng mức một.
       const candles = Array.from({ length: 56 }, (_, i) => {
@@ -1955,6 +1956,11 @@ describe("engine", () => {
           ? [`${a.order.tag} ${a.order.side} ${a.order.price ?? "mkt"} ${a.order.quantity}`]
           : [],
       );
+      return { bt, btOrders };
+    };
+
+    it("produces the same order sequence as the backtest on the same candles (BACKTEST.md 11.2)", async () => {
+      const { bt, btOrders } = gridBacktest();
       expect(bt.fills.length).toBeGreaterThan(4);
       expect(btOrders).toHaveLength(16);
 
@@ -1982,6 +1988,86 @@ describe("engine", () => {
       );
       expect(engineOrders).toEqual(btOrders);
       await e.stop();
+    });
+
+    it("gives the same orders when SoDEX fills each grid order in 3 trades (#261)", async () => {
+      // Chuỗi fill dựng tay: mỗi fill của backtest tách thành 3 trade (30%, 30%, phần còn lại), SoDEX báo khối lượng luỹ
+      // kế. Lệnh đối ứng chỉ đặt khi khớp hết và bằng tổng: chuỗi lệnh của engine phải y như backtest khớp một lần.
+      const { bt, btOrders } = gridBacktest();
+      expect(btOrders).toHaveLength(16);
+      const { eq } = await import("drizzle-orm");
+      const gw = new FakeGateway();
+      const { botId, accountId } = await seedBot("running");
+      const e = makeEngine(gw, "w1");
+      await e.tick();
+      const tagOf = new Map(
+        bt.actions.flatMap((a) =>
+          a.type === "place" ? [[a.order.clOrdID, a.order.tag] as const] : [],
+        ),
+      );
+      let trades = 0;
+      let early = 0;
+      for (const ev of bt.events) {
+        if (ev.type === "tick") await e.onPrice(ev.market, ev.price, ev.at);
+        if (ev.type === "fill") {
+          const tag = tagOf.get(ev.clOrdID);
+          const mine = [...gw.received].reverse().find((o) => o.tag === tag);
+          if (mine === undefined) continue;
+          const q = dec(ev.quantity);
+          // Lệnh market mở vị thế ban đầu khớp một lần như cũ; lệnh mức khớp 3 lần.
+          const totals =
+            mine.type === "market"
+              ? [q]
+              : [q.mul("0.3").toDecimalPlaces(4), q.mul("0.6").toDecimalPlaces(4), q];
+          for (const total of totals) {
+            const sent = gw.received.length;
+            await e.onFill(accountId, mine.clOrdID, total.toString(), ev.price, "0", ev.at);
+            trades += 1;
+            // Trade chưa khớp hết: chưa có lệnh đối ứng nào.
+            if (!total.eq(q) && gw.received.length !== sent) early += 1;
+          }
+        }
+      }
+      expect(trades).toBeGreaterThan(bt.fills.length);
+      expect(early).toBe(0);
+      const engineOrders = gw.received.map(
+        (o) => `${o.tag} ${o.side} ${o.price ?? "mkt"} ${o.quantity}`,
+      );
+      expect(engineOrders).toEqual(btOrders);
+      // Mọi trade vào sổ cái: vị thế của engine bằng vị thế của backtest.
+      const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      expect((rt?.state as { ledger: { position: string } }).ledger.position).toBe(
+        (bt.state as { ledger: { position: string } }).ledger.position,
+      );
+      await e.stop();
+    });
+
+    it("books both partial fills of a grid order across an engine restart, then places one counter order (#261)", async () => {
+      const { eq } = await import("drizzle-orm");
+      const gw = new FakeGateway();
+      const { botId, accountId } = await seedBot("running");
+      const a = makeEngine(gw, "w-261");
+      await a.tick();
+      await a.onPrice("vBTC_vUSDC", "100", clock);
+      const buy95 = gw.received.find((o) => o.side === "buy" && o.price === "95");
+      expect(buy95?.quantity).toBe("1");
+      const id = buy95?.clOrdID ?? "";
+      await a.onFill(accountId, id, "0.4", "95", "0", clock);
+      const sent = gw.received.length;
+      // Engine khởi động lại giữa hai lần khớp: chiến lược nạp lại state từ DB.
+      await a.stop();
+      const b = makeEngine(gw, "w-261");
+      await b.tick();
+      await b.onFill(accountId, id, "1", "95", "0", clock + 1);
+      const after = gw.received.slice(sent);
+      expect(after.map((o) => `${o.tag} ${o.side} ${o.price ?? "mkt"} ${o.quantity}`)).toEqual([
+        "grid:2:sell sell 100 1",
+      ]);
+      const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      const state = rt?.state as { ledger: { position: string }; open: Record<string, unknown> };
+      expect(state.ledger.position).toBe("1");
+      expect(state.open[id]).toBeUndefined();
+      await b.stop();
     });
   });
 
