@@ -1786,6 +1786,8 @@ export const signalArticles = pgTable(
     index("signal_articles_published_idx").on(t.publishedAt),
     index("signal_articles_hash_idx").on(t.contentHash),
     index("signal_articles_status_idx").on(t.status, t.publishedAt),
+    // #413: feed / phễu theo khoảng 24 h / 7 / 30 ngày gồm mọi version Rules, lọc theo giờ thu bài.
+    index("signal_articles_collected_idx").on(t.collectedAt),
   ],
 );
 

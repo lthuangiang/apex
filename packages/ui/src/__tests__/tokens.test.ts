@@ -74,6 +74,8 @@ describe("design tokens", () => {
     ["neg-ink", "neg-bg"],
     ["warn", "warn-bg"],
     ["unknown", "unknown-bg"],
+    // #413: chip / banner của dữ liệu version Rules cũ.
+    ["old", "old-bg"],
   ])("keeps %s on %s at 4.5:1 or more", (fg, bg) => {
     expect(contrast(token(fg), token(bg))).toBeGreaterThanOrEqual(4.5);
   });

@@ -57,8 +57,8 @@ import {
 } from "./signal-research-versions";
 
 // Feed bài và trace từng bài của Signal research (#291; hợp đồng packages/shared/src/api/signal-research.ts, thiết kế
-// docs/mockups/signal-research/news-trace.html). Chỉ đọc; nơi gọi bọc trong transaction chỉ đọc. Chỉ bài của version quy
-// tắc hiện tại, không có bài backlog. Mọi số lấy từ cột / event đã lưu; không lưu thì null, không bao giờ tự tính bịa.
+// docs/mockups/signal-research/news-trace.html). Chỉ đọc; nơi gọi bọc trong transaction chỉ đọc. #413: bài của MỌI
+// version Rules (có gắn version), không có bài backlog. Mọi số lấy từ cột / event đã lưu; không lưu thì null, không bao giờ tự tính bịa.
 //
 // Bước dừng và kết quả của một bài suy ra từ `signal_events` của chính bài đó (một câu SQL dùng chung cho feed, bộ đếm
 // của feed và `articleStops` của tổng kết, để con số trên chip lý do khớp với số bài feed trả về):
@@ -76,8 +76,14 @@ type StoryRow = typeof signalStories.$inferSelect;
 type TradeRow = typeof signalPaperTrades.$inferSelect;
 
 const DAY_MS = 86_400_000;
-const RANGE_DAYS: Record<ResearchRange, number> = { "1d": 1, "7d": 7 };
+const RANGE_DAYS: Record<ResearchRange, number> = { "1d": 1, "7d": 7, "30d": 30 };
 const STAGES: readonly ResearchStage[] = ["collect", "normalize", "score", "filter", "decide"];
+
+/** "news-v3" → 3; dạng lạ → version hiện tại (#413). */
+export const rulesVersionNumberOf = (v: string): number => {
+  const m = /^news-v(\d+)$/.exec(v);
+  return m?.[1] === undefined ? NEWS_RULES.versionNumber : Number(m[1]);
+};
 
 export const rangeSince = (now: Date, range: ResearchRange): Date =>
   new Date(now.getTime() - RANGE_DAYS[range] * DAY_MS);
@@ -101,17 +107,20 @@ const preClaude = sql.raw(PRE_CLAUDE_REASONS.map(literal).join(", "));
 
 /**
  * Bảng tạm `st`: mỗi bài một dòng với bước dừng, kết quả, lý do API, mã nội bộ, trade, đã gửi Claude chưa. `since` null
- * = mọi bài của version hiện tại.
+ * = mọi bài. `allRules` (#413, DEC-TBD-sr-history-across-versions): bài của MỌI version Rules (feed, phễu theo khoảng,
+ * trace, bài mới); false = chỉ version hiện tại (phễu không có khoảng, như trước). Event luôn theo version Rules của chính
+ * bài (`e.rule_version = a.rule_version`), nên bài cũ có bước dừng / lý do theo luật của nó.
  */
 function stateCte(
   since: Date | null,
   onlyId: string | null = null,
   scope: SignalVersionScope | null = null,
+  allRules = false,
 ): SQL {
   const v = NEWS_RULES.version;
   return sql`
     with ev as (
-      select a.id, a.published_at, a.collected_at, a.claude_calls,
+      select a.id, a.published_at, a.collected_at, a.claude_calls, a.rule_version,
         jsonb_array_length(case when jsonb_typeof(a.matched_currencies) = 'array' then a.matched_currencies else '[]'::jsonb end) as tagged,
         x.*
       from signal_articles a
@@ -130,7 +139,8 @@ function stateCte(
         from signal_events e
         where e.article_id = a.id and e.rule_version = a.rule_version and ${versionEventSql(scope, "e")}
       ) x
-      where a.rule_version = ${v} and a.status <> 'backlog'
+      where a.status <> 'backlog'
+        ${allRules ? sql`` : sql`and a.rule_version = ${v}`}
         ${since === null ? sql`` : sql`and a.collected_at >= ${since}`}
         ${onlyId === null ? sql`` : sql`and a.id = ${onlyId}`}
     ),
@@ -177,6 +187,7 @@ interface StateRow extends Record<string, unknown> {
   id: string;
   published_at: Date | string;
   collected_at: Date | string;
+  rule_version: string;
   stage: ResearchStage;
   outcome: ResearchArticle["outcome"];
   reason: ResearchDropReason | null;
@@ -194,6 +205,7 @@ export async function loadArticleStops(
   q: Q,
   since: Date | null,
   scope: SignalVersionScope | null = null,
+  allRules = false,
 ) {
   const r = await q.execute<{
     stage: ResearchStage;
@@ -201,7 +213,7 @@ export async function loadArticleStops(
     reason: ResearchDropReason | null;
     merge_reason: "sameStory" | "storyTooOld" | null;
     n: string | number;
-  }>(sql`${stateCte(since, null, scope)}
+  }>(sql`${stateCte(since, null, scope, allRules)}
     select stage, outcome, reason, merge_reason, count(*) as n from st
     group by stage, outcome, reason, merge_reason
     order by count(*) desc, stage, outcome, reason, merge_reason`);
@@ -324,6 +336,8 @@ function articleItem(
     shadowTradeId: dropped ? shadowTradeOf(s.code, "drop", s.f_trade_id) : null,
     opposite: dropped ? oppositeAt(s.code, "drop", s.f_detail) : null,
     context: context === undefined ? null : contextFlagsOf(context),
+    rulesVersion: rulesVersionNumberOf(a.ruleVersion),
+    readerVersion: a.claudePromptVersion,
   };
 }
 
@@ -372,10 +386,10 @@ export async function loadSignalResearchArticles(
   const where = filters.length === 0 ? sql`true` : sql.join(filters, sql` and `);
 
   const counts = await q.execute<{ total: string | number; n_all: string | number }>(
-    sql`${stateCte(since, null, scope)} select count(*) filter (where ${where}) as total, count(*) as n_all from st`,
+    sql`${stateCte(since, null, scope, true)} select count(*) filter (where ${where}) as total, count(*) as n_all from st`,
   );
   check();
-  const page = await q.execute<StateRow>(sql`${stateCte(since, null, scope)}
+  const page = await q.execute<StateRow>(sql`${stateCte(since, null, scope, true)}
     select * from st
     where ${where}
       ${cur === null ? sql`` : sql`and (published_at, id) < (${cur.t}::timestamptz, ${cur.id}::text)`}
@@ -435,8 +449,8 @@ function decodeSince(c: string): { t: Date; id: string } {
 }
 
 /**
- * Bài mới cho hiệu ứng bài rơi xuống phễu (#345). Lần đầu (không có `since`): không trả bài, con trỏ ở bài mới nhất của
- * version quy tắc hiện tại. Sau đó: bài thu sau con trỏ, cũ trước mới, chỉ bài đã xong phễu theo `versionId`. Con trỏ đi
+ * Bài mới cho hiệu ứng bài rơi xuống phễu (#345). Lần đầu (không có `since`): không trả bài, con trỏ ở bài mới nhất
+ * (mọi version Rules, #413). Sau đó: bài thu sau con trỏ, cũ trước mới, chỉ bài đã xong phễu theo `versionId`. Con trỏ đi
  * tới bài cuối liền mạch đã xong; bài còn chờ thu trong `NEW_ARTICLES_PIN_MS` giữ con trỏ lại (bài sau nó vẫn được trả,
  * web bỏ bài trùng theo id). So sánh giờ ở mức mili giây (con trỏ là ISO).
  */
@@ -452,19 +466,14 @@ export async function loadSignalResearchNewArticles(
     const last = await q
       .select({ t: signalArticles.collectedAt, id: signalArticles.id })
       .from(signalArticles)
-      .where(
-        and(
-          eq(signalArticles.ruleVersion, NEWS_RULES.version),
-          sql`${signalArticles.status} <> 'backlog'`,
-        ),
-      )
+      .where(sql`${signalArticles.status} <> 'backlog'`)
       .orderBy(sql`${signalArticles.collectedAt} desc, ${signalArticles.id} desc`)
       .limit(1);
     const row = last[0];
     return { items: [], since: encodeCursor(row?.t ?? now, row?.id ?? "") };
   }
   const cur = decodeSince(query.since);
-  const page = await q.execute<StateRow>(sql`${stateCte(cur.t, null, scope)}
+  const page = await q.execute<StateRow>(sql`${stateCte(cur.t, null, scope, true)}
     select * from st
     where (date_trunc('milliseconds', collected_at), id) > (${cur.t}::timestamptz, ${cur.id}::text)
     order by collected_at asc, id asc
@@ -807,7 +816,8 @@ function stepsOf(input: {
 }
 
 /**
- * Trace một bài (id SoSoValue). null = không có, bài backlog, hoặc bài của version quy tắc khác. `viewerId` (#304): thẻ
+ * Trace một bài (id SoSoValue). null = không có hoặc bài backlog. #413: bài của version Rules cũ vẫn mở được, các bước
+ * đọc theo version Rules của chính bài (không gọi lại Claude). `viewerId` (#304): thẻ
  * Score kèm nhãn của chính người xem; trace KHÔNG ẩn kết quả lệnh (chỉ luồng `labels/next` ẩn).
  */
 export async function loadSignalResearchArticleTrace(
@@ -819,7 +829,7 @@ export async function loadSignalResearchArticleTrace(
 ): Promise<ResearchArticleTrace | null> {
   if (id.length === 0 || id.length > 200) return null;
   const scope = await resolveSignalVersion(q, versionId);
-  const st = await q.execute<StateRow>(sql`${stateCte(null, id, scope)} select * from st`);
+  const st = await q.execute<StateRow>(sql`${stateCte(null, id, scope, true)} select * from st`);
   const s = st.rows[0];
   if (s === undefined) return null;
   check();

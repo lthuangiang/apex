@@ -158,6 +158,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
     ],
     outcomes: { closed: 30, tp: 12, sl: 11, maxHold: 7, opposite: 0, open: 11 },
     context: null,
+    rules: [{ v: 2, articles: 1240 }],
   },
   cycleMinutes: 5,
   newsRulesVersion: 2,
@@ -302,6 +303,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
   marketSplitBackfilled: null,
   newsRulesSince: "2026-11-01T00:00:00.000Z",
   olderRules: { trades: 0, versions: [] },
+  rulesHistory: [{ v: 2, startedAt: "2026-11-01T00:00:00.000Z", reader: "news-classifier-v2" }],
 };
 
 export const TRADE_SOL = "sr-0001";
@@ -844,6 +846,10 @@ export const JUDGE: ResearchSummary = {
   context: LIVE_CTX,
   contextBackfilled: ctxBlock("backfilled", [EMPTY_Q("h1"), EMPTY_Q("h2"), EMPTY_Q("h3")], 0),
   olderRules: { trades: 4, versions: [2] },
+  rulesHistory: [
+    { v: 2, startedAt: "2026-11-01T00:00:00.000Z", reader: "news-classifier-v2" },
+    { v: 3, startedAt: "2026-11-18T10:37:00.000Z", reader: "news-classifier-v3" },
+  ],
 };
 const FIRST_TRADE = RESEARCH_TRADES.items[0];
 if (FIRST_TRADE === undefined) throw new Error("fixture");
