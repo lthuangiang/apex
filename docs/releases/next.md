@@ -16,6 +16,7 @@ Not financial advice. Past results are not a forecast.
 - Backtest / Review this run / What-if: kết quả đổi khi stop của sàn và lệnh thoát khớp cùng nến (#412), lệnh reduce-only không còn đảo chiều vị thế.
 - CI: test của package phụ thuộc chạy lại khi dependency đổi (bỏ `turbo run test --only`; ví dụ đổi `@drift/strategies` thì chạy lại test engine / backtest), PR chỉ đổi docs vẫn dùng cache (#414, DEC-358).
 - Signal research: random baseline phát lại nến từ phút sau lúc vào lệnh thật (`opened_clock_at`), không từ đầu chu kỳ; lệnh cũ không có cột này giữ `opened_at`, baseline đã lưu không tính lại (#405, DEC-354). **Chưa merge.**
+- Retention 45 ngày của scheduler bỏ thêm `bot_events.payload.quote` (snapshot báo giá Market Making, DEC-312); dòng Decisions và phần còn lại của payload giữ nguyên. Lượt đầu tự tạo index `bot_events_quote_idx` bằng CONCURRENTLY, không cần bước tay (#259, DEC-TBD, DEPLOY 2.14). **Chưa merge.**
 
 **Migration (chạy khi deploy):** `0057_sr_articles_collected_idx` (index `signal_articles(collected_at)`, #413); `0058_sr_menu_beta` (`users.signal_research`, `signal_bot_versions.owner_user_id` + trigger trần 3 version theo chủ, `signal_classification_labels.labeler`; #423); `0059_news_signal` (bảng `news_signals` bất biến, trigger chặn sửa / xoá; `news_signal_deliveries`, `news_signal_trades`, `news_signal_commands`; cột `bots.signal_version_id`; chỉ thêm bảng / cột, chưa có code ghi; #419 PR 2, **chưa merge**).
 

@@ -1456,6 +1456,10 @@ function stepCore(
     case "fundingRate":
     case "marginRatio":
     case "leaderFill":
+    case "newsSignal":
+    case "newsCommand":
+    case "newsStop":
+    case "paused":
     case "leaderPosition":
       return { actions: [], state: s };
     case "resumed":

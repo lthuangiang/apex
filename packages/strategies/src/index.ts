@@ -40,6 +40,15 @@ export {
 };
 
 export { STRATEGY_SCHEMAS } from "./schemas";
+export {
+  NEWS_SIGNAL,
+  newsSignal,
+  newsTag,
+  newsTrades,
+  initialNewsSignalState,
+  type NewsSignalState,
+  type NewsTrade,
+} from "./news-signal";
 export { STRATEGIES, waitingOf, type LaunchedStrategy, type StrategyEntry } from "./registry";
 export * from "./backtest";
 export { fundingArb, futuresDca, futuresGrid, rebalancing, recurringBuy, spotDca, spotGrid, twap };
