@@ -429,7 +429,7 @@ Câu chữ theo mockup đã duyệt ("Start bot from a version", bản online ht
 - **Stop "Close all now":** đóng từng lệnh đang mở.
 - **Sửa bot** (`applyVersion`): chỉ áp khi không còn lệnh nào.
 
-**Tín hiệu từ scheduler (DEC-TBD-news-signal-publish):**
+**Tín hiệu từ scheduler (DEC-365):**
 - Scheduler ghi `news_signals` khi `SIGNAL_NEWS_PUBLISH_ENABLED` bật, rồi phát chuông NATS `sr.signal.new`.
 - Mọi câu chuyện qua Understand đều được phát, không lọc theo version; bot tự lọc theo thứ tự ở trên.
 - `level` chỉ tính từ nguồn của các bài trong chu kỳ đó, không cộng nguồn của lần thử trước. Vì vậy level có thể chặt hơn level mà research version tính cho cùng câu chuyện.
