@@ -10,6 +10,8 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
+- Backtest / Review this run / What-if: kết quả đổi khi stop của sàn và lệnh thoát khớp cùng nến (#412), lệnh reduce-only không còn đảo chiều vị thế.
+- CI: test của package phụ thuộc chạy lại khi dependency đổi (bỏ `turbo run test --only`; ví dụ đổi `@drift/strategies` thì chạy lại test engine / backtest), PR chỉ đổi docs vẫn dùng cache (#414, DEC-TBD-ci-downstream-tests). **Chưa merge.**
 - Signal research: random baseline phát lại nến từ phút sau lúc vào lệnh thật (`opened_clock_at`), không từ đầu chu kỳ; lệnh cũ không có cột này giữ `opened_at`, baseline đã lưu không tính lại (#405, DEC-354). **Chưa merge.**
 
 **Migration (chạy khi deploy):** chưa có.

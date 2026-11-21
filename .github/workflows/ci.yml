@@ -8,7 +8,11 @@
 #   compose dựng hạ tầng docker compose.
 #   check   gom kết quả: fail nếu job nào fail / bị huỷ. Dùng làm tên duy nhất khi bật "Require status checks".
 # Typecheck và test dùng cache Turbo (.turbo/cache) lưu theo sha, khôi phục từ lần chạy gần nhất của nhánh
-# (rồi của main): package không đổi thì cache hit. Shard test chạy `--only` vì typecheck đã có ở job static.
+# (rồi của main): package không đổi thì cache hit. Shard test KHÔNG dùng `--only` (#414, DEC-TBD-ci-downstream-tests):
+# `--only` bỏ `dependsOn`, nên hash test của engine / backtest không tính `@drift/strategies` và PR đổi strategies chỉ
+# phát lại log cũ. Không có `--only`, test phụ thuộc `^typecheck` (turbo.json): hash test gồm hash typecheck của mọi
+# package nó dùng (bắc cầu), nên đổi một package thì test của nó và của mọi package dùng nó chạy lại; PR chỉ đổi docs
+# vẫn cache hit. Typecheck của dependency chạy lại trong shard khi cache miss (vài chục giây).
 name: ci
 
 on:
@@ -77,7 +81,8 @@ jobs:
           key: turbo-test-${{ matrix.shard }}-${{ github.sha }}
           restore-keys: turbo-test-${{ matrix.shard }}-
       # Runner 2 vCPU: tối đa 2 package test cùng lúc để test UI không hết giờ vì bị chia CPU (#21, #24, #25).
-      - run: pnpm exec turbo run test --only --concurrency=2 ${{ matrix.filter }}
+      # Không `--only` (#414): hash test phải tính cả package phụ thuộc (qua `^typecheck`).
+      - run: pnpm exec turbo run test --concurrency=2 ${{ matrix.filter }}
 
   ui:
     runs-on: ubuntu-latest
