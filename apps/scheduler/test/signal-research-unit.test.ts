@@ -223,11 +223,32 @@ describe("classifier answer", () => {
   });
 });
 
-describe("classifier prompt news-classifier-v4 (#395, #323)", () => {
-  it("ships with rules news-v4", () => {
-    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v4");
+describe("classifier prompt news-classifier-v5 (#399)", () => {
+  it("ships with rules news-v4 (only the prompt changes)", () => {
+    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v5");
     expect(NEWS_RULES.version).toBe("news-v4");
   });
+  it("stock: a company's stock market debut is not a listing, a comparison name is not the subject", () => {
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /first day, beating SpaceX" — candidates SPCX-USD → none, market NONE\. A company's stock market debut is not a listing/,
+    );
+  });
+  it("stock: a fund buying a company's shares is not treasury_buy of a coin", () => {
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /Capital Group raises its holding of Strategy shares.*candidates MSTR-USD, BTC-USD → none, market NONE\. A fund buying a company's shares is not treasury_buy/,
+    );
+  });
+  it("keeps every v4 example and the v4 numbering (examples are only appended)", () => {
+    expect(CLASSIFIER_SYSTEM).toMatch(/\n70\. "Issuer W launches another spot ETH ETF in the US"/);
+    expect(CLASSIFIER_SYSTEM).toMatch(/\n71\. "Anthropic's shares/);
+    expect(CLASSIFIER_SYSTEM).toMatch(/\n72\. "Capital Group/);
+    expect(CLASSIFIER_SYSTEM.indexOf("\n72. ")).toBeLessThan(
+      CLASSIFIER_SYSTEM.indexOf("# Edge cases"),
+    );
+  });
+});
+
+describe("classifier prompt rules from news-classifier-v4 (#395, #323)", () => {
   it("hack: a disclosed or patched vulnerability with no funds lost is none", () => {
     expect(CLASSIFIER_SYSTEM).toContain(
       "A disclosed, reported or patched vulnerability (a bug report, a CVE, a security advisory, a bug bounty, a fixed version released) is not a hack when no funds were taken and no attacker actually exploited it",
@@ -410,8 +431,12 @@ describe("classifier prompt rules from news-classifier-v2 (#298)", () => {
     expect(JSON.stringify(body.system)).toContain("Morgan Stanley raises NVDA price target");
     // v4 (#395): the same cached prefix carries the v4 examples.
     expect(JSON.stringify(body.system)).toContain("Ethereum client bug lets attacker mint ETH");
+    // v5 (#399): and the v5 counter-examples.
+    expect(JSON.stringify(body.system)).toContain(
+      "Capital Group raises its holding of Strategy shares",
+    );
     expect(articleUsageValues({ usage: { ...emptyUsage(), calls: 1 } }).claudePromptVersion).toBe(
-      "news-classifier-v4",
+      "news-classifier-v5",
     );
   });
 });

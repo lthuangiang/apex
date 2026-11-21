@@ -346,7 +346,7 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(within(src).getByText(/^Claude · Delayed · /)).toBeInTheDocument();
   });
 
-  it("paper bots: News bot versions, replay bots with balance, last run and rule version", async () => {
+  it("paper bots: News bot versions only, no replay cards (#385)", async () => {
     wrap();
     await screen.findByRole("region", { name: "Bots & labels" });
     const bots = region("Bots & labels");
@@ -357,8 +357,9 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(within(baseline).getByText("+$3.25 unrealized")).toBeInTheDocument();
     const v4 = within(bots).getByRole("article", { name: "News bot v4 · Strict subject" });
     expect(within(v4).queryByText(/unrealized/)).not.toBeInTheDocument();
-    expect(within(bots).getByText("01:00 · 23 trades")).toBeInTheDocument();
-    expect(within(bots).getByText("9,623.4")).toBeInTheDocument();
+    // #385: thẻ replay (Whales, Funding · Price patterns) đã bỏ: API không bao giờ trả bot replay.
+    expect(within(bots).queryByText("Whales bot")).not.toBeInTheDocument();
+    expect(within(bots).queryByText("Funding · Price patterns")).not.toBeInTheDocument();
   });
 
   it("the per-level table sits under Is it working? › By level and says Not enough trades, never 0", async () => {
@@ -639,8 +640,7 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     wrap();
     await screen.findByRole("region", { name: "Bots & labels" });
     const bots = region("Bots & labels");
-    // Whales balance, Funding balance, Price patterns balance (lane News: News bot versions).
-    expect(within(bots).getAllByText("Not available").length).toBeGreaterThanOrEqual(3);
+    // #385: không còn thẻ replay (trước đây ba số dư "Not available" của Whales / Funding / Price patterns nằm ở đây).
     // Số dư thiếu không bao giờ thành "0.0". (Số đếm 0 thật của API versions, như Closed 0, vẫn hiện: từ #342 danh sách
     // version tải ngay ở đầu trang.)
     expect(within(bots).queryByText(/^0\.0$/)).not.toBeInTheDocument();
@@ -1399,6 +1399,20 @@ function readerV4(startedAt: string) {
   };
 }
 
+/** #399: Claude reader v5 hiện tại (bắt đầu `v5Start`), v4 (lên cùng Rules v4, bắt đầu `v4Start`) đã retired. */
+function readerV5(v5Start: string, v4Start: string) {
+  const base = readerV4(v5Start);
+  const [cur, old] = base.items;
+  if (cur === undefined || old === undefined) throw new Error("fixture");
+  return {
+    ...base,
+    items: [
+      { ...cur, classifierVersion: "news-classifier-v5" },
+      { ...old, classifierVersion: "news-classifier-v4", startedAt: v4Start },
+    ],
+  };
+}
+
 describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
   const DAY = 86_400_000;
 
@@ -1409,7 +1423,7 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
     return dlg;
   }
 
-  it("News types: two new boxes with the New in v4 labels while v4 is under 14 days old", async () => {
+  it("News types: two new boxes, Not counted labelled New in v4 while v4 is under 14 days old", async () => {
     state.classifiers = readerV4(new Date(Date.now() - 2 * DAY).toISOString());
     wrap();
     const dlg = await newsTypes();
@@ -1430,12 +1444,16 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
         .getAllByRole("listitem")
         .map((li) => li.textContent),
     ).toEqual([
+      "A company’s shares starting to trade is not a listing, and a fund buying a company’s shares is not a treasury buy.",
       "A bug report or a fixed vulnerability with no funds lost is not a hack.",
       "The coin that was stolen is never the hacked asset. In “$860M in ETH drained”, ETH only measures the loss.",
       "Moving or laundering funds from an earlier hack is not a new hack.",
       "An ETF listed on a smaller exchange for a coin that already has ETFs is not “ETF approved”.",
     ]);
-    expect(within(dlg).getAllByText("New in v4")).toHaveLength(2);
+    // #399: "New in v4" chỉ còn ở hộp Not counted (Rules v4); hộp reader mang nhãn của reader v5.
+    expect(within(notCounted).getByText("New in v4")).toBeInTheDocument();
+    expect(within(dlg).getAllByText("New in v4")).toHaveLength(1);
+    expect(within(dlg).queryByText("New in v5")).not.toBeInTheDocument();
     expect(within(dlg).getByText(/Claude reader v4 · a starting guess/)).toHaveTextContent(
       "Rules v2 · Claude reader v4 · a starting guess that the results prove or drop",
     );
@@ -1459,6 +1477,55 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
     expect(
       within(dlg).getByRole("region", { name: "What Claude reader v4 reads differently" }),
     ).toBeInTheDocument();
+  });
+
+  it("#399 reader v5: the reader box follows the current reader, New in v5 on it, New in v4 stays on Not counted", async () => {
+    state.classifiers = readerV5(
+      new Date(Date.now() - 1 * DAY).toISOString(),
+      new Date(Date.now() - 2 * DAY).toISOString(),
+    );
+    wrap();
+    const dlg = await newsTypes();
+    const notCounted = await within(dlg).findByRole("region", { name: /^Not counted/ });
+    const reads = within(dlg).getByRole("region", {
+      name: /^What Claude reader v5 reads differently/,
+    });
+    expect(within(reads).getByText("New in v5")).toBeInTheDocument();
+    expect(within(reads).getAllByRole("listitem")[0]).toHaveTextContent(
+      "A company’s shares starting to trade is not a listing, and a fund buying a company’s shares is not a treasury buy.",
+    );
+    expect(within(reads).getAllByRole("listitem")).toHaveLength(5);
+    expect(within(notCounted).getByText("New in v4")).toBeInTheDocument();
+    expect(within(dlg).getByText(/Claude reader v5 · a starting guess/)).toBeInTheDocument();
+    // Chip của Rules vẫn theo mốc Rules v4 (reader v4 lên 2 ngày trước).
+    expect(within(dlg).getByText("v1 → v2")).toBeInTheDocument();
+    await noViolations();
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("#399 reader v5 after 14 days, Rules v4 older still: no New labels and no chip", async () => {
+    state.classifiers = readerV5(
+      new Date(Date.now() - 14 * DAY - 60_000).toISOString(),
+      new Date(Date.now() - 20 * DAY).toISOString(),
+    );
+    wrap();
+    const dlg = await newsTypes();
+    await within(dlg).findByRole("region", { name: "Not counted" });
+    expect(
+      within(dlg).getByRole("region", { name: "What Claude reader v5 reads differently" }),
+    ).toBeInTheDocument();
+    expect(within(dlg).queryByText(/^New in v/)).not.toBeInTheDocument();
+    expect(within(dlg).queryByText("v1 → v2")).not.toBeInTheDocument();
+  });
+
+  it("#399 no classifier rows yet: the reader box title has no version", async () => {
+    state.classifiers = { ...CLASSIFIERS, items: [] };
+    wrap();
+    const dlg = await newsTypes();
+    expect(
+      await within(dlg).findByRole("region", { name: "What the Claude reader reads differently" }),
+    ).toBeInTheDocument();
+    expect(intlErrors).toEqual([]);
   });
 
   it("Is it working?: the v3 card says Retired with v4's start date, kept for history", async () => {

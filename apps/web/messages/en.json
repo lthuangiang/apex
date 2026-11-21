@@ -7884,32 +7884,7 @@
         "statusSr": "Status: {status}."
       },
       "bots": {
-        "names": {
-          "news": "News bot",
-          "whales": "Whales bot",
-          "group": "Funding · Price patterns"
-        },
-        "body": {
-          "news": "Trades each news signal the moment it passes the checks, then closes at take profit, stop loss or max hold.",
-          "whales": "Each night replays the day’s whale moves with the same rules, entering at the price when DeskLabs saw them.",
-          "group": "Same as Whales: two more bots replaying stored funding rates and candles every night."
-        },
-        "state": {
-          "live": "Running · live",
-          "replay": "Replays nightly",
-          "paused": "Paused"
-        },
         "balance": "Balance",
-        "open": "Open",
-        "openN": "{n, plural, one {# trade} other {# trades}}",
-        "rules": "Rules",
-        "version": "v{v}",
-        "lastRun": "Last run",
-        "lastRunValue": "{time} · {n, plural, one {# trade} other {# trades}}",
-        "fundingBalance": "Funding balance",
-        "priceBalance": "Price patterns balance",
-        "pause": "Pause",
-        "pauseReplays": "Pause replays",
         "unrealized": "{pnl} unrealized",
         "olderRules": "{n, plural, one {# trade} other {# trades}} from older rules ({versions}) are still listed in Paper trades."
       },
@@ -8299,14 +8274,16 @@
         },
         "subReader": "Rules v{v} · Claude reader {name} · a starting guess that the results prove or drop",
         "changed": "v{from} → v{to}",
-        "newIn": "New in v4",
+        "newIn": "New in {name}",
         "notCounted": {
           "title": "Not counted",
           "etf": "<b>ETF news on BTC or ETH.</b> Both already have many ETFs, so one more rarely moves the price. Dropped at Score as “ETF on BTC or ETH”.",
           "treasury": "<b>Treasury buys and sells of BTC or ETH.</b> Too small next to their market. Dropped at Score as “Treasury on BTC or ETH”."
         },
-        "readerV4": {
-          "title": "What Claude reader v4 reads differently",
+        "reader": {
+          "title": "What Claude reader {name} reads differently",
+          "titleAny": "What the Claude reader reads differently",
+          "stocks": "<b>A company’s shares starting to trade</b> is not a listing, and <b>a fund buying a company’s shares</b> is not a treasury buy.",
           "bug": "<b>A bug report or a fixed vulnerability</b> with no funds lost is not a hack.",
           "stolen": "<b>The coin that was stolen</b> is never the hacked asset. In “$860M in ETH drained”, ETH only measures the loss.",
           "laundering": "<b>Moving or laundering funds</b> from an earlier hack is not a new hack.",
