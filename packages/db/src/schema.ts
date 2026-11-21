@@ -65,6 +65,11 @@ export const users = pgTable(
     aiDesk: boolean("ai_desk").notNull().default(true),
     /** AI Adaptive DCA (Beta, DEC-107): cờ riêng (DEC-192), bật cho mọi tài khoản (DEC-218); team tắt được ở Users. */
     adaptiveDca: boolean("adaptive_dca").notNull().default(true),
+    /**
+     * Signal Research (BETA, #423): mục Signal Research trên menu chính cho người dùng test; team bật theo tài khoản ở
+     * Users, mặc định tắt. Role team luôn thấy, không cần cờ.
+     */
+    signalResearch: boolean("signal_research").notNull().default(false),
     twofaEnabled: boolean("twofa_enabled").notNull().default(false),
     /** Secret TOTP đã mã hoá (AES-256-GCM); null khi chưa bật. */
     twofaSecret: text("twofa_secret"),
@@ -2007,10 +2012,16 @@ export const signalBotVersions = pgTable(
     experimentResult: jsonb("experiment_result"),
     /** #377: các khoảng `running` (`runPeriodsSchema`), để ghép cặp chỉ trong lúc version chạy; null = trước #377. */
     runningPeriods: jsonb("running_periods"),
+    /**
+     * #423: chủ của version. null = version của team (Baseline và version team lưu); có giá trị = version riêng của một
+     * người dùng test (My versions): chỉ chủ thấy, không tính vào cổng / số version đã thử của team. Bất biến (trigger).
+     */
+    ownerUserId: uuid("owner_user_id").references(() => users.id),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("signal_bot_versions_number_uq").on(t.number),
+    index("signal_bot_versions_owner_status_idx").on(t.ownerUserId, t.status),
     uniqueIndex("signal_bot_versions_baseline_uq")
       .on(t.isBaseline)
       .where(sql`${t.isBaseline}`),
@@ -2055,11 +2066,18 @@ export const signalClassificationLabels = pgTable(
      * Nhãn có trước migration 0050 là `trace` vì không chứng minh được là ngẫu nhiên.
      */
     source: text("source").notNull().default("trace"),
+    /**
+     * #423: người chấm lúc lưu nhãn: `team` (role team; chỉ nhãn này tính cổng precision) | `tester` (người dùng có cờ
+     * `users.signal_research`, hiện riêng để đối chiếu). Ghi theo role tại thời điểm lưu, không suy lại khi role / cờ đổi.
+     * Nhãn có trước migration 0058 là `team` (trước đó chỉ role team gắn nhãn được).
+     */
+    labeler: text("labeler").notNull().default("team"),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("signal_classification_labels_article_user_uq").on(t.articleId, t.labeledBy),
     check("signal_classification_labels_source_ck", sql`${t.source} in ('random', 'trace')`),
+    check("signal_classification_labels_labeler_ck", sql`${t.labeler} in ('team', 'tester')`),
     index("signal_classification_labels_classifier_idx").on(t.classifierVersion, t.articleId),
     check("signal_classification_labels_verdict_ck", sql`${t.verdict} in ('right', 'wrong')`),
     check(

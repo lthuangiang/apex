@@ -10,6 +10,7 @@ import {
   createSignalBotVersion,
   loadClassifierGates,
   loadSignalResearchSummary,
+  loadSignalBotVersions,
   loadSignalResearchTrade,
   MIGRATIONS_FOLDER,
   runMigrations,
@@ -936,5 +937,142 @@ describe("migration 0047 on existing data", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("#423: My versions of test users run in the same pipeline, paper only, outside the team's gate", () => {
+  async function tester(tag: string): Promise<string> {
+    const [u] = await db
+      .insert(users)
+      .values({ email: `sr-${tag}-${String(Date.now())}@drift.test`, signalResearch: true })
+      .returning({ id: users.id });
+    if (u === undefined) throw new Error("user insert failed");
+    return u.id;
+  }
+  const ownVersion = (owner: string, name: string, over: Partial<BotVersionConfig> = {}) =>
+    createSignalBotVersion(db, {
+      name,
+      config: cfgWith(over),
+      createdBy: owner,
+      ownerUserId: owner,
+      savedFromVersionId: baselineId,
+      start: true,
+      hypothesis: "One change gives a better result after fees.",
+      now: new Date(T0 - HOUR),
+    });
+
+  it("a test user's version opens its own paper trade; the team's view, versions tried and gate never see it", async () => {
+    const a = await tester("a");
+    const mine = await ownVersion(a, "Mine");
+    const teamBefore = await loadSignalBotVersions(db, new Date(T0));
+    const claude = fakeClaude({ "Solana protocol drained in exploit": hack });
+    const { sr, book } = setup(
+      [item("u1", T0 - 2 * MIN, "Solana protocol drained in exploit")],
+      claude,
+      () => T0,
+    );
+    book("SOL-USD", "99.99", "100.01", T0);
+    await sr.runCycle();
+    // Một lượt Claude cho mọi version (team + người dùng test).
+    expect(claude.calls).toBe(1);
+    const own = await tradesOf(mine.id);
+    expect(own).toHaveLength(1);
+    expect(own[0]).toMatchObject({
+      label: "live",
+      lane: "news",
+      status: "open",
+      market: "SOL-USD",
+    });
+    expect(await tradesOf(baselineId)).toHaveLength(1);
+    // Góc nhìn team: không có version của người dùng test, số đã thử / đang chạy không đổi.
+    const teamAfter = await loadSignalBotVersions(db, new Date(T0));
+    expect(teamAfter.items.map((v) => v.id)).not.toContain(mine.id);
+    expect(teamAfter.versionsTried).toBe(teamBefore.versionsTried);
+    expect(teamAfter.running).toBe(1);
+    const baseline = teamAfter.items.find((v) => v.isBaseline);
+    expect(baseline?.openTrades).toBe(1);
+    // Góc nhìn chủ: version của họ (owner me) + version của team (owner team).
+    const ownView = await loadSignalBotVersions(db, new Date(T0), undefined, {
+      userId: a,
+      team: false,
+    });
+    expect(ownView.items.find((v) => v.id === mine.id)).toMatchObject({
+      owner: "me",
+      openTrades: 1,
+    });
+    expect(ownView.items.find((v) => v.id === baselineId)?.owner).toBe("team");
+    expect(ownView.running).toBe(1);
+    // Nhãn của người dùng test không đổi cổng của classifier.
+    const gateBefore = (await loadClassifierGates(db)).get(NEWS_CLASSIFIER.promptVersion);
+    await db.insert(signalClassificationLabels).values({
+      articleId: "u1",
+      classifierVersion: NEWS_CLASSIFIER.promptVersion,
+      labeledBy: a,
+      verdict: "right",
+      source: "random",
+      labeler: "tester",
+    });
+    expect((await loadClassifierGates(db)).get(NEWS_CLASSIFIER.promptVersion)).toEqual(gateBefore);
+    await db.delete(signalClassificationLabels).where(eq(signalClassificationLabels.labeledBy, a));
+  });
+
+  it("3 running per owner: the team and each test user have their own cap (service and trigger)", async () => {
+    const a = await tester("cap-a");
+    const b = await tester("cap-b");
+    await newVersion("Team 2", {});
+    await newVersion("Team 3", {});
+    await expect(newVersion("Team 4", {})).rejects.toMatchObject({
+      details: { reason: "MAX_RUNNING_VERSIONS" },
+    });
+    for (const n of ["A1", "A2", "A3"]) await ownVersion(a, n);
+    await expect(ownVersion(a, "A4")).rejects.toMatchObject({
+      details: { reason: "MAX_RUNNING_VERSIONS" },
+    });
+    await ownVersion(b, "B1");
+    const { versions } = await runningSignalBotVersions(db);
+    expect(versions).toHaveLength(7);
+    expect(versions.filter((v) => v.ownerUserId === a)).toHaveLength(3);
+    expect(versions.filter((v) => v.ownerUserId === null)).toHaveLength(3);
+  });
+
+  it("performance: one cycle with 12 running versions and 6 signals stays one Claude read per article", async () => {
+    const owners = [await tester("p1"), await tester("p2"), await tester("p3")];
+    await newVersion("Team 2", { minLevel: "medium" });
+    await newVersion("Team 3", {});
+    for (const o of owners)
+      for (const n of ["x", "y", "z"]) await ownVersion(o, `${n}-${o.slice(0, 4)}`);
+    expect((await runningSignalBotVersions(db)).versions).toHaveLength(12);
+    const titles = Array.from(
+      { length: 6 },
+      (_, i) => `Solana protocol drained in exploit ${String(i)}`,
+    );
+    const claude = fakeClaude(
+      Object.fromEntries(
+        titles.map((t, i) => [t, i % 2 === 0 ? hack : { ...hack, market: "BTC-USD" }]),
+      ),
+    );
+    const { sr, book } = setup(
+      titles.map((t, i) =>
+        item(`p${String(i)}`, T0 - (2 + i) * MIN, t, {
+          matched_currencies:
+            i % 2 === 0
+              ? [{ symbol: "SOL", name: "Solana" }]
+              : [{ symbol: "BTC", name: "Bitcoin" }],
+        }),
+      ),
+      claude,
+      () => T0,
+    );
+    book("SOL-USD", "99.99", "100.01", T0);
+    book("BTC-USD", "49999", "50001", T0);
+    const started = performance.now();
+    await sr.runCycle();
+    const ms = performance.now() - started;
+    expect(claude.calls).toBe(6);
+    // Mỗi version quyết định riêng (story riêng của từng version trên mỗi nhóm tin).
+    const stories = await db.select({ v: signalStories.versionId }).from(signalStories);
+    expect(new Set(stories.map((x) => x.v)).size).toBe(12);
+    // Chi phí tuyến tính theo số version (Filter / Decide mỗi version); ngưỡng rộng cho máy CI đang tải.
+    expect(ms).toBeLessThan(20_000);
   });
 });

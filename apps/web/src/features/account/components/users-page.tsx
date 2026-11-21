@@ -5,6 +5,7 @@ import {
   adminUsersViewSchema,
   adminAdaptiveDcaSchema,
   adminAiDeskSchema,
+  adminSignalResearchSchema,
   adminVolumeBotsSchema,
   type AdminResetPassword,
   type AdminUsersView,
@@ -96,6 +97,17 @@ export function UsersPage() {
     mutationFn: (u: Row) =>
       api("POST", `/api/v1/admin/users/${u.id}/ai-desk`, adminAiDeskSchema, {
         body: { enabled: !u.aiDesk },
+      }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+  });
+
+  // Bật / tắt Signal Research (BETA, #423): như AI Desk, không dừng gì nên không cần hộp thoại xác nhận. API ghi audit.
+  const research = useMutation({
+    mutationFn: (u: Row) =>
+      api("POST", `/api/v1/admin/users/${u.id}/signal-research`, adminSignalResearchSchema, {
+        body: { enabled: !u.signalResearch },
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["admin-users"] });
@@ -354,6 +366,30 @@ export function UsersPage() {
                     ),
                   },
                   {
+                    key: "signalResearch",
+                    header: t("cols.signalResearch"),
+                    cell: (u: Row) => (
+                      <span className="flex items-center gap-2">
+                        <span className={u.signalResearch ? "font-bold text-pos" : "text-muted"}>
+                          {u.signalResearch ? t("on") : t("off")}
+                        </span>
+                        <Button
+                          variant="secondary"
+                          pending={research.isPending && research.variables.id === u.id}
+                          aria-label={t(
+                            u.signalResearch ? "signalResearch.offLabel" : "signalResearch.onLabel",
+                            { email: u.email },
+                          )}
+                          onClick={() => {
+                            research.mutate(u);
+                          }}
+                        >
+                          {t(u.signalResearch ? "volume.turnOff" : "volume.turnOn")}
+                        </Button>
+                      </span>
+                    ),
+                  },
+                  {
                     key: "actions",
                     header: t("cols.actions"),
                     cell: (u: Row) => (
@@ -376,6 +412,11 @@ export function UsersPage() {
               {desk.isError ? (
                 <p role="alert" className="m-0 text-sm text-neg-ink">
                   {t("aiDesk.error")}
+                </p>
+              ) : null}
+              {research.isError ? (
+                <p role="alert" className="m-0 text-sm text-neg-ink">
+                  {t("signalResearch.error")}
                 </p>
               ) : null}
               {pages <= 1 ? null : (

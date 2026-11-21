@@ -407,6 +407,13 @@
       "when": 1795271177362,
       "tag": "0057_sr_articles_collected_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1795274614789,
+      "tag": "0058_sr_menu_beta",
+      "breakpoints": true
     }
   ]
 }

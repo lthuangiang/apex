@@ -26,8 +26,9 @@ import {
 } from "./schema";
 
 // News bot versions (#303, DEC-328): đọc version đang chạy cho scheduler, và service lưu / đổi trạng thái cho API (#305).
-// Config bất biến: lưu = dòng mới. Tối đa 3 version `running`: khoá advisory trong transaction ở đây + trigger DB
-// `signal_bot_versions_guard` (migration 0047). Mọi lần lưu / đổi trạng thái ghi `audit_log`.
+// Config bất biến: lưu = dòng mới. Tối đa 3 version `running` MỖI CHỦ (#423: team là một chủ, mỗi người dùng test một
+// chủ): khoá advisory theo chủ trong transaction ở đây + trigger DB `signal_bot_versions_guard` (migration 0047, 0058).
+// Mọi lần lưu / đổi trạng thái ghi `audit_log`.
 
 type Exec = Pick<Db, "insert" | "select" | "update" | "execute">;
 
@@ -39,6 +40,9 @@ export const SignalBotVersionAudit = {
 /** Lý do trong metadata audit khi version tự dừng vì thí nghiệm đủ cặp (#377). */
 export const EXPERIMENT_FINISHED_REASON = "experiment_finished";
 
+/** #423: lý do trong metadata audit khi version của người dùng test tự pause vì team tắt cờ `signal_research`. */
+export const SIGNAL_RESEARCH_DISABLED_REASON = "signal_research_disabled";
+
 export interface SignalBotVersion {
   id: string;
   number: number;
@@ -47,9 +51,32 @@ export interface SignalBotVersion {
   status: SignalBotVersionStatus;
   isBaseline: boolean;
   createdAt: Date;
+  /** #423: chủ của version; null = team. */
+  ownerUserId: string | null;
 }
 
-const RUNNING_LOCK = sql`select pg_advisory_xact_lock(hashtext('signal_bot_versions_running'))`;
+/**
+ * Người đang xem / thao tác version (#423): `team` = role team (thấy và sửa version của team), không thì người dùng test có
+ * cờ `users.signal_research` (thấy version của team ở chế độ chỉ xem, và version của chính mình).
+ */
+export interface SignalVersionViewer {
+  userId: string;
+  team: boolean;
+}
+
+/** Chủ mà người xem lưu version vào: team → null (version của team), người dùng test → chính họ. */
+export const ownerFor = (v: SignalVersionViewer): string | null => (v.team ? null : v.userId);
+
+/** Version có chủ khác người xem (version riêng của người khác): coi như không có (404). */
+export function versionHiddenFrom(ownerUserId: string | null, v: SignalVersionViewer): boolean {
+  return ownerUserId !== null && ownerUserId !== v.userId;
+}
+
+/** Khoá advisory của trần 3 version chạy, theo chủ; cùng khoá với trigger DB (0058). */
+const runningLock = (owner: string | null) =>
+  owner === null
+    ? sql`select pg_advisory_xact_lock(hashtext('signal_bot_versions_running'))`
+    : sql`select pg_advisory_xact_lock(hashtext(${`signal_bot_versions_running:${owner}`}))`;
 
 const statusOf = (s: string): SignalBotVersionStatus =>
   s === "running" || s === "paused" || s === "stopped" || s === "retired" ? s : "retired";
@@ -82,22 +109,25 @@ export async function runningSignalBotVersions(
       status: statusOf(r.status),
       isBaseline: r.isBaseline,
       createdAt: r.createdAt,
+      ownerUserId: r.ownerUserId,
     });
   }
   return { versions, invalid };
 }
 
-async function runningCount(db: Exec, exceptId?: string): Promise<number> {
+/** Số version đang chạy của MỘT chủ (null = team), trừ `exceptId`. */
+async function runningCount(db: Exec, owner: string | null, exceptId?: string): Promise<number> {
   const [r] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(signalBotVersions)
     .where(
-      exceptId === undefined
-        ? eq(signalBotVersions.status, SignalBotVersionStatus.running)
-        : and(
-            eq(signalBotVersions.status, SignalBotVersionStatus.running),
-            ne(signalBotVersions.id, exceptId),
-          ),
+      and(
+        eq(signalBotVersions.status, SignalBotVersionStatus.running),
+        owner === null
+          ? isNull(signalBotVersions.ownerUserId)
+          : eq(signalBotVersions.ownerUserId, owner),
+        exceptId === undefined ? undefined : ne(signalBotVersions.id, exceptId),
+      ),
     );
   return r?.n ?? 0;
 }
@@ -109,8 +139,9 @@ const tooMany = () =>
   });
 
 /**
- * Lưu một version mới (bất biến). `start` = chạy ngay (nút "Save and start"); đủ 3 version đang chạy thì từ chối
- * (`STATE_CONFLICT`, `MAX_RUNNING_VERSIONS`). Config được parse lại bằng zod ở đây.
+ * Lưu một version mới (bất biến). `start` = chạy ngay (nút "Save and start"); chủ đã có 3 version đang chạy thì từ chối
+ * (`STATE_CONFLICT`, `MAX_RUNNING_VERSIONS`). Config được parse lại bằng zod ở đây. `ownerUserId` (#423): null = version
+ * của team; có giá trị = version riêng của người dùng test đó.
  */
 export async function createSignalBotVersion(
   db: Db,
@@ -122,10 +153,13 @@ export async function createSignalBotVersion(
     start: boolean;
     /** #377: giả thuyết (một câu), bắt buộc với version mới. */
     hypothesis: string;
+    /** #423: null / không truyền = version của team. */
+    ownerUserId?: string | null;
     ip?: string | null;
     now?: Date;
   },
 ): Promise<SignalBotVersion> {
+  const owner = input.ownerUserId ?? null;
   const hyp = hypothesisSchema.safeParse(input.hypothesis);
   if (!hyp.success)
     throw new AppError(ErrorCode.validationFailed, "Invalid input.", { fields: ["hypothesis"] });
@@ -139,8 +173,8 @@ export async function createSignalBotVersion(
     throw new AppError(ErrorCode.validationFailed, "Invalid input.", { fields: ["name"] });
   const now = input.now ?? new Date();
   return db.transaction(async (tx) => {
-    await tx.execute(RUNNING_LOCK);
-    if (input.start && (await runningCount(tx)) >= MAX_RUNNING_VERSIONS) throw tooMany();
+    await tx.execute(runningLock(owner));
+    if (input.start && (await runningCount(tx, owner)) >= MAX_RUNNING_VERSIONS) throw tooMany();
     const [last] = await tx.select({ n: max(signalBotVersions.number) }).from(signalBotVersions);
     const number = (last?.n ?? 0) + 1;
     const status = input.start ? SignalBotVersionStatus.running : SignalBotVersionStatus.paused;
@@ -156,6 +190,7 @@ export async function createSignalBotVersion(
         isBaseline: false,
         hypothesis: hyp.data,
         runningPeriods: runPeriodsJson(input.start ? [{ from: now, to: null }] : []),
+        ownerUserId: owner,
         statusChangedAt: now,
         createdAt: now,
         updatedAt: now,
@@ -172,6 +207,7 @@ export async function createSignalBotVersion(
         status,
         savedFromVersionId: input.savedFromVersionId,
         hypothesis: hyp.data,
+        ...(owner === null ? {} : { owner: "tester" }),
       },
       ip: input.ip ?? null,
     });
@@ -183,6 +219,7 @@ export async function createSignalBotVersion(
       status,
       isBaseline: false,
       createdAt: row.createdAt,
+      ownerUserId: owner,
     };
   });
 }
@@ -199,6 +236,8 @@ const NEXT: Readonly<Record<SignalBotVersionStatus, readonly SignalBotVersionSta
  * Pause / Resume / Stop / Retire một version; ghi audit. Resume khi đã có 3 version chạy → `MAX_RUNNING_VERSIONS`.
  * `finish` (#377): version tự dừng vì thí nghiệm đủ cặp — chỉ đi running / paused → stopped qua đúng state machine này, ghi
  * kết quả đóng băng cùng transaction, audit lý do `experiment_finished`. Baseline không bao giờ được dừng theo cách này.
+ * `viewer` (#423, API truyền): version riêng của người khác → 404; version của team mà người xem không phải team → 403
+ * (xem được, không sửa được). Job nội bộ (thí nghiệm) không truyền.
  */
 export async function setSignalBotVersionStatus(
   db: Db,
@@ -209,11 +248,29 @@ export async function setSignalBotVersionStatus(
     ip?: string | null;
     now?: Date;
     finish?: ExperimentResult;
+    viewer?: SignalVersionViewer;
+    /** #423: lý do ghi vào metadata audit (vd `signal_research_disabled`); không truyền = thao tác tay. */
+    reason?: string;
   },
 ): Promise<void> {
   const now = input.now ?? new Date();
   await db.transaction(async (tx) => {
-    await tx.execute(RUNNING_LOCK);
+    const [own] = await tx
+      .select({ owner: signalBotVersions.ownerUserId })
+      .from(signalBotVersions)
+      .where(eq(signalBotVersions.id, input.id));
+    if (own === undefined) throw new AppError(ErrorCode.notFound, "Version not found.");
+    const viewer = input.viewer;
+    if (viewer !== undefined) {
+      if (versionHiddenFrom(own.owner, viewer))
+        throw new AppError(ErrorCode.notFound, "Version not found.");
+      if (own.owner === null && !viewer.team)
+        throw new AppError(ErrorCode.forbidden, "Team versions are view only.", {
+          reason: "TEAM_VERSION_VIEW_ONLY",
+        });
+    }
+    // Chủ bất biến (trigger), nên khoá theo chủ đọc ở trên là đúng khoá của dòng này.
+    await tx.execute(runningLock(own.owner));
     const [row] = await tx
       .select({
         status: signalBotVersions.status,
@@ -247,7 +304,7 @@ export async function setSignalBotVersionStatus(
       });
     if (
       input.status === SignalBotVersionStatus.running &&
-      (await runningCount(tx, input.id)) >= MAX_RUNNING_VERSIONS
+      (await runningCount(tx, own.owner, input.id)) >= MAX_RUNNING_VERSIONS
     )
       throw tooMany();
     await tx
@@ -277,7 +334,12 @@ export async function setSignalBotVersionStatus(
       target: input.id,
       metadata:
         finish === undefined
-          ? { number: row.number, from, to: input.status }
+          ? {
+              number: row.number,
+              from,
+              to: input.status,
+              ...(input.reason === undefined ? {} : { reason: input.reason, by: "flag_off" }),
+            }
           : {
               number: row.number,
               from,
@@ -403,4 +465,73 @@ export function versionEventSql(v: SignalVersionScope | null, alias: string): SQ
   return v.isBaseline
     ? sql`(${col} = ${v.id} or ${col} is null)`
     : sql`(${col} = ${v.id} or (${col} is null and ${stage} in ('collect', 'normalize', 'understand')))`;
+}
+
+// ── Quyền xem theo chủ (#423) ──────────────────────────────────────────────────────────────────────────────────────────
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `versionId` của một request đọc mà người xem không được thấy (version riêng của người khác) → 404, như version không có.
+ * Không có `versionId` (Baseline) luôn thấy được. Id không tồn tại để loader tự trả 404 như trước.
+ */
+export async function assertSignalVersionVisible(
+  q: Db | DbTx,
+  versionId: string | undefined,
+  viewer: SignalVersionViewer,
+): Promise<void> {
+  if (versionId === undefined || !UUID_RE.test(versionId)) return;
+  const [row] = await q
+    .select({ owner: signalBotVersions.ownerUserId })
+    .from(signalBotVersions)
+    .where(eq(signalBotVersions.id, versionId));
+  if (row !== undefined && versionHiddenFrom(row.owner, viewer))
+    throw new AppError(ErrorCode.notFound, "Version not found.");
+}
+
+/** Lệnh của version riêng của người khác → 404 (chi tiết lệnh theo id). Lệnh không có version (lịch sử) thấy được. */
+export async function assertSignalTradeVisible(
+  q: Db | DbTx,
+  tradeId: string,
+  viewer: SignalVersionViewer,
+): Promise<void> {
+  // Id sai dạng: loader trả 404 như trước, không gửi giá trị không phải uuid vào Postgres.
+  if (!UUID_RE.test(tradeId)) return;
+  const [row] = await q
+    .select({ owner: signalBotVersions.ownerUserId })
+    .from(signalPaperTrades)
+    .innerJoin(signalBotVersions, eq(signalBotVersions.id, signalPaperTrades.versionId))
+    .where(eq(signalPaperTrades.id, tradeId));
+  if (row !== undefined && versionHiddenFrom(row.owner, viewer))
+    throw new AppError(ErrorCode.notFound, "Trade not found.");
+}
+
+/**
+ * #423: team tắt cờ `signal_research` của một người dùng → pause mọi version `running` của người đó, mỗi version qua đúng
+ * state machine ở trên (khoá theo chủ, `running_periods`, audit với lý do `signal_research_disabled`, người thao tác = team).
+ * Bật cờ lại KHÔNG tự resume: chủ tự Resume từng version. Trả số version đã pause.
+ */
+export async function pauseSignalVersionsOfOwner(
+  db: Db,
+  input: { ownerUserId: string; actorId: string; ip?: string | null; now?: Date },
+): Promise<number> {
+  const rows = await db
+    .select({ id: signalBotVersions.id })
+    .from(signalBotVersions)
+    .where(
+      and(
+        eq(signalBotVersions.ownerUserId, input.ownerUserId),
+        eq(signalBotVersions.status, SignalBotVersionStatus.running),
+      ),
+    );
+  for (const r of rows)
+    await setSignalBotVersionStatus(db, {
+      id: r.id,
+      status: SignalBotVersionStatus.paused,
+      userId: input.actorId,
+      reason: SIGNAL_RESEARCH_DISABLED_REASON,
+      ...(input.ip === undefined ? {} : { ip: input.ip }),
+      ...(input.now === undefined ? {} : { now: input.now }),
+    });
+  return rows.length;
 }

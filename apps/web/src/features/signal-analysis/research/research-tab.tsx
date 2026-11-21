@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { ApiError } from "@/lib/api";
 
 import { Refreshing, StateBox, StaleNote } from "../components/bits";
-import type { PageCtx } from "../components/signal-analysis-page";
+import type { PageCtx } from "../components/page-ctx";
 import { clock } from "../format";
 
 import { useResearchClassifiers, useResearchSummary, useResearchVersions } from "./api";

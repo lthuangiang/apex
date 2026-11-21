@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { researchLabelBodySchema, RESEARCH_DROP_REASONS } from "../api/signal-research";
 import {
+  testerAgreement,
   articleVerdict,
   CLASSIFICATION_LABEL_SOURCES,
   CLASSIFIER_GATE,
@@ -178,5 +179,24 @@ describe("API reasons for News bot version filter codes (#303)", () => {
         "oppositeNews",
       ]),
     );
+  });
+});
+
+describe("testerAgreement (#423): test users' labels next to the team's, never in the gate", () => {
+  it("compares the majority verdict of each side per article; ties count as Wrong", () => {
+    expect(testerAgreement([])).toEqual({ labeled: 0, compared: 0, agree: 0, agreePct: null });
+    const r = testerAgreement([
+      // Cả hai Right → đồng ý.
+      { team: { right: 2, wrong: 0 }, tester: { right: 1, wrong: 0 } },
+      // Team hoà (Wrong), tester Wrong → đồng ý.
+      { team: { right: 1, wrong: 1 }, tester: { right: 0, wrong: 1 } },
+      // Team Wrong, tester Right → không đồng ý.
+      { team: { right: 0, wrong: 1 }, tester: { right: 1, wrong: 0 } },
+      // Team chưa gắn: chỉ đếm vào labeled.
+      { team: { right: 0, wrong: 0 }, tester: { right: 1, wrong: 0 } },
+      // Không có nhãn tester: bỏ qua.
+      { team: { right: 1, wrong: 0 }, tester: { right: 0, wrong: 0 } },
+    ]);
+    expect(r).toEqual({ labeled: 4, compared: 3, agree: 2, agreePct: 66.6667 });
   });
 });
