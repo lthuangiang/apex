@@ -9,6 +9,12 @@ import { ApiError } from "@/lib/api";
 import { Refreshing, StateBox, StaleNote } from "../components/bits";
 import type { PageCtx } from "../components/page-ctx";
 import { clock } from "../format";
+import { useNewsBots } from "../mainnet/api";
+import { NewsBotEditor } from "../mainnet/bot-editor";
+import { MainnetPanel, ModeSwitch, type ResearchMode } from "../mainnet/mainnet-panel";
+import { MainnetTrades } from "../mainnet/mainnet-trades";
+import { Signals24h } from "../mainnet/signals-24h";
+import { useMainnetErrorText } from "../mainnet/text";
 
 import { useResearchClassifiers, useResearchSummary, useResearchVersions } from "./api";
 import { BOTS_LABELS_ID, BotsAndLabels } from "./bots-labels";
@@ -49,6 +55,24 @@ function useVersionParam(): [string | null, (id: string | null) => void] {
   return [id, set];
 }
 
+/** #421: chế độ xem ở query `?bots=mainnet` (chia sẻ / tải lại giữ nguyên); không có = Paper. */
+function useModeParam(): [ResearchMode, (m: ResearchMode) => void] {
+  const [mode, setMode] = useState<ResearchMode>(() =>
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("bots") === "mainnet"
+      ? "mainnet"
+      : "paper",
+  );
+  const set = useCallback((m: ResearchMode) => {
+    setMode(m);
+    const url = new URL(window.location.href);
+    if (m === "paper") url.searchParams.delete("bots");
+    else url.searchParams.set("bots", m);
+    window.history.replaceState(null, "", url);
+  }, []);
+  return [mode, set];
+}
+
 export function ResearchTab({ ctx }: { ctx: PageCtx }) {
   const t = useTranslations("signalAnalysis.research");
   const [range, setRange] = useState<ResearchRange>("1d");
@@ -60,6 +84,15 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
   const [scrollTo, setScrollTo] = useState<{ id: string; seq: number } | null>(null);
   // #306 / #342: một News bot version cho cả trang (tổng kết, feed, trace, bảng lệnh, drawer); null = Baseline.
   const [versionId, setVersionId] = useVersionParam();
+  // #421: Paper / Mainnet chỉ đổi chế độ xem; tín hiệu, phễu, feed, Context dùng chung.
+  const [mode, setMode] = useModeParam();
+  const mainnet = mode === "mainnet";
+  const newsBots = useNewsBots(mainnet);
+  const [botId, setBotId] = useState<string | null>(null);
+  const [editor, setEditor] = useState(false);
+  const mainnetError = useMainnetErrorText();
+  const botList = newsBots.data?.items ?? [];
+  const selectedBot = botList.find((b) => b.id === botId) ?? botList[0] ?? null;
   const versions = useResearchVersions();
   const classifiers = useResearchClassifiers();
   const items = versions.data?.items;
@@ -142,40 +175,53 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
             rulesHistory={v.rulesHistory}
             cycleMinutes={v.cycleMinutes}
           />
-          <IsItWorking
-            v={v}
-            tz={ctx.tz}
-            versions={versions.data}
-            classifiers={classifiers.data}
-            picked={picked}
-          />
+          {mainnet ? null : (
+            <IsItWorking
+              v={v}
+              tz={ctx.tz}
+              versions={versions.data}
+              classifiers={classifiers.data}
+              picked={picked}
+            />
+          )}
         </Refreshing>
-        <ResearchTrades
-          ctx={ctx}
-          assets={v.assets}
-          versionId={versionId}
-          older={v.olderRules}
-          currentRules={v.newsRulesVersion}
-          currentTrades={
-            v.rows.find((r) => r.type === "news" && r.label === "live")?.opened ?? null
-          }
-          onTrace={(id) => {
-            setTrace((x) => ({ id, seq: (x?.seq ?? 0) + 1 }));
-          }}
-        />
-        <BotsAndLabels
-          open={blOpen}
-          onOpenChange={setBlOpen}
-          labelSeq={labelSeq}
-          bots={v.bots}
-          tz={ctx.tz}
-          versionId={versionId}
-          onVersion={setVersionId}
-          summaryVersion={v.version?.id ?? null}
-          older={v.olderRules}
-          versions={versions.data}
-          onHow={setHow}
-        />
+        {mainnet ? (
+          selectedBot === null ? null : (
+            <>
+              <Signals24h botId={selectedBot.id} tz={ctx.tz} />
+              <MainnetTrades botId={selectedBot.id} tz={ctx.tz} />
+            </>
+          )
+        ) : (
+          <>
+            <ResearchTrades
+              ctx={ctx}
+              assets={v.assets}
+              versionId={versionId}
+              older={v.olderRules}
+              currentRules={v.newsRulesVersion}
+              currentTrades={
+                v.rows.find((r) => r.type === "news" && r.label === "live")?.opened ?? null
+              }
+              onTrace={(id) => {
+                setTrace((x) => ({ id, seq: (x?.seq ?? 0) + 1 }));
+              }}
+            />
+            <BotsAndLabels
+              open={blOpen}
+              onOpenChange={setBlOpen}
+              labelSeq={labelSeq}
+              bots={v.bots}
+              tz={ctx.tz}
+              versionId={versionId}
+              onVersion={setVersionId}
+              summaryVersion={v.version?.id ?? null}
+              older={v.olderRules}
+              versions={versions.data}
+              onHow={setHow}
+            />
+          </>
+        )}
       </>
     );
   const summaryVersion = v?.version?.id ?? null;
@@ -184,32 +230,62 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
   return (
     <HowItWorksProvider value={setHow}>
       <BotsLabelsProvider value={actions}>
-        <SummaryStrip
-          sources={v === undefined ? null : { items: v.sources, now: v.computedAt }}
-          tz={ctx.tz}
-          versions={versions.data}
-          versionsError={versions.isError}
-          current={picked}
-          context={v?.context ?? null}
-          weeks={
-            summaryVersion === null
-              ? null
-              : {
-                  versionId: summaryVersion,
-                  weeks: newsRow?.needs.kind === "pooled" ? newsRow.needs.weeks : null,
-                }
-          }
-          unrealized={
-            summaryVersion === null || newsBot === undefined
-              ? null
-              : { versionId: summaryVersion, value: newsBot.unrealized }
-          }
-          onVersion={setVersionId}
-          onHow={setHow}
-          onLabel={actions.openLabels}
-          onManage={actions.openVersions}
-        />
+        {mainnet ? (
+          <MainnetPanel
+            sources={v === undefined ? null : { items: v.sources, now: v.computedAt }}
+            tz={ctx.tz}
+            modeSwitch={<ModeSwitch mode={mode} onMode={setMode} />}
+            bots={botList}
+            botsLoading={newsBots.isPending}
+            botsError={newsBots.isError ? mainnetError(newsBots.error) : null}
+            selected={selectedBot}
+            onBot={setBotId}
+            onHow={setHow}
+            onStartFromVersion={() => {
+              setEditor(true);
+            }}
+          />
+        ) : (
+          <SummaryStrip
+            modeSwitch={<ModeSwitch mode={mode} onMode={setMode} />}
+            sources={v === undefined ? null : { items: v.sources, now: v.computedAt }}
+            tz={ctx.tz}
+            versions={versions.data}
+            versionsError={versions.isError}
+            current={picked}
+            context={v?.context ?? null}
+            weeks={
+              summaryVersion === null
+                ? null
+                : {
+                    versionId: summaryVersion,
+                    weeks: newsRow?.needs.kind === "pooled" ? newsRow.needs.weeks : null,
+                  }
+            }
+            unrealized={
+              summaryVersion === null || newsBot === undefined
+                ? null
+                : { versionId: summaryVersion, value: newsBot.unrealized }
+            }
+            onVersion={setVersionId}
+            onHow={setHow}
+            onLabel={actions.openLabels}
+            onManage={actions.openVersions}
+          />
+        )}
         {body}
+        {editor && picked !== null && items !== undefined ? (
+          <NewsBotEditor
+            from={picked}
+            versions={items}
+            onClose={() => {
+              setEditor(false);
+            }}
+            onStarted={(id) => {
+              setBotId(id);
+            }}
+          />
+        ) : null}
         <HowItWorksDrawer
           tab={how}
           onTab={setHow}

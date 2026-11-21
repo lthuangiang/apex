@@ -168,6 +168,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
       if (p.endsWith("/signal-research/classifiers"))
         return Promise.resolve(schema.parse(state.classifiers ?? CLASSIFIERS));
       if (p.endsWith("/signal-research/markets")) return Promise.resolve(schema.parse(MARKETS));
+      // #421: bot mainnet của người xem (phần Mainnet có test riêng ở mainnet.test.tsx).
+      if (p === "/api/v1/signal-research/bots") return Promise.resolve(schema.parse({ items: [] }));
       // #375: độ trễ theo chặng có test riêng (news-trace.test.tsx, latency.test.tsx); ở đây cửa sổ chưa đo được gì.
       if (p.endsWith("/signal-research/latency"))
         return Promise.resolve(schema.parse(LATENCY_EMPTY));
@@ -318,11 +320,10 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(tab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Team only.")).toBeInTheDocument();
     // #342: dải cảnh báo nổi (token warn) và chip "Prices from mainnet" thay "Read only" ở tab này.
-    const note = screen.getByText("Research only · fake money").closest("[role=note]");
+    // #421: chữ đầu của dải đang chờ PM duyệt (`_pendingReview`), nên test không kiểm câu đó.
+    const note = screen.getByText("Nothing here is sent to SoDEX.").closest("[role=note]");
     if (!(note instanceof HTMLElement)) throw new Error("banner");
     expect(note).toHaveClass("bg-warn-bg", "text-warn", "border-warn-border");
-    expect(within(note).getByText("Research only · fake money")).toBeInTheDocument();
-    expect(within(note).getByText("Nothing here is sent to SoDEX.")).toBeInTheDocument();
     expect(screen.getByText("Prices from mainnet")).toBeInTheDocument();
     expect(screen.queryByText("Read only")).not.toBeInTheDocument();
     expect(screen.getByText(/Times in your time zone: Asia\/Ho_Chi_Minh/)).toBeInTheDocument();
@@ -792,12 +793,31 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
     });
   });
 
+  it("#421: the Bots switch shows Mainnet (shared trace, no paper-only sections) and keeps ?bots=mainnet", async () => {
+    const M = messages.signalAnalysis.research.mainnet;
+    wrap();
+    await picker();
+    const sw = screen.getByRole("radiogroup", { name: M.mode.label });
+    await userEvent.click(within(sw).getByRole("radio", { name: M.mode.mainnet }));
+    expect(window.location.search).toContain("bots=mainnet");
+    expect(await screen.findByRole("button", { name: M.count.start })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Is it working?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Summary" })).not.toBeInTheDocument();
+    await userEvent.click(
+      within(screen.getByRole("radiogroup", { name: M.mode.label })).getByRole("radio", {
+        name: M.mode.paper,
+      }),
+    );
+    expect(window.location.search).not.toContain("bots=");
+    expect(await screen.findByRole("region", { name: "Summary" })).toBeInTheDocument();
+  });
+
   it("summary strip: one line per running / paused version (max 3), the picked one marked, a plain-words label row", async () => {
     wrap();
     await picker();
     const strip = screen.getByRole("region", { name: "Summary" });
-    // Dải "Research only · fake money" nằm trong dải tóm tắt.
-    expect(within(strip).getByRole("note")).toHaveTextContent("Research only · fake money");
+    // Dải Paper nằm trong dải tóm tắt.
+    expect(within(strip).getByRole("note")).toHaveTextContent("Nothing here is sent to SoDEX.");
     const lines = await within(strip).findByRole("list", { name: "Running News bot versions" });
     const items = within(lines).getAllByRole("listitem");
     // v6 đã dừng: không có dòng. v5 tạm dừng, có kết luận; v3 là version đang hiện ở dưới.

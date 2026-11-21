@@ -1,0 +1,227 @@
+<title>Signal Research Mainnet</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+/* Mockup on top of the real Signal Analysis › Signal research page (screenshot 2026-11-22): adds a Paper / Mainnet switch beside Version, a mainnet bot strip with controls, mainnet trades, and the Start / Stop / Edit TP-SL dialogs. DeskLabs tokens, light only like the app. */
+:root{
+  --bg:#eef1fa; --surface:#ffffff; --surface-2:#f5f7fd; --border:#e3e7f5; --border-input:#d5dcf2;
+  --ink:#141a33; --ink-2:#3b4262; --muted:#5f6684; --accent:#2e62e8; --accent-ink:#1d47b8; --accent-tint:#e6ecfe;
+  --accent-mid:#7f9ff0; --accent-soft:#cbd8fa; --pos:#0f7a43; --pos-bg:#ddf4e7; --pos-dot:#16a05a; --neg:#c2312f; --neg-ink:#a72826; --neg-bg:#fde4e1;
+  --warn:#7a3e00; --warn-bg:#fdebd3; --warn-border:#f0c27e; --main:#8a2a1e; --main-bg:#fff4f2; --main-border:#f6d3cd;
+  --note:#5a2ca0; --note-bg:#f0e6ff;
+  --f:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif; color-scheme:light;
+}
+body{background:var(--bg);color:var(--ink);font-family:var(--f);font-size:14px;line-height:1.5}
+.wrap{max-width:1440px;margin:0 auto;padding-block:24px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:18px}
+.intro h1{margin:0;font-size:22px;font-weight:800}
+.intro p{margin:4px 0 0;color:var(--ink-2);max-width:110ch}
+.note{border:2px dashed var(--note);background:var(--note-bg);color:var(--note);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600}
+.cf{display:inline-block;font-size:10.5px;font-weight:800;color:var(--note);border:1px solid var(--note);border-radius:99px;padding:0 6px;margin-left:4px;vertical-align:1px}
+.flabel{font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.frame{display:grid;gap:8px;min-width:0}
+/* page chrome copied from the real page */
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start}
+.top h2{margin:0;font-size:30px;font-weight:800;letter-spacing:-.01em}
+.top .sub{margin:2px 0 0;color:var(--ink-2)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.chip{min-height:40px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border-radius:999px;background:var(--surface);border:1px solid var(--border);font-weight:700;font-size:14px;color:var(--ink-2)}
+.chip.env{background:var(--neg);color:#fff;border-color:var(--neg)}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--pos-dot)}
+.chip.env i{background:#fff}
+.tabs{display:inline-flex;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:6px;gap:4px}
+.tabs span{padding:10px 16px;border-radius:12px;font-weight:700}
+.tabs span.on{background:var(--accent);color:#fff}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:24px;overflow:hidden}
+.strip{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:12px 24px;font-size:14px}
+.strip.paper{background:var(--warn-bg);color:var(--warn)}
+.strip.main{background:var(--main-bg);color:var(--main);border-bottom:1px solid var(--main-border)}
+.strip b{font-weight:800;font-size:15px}
+.src{display:inline-flex;align-items:center;gap:6px}
+.src::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.vrow{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:14px;align-items:end;padding:18px 24px}
+@media (max-width:1100px){.vrow{grid-template-columns:minmax(0,1fr)}}
+.lbl{font-size:13px;font-weight:800;margin-bottom:4px}
+.seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:4px;gap:2px}
+.seg span{min-height:44px;display:flex;align-items:center;gap:6px;padding:0 18px;border-radius:10px;font-weight:800;color:var(--muted)}
+.seg span.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(20,26,51,.14)}
+.seg span.on.m{background:var(--main);color:#fff}
+.sel{min-height:52px;min-width:230px;border:2px solid var(--accent);border-radius:14px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-weight:800;font-size:16px}
+.bstrip{min-height:52px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:var(--surface-2);border-radius:14px;padding:6px 16px;border-left:3px solid var(--accent);font-size:15px}
+.bstrip.m{border-left-color:var(--main)}
+.pill{font-size:12.5px;font-weight:800;border-radius:99px;padding:3px 10px;white-space:nowrap}
+.pill.run{background:var(--accent-tint);color:var(--accent-ink)}
+.pill.mn{background:var(--main-bg);color:var(--main);border:1px solid var(--main-border)}
+.pill.gate{background:var(--warn-bg);color:var(--warn)}
+.link{color:var(--accent-ink);font-weight:700}
+.btn{min-height:44px;padding:0 18px;border-radius:12px;border:2px solid var(--accent);background:var(--surface);font:800 15px var(--f);color:var(--accent-ink);display:inline-flex;align-items:center;white-space:nowrap}
+.btn.pri{background:var(--accent);color:#fff}
+.btn.sm{min-height:36px;padding:0 12px;font-size:13px;border-width:1px;border-color:var(--border-input);color:var(--ink)}
+.btn.danger{border-color:var(--neg);color:var(--neg-ink)}
+.btn.red{background:var(--main);border-color:var(--main);color:#fff}
+.count{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:0 24px 20px;background:var(--accent-tint);border-radius:16px;padding:14px 18px}
+.count p{margin:0}.count .s{font-size:13px;color:var(--ink-2)}
+.ctl{display:flex;gap:8px;margin-left:auto}
+.ghost{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:22px;display:grid;gap:12px}
+.ghost h3{margin:0;font-size:24px;font-weight:800}
+.fun{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr) minmax(200px,260px);gap:16px;align-items:start}
+@media (max-width:1100px){.fun{grid-template-columns:minmax(0,1fr)}}
+.ph{border:1px solid var(--border);border-radius:14px;padding:12px;color:var(--muted);font-size:13px;min-height:120px}
+.bands{display:grid;gap:8px;justify-items:center;background:var(--surface-2);border:1px solid var(--border);border-radius:16px;padding:16px}
+.band{width:var(--w);height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;box-sizing:border-box;font-weight:800;font-size:14px;clip-path:polygon(0 0,100% 0,97% 100%,3% 100%)}
+.b1{background:var(--accent-ink);color:#fff}.b2{background:var(--accent);color:#fff}.b3{background:var(--accent-mid);color:var(--ink)}
+.b4{background:var(--surface);clip-path:none;border:2px dashed var(--accent);border-radius:8px}.b5{background:var(--accent-soft)}.b6{background:var(--pos);color:#fff}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:12.5px;color:var(--muted);font-weight:700;padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--border);white-space:nowrap;font-variant-numeric:tabular-nums}
+.r{text-align:right}.pos{color:var(--pos);font-weight:700}.neg{color:var(--neg-ink);font-weight:700}
+.scroll{overflow-x:auto}
+.dlgs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:start}
+@media (max-width:1100px){.dlgs{grid-template-columns:minmax(0,1fr)}}
+.dlg{border:1px solid var(--border);border-radius:20px;padding:20px;background:var(--surface);display:grid;gap:12px;box-shadow:0 20px 50px rgba(20,26,51,.14)}
+.dlg h4{margin:0;font-size:18px;font-weight:800}
+.dlg p{margin:0}
+.muted{color:var(--muted);font-size:13px}
+.field{display:grid;gap:4px}.field label{font-size:12.5px;font-weight:800}
+.input{min-height:44px;border:1px solid var(--border-input);border-radius:10px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-variant-numeric:tabular-nums}
+.input em{font-style:normal;color:var(--muted);font-size:12.5px}
+.f2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.warnbox{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn);border-radius:12px;padding:10px 12px;font-size:13px}
+.never{background:var(--neg-bg);border-radius:10px;padding:8px 12px;font-size:13px}
+.check{display:flex;gap:10px;font-size:13px}.box{width:18px;height:18px;border:2px solid var(--ink-2);border-radius:4px;flex:none;margin-top:2px}
+.radio{display:flex;gap:10px;border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px}
+.radio.on{border-color:var(--accent);background:var(--accent-tint)}
+.rd{width:18px;height:18px;border-radius:50%;border:2px solid var(--ink-2);flex:none;margin-top:2px}.radio.on .rd{border:6px solid var(--accent)}
+.radio b{display:block}
+.right{display:flex;gap:8px;justify-content:flex-end}
+.menu{margin:-6px 24px 16px;max-width:420px;border:1px solid var(--border);border-radius:14px;box-shadow:0 14px 40px rgba(20,26,51,.14);background:var(--surface);padding:6px;display:grid;gap:2px}
+.mg{font-size:11.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:8px 10px 4px}
+.mi{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border-radius:10px;font-weight:700;font-size:14px}
+.mi em{font-style:normal;font-weight:500;color:var(--muted);font-size:12.5px}
+.mi.on{background:var(--accent-tint)}
+.mi.add{color:var(--accent-ink)}
+</style>
+
+<div class="wrap">
+  <div class="intro">
+    <h1>Signal research · Paper / Mainnet (team test)</h1>
+    <p>Mockup vẽ đè lên đúng trang đang có (ảnh chụp ngày 22/11). Chỉ thêm công tắc <b>Paper / Mainnet</b> cạnh ô Version, dòng bot mainnet có nút điều khiển, bảng lệnh mainnet và 3 hộp thoại. Phễu tin, feed và ô Context dùng chung, không đổi. Số liệu là ví dụ. Chỗ có nhãn <span class="cf">confirm</span> cần anh chốt.</p>
+  </div>
+
+  <div class="frame">
+    <span class="flabel">1 · Paper (như hiện tại, thêm công tắc)</span>
+    <div class="top">
+      <div><h2>Signal Analysis</h2><p class="sub">Team only.</p></div>
+      <div class="chips"><span class="chip env"><i></i>Mainnet</span><span class="chip"><i></i>SoDEX connected</span><span class="chip">Prices from mainnet</span><span class="chip">Refresh</span></div>
+    </div>
+    <div class="tabs"><span>All 23 bots</span><span>Volume Builder</span><span>Market Making</span><span class="on">Signal research</span></div>
+    <div class="panel">
+      <div class="strip paper"><b>Paper</b><span>Nothing here is sent to SoDEX.</span><span class="src">SoSoValue news · Live · 31 s ago</span><span class="src">Claude · Live · 2 min ago</span><span class="src">SoDEX prices · Live · 25 s ago</span></div>
+      <div class="vrow">
+        <div><div class="lbl">Bots</div><div class="seg"><span class="on">Paper</span><span>Mainnet</span></div></div>
+        <div><div class="lbl">Version or bot</div><div class="sel">Baseline (v3) <span>⌄</span></div></div>
+        <div class="bstrip">News bot · Baseline (v3) · <span class="pill run">Running</span> · Balance <b>10,010.1</b> · 1 open · <span class="link">shown below</span></div>
+        <span class="btn">How it works</span>
+      </div>
+      <div class="menu">
+        <div class="mg">Research versions · whole team</div>
+        <div class="mi on">Baseline (v3) <em>Running · counts toward the checks</em></div>
+        <div class="mi">v7 · Whales agree <em>Running · experiment</em></div>
+        <div class="mg">My paper bots · ••a91f</div>
+        <div class="mi">BTC only · from Baseline <em>Running · 10,000 fake USDC</em></div>
+        <div class="mi">High level only · from v7 <em>Paused</em></div>
+        <div class="mi add">+ Start bot from a version</div>
+      </div>
+      <div class="count"><div><p><b>Not counting yet:</b> label 50 signals to check Claude (0 done)</p><p class="s">Context: still collecting answers · see Is it working?</p></div><div class="ctl"><span class="btn pri">Label signals</span><span class="btn">Manage versions</span></div></div>
+    </div>
+    <p class="note"><b>Bot riêng từng người (người dùng chốt):</b> ô Version thành “Version or bot”, chia hai nhóm. <b>Research versions</b> dùng chung cả team, chỉ nhóm này được tính vào cổng 100 lệnh / 50 nhãn. <b>My paper bots</b> là bot paper của tài khoản đang đăng nhập, mỗi bot 10,000 USDC tiền giả riêng, điều kiện riêng (markets, level, size), không tính vào cổng. Ở Mainnet, nhóm là “My mainnet bots”. Mỗi người chỉ thấy bot của mình <span class="cf">confirm</span>.</p>
+    <p class="note">Chỉ thêm ô “Bots” với hai nút <b>Paper / Mainnet</b> ở bên trái ô Version. Dải vàng đổi chữ đầu từ “Research only · fake money” thành “Paper”, giữ câu “Nothing here is sent to SoDEX.” và các trạng thái nguồn. Phần còn lại giữ nguyên. Pill “Mainnet” đỏ trên header là môi trường (prices / SoDEX mainnet) đang có sẵn, không phải công tắc này.</p>
+  </div>
+
+  <div class="frame">
+    <span class="flabel">2 · Mainnet (cùng trang, bấm Mainnet)</span>
+    <div class="panel">
+      <div class="strip main"><b>Mainnet</b><span>Orders go to your SoDEX account. Withdraw or transfer: never.</span><span class="src">SoSoValue news · Live · 31 s ago</span><span class="src">Claude · Live · 2 min ago</span><span class="src">SoDEX prices · Live · 25 s ago</span></div>
+      <div class="vrow">
+        <div><div class="lbl">Bots</div><div class="seg"><span>Paper</span><span class="on m">Mainnet</span></div></div>
+        <div><div class="lbl">Bot</div><div class="sel">News · Baseline (v3) <span>⌄</span></div></div>
+        <div class="bstrip m">News · Baseline (v3) · <span class="pill mn">Mainnet</span> <span class="pill run">Running</span> · ••4f2a · Result after fees <b class="pos">+1.84 USDC</b> · 1 open · <span class="link">shown below</span>
+          <span class="ctl"><span class="btn sm">Pause</span><span class="btn sm danger">Stop…</span></span></div>
+        <span class="btn">How it works</span>
+      </div>
+      <div class="count"><div><p><span class="pill gate">Signal checks not passed yet</span> Team test: this news type has 4 of 100 closed trades.</p><p class="s">Size 100 USDC · leverage 1× · max 3 open · max 5 new trades a day</p></div><div class="ctl"><span class="btn pri">Start bot from a version</span></div></div>
+    </div>
+    <div class="ghost">
+      <h3>From headline to trade</h3>
+      <div class="fun">
+        <div class="ph">News feed, giữ nguyên. Chip kết quả theo bot mainnet đang chọn, ví dụ “Short SOL · Mainnet trade”.</div>
+        <div class="bands">
+          <div class="band b1" style="--w:94%"><span>1 · Collect</span><span>65 articles</span></div>
+          <div class="band b2" style="--w:88%"><span>2 · Normalize</span><span>40 articles on SoDEX</span></div>
+          <div class="band b3" style="--w:82%"><span>3 · Score</span><span>1 signal</span></div>
+          <div class="band b4" style="--w:78%"><span>4 · Context</span><span>saved, not used yet</span></div>
+          <div class="band b5" style="--w:72%"><span>5 · Filter</span><span>1 left</span></div>
+          <div class="band b6" style="--w:66%"><span>6 · Decide</span><span>Long 0 · Short 1</span></div>
+        </div>
+        <div class="ph">Ô 4 · Context, giữ nguyên.</div>
+      </div>
+    </div>
+    <div class="ghost">
+      <h3 style="font-size:19px">Mainnet trades</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Opened</th><th>Market</th><th class="r">Entry</th><th class="r">TP</th><th class="r">SL</th><th>Max hold</th><th class="r">Result</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>21:42</td><td>SOL · Short</td><td class="r">212.40</td><td class="r">205.10</td><td class="r">216.05</td><td>until 23:42</td><td class="r pos">+0.62 USDC unrealized</td><td><span class="link">Edit TP/SL</span> · <span class="link">Close now</span></td></tr>
+          <tr><td>20:05</td><td>HYPE · Short</td><td class="r">41.22</td><td class="r">39.93</td><td class="r">41.86</td><td>closed 20:58</td><td class="r pos">+1.22 USDC</td><td class="muted">Take profit</td></tr>
+        </tbody>
+      </table></div>
+      <p class="muted">TP and SL are orders on SoDEX, so they stay in place even if DeskLabs is down. Result after SoDEX and builder fees.</p>
+    </div>
+    <p class="note">Ở Mainnet: ô Version đổi thành ô <b>Bot</b> (chọn giữa các bot mainnet của team). Dòng bot có <b>Pause / Stop…</b>, trạng thái lấy từ backend (“Pausing…”, “Stopping…”). Khung xanh nhạt thay “Label signals” bằng nhắc cổng và cấu hình bot, kèm nút <b>Start bot from a version</b>. Phễu, feed và Context dùng chung tín hiệu; số ở Decide là của bot mainnet đang chọn. Bảng “Paper trades” đổi thành “Mainnet trades”, có <b>Edit TP/SL</b> và <b>Close now</b>. Tiền paper và mainnet không bao giờ cộng chung.</p>
+  </div>
+
+  <div class="frame">
+    <span class="flabel">3 · Hộp thoại</span>
+    <div class="dlgs">
+      <div class="dlg">
+        <h4>Start bot from a version</h4>
+        <div class="field"><label>Version</label><div class="input">Baseline (v3) <em>rules copied, the version keeps running</em></div></div>
+        <div class="field"><label>Run on</label><div class="seg" style="width:max-content"><span>Paper</span><span class="on m">Mainnet</span></div></div>
+        <div class="field"><label>SoDEX account</label><div class="input">Main ••4f2a <em>Builder fee approved</em></div></div>
+        <div class="f2">
+          <div class="field"><label>Markets</label><div class="input">Only these: BTC <em>within the version’s markets</em></div></div>
+          <div class="field"><label>Min level</label><div class="input">Low <em>Low · Medium · High</em></div></div>
+        </div>
+        <div class="f2">
+          <div class="field"><label>Size per trade <span class="cf">confirm</span></label><div class="input">100 USDC <em>max 200</em></div></div>
+          <div class="field"><label>Leverage <span class="cf">confirm</span></label><div class="input">1×</div></div>
+          <div class="field"><label>Max open trades</label><div class="input">3</div></div>
+          <div class="field"><label>Max new trades a day</label><div class="input">5</div></div>
+        </div>
+        <div class="field"><label>Opposite news <span class="cf">confirm</span></label><div class="input">Keep the trade <em>never flips</em></div></div>
+        <div class="warnbox"><b>This news type hasn’t passed its checks yet.</b> Paper results are not a forecast.</div>
+        <p class="never"><b>Withdraw or transfer: never.</b> DeskLabs only places orders on your account and charges its builder fee on them.</p>
+        <div class="check"><span class="box"></span><span>I understand this bot places orders on my SoDEX mainnet account.</span></div>
+        <div class="right"><span class="btn sm">Cancel</span><span class="btn sm red">Start bot</span></div>
+      </div>
+      <div class="dlg">
+        <h4>Stop News · Baseline (v3)?</h4>
+        <p class="muted">The bot stops opening trades. 1 trade is open: SOL · Short, +0.62 USDC unrealized.</p>
+        <div class="radio on"><span class="rd"></span><span><b>Keep open trades</b>Their TP and SL stay on SoDEX until one fills.</span></div>
+        <div class="radio"><span class="rd"></span><span><b>Close all now</b>Closes at market price. Taker fee applies.</span></div>
+        <div class="right"><span class="btn sm">Cancel</span><span class="btn sm danger">Stop bot</span></div>
+      </div>
+      <div class="dlg">
+        <h4>Edit TP / SL · SOL Short</h4>
+        <div class="f2">
+          <div class="field"><label>Take profit</label><div class="input">205.10 <em>−3.4%</em></div></div>
+          <div class="field"><label>Stop loss</label><div class="input">216.05 <em>+1.7%</em></div></div>
+        </div>
+        <p class="muted">Mark 211.80. The old orders stay on SoDEX until the new ones are confirmed.</p>
+        <div class="right"><span class="btn sm">Cancel</span><span class="btn sm" style="background:var(--accent);color:#fff;border-color:var(--accent)">Save</span></div>
+      </div>
+    </div>
+    <p class="note"><b>Markets và Min level chỉ được thu hẹp</b> so với version gốc. Ví dụ A chọn “Only these: BTC”, B để mọi market: có tín hiệu SOL thì bot của A bỏ qua (“Asset not in bot”), bot của B mở lệnh. Chọn <b>Paper</b> thì bỏ ô tài khoản SoDEX và trần 200 USDC; bot chạy qua PaperGateway, không bao giờ gửi gì lên SoDEX (quy tắc 1.2).</p>
+    <p class="note">Start bot chỉ bấm được khi đã kết nối SoDEX, đã approve builder fee, số dư đủ cho size × max open, và đã tick xác nhận. Pause: không mở lệnh mới, lệnh đang mở vẫn giữ TP/SL và vẫn đóng khi hết max hold. Resume không vào bù tin đã lỡ. Builder fee bị revoke thì bot tự pause (quy tắc 1.5).</p>
+  </div>
+</div>
