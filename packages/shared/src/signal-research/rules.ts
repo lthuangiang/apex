@@ -120,7 +120,7 @@ export const SignalReason = {
   maxHold: "MAX_HOLD",
   /** Đóng vì tin ngược chiều (version chọn Close at market). */
   oppositeNews: "OPPOSITE_NEWS",
-  // bot `news_signal` mainnet, ghi theo từng bot (#419, DEC-TBD-news-signal-mainnet)
+  // bot `news_signal` mainnet, ghi theo từng bot (#419, DEC-360)
   /** Tài sản không thuộc Markets của bot (bot đã thu hẹp so với version gốc). */
   assetNotInBot: "ASSET_NOT_IN_BOT",
   /** Tín hiệu tới bot đã quá `NEWS_SIGNAL_TTL_MS`: không vào lệnh. */

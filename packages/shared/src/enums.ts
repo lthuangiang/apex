@@ -16,7 +16,7 @@ export const Strategy = {
   /** S12 Copy Trade (DEC-161): copy vị thế của một ví leader, chỉ cho tài khoản được bật. */
   copyTrade: "copy_trade",
   /**
-   * Bot tín hiệu tin tức trên mainnet (#418, DEC-TBD-news-signal-mainnet): tạo từ một Signal research version, chỉ team và
+   * Bot tín hiệu tin tức trên mainnet (#418, DEC-360): tạo từ một Signal research version, chỉ team và
    * user có cờ `users.signal_research`. Không có thẻ ở Strategy Lab; tạo từ trang Signal research.
    */
   newsSignal: "news_signal",

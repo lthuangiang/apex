@@ -6,7 +6,7 @@ import { decimalStringSchema } from "../schemas";
 import { AssetKind, TradeDirection } from "./rules";
 import { AssetMode, botVersionConfigSchema, levelAtLeast, type BotVersionConfig } from "./versions";
 
-// Bot `news_signal` trên SoDEX mainnet (#418, #419, DEC-TBD-news-signal-mainnet). Bot tạo mới từ một Signal research
+// Bot `news_signal` trên SoDEX mainnet (#418, #419, DEC-360). Bot tạo mới từ một Signal research
 // version mà user thấy được (version của team hoặc My versions), chạy tiền thật. Bot paper cá nhân là My versions (#423),
 // không thuộc file này. Hàm ở đây thuần, không I/O; API (lúc tạo / lưu) và engine (`#load`, `#execute`) dùng chung.
 
@@ -88,7 +88,7 @@ function assetsNarrow(v: Assets, b: Assets, kindOf: (market: string) => AssetKin
 }
 
 /**
- * Bot có chỉ thu hẹp version gốc không (DEC-TBD-news-signal-mainnet): Markets chỉ được thu hẹp (mọi market bot cho phép
+ * Bot có chỉ thu hẹp version gốc không (DEC-360): Markets chỉ được thu hẹp (mọi market bot cho phép
  * thì version cũng cho phép), Min level chỉ được nâng. `kindOf`: loại tài sản của một market SoDEX, null khi không biết
  * (khi đó coi như có thể là cả hai, nên chặt hơn). Bằng nhau là hợp lệ. Gọi ở API (tạo, lưu) và ở engine lúc nạp bot.
  */

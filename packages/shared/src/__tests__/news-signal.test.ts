@@ -19,7 +19,7 @@ import {
   type BotVersionConfig,
 } from "../signal-research/versions";
 
-// Bot `news_signal` mainnet (#419, DEC-TBD-news-signal-mainnet): phần dùng chung, không I/O.
+// Bot `news_signal` mainnet (#419, DEC-360): phần dùng chung, không I/O.
 
 const bot = (o: Record<string, unknown> = {}) => ({
   ...baselineVersionConfig(),
