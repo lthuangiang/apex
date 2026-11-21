@@ -135,6 +135,8 @@ export const SignalReason = {
   newsCapExceeded: "NEWS_CAP_EXCEEDED",
   /** Lệnh vào limit IOC không khớp gì trong giá trần: bỏ tín hiệu, không đuổi giá. */
   entryNotFilled: "ENTRY_NOT_FILLED",
+  /** Khối lượng sau khi làm tròn theo lot dưới min size / min notional của market SoDEX: không gửi lệnh. */
+  belowMinSize: "BELOW_MIN_ORDER_SIZE",
 } as const;
 export type SignalReason = (typeof SignalReason)[keyof typeof SignalReason];
 

@@ -8,6 +8,7 @@ import type { StrategyModule } from "./core/types";
 import { fundingArb } from "./funding-arb";
 import { futuresDca } from "./futures-dca";
 import { futuresGrid } from "./futures-grid";
+import { newsSignal } from "./news-signal";
 import { rebalancing } from "./rebalancing";
 import { recurringBuy } from "./recurring-buy";
 import { STRATEGY_SCHEMAS as S } from "./schemas";
@@ -64,6 +65,13 @@ export const STRATEGIES = {
   },
   // Copy Trade (DEC-161, DEC-163): chỉ cho tài khoản được bật AI Desk (`users.ai_desk`); api kiểm tra.
   [Strategy.copyTrade]: { schema: S[Strategy.copyTrade], module: copyTrade, engines: ["perps"] },
+  // Bot tín hiệu tin tức mainnet (#419, DEC-360): chỉ tạo từ trang Signal research (không nằm trong `BOT_STRATEGIES`).
+  // Không có backtest (`BACKTEST_UNSUPPORTED`): tín hiệu là tin tức, không suy ra được từ nến.
+  [Strategy.newsSignal]: {
+    schema: S[Strategy.newsSignal],
+    module: newsSignal,
+    engines: ["perps"],
+  },
 } as const;
 
 export type LaunchedStrategy = keyof typeof STRATEGIES;

@@ -1596,6 +1596,10 @@ export function stepVolumeFarm(
     case "positionSync":
     case "fair":
     case "leaderFill":
+    case "newsSignal":
+    case "newsCommand":
+    case "newsStop":
+    case "paused":
     case "leaderPosition":
     case "resumed":
       return none(s);
