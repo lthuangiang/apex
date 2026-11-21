@@ -131,7 +131,7 @@ Những chỗ UI đổi khi ship Claude reader v4 (`news-classifier-v4`) và Rul
 | `reader-v4.html` | Ba khung: drawer How it works › News types (2 hộp mới), Is it working? › Overall (thẻ nhãn reader v4, thẻ reader v3 Retired), From headline to trade (bài bị loại bởi `ETF_MAJOR_ASSET`, câu "Why it stopped") |
 | `reader-v4-1440.png` | Ảnh chụp 1440 |
 
-**Quy tắc khi code (DEC-TBD-sr-reader-v4):**
+**Quy tắc khi code (DEC-353):**
 - Nhãn "New in v4" (và chip "v3 → v4" ở dòng sub) ẩn sau `READER_NEW_BADGE.days` = 14 ngày, tính từ `started_at` của `news-classifier-v4` lấy từ API `/classifiers`, không dùng hằng ngày của web.
 - Thẻ "Claude reader v3 · Retired {date}": reader ngay trước reader hiện tại; ngày = `started_at` của reader hiện tại; số lệnh đóng từ `closedTrades`, số nhãn từ `labeled` (chỉ nhãn random, như cổng 50 nhãn; PM review #398).
 - Hộp "What Claude reader v4 reads differently" có thêm dòng thứ 4 (PM review #398, sau dòng "The coin that was stolen…"): "Moving or laundering funds from an earlier hack is not a new hack." Dòng này không có trong ảnh.

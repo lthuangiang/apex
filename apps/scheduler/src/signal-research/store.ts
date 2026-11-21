@@ -67,7 +67,7 @@ export async function recordEvents(db: Exec, events: readonly EventInput[]): Pro
 }
 
 /**
- * Bài của rule version cũ còn dở lúc deploy rule version mới (#395, DEC-TBD-sr-reader-v4): `collected` / `pending` là bài
+ * Bài của rule version cũ còn dở lúc deploy rule version mới (#395, DEC-353): `collected` / `pending` là bài
  * chưa qua Score (chưa có story, lệnh hay snapshot ngữ cảnh), nên chuyển hẳn sang version hiện tại, cùng mọi event của
  * chúng (chỉ có Collect / Normalize), để pipeline (lọc theo `rule_version`) xử lý tiếp bằng luật và prompt hiện tại, trace và
  * phễu không bị tách đôi. Một câu lệnh, nguyên tử. Trả số bài đã chuyển (0 sau lần chạy đầu).
