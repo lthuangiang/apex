@@ -9613,6 +9613,8 @@
         "mOneChange": "vs Baseline (v{n}) · one change: {change}",
         "mChanges": "vs Baseline (v{n}) · changes: {list}",
         "mSince": "Since {start} · Result after fees, paired with Baseline · {have} / {need} paired trades",
+        "mNotStarted": "Not started yet · Result after fees, paired with Baseline · {have} / {need} paired trades",
+        "notStarted": "Not started yet",
         "mFinished": "{start} → stopped {stop} · Result after fees, paired with Baseline · {have} / {need} paired trades",
         "thing": {
           "minLevel": "Lowest level",

@@ -1,5 +1,5 @@
 import { defineChain } from "viem";
-import { createConfig, http } from "wagmi";
+import { createConfig, http, type CreateConnectorFn } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
 
 // ValueChain mainnet (docs/SODEX.md mục 5.6). Ví phải ở chain này để ký typed data domain `universal`
@@ -18,26 +18,36 @@ export const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJ
 // Ví extension (Binance Wallet, OKX, Bitget, MetaMask, Rabby…) được phát hiện qua EIP-6963
 // (`multiInjectedProviderDiscovery`), mỗi ví thành một connector riêng có tên và icon. `injected()` là
 // lựa chọn dự phòng cho ví chỉ gắn `window.ethereum`. WalletConnect cho ví trên điện thoại (quét QR).
-export const wagmiConfig = createConfig({
-  chains: [valueChain],
-  multiInjectedProviderDiscovery: true,
-  connectors: [
+//
+// #368: `createConfig` gọi `connector.setup()` ngay khi tạo config, và `setup()` của WalletConnect khởi tạo
+// EthereumProvider, kéo theo storage dùng `indexedDB`. Lúc SSR (Node không có `indexedDB`) việc này ném
+// `unhandledRejection: ReferenceError: indexedDB is not defined`. Vì vậy connector WalletConnect chỉ được tạo ở
+// trình duyệt. Server không cần nó: bộ chọn ví chỉ hiện sau khi người dùng bấm (render ở client), và ví EIP-6963
+// cũng chỉ có ở client.
+export function wagmiConnectors(projectId: string, browser: boolean): CreateConnectorFn[] {
+  return [
     injected({ shimDisconnect: true }),
-    ...(walletConnectProjectId === ""
+    ...(projectId === "" || !browser
       ? []
       : [
           walletConnect({
-            projectId: walletConnectProjectId,
+            projectId,
             showQrModal: true,
             metadata: {
               name: "DeskLabs",
               description: "Automated trading strategies, powered by SoDEX Builder Code",
-              url: typeof window === "undefined" ? "https://localhost" : window.location.origin,
+              url: window.location.origin,
               icons: [],
             },
           }),
         ]),
-  ],
+  ];
+}
+
+export const wagmiConfig = createConfig({
+  chains: [valueChain],
+  multiInjectedProviderDiscovery: true,
+  connectors: wagmiConnectors(walletConnectProjectId, typeof window !== "undefined"),
   transports: { [valueChain.id]: http() },
   ssr: true,
 });

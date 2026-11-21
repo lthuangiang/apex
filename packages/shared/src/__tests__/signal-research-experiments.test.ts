@@ -7,6 +7,7 @@ import {
   cleanTest,
   EXPERIMENT_PAIRS,
   experimentResult,
+  experimentStartedAt,
   hypothesisSchema,
   nextRunPeriods,
   pairWithBaseline,
@@ -293,5 +294,27 @@ describe("experimentResult", () => {
     }));
     const r = experimentResult([...first, ...later]);
     expect(r).toMatchObject({ pairs: 100, meanDiffPct: "0.5", verdict: "better" });
+  });
+});
+
+describe("experimentStartedAt (#385)", () => {
+  const createdAt = new Date("2026-11-01T00:00:00.000Z");
+  it("is the earliest running period, whatever the order", () => {
+    expect(
+      experimentStartedAt({
+        createdAt,
+        runningPeriods: [
+          { from: "2026-11-05T00:00:00.000Z", to: null },
+          { from: "2026-11-02T00:00:00.000Z", to: "2026-11-03T00:00:00.000Z" },
+        ],
+      })?.toISOString(),
+    ).toBe("2026-11-02T00:00:00.000Z");
+  });
+  it("is null for a version saved but never run", () => {
+    expect(experimentStartedAt({ createdAt, runningPeriods: [] })).toBeNull();
+  });
+  it("falls back to the saved time when there are no running periods (old version) or they don't parse", () => {
+    expect(experimentStartedAt({ createdAt, runningPeriods: null })).toEqual(createdAt);
+    expect(experimentStartedAt({ createdAt, runningPeriods: [{ from: "x" }] })).toEqual(createdAt);
   });
 });

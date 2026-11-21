@@ -4,6 +4,7 @@ import {
   diffVersionConfig,
   experimentResult,
   experimentResultSchema,
+  experimentStartedAt,
   NEWS_RULES,
   pairWithBaseline,
   runPeriodsOf,
@@ -74,6 +75,7 @@ export function experimentOf(input: {
     clean: things === null ? null : things === 1,
     ...result,
     finishedAt: v.experimentFinishedAt === null ? null : v.experimentFinishedAt.toISOString(),
+    startedAt: experimentStartedAt(v)?.toISOString() ?? null,
   };
 }
 

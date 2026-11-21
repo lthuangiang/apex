@@ -44,6 +44,7 @@ function exp(
     ciHigh: null,
     clusters: 0,
     finishedAt: null,
+    startedAt: null,
     ...e,
   };
 }
@@ -71,19 +72,28 @@ export const E4 = version(4, "Strict subject", strict, {
   createdAt: "2026-11-19T03:00:00.000Z",
   hypothesis:
     "Trading only articles whose main subject is the asset gives a better result after fees.",
-  experiment: exp(strict, { pairs: 18, verdict: "collecting" }),
+  experiment: exp(strict, {
+    startedAt: "2026-11-19T03:00:00.000Z",
+    pairs: 18,
+    verdict: "collecting",
+  }),
 });
 export const E5 = version(5, "Majors only", majors, {
   status: "running",
   createdAt: "2026-11-19T04:00:00.000Z",
   hypothesis: "Trading only BTC and ETH gives a better result after fees.",
-  experiment: exp(majors, { pairs: 31, verdict: "collecting" }),
+  experiment: exp(majors, {
+    startedAt: "2026-11-19T04:00:00.000Z",
+    pairs: 31,
+    verdict: "collecting",
+  }),
 });
 export const E6 = version(6, "Wider stops", wider, {
   status: "stopped",
   createdAt: "2026-11-19T05:00:00.000Z",
   hypothesis: "A wider stop loss loses less to noise and gives a better result after fees.",
   experiment: exp(wider, {
+    startedAt: "2026-11-19T05:00:00.000Z",
     pairs: 100,
     verdict: "no_clear_difference",
     meanDiffPct: "0.02",
@@ -99,6 +109,7 @@ export const E7 = version(7, "Skip late news", late, {
   hypothesis:
     "Skipping articles that reach DeskLabs more than 10 min late gives a better result after fees.",
   experiment: exp(late, {
+    startedAt: "2026-11-21T05:00:00.000Z",
     pairs: 100,
     verdict: "better",
     meanDiffPct: "0.14",
@@ -113,6 +124,7 @@ export const E8 = version(8, "Tighter take profit", tighter, {
   createdAt: "2026-11-22T05:00:00.000Z",
   hypothesis: "Taking profit earlier gives a better result after fees.",
   experiment: exp(tighter, {
+    startedAt: "2026-11-22T05:00:00.000Z",
     pairs: 100,
     verdict: "worse",
     meanDiffPct: "-0.12",
@@ -150,6 +162,7 @@ export const OLD_NO_HYPOTHESIS = version(9, "Old rules", wider, {
   createdAt: "2026-11-18T05:00:00.000Z",
   hypothesis: null,
   experiment: exp(wider, {
+    startedAt: "2026-11-18T05:00:00.000Z",
     pairs: 120,
     verdict: "better",
     meanDiffPct: "0.1",

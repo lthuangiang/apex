@@ -109,6 +109,24 @@ export function runPeriodsOf(v: {
   return [{ from: v.createdAt, to: v.status === "running" ? null : v.statusChangedAt }];
 }
 
+/**
+ * #385: mốc "Started" của một thí nghiệm = lần đầu version vào `running` (mốc `from` sớm nhất của `running_periods`).
+ * - Có khoảng chạy → mốc sớm nhất.
+ * - Mảng rỗng → version đã lưu nhưng chưa từng chạy (lưu không bấm Start) → null ("Not started yet").
+ * - Cột null hoặc hỏng (version lưu trước #382 / #377, chưa ghi khoảng chạy) → giữ `createdAt` như trước: không có dữ liệu
+ *   nào khác cho mốc bắt đầu, và các version này được Start ngay lúc lưu.
+ */
+export function experimentStartedAt(v: { runningPeriods: unknown; createdAt: Date }): Date | null {
+  if (v.runningPeriods === null) return v.createdAt;
+  const p = runPeriodsSchema.safeParse(v.runningPeriods);
+  if (!p.success) return v.createdAt;
+  const first = p.data.reduce<string | null>(
+    (min, x) => (min === null || Date.parse(x.from) < Date.parse(min) ? x.from : min),
+    null,
+  );
+  return first === null ? null : new Date(first);
+}
+
 /** Mở / đóng khoảng chạy khi version đổi trạng thái (thuần, có test). */
 export function nextRunPeriods(periods: readonly RunPeriod[], to: string, at: Date): RunPeriod[] {
   const out = periods.map((p) => ({ ...p }));
