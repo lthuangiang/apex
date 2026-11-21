@@ -158,20 +158,20 @@ describe("Signal Research (BETA, #423)", () => {
     const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
     if (nav === undefined) throw new Error("sidebar nav missing");
     expect(linkNames(nav).some((n) => n.startsWith("Signal Research"))).toBe(false);
-    expect(screen.queryByText("BETA")).toBeNull();
+    expect(screen.queryByText("Beta")).toBeNull();
   });
 
-  it("with the flag: right after AI Desk, with a BETA tag, linking outside /admin", () => {
+  it("with the flag: right after AI Desk, with a Beta tag, linking outside /admin", () => {
     flags.aiDesk = true;
     flags.signalResearch = true;
     renderShell(false);
     const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
     if (nav === undefined) throw new Error("sidebar nav missing");
     const names = linkNames(nav);
-    expect(names.slice(3, 5)).toEqual(["AI Desk", "Signal ResearchBETA"]);
+    expect(names.slice(3, 5)).toEqual(["AI Desk", "Signal ResearchBeta"]);
     const link = within(nav).getByRole("link", { name: /Signal Research/ });
     expect(link).toHaveAttribute("href", "/signal-research");
-    expect(within(link).getByText("BETA")).toBeInTheDocument();
+    expect(within(link).getByText("Beta")).toBeInTheDocument();
   });
 
   it("is in the mobile More sheet right after the AI Desk slot", async () => {
@@ -181,6 +181,6 @@ describe("Signal Research (BETA, #423)", () => {
     renderShell(false);
     await user.click(screen.getByRole("button", { name: "More" }));
     const sheet = await screen.findByRole("dialog", { name: "More" });
-    expect(linkNames(sheet).slice(0, 2)).toEqual(["Portfolio", "Signal ResearchBETA"]);
+    expect(linkNames(sheet).slice(0, 2)).toEqual(["Portfolio", "Signal ResearchBeta"]);
   });
 });

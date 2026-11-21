@@ -40,6 +40,9 @@ export const SignalBotVersionAudit = {
 /** Lý do trong metadata audit khi version tự dừng vì thí nghiệm đủ cặp (#377). */
 export const EXPERIMENT_FINISHED_REASON = "experiment_finished";
 
+/** #423: lý do trong metadata audit khi version của người dùng test tự pause vì team tắt cờ `signal_research`. */
+export const SIGNAL_RESEARCH_DISABLED_REASON = "signal_research_disabled";
+
 export interface SignalBotVersion {
   id: string;
   number: number;
@@ -246,6 +249,8 @@ export async function setSignalBotVersionStatus(
     now?: Date;
     finish?: ExperimentResult;
     viewer?: SignalVersionViewer;
+    /** #423: lý do ghi vào metadata audit (vd `signal_research_disabled`); không truyền = thao tác tay. */
+    reason?: string;
   },
 ): Promise<void> {
   const now = input.now ?? new Date();
@@ -329,7 +334,12 @@ export async function setSignalBotVersionStatus(
       target: input.id,
       metadata:
         finish === undefined
-          ? { number: row.number, from, to: input.status }
+          ? {
+              number: row.number,
+              from,
+              to: input.status,
+              ...(input.reason === undefined ? {} : { reason: input.reason, by: "flag_off" }),
+            }
           : {
               number: row.number,
               from,
@@ -494,4 +504,34 @@ export async function assertSignalTradeVisible(
     .where(eq(signalPaperTrades.id, tradeId));
   if (row !== undefined && versionHiddenFrom(row.owner, viewer))
     throw new AppError(ErrorCode.notFound, "Trade not found.");
+}
+
+/**
+ * #423: team tắt cờ `signal_research` của một người dùng → pause mọi version `running` của người đó, mỗi version qua đúng
+ * state machine ở trên (khoá theo chủ, `running_periods`, audit với lý do `signal_research_disabled`, người thao tác = team).
+ * Bật cờ lại KHÔNG tự resume: chủ tự Resume từng version. Trả số version đã pause.
+ */
+export async function pauseSignalVersionsOfOwner(
+  db: Db,
+  input: { ownerUserId: string; actorId: string; ip?: string | null; now?: Date },
+): Promise<number> {
+  const rows = await db
+    .select({ id: signalBotVersions.id })
+    .from(signalBotVersions)
+    .where(
+      and(
+        eq(signalBotVersions.ownerUserId, input.ownerUserId),
+        eq(signalBotVersions.status, SignalBotVersionStatus.running),
+      ),
+    );
+  for (const r of rows)
+    await setSignalBotVersionStatus(db, {
+      id: r.id,
+      status: SignalBotVersionStatus.paused,
+      userId: input.actorId,
+      reason: SIGNAL_RESEARCH_DISABLED_REASON,
+      ...(input.ip === undefined ? {} : { ip: input.ip }),
+      ...(input.now === undefined ? {} : { now: input.now }),
+    });
+  return rows.length;
 }

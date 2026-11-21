@@ -1229,7 +1229,7 @@ export const researchClassifierRowSchema = z.object({
   /**
    * #423: nhãn của người dùng test (`labeler = tester`), hiện riêng để đối chiếu, KHÔNG tính vào precision / cổng ở trên
    * (mọi số ở trên chỉ tính nhãn của team). `labeled` = số bài có ít nhất một nhãn tester (random hoặc trace); `compared` =
-   * trong số đó, bài có cả kết luận của team (đa số mọi nhãn team, hoà tính Wrong); `agree` = bài mà kết luận của tester
+   * trong số đó, bài có cả kết luận của team (đa số nhãn `random` của team, như cổng; hoà tính Wrong); `agree` = bài mà kết luận của tester
    * (đa số nhãn tester, hoà tính Wrong) trùng kết luận của team; `agreePct` null khi `compared` = 0.
    */
   testers: z

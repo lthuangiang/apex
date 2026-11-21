@@ -59,8 +59,7 @@
       "architecture": "System Architecture Diagram",
       "sodexDebugger": "SoDEX Debugger",
       "signalAnalysis": "Signal Analysis",
-      "signalResearch": "Signal Research",
-      "beta": "BETA"
+      "signalResearch": "Signal Research"
     },
     "dialog": {
       "consequences": "What happens"
@@ -2892,11 +2891,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "signalAnalysis.research.labeling.testers",
-    "signalAnalysis.research.labeling.testersAgree",
-    "adminUsers.signalResearch.onLabel",
-    "adminUsers.signalResearch.offLabel"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
@@ -9676,7 +9671,6 @@
   },
   "signalResearch": {
     "title": "Signal Research",
-    "beta": "BETA",
     "lede": "Crypto news turned into signals, tested with paper trades before any real money."
   }
 }

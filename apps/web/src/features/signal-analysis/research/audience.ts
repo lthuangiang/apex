@@ -5,8 +5,8 @@ import { createContext, useContext } from "react";
 // Người xem của trang Signal research (#423, DEC-TBD-sr-menu-beta). Cùng một bộ component cho trang team (Signal Analysis ›
 // Signal research) và trang Signal Research BETA ngoài /admin; chỉ khác ở vài phần chỉ team:
 // - `team`: như trước (mọi phần).
-// - `tester`: người dùng có cờ `users.signal_research`. Ẩn ô Claude cost và mọi chi phí / token Claude, ô độ trễ theo chặng
-//   ("Where the time goes", API chỉ team); version của team chỉ xem, version của chính họ ở nhóm My versions.
+// - `tester`: người dùng có cờ `users.signal_research`. Chỉ ẩn ô Claude cost và mọi chi phí / token Claude (PM review #428);
+//   version của team chỉ xem, version của chính họ ở nhóm My versions.
 // API vẫn tự kiểm quyền và bỏ dữ liệu chỉ team; context này chỉ để không vẽ ô "Not available" thay cho phần bị ẩn.
 
 export type ResearchAudience = "team" | "tester";

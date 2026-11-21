@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { PageHead, Workspace } from "@/components/workspace";
 import { browserTimeZone, offsetLabel, offsetMinutes } from "@/features/account/market-hours-time";
+import { BetaChip } from "@/features/bots/components/beta-chip";
 import { useFeatures, useMe } from "@/lib/queries";
 
 import { ResearchAudienceContext, type ResearchAudience } from "../research/audience";
@@ -18,7 +19,7 @@ import type { PageCtx } from "./page-ctx";
 // Signal Research BETA trên menu chính (#423; mockup docs/mockups/signal-research/menu-beta.html). Route ngoài /admin, dùng
 // lại đúng tab Signal research của team (ResearchTab và mọi component con). Chỉ team và tài khoản team bật cờ
 // `users.signal_research` (Users › Signal Research) mới vào được; người khác nhận trang Not found. Người dùng test không
-// thấy ô Claude cost (và mọi chi phí Claude, ô độ trễ theo chặng), version của team chỉ xem, có My versions. API tự kiểm
+// thấy ô Claude cost (và mọi chi phí / token Claude), version của team chỉ xem, có My versions. API tự kiểm
 // quyền và bỏ dữ liệu chỉ team; trang này chỉ chọn người xem cho các component.
 
 export function SignalResearchPage() {
@@ -56,11 +57,7 @@ export function SignalResearchPage() {
       <div className="flex flex-col gap-3">
         <PageHead
           title={t("title")}
-          badge={
-            <span className="inline-flex items-center rounded-full bg-unknown-bg px-2 py-0.5 text-[11px] font-extrabold tracking-[0.04em] text-unknown">
-              {t("beta")}
-            </span>
-          }
+          badge={<BetaChip bare />}
           subtitle={t("lede")}
           action={
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-control bg-surface-2 py-1 pr-1 pl-3 text-[12.5px] font-bold">

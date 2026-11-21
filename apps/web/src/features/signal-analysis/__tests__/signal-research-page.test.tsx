@@ -13,11 +13,12 @@ import type { z } from "zod";
 import messages from "../../../../messages/en.json";
 import { SignalResearchPage } from "../components/signal-research-page";
 
+import { LATENCY_1D } from "./news-trace-fixtures";
 import { RESEARCH_SUMMARY, RESEARCH_TRADES } from "./research-fixtures";
 import { BASELINE, CLASSIFIERS, V4, VERSIONS } from "./versions-fixtures";
 
 // Signal Research BETA (#423; mockup docs/mockups/signal-research/menu-beta.html): cùng component với trang team, người dùng
-// test không thấy ô Claude cost / độ trễ theo chặng, version của team chỉ xem, có My versions, nhãn tester hiện riêng.
+// test chỉ không thấy ô Claude cost (PM review #428), version của team chỉ xem, có My versions, nhãn tester hiện riêng.
 
 const MINE_ID = "00000000-0000-4000-8000-000000000012";
 const state = vi.hoisted(
@@ -106,7 +107,6 @@ vi.mock("@/lib/api", async (importOriginal) => {
             tester
               ? {
                   ...RESEARCH_SUMMARY,
-                  sources: [],
                   funnel:
                     RESEARCH_SUMMARY.funnel === null
                       ? null
@@ -121,8 +121,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
         return Promise.resolve(
           schema.parse({ items: [], nextCursor: null, total: 0, totalInRange: 0 }),
         );
-      if (p.endsWith("/signal-research/latency") && tester)
-        return Promise.reject(new real.ApiError("FORBIDDEN", 403));
+      if (p.endsWith("/signal-research/latency")) return Promise.resolve(schema.parse(LATENCY_1D));
       return Promise.reject(new real.ApiError("NOT_FOUND", 404));
     },
   };
@@ -163,9 +162,9 @@ describe("Signal Research page (BETA, #423)", { timeout: 20_000 }, () => {
     expect(() => wrap()).toThrow("NEXT_NOT_FOUND");
   });
 
-  it("tester: same page as the team, BETA title, no Claude cost and no latency card", async () => {
+  it("tester: same page as the team, Beta title, only the Claude cost is hidden", async () => {
     wrap();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Signal ResearchBETA");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Signal ResearchBeta");
     expect(
       screen.getByText(
         "Crypto news turned into signals, tested with paper trades before any real money.",
@@ -174,9 +173,9 @@ describe("Signal Research page (BETA, #423)", { timeout: 20_000 }, () => {
     await screen.findByText("From headline to trade", {}, { timeout: 5_000 });
     expect(screen.getByRole("heading", { name: "Is it working?" })).toBeInTheDocument();
     expect(screen.queryByText("Claude cost")).toBeNull();
-    expect(screen.queryByText("Where the time goes")).toBeNull();
-    // Không bao giờ gọi endpoint chỉ team.
-    expect(state.calls.some((c) => c.includes("/latency"))).toBe(false);
+    // Dải sức khoẻ nguồn và "Where the time goes" vẫn hiện với người dùng test.
+    expect(screen.getByRole("list", { name: "Sources" })).toBeInTheDocument();
+    expect(await screen.findByText("Where the time goes")).toBeInTheDocument();
     await noViolations();
   });
 

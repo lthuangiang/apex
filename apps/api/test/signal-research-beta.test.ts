@@ -136,7 +136,7 @@ describe("flag and Users toggle (#423)", () => {
     for (const id of [testerId, tester2Id]) {
       const ok = await team.request("POST", path(id), { body: { enabled: true } });
       expect(ok.statusCode).toBe(200);
-      expect(ok.json()).toEqual({ signalResearch: true });
+      expect(ok.json()).toEqual({ signalResearch: true, paused: 0 });
     }
     const audits = await env.pool.query<{ n: number }>(
       "select count(*)::int as n from audit_log where action = 'admin.signal_research' and target = $1",
@@ -160,6 +160,7 @@ describe("API access: team / tester with the flag / user without it", () => {
       "/trades",
       "/articles?range=1d",
       "/articles/new",
+      "/latency?range=1d",
       "/versions",
       "/markets",
       "/classifiers",
@@ -178,13 +179,7 @@ describe("API access: team / tester with the flag / user without it", () => {
     expect(noKey.statusCode).toBe(403);
   });
 
-  it("team-only stays team-only: latency (403 for the tester)", async () => {
-    expect((await team.request("GET", `${base}/latency?range=1d`)).statusCode).toBe(200);
-    expect((await tester.request("GET", `${base}/latency?range=1d`)).statusCode).toBe(403);
-    expect((await plain.request("GET", `${base}/latency?range=1d`)).statusCode).toBe(403);
-  });
-
-  it("Claude cost and source health only reach the team (tester gets null / empty)", async () => {
+  it("only the Claude cost is team only: the tester gets latency and source health (PM review #428)", async () => {
     const sum = async (c: TestClient) =>
       researchSummarySchema.parse((await c.request("GET", `${base}/summary?range=1d`)).json());
     const t = await sum(team);
@@ -194,7 +189,7 @@ describe("API access: team / tester with the flag / user without it", () => {
     expect(s.funnel).not.toBeNull();
     expect(s.funnel?.claudeCost).toBeNull();
     expect(s.funnel?.claudeCostPerDay).toBeNull();
-    expect(s.sources).toEqual([]);
+    expect(s.sources).toEqual(t.sources);
     // Cùng số bài (phần còn lại giống hệt).
     expect(s.funnel?.articlesRead).toBe(t.funnel?.articlesRead);
     const feed = async (c: TestClient) =>
@@ -363,7 +358,7 @@ describe("labels from testers (#423)", () => {
     expect(mid?.labeled).toBe(0);
     expect(mid?.precisionPct).toBeNull();
     expect(mid?.testers).toEqual({ labeled: 3, compared: 0, agree: 0, agreePct: null });
-    // Team gắn b1 Right, b2 Wrong: chỉ 2 nhãn này vào precision; tester đồng ý 1 / 2.
+    // Team gắn b1 Right, b2 Wrong từ trace (không token): không tính cổng, cũng không dùng để đối chiếu.
     for (const [id, verdict] of [
       ["b1", "right"],
       ["b2", "wrong"],
@@ -374,19 +369,67 @@ describe("labels from testers (#423)", () => {
       });
       expect(r.statusCode).toBe(200);
     }
+    const traced = await gateOf();
+    expect(traced?.labeled).toBe(0);
+    expect(traced?.traceLabeled).toBe(2);
+    expect(traced?.testers).toEqual({ labeled: 3, compared: 0, agree: 0, agreePct: null });
+    // Team gắn b3 qua labels/next (random) Right: vào cổng và là bài duy nhất được đối chiếu với tester.
+    const n = researchLabelNextSchema.parse(
+      (await team.request("GET", `${base}/labels/next`)).json(),
+    );
+    expect(n.item?.article.id).toBe("b3");
+    const r3 = await team.request("PUT", `${base}/articles/b3/label`, {
+      body: { verdict: "right", labelToken: n.labelToken },
+      idempotencyKey: randomUUID(),
+    });
+    expect(r3.statusCode).toBe(200);
     const after = await gateOf();
-    // Nhãn của team từ trace (không có token) không tính cổng; nhãn tester không bao giờ tính.
-    expect(after?.labeled).toBe(0);
+    expect(after?.labeled).toBe(1);
     expect(after?.traceLabeled).toBe(2);
-    expect(after?.testers).toEqual({ labeled: 3, compared: 2, agree: 1, agreePct: 50 });
+    expect(after?.testers).toEqual({ labeled: 3, compared: 1, agree: 1, agreePct: 100 });
     expect(after?.mostCommonMistakes).toEqual([{ reason: "other", n: 1 }]);
   });
 
-  it("turning the flag off blocks the tester on the next request", async () => {
-    const off = await team.request("POST", `/api/v1/admin/users/${tester2Id}/signal-research`, {
-      body: { enabled: false },
-    });
+  it("flag off: blocks the tester at once and pauses their running versions with an audit; flag on: no auto resume", async () => {
+    const path = `/api/v1/admin/users/${tester2Id}/signal-research`;
+    const ownRunning = async () =>
+      (
+        await env.pool.query<{ id: string; status: string }>(
+          "select id, status from signal_bot_versions where owner_user_id = $1 order by number",
+          [tester2Id],
+        )
+      ).rows;
+    const before = await ownRunning();
+    expect(before.map((v) => v.status)).toEqual(["running"]);
+    const off = await team.request("POST", path, { body: { enabled: false } });
     expect(off.statusCode).toBe(200);
+    expect(off.json()).toEqual({ signalResearch: false, paused: 1 });
     expect((await tester2.request("GET", `${base}/summary`)).statusCode).toBe(403);
+    expect((await ownRunning()).map((v) => v.status)).toEqual(["paused"]);
+    const audit = await env.pool.query<{ user_id: string; metadata: Record<string, unknown> }>(
+      "select user_id, metadata from audit_log where action = 'signal_research.version_status' and target = $1",
+      [before[0]?.id],
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]?.user_id).toBe(teamId);
+    expect(audit.rows[0]?.metadata).toMatchObject({
+      from: "running",
+      to: "paused",
+      reason: "signal_research_disabled",
+      by: "flag_off",
+    });
+    // Version của người khác (tester, team) không bị đụng.
+    const others = await env.pool.query<{ n: number }>(
+      "select count(*)::int as n from signal_bot_versions where status = 'running' and (owner_user_id is null or owner_user_id = $1)",
+      [testerId],
+    );
+    expect(others.rows[0]?.n).toBe(6);
+    // Bật lại: vào được, nhưng version vẫn paused tới khi chủ tự Resume.
+    const on = await team.request("POST", path, { body: { enabled: true } });
+    expect(on.json()).toEqual({ signalResearch: true, paused: 0 });
+    expect((await tester2.request("GET", `${base}/summary`)).statusCode).toBe(200);
+    expect((await ownRunning()).map((v) => v.status)).toEqual(["paused"]);
+    expect((await setStatus(tester2, before[0]?.id ?? "", "running")).statusCode).toBe(200);
+    expect((await ownRunning()).map((v) => v.status)).toEqual(["running"]);
   });
 });

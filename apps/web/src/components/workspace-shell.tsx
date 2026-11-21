@@ -42,6 +42,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { BetaChip } from "@/features/bots/components/beta-chip";
 import {
   MobileNotificationBell,
   MobileNotificationsButton,
@@ -146,7 +147,8 @@ export function WorkspaceShell({
       current: key === current,
       group,
       ...(COPY_ITEMS.has(key) ? { section: t("sections.copy") } : {}),
-      ...(key === "signalResearch" ? { badge: <NavBeta label={t("beta")} /> } : {}),
+      // #423: chip Beta dùng chung của app (PM review #428).
+      ...(key === "signalResearch" ? { badge: <BetaChip bare /> } : {}),
     }));
   const byKey = (key: WorkspaceKey) => navItems.find((i) => i.key === key);
   const pick = (keys: readonly WorkspaceKey[]) =>
@@ -218,15 +220,6 @@ export function WorkspaceShell({
       {children}
       <NotificationToasts />
     </AppShell>
-  );
-}
-
-/** Nhãn "BETA" của mục Signal Research (mockup docs/mockups/signal-research/menu-beta.html, #423). */
-function NavBeta({ label }: { label: string }) {
-  return (
-    <span className="inline-flex items-center rounded-full bg-unknown-bg px-[7px] py-0.5 text-[10.5px] font-extrabold tracking-[0.04em] text-unknown">
-      {label}
-    </span>
   );
 }
 

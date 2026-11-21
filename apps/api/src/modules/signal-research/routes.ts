@@ -90,7 +90,6 @@ import { z } from "zod";
 import { parseOrThrow } from "../../lib/http";
 import { idempotent, markSideEffect } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
-import { requireTeam } from "../account/team";
 
 // Signal research, lane tin tức (#271): chỉ role team (401 chưa đăng nhập, 403 người ngoài team, kiểm trước khi parse
 // tham số), chỉ đọc (transaction READ ONLY, statement timeout). Không bao giờ chạm SoDEX (giá của lệnh đang mở chỉ đọc
@@ -100,9 +99,9 @@ import { requireTeam } from "../account/team";
 // market SoDEX (`/markets`, kiểm tài sản khi lưu) chỉ đọc bản chụp Redis `sr:markets` do scheduler ghi.
 //
 // #423 (DEC-TBD-sr-menu-beta): Signal Research ra menu chính (BETA). Phần trang người dùng test được dùng mở cho "team HOẶC
-// `users.signal_research`" (`researchViewer`, kiểm trước khi parse và trước Idempotency-Key); phần chỉ team giữ `requireTeam`
-// (độ trễ theo chặng `/latency`). Với người dùng test, API bỏ dữ liệu chỉ team trước khi trả: chi phí / token Claude (ô
-// Claude cost, chi phí từng bài) và sức khoẻ nguồn (`sources`). Version có chủ: version riêng của người khác → 404; version
+// `users.signal_research`" (`researchViewer`, kiểm trước khi parse và trước Idempotency-Key), gồm cả độ trễ theo chặng
+// (`/latency`) và sức khoẻ nguồn (`sources`). Với người dùng test, API chỉ bỏ chi phí / token Claude (ô Claude cost, chi phí
+// từng bài) trước khi trả (PM review #428). Version có chủ: version riêng của người khác → 404; version
 // của team → người dùng test chỉ xem (403 khi đổi trạng thái); lưu version mới thì chủ là người gọi (team → version team).
 // Nhãn ghi người chấm theo role lúc lưu (`team` / `tester`); cổng chỉ tính nhãn team.
 
@@ -131,7 +130,6 @@ export interface SignalResearchDeps {
   srLane?: () => Promise<string | null>;
 }
 
-const FORBIDDEN = "Signal research is for the DeskLabs team only.";
 const NOT_ENABLED = "Signal Research is not turned on for this account.";
 
 /**
@@ -242,10 +240,9 @@ export async function signalResearchSummary(
   );
   const parsed = researchSummarySchema.parse(out);
   if (viewer.team) return parsed;
-  // Người dùng test: không có ô Claude cost và sức khoẻ nguồn (chỉ team).
+  // Người dùng test: chỉ không có ô Claude cost (chỉ team).
   return {
     ...parsed,
-    sources: [],
     funnel:
       parsed.funnel === null
         ? null
@@ -311,15 +308,16 @@ export async function signalResearchNewArticles(
 
 /**
  * Độ trễ theo chặng (#375): median từng chặng published → collected → Claude done → decided → opened trong cửa sổ 1d / 7d,
- * kèm số bài đo được. Chặng nguồn gốc → SoSoValue luôn null (không có nguồn). #423: chỉ team (sức khoẻ pipeline).
+ * kèm số bài đo được. Chặng nguồn gốc → SoSoValue luôn null (không có nguồn). #423: team hoặc người dùng test.
  */
 export async function signalResearchLatency(
   deps: SignalResearchDeps,
   userId: string,
   query: unknown,
 ): Promise<ResearchLatency> {
-  await requireTeam(deps.db, userId, FORBIDDEN);
+  const viewer = await researchViewer(deps.db, userId);
   const q = parseOrThrow(researchLatencyQuerySchema, query);
+  await assertSignalVersionVisible(deps.db, q.versionId, viewer);
   const out = await tx(deps, (t, check) => loadSignalResearchLatency(t, q, deps.now(), check));
   return researchLatencySchema.parse(out);
 }

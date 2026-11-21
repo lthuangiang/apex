@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import {
   ARTICLES,
+  LATENCY_1D,
   SUMMARY_1D,
   TRACES,
 } from "../src/features/signal-analysis/__tests__/news-trace-fixtures";
@@ -14,8 +15,8 @@ import {
 } from "../src/features/signal-analysis/__tests__/versions-fixtures";
 
 // #423: trang Signal Research BETA (/signal-research) của người dùng test không bao giờ cuộn ngang, ở 1024 / 1280 / 1440
-// (project) và 390: sidebar có mục BETA, ô Version có nhóm Team versions / My versions, khu Bots & labels mở. API giả trả
-// như API thật cho người dùng test (không Claude cost, không sources; /latency 403).
+// (project) và 390: sidebar có mục Beta, ô Version có nhóm Team versions / My versions, khu Bots & labels mở. API giả trả
+// như API thật cho người dùng test (chỉ không có Claude cost; PM review #428).
 
 const TESTER_VERSIONS = {
   ...VERSIONS,
@@ -35,7 +36,6 @@ const TESTER_VERSIONS = {
 };
 const TESTER_SUMMARY = {
   ...SUMMARY_1D,
-  sources: [],
   funnel:
     SUMMARY_1D.funnel === null
       ? null
@@ -71,8 +71,7 @@ async function open(page: Page, baseURL: string | undefined) {
     if (p.endsWith("/signal-research/summary")) return json(TESTER_SUMMARY);
     if (p.endsWith("/signal-research/trades")) return json(RESEARCH_TRADES);
     if (p.endsWith("/signal-research/articles/new")) return json({ items: [], since: "c1" });
-    if (p.endsWith("/signal-research/latency"))
-      return json({ error: { code: "FORBIDDEN", message: "Team only." } }, 403);
+    if (p.endsWith("/signal-research/latency")) return json(LATENCY_1D);
     if (p.endsWith("/signal-research/versions")) return json(TESTER_VERSIONS);
     if (p.endsWith("/signal-research/classifiers")) return json(CLASSIFIERS);
     if (p.endsWith("/signal-research/markets")) return json(MARKETS);
@@ -111,18 +110,18 @@ async function sideScroll(page: Page) {
 for (const narrow of [false, true]) {
   const tag = narrow ? " at 390" : "";
 
-  test(`Signal Research BETA${tag}: no side scroll, no Claude cost, BETA in the nav`, async ({
+  test(`Signal Research BETA${tag}: no side scroll, no Claude cost, Beta in the nav`, async ({
     page,
     baseURL,
   }) => {
     if (narrow) await page.setViewportSize({ width: 390, height: 844 });
     await open(page, baseURL);
     await expect(page.getByText("Claude cost", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Where the time goes")).toHaveCount(0);
+    await expect(page.getByText("Where the time goes")).toBeVisible();
     if (!narrow) {
       const link = page.getByRole("link", { name: /Signal Research/ }).first();
       await expect(link).toHaveAttribute("href", "/signal-research");
-      await expect(link).toContainText("BETA");
+      await expect(link).toContainText("Beta");
     }
     expect.soft(await sideScroll(page), "page does not scroll sideways").toBeLessThanOrEqual(0);
     await page.locator("#sr-bots-labels summary").click();

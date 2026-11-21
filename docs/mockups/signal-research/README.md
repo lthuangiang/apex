@@ -167,6 +167,8 @@ Mục Signal Research có nhãn BETA trên sidebar, chỉ team và tài khoản 
 - Route `/signal-research` (ngoài `/admin`), dùng lại đúng `ResearchTab` và các component con; người xem (`team` / `tester`) truyền qua context, không nhân bản component. Trang team trong Signal Analysis giữ nguyên.
 - Cờ `users.signal_research` (mặc định tắt). Tắt thì mục biến mất khỏi sidebar, route trả Not found, API trả 403 ngay request sau.
 - Ô Version là `<select>` gốc: nhóm dùng `<optgroup>`, trạng thái từng version (Running / Paused) không hiện trong danh sách như ảnh; tên version của mình là "My · {name} (v{n})".
-- Người dùng test: ẩn ô Claude cost, mọi chi phí / token Claude (feed, trace, Label signals) và ô "Where the time goes" (API `/latency` chỉ team); dải nguồn trong banner không có (API bỏ `sources`). Version của team không có nút Pause / Resume / Stop (API 403), vẫn chép được thành version của mình.
+- Người dùng test: chỉ ẩn ô Claude cost và mọi chi phí / token Claude (feed, trace, Label signals); "Where the time goes" và dải sức khoẻ nguồn vẫn hiện (PM review #428). Version của team không có nút Pause / Resume / Stop (API 403), vẫn chép được thành version của mình.
+- Nhãn trên menu và tiêu đề trang dùng chip Beta chung của app (màu accent, chữ "Beta"), không dùng màu tím của ảnh (PM review #428).
+- Tắt cờ thì version đang chạy của người đó tự pause (audit `signal_research_disabled`); bật lại không tự resume.
 - Công tắc ở Users dùng đúng kiểu nút "Turn on / Turn off" của cột AI Desk hiện có (ảnh vẽ switch).
-- Nhãn của người dùng test hiện riêng dưới cột "Labelled" của bảng Claude reader ("Test users: n labels, not counted · agree with the team on a of b (p%)"; câu mới, nằm trong `_pendingReview`).
+- Nhãn của người dùng test hiện riêng dưới cột "Labelled" của bảng Claude reader ("Test users: n labels, not counted · agree with the team on a of b (p%)", PM đã duyệt); chỉ so với nhãn random của team.

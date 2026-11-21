@@ -13,9 +13,13 @@ export const isBeta = (strategy: string): boolean => BETA_STRATEGIES.includes(st
 const CHIP =
   "inline-flex flex-none items-center rounded-full bg-accent-tint px-2 py-0.5 text-[11px] font-extrabold whitespace-nowrap text-accent-ink";
 
-/** Chip "Beta"; `note` thì kèm câu "Still being tested. Use small amounts." ngay cạnh. */
-export function BetaChip({ note = false }: { note?: boolean }) {
+/**
+ * Chip "Beta"; `note` thì kèm câu "Still being tested. Use small amounts." ngay cạnh. `bare` (#423, mục Signal Research
+ * trên menu và tiêu đề trang): chỉ chữ "Beta", không có câu về tiền thật (trang chỉ là paper).
+ */
+export function BetaChip({ note = false, bare = false }: { note?: boolean; bare?: boolean }) {
   const t = useTranslations("beta");
+  if (bare) return <span className={CHIP}>{t("label")}</span>;
   if (note)
     return (
       <span className="inline-flex flex-wrap items-center gap-2 text-[13px] text-ink-2">

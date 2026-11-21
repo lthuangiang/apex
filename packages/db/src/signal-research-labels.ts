@@ -58,7 +58,7 @@ import { newsTypeOrNull } from "./signal-research-keys";
 //
 // Người chấm (#423, DEC-TBD-sr-menu-beta): `labeler` ghi lúc lưu theo role của người gọi (`team` / `tester`). Mọi số của
 // precision, cổng, "from traces" và "Most common mistakes" CHỈ tính nhãn `team`; nhãn `tester` chỉ vào `testers` (mức
-// đồng thuận với team) để đối chiếu.
+// đồng thuận với nhãn `random` của team, cùng tập với cổng) để đối chiếu.
 
 type Q = Db | DbTx;
 type Exec = Pick<Db, "select" | "execute">;
@@ -466,7 +466,8 @@ export async function loadSignalClassifiers(
     from signal_classification_labels where source = 'trace' and labeler = 'team'
     group by classifier_version`);
   check();
-  // #423: nhãn tester theo bài (mọi nguồn), kèm phiếu của team trên cùng bài, để đối chiếu.
+  // #423: nhãn tester theo bài (mọi nguồn), kèm phiếu `random` của team trên cùng bài (cùng tập nhãn với cổng; PM review
+  // #428), để đối chiếu.
   const testerVotes = await q.execute<{
     v: string;
     tr: string | number;
@@ -475,8 +476,8 @@ export async function loadSignalClassifiers(
     sw: string | number;
   }>(sql`
     select classifier_version as v,
-      count(*) filter (where labeler = 'team' and verdict = 'right') as tr,
-      count(*) filter (where labeler = 'team' and verdict = 'wrong') as tw,
+      count(*) filter (where labeler = 'team' and source = 'random' and verdict = 'right') as tr,
+      count(*) filter (where labeler = 'team' and source = 'random' and verdict = 'wrong') as tw,
       count(*) filter (where labeler = 'tester' and verdict = 'right') as sr,
       count(*) filter (where labeler = 'tester' and verdict = 'wrong') as sw
     from signal_classification_labels

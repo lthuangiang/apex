@@ -1332,7 +1332,7 @@ function TotalsPanel({
   onReason: (r: ResearchDropReason) => void;
 }) {
   const t = useTranslations("signalAnalysis.research");
-  // #423: người dùng test không có ô độ trễ theo chặng (API chỉ team) và ô Claude cost.
+  // #423: người dùng test không có ô Claude cost (chỉ ô này; PM review #428).
   const team = useShowsClaudeCost();
   const card = "rounded-[14px] border border-border px-4 py-3.5";
   // #343: chi phí trong đúng cửa sổ của phễu (24 giờ / 7 ngày), cùng tập bài với "articles read". Mọi bài gọi Claude
@@ -1343,14 +1343,12 @@ function TotalsPanel({
   return (
     <div className="flex flex-wrap gap-3">
       {/* #375: "Where the time goes" thay ô "Delay, news out → collected" (median từng chặng, chặng chậm nhất). */}
-      {team ? (
-        <LatencyCard
-          range={range}
-          versionId={versionId}
-          cycleMinutes={cycleMinutes}
-          className="flex-[2_1_320px]"
-        />
-      ) : null}
+      <LatencyCard
+        range={range}
+        versionId={versionId}
+        cycleMinutes={cycleMinutes}
+        className="flex-[2_1_320px]"
+      />
       {team ? (
         <div className={`flex-[1_1_180px] ${card}`}>
           <div className="text-xs text-muted">{t("trace.cost")}</div>

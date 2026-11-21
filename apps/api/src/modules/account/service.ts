@@ -13,6 +13,7 @@ import {
   notificationSettings,
   orders,
   outbox,
+  pauseSignalVersionsOfOwner,
   riskAlerts,
   riskLimits,
   sessions,
@@ -1118,8 +1119,7 @@ export async function setAiDesk(
 
 /**
  * #423: team bật / tắt Signal Research (BETA) cho một user, như công tắc AI Desk. Tắt: mục biến mất khỏi menu, API của
- * trang trả 403 ngay request sau; version riêng của user giữ nguyên trong DB (scheduler vẫn chạy version đang chạy, như
- * version của team). Ghi audit.
+ * trang trả 403 ngay request sau, version đang chạy của user tự pause (PM review #428); bật lại không tự resume. Ghi audit.
  */
 export async function setSignalResearch(
   deps: AccountDeps,
@@ -1135,14 +1135,23 @@ export async function setSignalResearch(
     .where(and(eq(users.id, targetId), isNull(users.deletedAt)))
     .returning({ id: users.id });
   if (u === undefined) throw new AppError(ErrorCode.notFound, "User not found.");
+  // Tắt: pause mọi version đang chạy của người đó (state machine + audit `signal_research_disabled`). Bật: không resume.
+  const paused = enabled
+    ? 0
+    : await pauseSignalVersionsOfOwner(deps.db, {
+        ownerUserId: targetId,
+        actorId,
+        ip,
+        now: deps.now(),
+      });
   await audit(deps.db, {
     userId: actorId,
     action: AuditAction.signalResearchChanged,
     target: targetId,
-    metadata: { enabled },
+    metadata: { enabled, paused },
     ip,
   });
-  return { signalResearch: enabled };
+  return { signalResearch: enabled, paused };
 }
 
 /**
