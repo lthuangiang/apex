@@ -11,7 +11,8 @@ import {
   stripOldSnapshots,
 } from "../src/snapshot-retention";
 
-// Retention snapshot của Signal Analysis (#229): bỏ `payload.signal` / `orders.context` quá hạn, giữ nguyên dòng.
+// Retention snapshot của Signal Analysis (#229, #259): bỏ `payload.signal` / `payload.quote` / `orders.context` quá hạn,
+// giữ nguyên dòng.
 
 const NOW = Date.parse("2026-11-18T00:00:00Z");
 const DAY = 86_400_000;
@@ -48,6 +49,7 @@ afterAll(async () => {
 
 const SIGNAL = { v: 1, score: 0.7, reason: "momentum" };
 const CONTEXT = { v: 2, reason: "refresh", mid: "100", bookAgeMs: 120 };
+const QUOTE = { v: 1, reason: "sample", binanceMid: "100.1", sodexMid: "100", inventory: "0.5" };
 
 async function addEvent(daysAgo: number, payload: Record<string, unknown>): Promise<string> {
   const { rows } = await pool.query<{ id: string }>(
@@ -98,9 +100,11 @@ describe("signal snapshot retention (#229)", () => {
     expect(first).toEqual({
       indexes: { ready: true, created: names, dropped: [] },
       signals: 0,
+      quotes: 0,
       contexts: 0,
     });
     expect(await indexes()).toEqual([
+      { name: "bot_events_quote_idx", valid: true },
       { name: "bot_events_signal_idx", valid: true },
       { name: "orders_context_created_idx", valid: true },
     ]);
@@ -120,10 +124,10 @@ describe("signal snapshot retention (#229)", () => {
 
     // Lô 2 dòng, tối đa 2 lô: lượt đầu chỉ dọn 4 event, lượt sau dọn nốt.
     const first = await stripOldSnapshots(db, NOW, { batch: 2, maxBatches: 2 });
-    expect(first).toEqual({ signals: 4, contexts: 3 });
+    expect(first).toEqual({ signals: 4, quotes: 0, contexts: 3 });
     const second = await stripOldSnapshots(db, NOW, { batch: 2, maxBatches: 2 });
-    expect(second).toEqual({ signals: 1, contexts: 0 });
-    expect(await stripOldSnapshots(db, NOW)).toEqual({ signals: 0, contexts: 0 });
+    expect(second).toEqual({ signals: 1, quotes: 0, contexts: 0 });
+    expect(await stripOldSnapshots(db, NOW)).toEqual({ signals: 0, quotes: 0, contexts: 0 });
 
     const events = await pool.query<{ id: string; payload: Record<string, unknown> }>(
       "select id, payload from bot_events where bot_id = $1",
@@ -160,6 +164,7 @@ describe("signal snapshot retention (#229)", () => {
     expect(broken).toEqual({
       indexes: { ready: false, created: [], dropped: ["orders_context_created_idx"] },
       signals: 0,
+      quotes: 0,
       contexts: 0,
     });
     // Không dọn gì khi một index chưa hợp lệ, kể cả bảng có index hợp lệ.
@@ -210,6 +215,11 @@ describe("signal snapshot retention (#229)", () => {
           "select id from orders where context is not null and created_at < now() order by created_at limit 10",
         ),
       ).toContain("orders_context_created_idx");
+      expect(
+        await plan(
+          "select id from bot_events where payload ? 'quote' and occurred_at < now() order by occurred_at limit 10",
+        ),
+      ).toContain("bot_events_quote_idx");
     } finally {
       client.release();
     }
@@ -239,5 +249,57 @@ describe("signal snapshot retention (#229)", () => {
     expect(byId.get(held)).toEqual({ signal: SIGNAL });
     // Lượt sau dọn nốt dòng đã được nhả.
     expect((await stripOldSnapshots(db, NOW)).signals).toBe(1);
+  });
+
+  it("strips old Market Making quote snapshots in batches, keeps the rest of the payload and every row (#259)", async () => {
+    // Dọn hết dòng của các test trước để đếm chính xác.
+    await stripOldSnapshots(db, NOW);
+    const mmPayload = (n: number) => ({
+      orders: [`drift-mm-${String(n)}`],
+      reason: "sample",
+      quote: QUOTE,
+    });
+    const old = await Promise.all([46, 52, 61, 75, 200].map((d, i) => addEvent(d, mmPayload(i))));
+    const fresh = await addEvent(10, mmPayload(10));
+    const edge = await addEvent(44, mmPayload(44));
+    // Event có cả `signal` lẫn `quote`: mỗi phần do câu riêng bỏ, phần còn lại giữ.
+    const both = await addEvent(90, { orders: ["drift-both"], signal: SIGNAL, quote: QUOTE });
+    const before = await pool.query<{ id: string; decision: string; why: string }>(
+      "select id, decision, why from bot_events where bot_id = $1 order by id",
+      [botId],
+    );
+
+    // Lô 2 dòng, tối đa 2 lô: lượt đầu chỉ bỏ 4 snapshot báo giá cũ nhất.
+    const first = await stripOldSnapshots(db, NOW, { batch: 2, maxBatches: 2 });
+    expect(first).toEqual({ signals: 1, quotes: 4, contexts: 0 });
+    const second = await stripOldSnapshots(db, NOW, { batch: 2, maxBatches: 2 });
+    expect(second).toEqual({ signals: 0, quotes: 2, contexts: 0 });
+
+    const payloads = async () =>
+      new Map(
+        (
+          await pool.query<{ id: string; payload: Record<string, unknown> }>(
+            "select id, payload from bot_events where bot_id = $1",
+            [botId],
+          )
+        ).rows.map((r) => [r.id, r.payload]),
+      );
+    const after = await payloads();
+    old.forEach((id, i) => {
+      expect(after.get(id)).toEqual({ orders: [`drift-mm-${String(i)}`], reason: "sample" });
+    });
+    expect(after.get(fresh)).toEqual(mmPayload(10));
+    expect(after.get(edge)).toEqual(mmPayload(44));
+    expect(after.get(both)).toEqual({ orders: ["drift-both"] });
+
+    // Chạy lại: không còn gì để bỏ, kết quả y hệt.
+    expect(await stripOldSnapshots(db, NOW)).toEqual({ signals: 0, quotes: 0, contexts: 0 });
+    expect(await payloads()).toEqual(after);
+    // Không xoá dòng, câu Decisions và `why` không đổi.
+    const rows = await pool.query<{ id: string; decision: string; why: string }>(
+      "select id, decision, why from bot_events where bot_id = $1 order by id",
+      [botId],
+    );
+    expect(rows.rows).toEqual(before.rows);
   });
 });

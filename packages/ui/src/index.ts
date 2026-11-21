@@ -9,6 +9,7 @@ export * from "./components/confirm-dialog";
 export * from "./components/connection-status";
 export * from "./components/data-region";
 export * from "./components/data-table";
+export * from "./components/decisions-list";
 export * from "./components/empty-state";
 export * from "./components/error-state";
 export * from "./components/field";

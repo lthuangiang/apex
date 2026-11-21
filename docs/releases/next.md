@@ -17,6 +17,7 @@ Not financial advice. Past results are not a forecast.
 - CI: test của package phụ thuộc chạy lại khi dependency đổi (bỏ `turbo run test --only`; ví dụ đổi `@drift/strategies` thì chạy lại test engine / backtest), PR chỉ đổi docs vẫn dùng cache (#414, DEC-358).
 - Signal research: Claude reader v5 (`news-classifier-v5`): chỉ thêm 2 ví dụ ngược trong prompt (cổ phiếu lên sàn không phải `listing`, quỹ mua cổ phiếu Strategy không phải `treasury_buy`), Rules giữ `news-v4`; hộp "What Claude reader vN reads differently" theo reader hiện tại, thêm dòng cho v5; nhãn và lệnh của reader mới đếm lại từ 0 (#399, DEC-TBD-sr-reader-v5). **Chưa merge.**
 - Signal research: random baseline phát lại nến từ phút sau lúc vào lệnh thật (`opened_clock_at`), không từ đầu chu kỳ; lệnh cũ không có cột này giữ `opened_at`, baseline đã lưu không tính lại (#405, DEC-354). **Chưa merge.**
+- Retention 45 ngày của scheduler bỏ thêm `bot_events.payload.quote` (snapshot báo giá Market Making, DEC-312); dòng Decisions và phần còn lại của payload giữ nguyên. Lượt đầu tự tạo index `bot_events_quote_idx` bằng CONCURRENTLY, không cần bước tay (#259, DEC-TBD, DEPLOY 2.14). **Chưa merge.**
 
 **Migration (chạy khi deploy):** `0057_sr_articles_collected_idx` (index `signal_articles(collected_at)`, #413); `0058_sr_menu_beta` (`users.signal_research`, `signal_bot_versions.owner_user_id` + trigger trần 3 version theo chủ, `signal_classification_labels.labeler`; #423).
 
