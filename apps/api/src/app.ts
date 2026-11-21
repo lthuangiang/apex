@@ -11,7 +11,13 @@ import { registerAccountRoutes } from "./modules/account/routes";
 import { registerAuthRoutes } from "./modules/auth/routes";
 import { registerBacktestRoutes } from "./modules/backtests/routes";
 import { registerBotRoutes } from "./modules/bots/routes";
-import { adaptiveDcaOn, aiDeskOn, listBots, volumeBotsOn } from "./modules/bots/service";
+import {
+  adaptiveDcaOn,
+  aiDeskOn,
+  listBots,
+  signalResearchOn,
+  volumeBotsOn,
+} from "./modules/bots/service";
 import { registerChartRoutes } from "./modules/chart/routes";
 import { createChartService, type LiquidationProvider } from "./modules/chart/service";
 import { registerCopyRoutes } from "./modules/copy/routes";
@@ -141,6 +147,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const on = request.auth === null ? false : await volumeBotsOn(deps.db, request.auth.userId);
     const desk = request.auth === null ? false : await aiDeskOn(deps.db, request.auth.userId);
     const adca = request.auth === null ? false : await adaptiveDcaOn(deps.db, request.auth.userId);
+    const sr = request.auth === null ? false : await signalResearchOn(deps.db, request.auth.userId);
     // Builder fee hiệu lực của user (DEC-159); chưa đăng nhập → bảng mặc định.
     const builderFees =
       request.auth === null ? {} : await builderFeesOf(deps.db, request.auth.userId);
@@ -149,7 +156,15 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       request.auth === null || !on
         ? null
         : await cachedMmFeeOf(deps.db, request.auth.userId, now());
-    return { volumeMaker: on, volumeFarm: on, aiDesk: desk, adaptiveDca: adca, builderFees, mmFee };
+    return {
+      volumeMaker: on,
+      volumeFarm: on,
+      aiDesk: desk,
+      adaptiveDca: adca,
+      signalResearch: sr,
+      builderFees,
+      mmFee,
+    };
   });
   registerBotRoutes(app, {
     db: deps.db,

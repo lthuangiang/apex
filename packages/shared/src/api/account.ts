@@ -256,6 +256,8 @@ export const adminUsersViewSchema = z.object({
       aiDesk: z.boolean().default(false),
       /** Team chưa tắt AI Adaptive DCA (Beta) cho tài khoản này (DEC-218). */
       adaptiveDca: z.boolean().default(true),
+      /** #423: team đã bật Signal Research (BETA) cho tài khoản này; mặc định tắt. */
+      signalResearch: z.boolean().default(false),
     }),
   ),
   total: z.number().int(),
@@ -362,6 +364,15 @@ export type AdminBuilderFee = z.infer<typeof adminBuilderFeeSchema>;
 export const adminAiDeskBodySchema = z.object({ enabled: z.boolean() });
 export const adminAiDeskSchema = z.object({ aiDesk: z.boolean() });
 export type AdminAiDesk = z.infer<typeof adminAiDeskSchema>;
+
+/** #423: team bật / tắt Signal Research (BETA) cho một user. Tắt: mục biến mất khỏi menu, API trả 403, version đang chạy tự pause. */
+export const adminSignalResearchBodySchema = z.object({ enabled: z.boolean() });
+export const adminSignalResearchSchema = z.object({
+  signalResearch: z.boolean(),
+  /** Số version đang chạy của user được pause khi tắt cờ (PM review #428); bật cờ thì 0 (không tự resume). */
+  paused: z.number().int(),
+});
+export type AdminSignalResearch = z.infer<typeof adminSignalResearchSchema>;
 
 /** Team bật / tắt AI Adaptive DCA (Beta) cho một user (DEC-218). Tắt: bot đang chạy chuyển sang Pausing. */
 export const adminAdaptiveDcaBodySchema = z.object({ enabled: z.boolean() });
