@@ -28,9 +28,9 @@ describe("New in vN labels (#399)", () => {
     expect(rulesBadgeShown(v4(new Date(NOW - DAY).toISOString()), NOW)).toBe(true);
   });
 
-  it("new copy for v5 waits for PM review; the box title uses the reader name", () => {
+  it("v5 copy is PM-approved (not pending); the box title uses the reader name", () => {
     const pending = (messages as { _pendingReview?: string[] })._pendingReview ?? [];
-    expect(pending).toEqual(
+    expect(pending).not.toEqual(
       expect.arrayContaining([
         "signalAnalysis.research.rules.reader.title",
         "signalAnalysis.research.rules.reader.titleAny",
