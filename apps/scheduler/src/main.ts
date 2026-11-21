@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   builderBalanceSnapshots,
   createDb,
@@ -299,22 +301,25 @@ async function feeTierTick() {
   if (r.changed > 0 || r.failed > 0) log.info(r, "builder fee tiers changed");
 }
 
-/** Retention snapshot (#229): một lượt mỗi lần, lượt trước chưa xong thì bỏ qua. */
+/** Retention snapshot (#229, #259): một lượt mỗi lần, lượt trước chưa xong thì bỏ qua. Mỗi lượt một `traceId`. */
 let snapshotRetentionRunning = false;
 async function snapshotRetentionTick() {
   if (snapshotRetentionRunning) return;
   snapshotRetentionRunning = true;
+  const rlog = log.child({ traceId: randomUUID(), job: "snapshot-retention" });
   try {
     // Index của job tạo bằng CONCURRENTLY ở đây, không trong migration (review PR #257).
     const { indexes, ...r } = await runSnapshotRetention(db, Date.now());
     if (indexes.created.length > 0)
-      log.info({ created: indexes.created }, "signal snapshot index created");
+      rlog.info({ created: indexes.created }, "signal snapshot index created");
     if (indexes.dropped.length > 0)
-      log.warn(
+      rlog.warn(
         { dropped: indexes.dropped },
         "invalid signal snapshot index dropped, rebuilt next run",
       );
-    if (r.signals + r.contexts > 0) log.info(r, "old signal snapshots stripped");
+    if (r.signals + r.quotes + r.contexts > 0) rlog.info(r, "old signal snapshots stripped");
+  } catch (error: unknown) {
+    rlog.error({ err: error }, "signal snapshot retention failed");
   } finally {
     snapshotRetentionRunning = false;
   }

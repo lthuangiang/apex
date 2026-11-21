@@ -246,7 +246,7 @@ Câu chữ form theo thiết kế "MM form explained" (DEC-262): nhãn / hint / 
 
 Form gọn (DEC-99): người dùng chỉ cần chọn market, order size, leverage và Stop when costs reach (trước là Stop if I lose); mọi field còn lại có mặc định trong schema. Preview: Balance needed (= max open position / leverage, cùng công thức `requirementOf`), Biggest position, Stops if you lose. Không ước tính chi phí theo khối lượng. Trading Agent hiện sổ lệnh trực tiếp, đánh dấu lệnh của bot là "YOU". Backtest: volume made, net cost (kèm chi phí trên mỗi 1 triệu USD), maker share, max inventory reached.
 
-**Snapshot báo giá trên các dòng Decisions về báo giá (#230, DEC-312, 2026-11-18).** Các event "Order requests", "Smart quoting adjusted" / "Smart quoting back to normal", "Quotes paused on a fast move", "Quoting again after a fast move", "Closing at the best price", "Ask pulled" / "Bid pulled", "Position cut" có thêm `bot_events.payload.quote` (cạnh `payload.orders` của DEC-279), schema zod `mmQuoteSnapshotSchema` (`@drift/shared/mm-quote`, `v: 1`, < 1 KB, khoảng 650–700 byte với 2 lệnh): `reason` (`first` / `refresh` / `requote` / `book_moved` / `pulled` / `cut` / `fast_pause` / `sample` = bước không báo giá, chỉ có dòng "Order requests" mỗi phút); `sides` (phía được đặt / huỷ để báo giá lại / rút trong bước); `fair` (giá Binance quy đổi `price`, `ageMs` theo giờ Binance, `used` = còn mới ≤ 1,5 s và bật Smart quoting, `clampBp` = lề 0,5 bp khi `used`, `clamps` = số lệnh mở bị kẹp lùi ra trong bước); `book` (bid / ask / mid SoDEX, `ageMs`, `last` = giá khớp gần nhất); `quote` (`level` theo sổ hoặc `distanceBp` của config cũ); `inv` (`position` có dấu, `entry`, `notional` = |vị thế| × giá, `maxUsd`, `maxOrders`); `smart` (`on`, `sig` = chữ ký điều chỉnh đang áp dụng, `fastPause`); `orders` (tối đa 4: `id` = clOrdID, `side`, `role`, `st` = `new` / `cancel` / `live` / `pulled`, `price` (null = market), `size`, `bp` = (giá − mid SoDEX) ÷ mid × 10 000, `fairBp` = (giá − giá Binance) ÷ giá Binance × 10 000). Vì huỷ rồi mới đặt (DEC-257), lệnh mở mới thường được đặt ở bước SoDEX xác nhận huỷ (không có dòng Decisions); snapshot của bước báo giá ghi lệnh bị huỷ (`cancel`) và bối cảnh lúc quyết định, giá lệnh mới tra ở bảng `orders`. Chỉ gắn vào dòng Decisions có sẵn (không thêm dòng mới); chỉ dựng khi `StepContext.decisionPayload` (engine bật; backtest / Review this run / What-if không); không đổi lệnh, câu Decisions hay state (test so sánh có / không snapshot). Snapshot sai schema thì engine bỏ riêng nó (log warn), vẫn ghi quyết định. Dành cho trang team "Signal Analysis › MM" (#220): API bot detail và export **không** gửi field này, web không import schema (`fairBp` / `clampBp` là marker của check:bundle).
+**Snapshot báo giá trên các dòng Decisions về báo giá (#230, DEC-312, 2026-11-18).** Các event "Order requests", "Smart quoting adjusted" / "Smart quoting back to normal", "Quotes paused on a fast move", "Quoting again after a fast move", "Closing at the best price", "Ask pulled" / "Bid pulled", "Position cut" có thêm `bot_events.payload.quote` (cạnh `payload.orders` của DEC-279), schema zod `mmQuoteSnapshotSchema` (`@drift/shared/mm-quote`, `v: 1`, < 1 KB, khoảng 650–700 byte với 2 lệnh): `reason` (`first` / `refresh` / `requote` / `book_moved` / `pulled` / `cut` / `fast_pause` / `sample` = bước không báo giá, chỉ có dòng "Order requests" mỗi phút); `sides` (phía được đặt / huỷ để báo giá lại / rút trong bước); `fair` (giá Binance quy đổi `price`, `ageMs` theo giờ Binance, `used` = còn mới ≤ 1,5 s và bật Smart quoting, `clampBp` = lề 0,5 bp khi `used`, `clamps` = số lệnh mở bị kẹp lùi ra trong bước); `book` (bid / ask / mid SoDEX, `ageMs`, `last` = giá khớp gần nhất); `quote` (`level` theo sổ hoặc `distanceBp` của config cũ); `inv` (`position` có dấu, `entry`, `notional` = |vị thế| × giá, `maxUsd`, `maxOrders`); `smart` (`on`, `sig` = chữ ký điều chỉnh đang áp dụng, `fastPause`); `orders` (tối đa 4: `id` = clOrdID, `side`, `role`, `st` = `new` / `cancel` / `live` / `pulled`, `price` (null = market), `size`, `bp` = (giá − mid SoDEX) ÷ mid × 10 000, `fairBp` = (giá − giá Binance) ÷ giá Binance × 10 000). Vì huỷ rồi mới đặt (DEC-257), lệnh mở mới thường được đặt ở bước SoDEX xác nhận huỷ (không có dòng Decisions); snapshot của bước báo giá ghi lệnh bị huỷ (`cancel`) và bối cảnh lúc quyết định, giá lệnh mới tra ở bảng `orders`. Chỉ gắn vào dòng Decisions có sẵn (không thêm dòng mới); chỉ dựng khi `StepContext.decisionPayload` (engine bật; backtest / Review this run / What-if không); không đổi lệnh, câu Decisions hay state (test so sánh có / không snapshot). Snapshot sai schema thì engine bỏ riêng nó (log warn), vẫn ghi quyết định. Dành cho trang team "Signal Analysis › MM" (#220): API bot detail và export **không** gửi field này, web không import schema (`fairBp` / `clampBp` là marker của check:bundle). **Retention (#259, DEC-TBD):** sau 45 ngày (`SIGNAL_SNAPSHOT_RETENTION_DAYS`, tính theo `bot_events.occurred_at`) scheduler bỏ khoá `payload.quote`; dòng Decisions và phần còn lại của payload giữ nguyên.
 
 **Bối cảnh lúc đặt trên mọi lệnh (#233, cùng DEC).** Mỗi lệnh Market Making (mở, đóng, cắt, đóng lúc dừng, đóng vị thế lẻ; kể cả bot tắt Smart quoting và lệnh mở đặt lại ở bước SoDEX xác nhận huỷ, không có dòng Decisions) có cột `orders.context` (jsonb, migration 0042), schema zod `mmOrderContextSchema` (`@drift/shared/mm-quote`, `v: 2` từ #229, khoảng 200–230 byte; lệnh cũ `v: 1` vẫn đọc được): `reason` (như snapshot báo giá, thêm `stop` / `dust`; lệnh đặt ở bước xác nhận huỷ là `requote`), `mid` (mid sổ SoDEX; không có sổ thì giá khớp gần nhất, khi đó `bid` / `ask` null), `bid`, `ask`, `bookAgeMs` (v2, #229: tuổi sổ SoDEX lúc đặt, cùng cách tính `book.ageMs` của snapshot báo giá; null khi `bid` / `ask` null; lệnh v1 không có), `fair` + `fairAgeMs` (giá Binance quy đổi gần nhất, chỉ Smart quoting nhận), `level` (`quoteLevel`, null = theo bp), `bp` = (giá − mid) ÷ mid × 10 000, `fairBp` = (giá − fair) ÷ fair × 10 000 (chỉ khi fair còn mới ≤ 1,5 s), `pos` (vị thế theo sổ của bot), `smart`, `sig`, `fastPause`. Chiến lược gắn vào action `place` (`context`, không nằm trong `OrderIntent` nên không bao giờ tới SoDEX) khi `StepContext.decisionPayload`; engine parse lại bằng zod và ghi cùng câu lệnh insert dòng `unknown` trước khi gửi (không thêm lần ghi, không đổi lệnh); sai schema thì ghi null (log warn). API (bot detail, `/api/v1/orders`, fills, export, MCP) không gửi cột này. Volume Farm không ghi `orders.context`: mỗi lệnh vào đã có snapshot đầy đủ ở dòng Decisions (`payload.signal`, nối qua `payload.orders`). **Retention (#229, DEC-319):** sau 45 ngày (`SIGNAL_SNAPSHOT_RETENTION_DAYS`, tính theo `orders.created_at`) scheduler đặt `orders.context` về null; dòng lệnh giữ nguyên.
 
@@ -349,3 +349,84 @@ Thiết kế: canvas "AI Desk redesign", hàng "Copy Trading v1" (artboard `Lead
 - **Chỗ copy realtime:** tối đa 8 trader Hyperliquid toàn hệ thống (1 IP, DEC-163 mục 10). Trader đã có người copy luôn copy được; đầy thì nút thành "Follow · copy later".
 - **Không có** "Try with fake money" cho Copy Trade (DEC-105).
 
+
+## S13. News Signal (`news_signal`) · Perps · builder fee: mọi lần khớp (0.01%, DEC-360) · **chỉ mainnet, tạo từ trang Signal research**
+
+Bot tiền thật chạy theo tín hiệu tin tức dùng chung (`news_signals`, #419). Bot được tạo mới từ một Signal research version mà user thấy được, bằng hộp thoại "Start bot from a version": trình sửa version có sẵn, điền sẵn config của version, thêm các ô của bot. Không có thẻ ở Strategy Lab, không nằm trong `BOT_STRATEGIES`. **Không có backtest**: `backtest()` ném `BacktestNotSupportedError`, service backtest trả `unavailable` / `not_supported`. Lý do là tín hiệu đến từ tin tức, không suy ra được từ nến. Module: `packages/strategies/src/news-signal`. Schema: `newsSignalConfigSchema` (`packages/shared/src/signal-research/news-signal.ts`).
+
+Câu chữ theo mockup đã duyệt ("Start bot from a version", bản online https://claude.ai/artifact/78mjJu1uaiZgjQnGTScB7q). Các field của version (loại tin, TP / SL multiple, nguồn trễ…) giữ label của trình sửa version.
+
+| Step | Field | Default | Rule / help text | Error message |
+|---|---|---|---|---|
+| — | Version | version đang chọn | Chỉ chọn version mà user thấy được (team hoặc My versions); config được chép sang bot, version gốc vẫn chạy. Lưu ở `bots.signal_version_id` | — |
+| — | SoDEX account | account đã kết nối | Phải đã approve builder fee | — |
+| 2 | Markets (`assets`) | như version | All / Only these / All except + Crypto / Stocks; **chỉ được thu hẹp** so với version (`narrowsVersion`, kiểm ở API và engine) | — **[confirm]** câu lỗi khi mở rộng |
+| 2 | Min level (`minLevel`) | như version | Low / Medium / High; **chỉ được nâng** | — **[confirm]** |
+| 3 | Size per trade (`sizeUsdc`) | — | > 0, ≤ 200 USDC (`NEWS_SIGNAL_LIVE_MAX_USDC`); engine còn kiểm giá trần × khối lượng ≤ 200 | Must be above 0 / Above the 200 USDC cap |
+| 3 | Leverage (`leverage`) | 1× | Cố định 1× (`z.literal(1)`), engine `setLeverage(1)`, margin isolated | — |
+| 4 | Max open trades (`maxOpenTrades`) | như version | 1–1000 | như trình sửa version |
+| 4 | Max new trades a day (`maxNewTradesPerDay`) | như version | 1–1000 hoặc Off; đếm theo ngày UTC | như trình sửa version |
+| 4 | Opposite news (`onOppositeNews`) | Keep the trade | Keep / Close; không bao giờ đảo vị thế | — |
+
+**Lọc tín hiệu theo từng bot**, theo thứ tự. Mỗi lần bị loại, engine ghi `news_signal_deliveries` với reason code tương ứng:
+1. Tín hiệu đã xử lý thì không làm gì.
+2. Bot pause, hoặc đang Stop: `BOT_PAUSED`.
+3. Tín hiệu quyết định trước lúc Resume: `MISSED_WHILE_PAUSED`.
+4. Quá 120 s tính từ `decided_at`: `SIGNAL_STALE`. Đúng 120 s vẫn còn hạn.
+5. Loại tin bị tắt: `NEWS_TYPE_OFF`.
+6. Market không thuộc bot: `ASSET_NOT_IN_BOT`.
+7. Level thấp hơn Min level: `LEVEL_TOO_LOW`.
+8. Nguồn trễ quá `maxSourceDelayMinutes`: `SOURCE_LATE`.
+9. Story đã vào lệnh trong 7 ngày: `SAME_STORY`. Story chưa vào lệnh mà bài đầu đã quá 2 giờ: `STORY_TOO_OLD`.
+10. Bot đã có lệnh ở market đó:
+    - cùng chiều: `NEWS_TRADE_ALREADY_OPEN`;
+    - ngược chiều với Keep: `NEWS_TRADE_ALREADY_OPEN`;
+    - ngược chiều với Close: đóng lệnh bằng market (`OPPOSITE_NEWS`).
+11. Bot khác cùng account đang có lệnh ở market đó: `ACCOUNT_MARKET_BUSY`.
+12. Chạm Max open: `LIMIT_OPEN`. Chạm Max mỗi ngày: `LIMIT_DAY`.
+13. Không có biến động thường gặp theo giờ giữ của loại tin: `NOT_ENOUGH_HISTORY`.
+14. Không có giá:
+    - thiếu sổ lệnh: `NO_BOOK_DATA`;
+    - thiếu market rules: `NO_SODEX_PRICE`.
+15. TP < `minTpCostMultiple` × chi phí khứ hồi (taker + builder, cộng spread): `TOO_THIN_TO_TRADE` hoặc `MOVE_TOO_SMALL_FOR_COST`.
+16. Vượt trần 200: `NEWS_CAP_EXCEEDED`. Dưới min size SoDEX: `BELOW_MIN_ORDER_SIZE`.
+
+**Lệnh:**
+- **clOrdID:** `clOrdId(botId, seq, tag, attempt)`.
+  - `seq` là số thứ tự lệnh news của bot, không theo version bot.
+  - Tag:
+    - `ns:<signalId>:entry`
+    - `ns:<signalId>:e<n>:tp`
+    - `ns:<signalId>:e<n>:sl` (kết thúc bằng `:sl` để engine nhận ra stop gốc)
+    - `ns:<signalId>:hold`
+    - `ns:<signalId>:close:<cmdSeq>`
+    - `ns:<signalId>:stop`
+    - `ns:<signalId>:opposite`
+    - `ns:<signalId>:sl_rejected`
+  - Lần gửi lại sau khi khớp một phần thêm `:<round>`.
+  - `attempt` chỉ tăng khi lệnh bị từ chối rõ ràng (kể cả `NOT_PLACED`).
+- **Vào lệnh:** limit IOC tại `newsEntryLimitPrice`. Không khớp gì thì ghi `ENTRY_NOT_FILLED`, story không bị khoá.
+- **Lệnh vào kết thúc mà có khớp:**
+  - SL là stop gốc SoDEX: reduce-only, đóng cả vị thế, giá vào ∓ `slMultiple` × biến động thường gặp.
+  - TP là limit reduce-only GTC theo phần đã khớp, giá vào ± `tpMultiple` × biến động thường gặp.
+  - Cả hai làm tròn tick về phía gần giá vào.
+- **Fill muộn của lệnh vào:** đặt TP mới theo khối lượng mới (`e<n+1>`), SoDEX xác nhận rồi mới huỷ TP cũ.
+- **OCO:** vị thế về 0 thì huỷ mọi lệnh còn lại.
+- **Edit TP/SL:**
+  - Đặt lệnh mới, chờ `orderAck` của mọi chân, rồi mới huỷ lệnh cũ.
+  - Một chân bị từ chối: huỷ chân mới đã được nhận, giữ lệnh cũ, trả `rejected`.
+  - Lệnh mới chưa có kết quả: lần sửa sau trả `EDIT_IN_PROGRESS`.
+  - Giá sai phía: `INVALID_PRICE`.
+- **Đóng** (max hold, Close now, Opposite news Close, Stop Close all, SL bị từ chối):
+  - Gửi market IOC reduce-only, vị thế về 0 mới huỷ TP/SL.
+  - Bị từ chối 3 lần thì thôi và bật Needs attention. TP/SL vẫn còn trên SoDEX.
+  - Lệnh đóng đang chạy: không gửi lệnh đóng thứ hai (`CLOSE_IN_PROGRESS`).
+- **SL bị từ chối sau khi lệnh vào đã khớp:** đóng bằng market, rồi pause `ORDER_REJECTED`.
+- **TP bị từ chối hoặc mất:** không tự đặt lại. SL và max hold vẫn bảo vệ, bot bật Needs attention.
+- **Pause:** không mở lệnh mới. TP/SL vẫn ở lại và max hold vẫn chạy.
+- **Resume:** không vào bù tín hiệu đã lỡ.
+- **Stop "Keep open trades":** engine không huỷ các lệnh mà `keepOnStop` trả về, và từ đó không áp max hold nữa.
+- **Stop "Close all now":** đóng từng lệnh đang mở.
+- **Sửa bot** (`applyVersion`): chỉ áp khi không còn lệnh nào.
+
+Sự kiện riêng của chiến lược: `newsSignal`, `newsCommand`, `newsStop`, `paused`. Hành động riêng: `signalOutcome` (ghi `news_signal_deliveries`) và `commandResult` (ghi `news_signal_commands`). Engine nối các sự kiện và hành động này ở PR engine.
