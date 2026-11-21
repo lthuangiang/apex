@@ -12,7 +12,7 @@ import {
   type ResearchRange,
   type ResearchSignalContext,
 } from "@drift/shared";
-import { RefreshCw } from "lucide-react";
+import { Info, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -44,6 +44,13 @@ import {
   useLiveSwitch,
 } from "./live-drop";
 import { MarketAtDecision } from "./market-state";
+import {
+  feedRows,
+  readerShort,
+  rulesSplit,
+  type RulesHistory,
+  type RulesStart,
+} from "./rules-history";
 import type { Tr } from "./text";
 import {
   BAND_COUNT,
@@ -380,7 +387,8 @@ export function NewsTrace({
   onRange,
   request,
   versionId = null,
-  rulesSince = null,
+  currentRules = null,
+  rulesHistory = [],
   cycleMinutes = null,
 }: {
   ctx: PageCtx;
@@ -390,8 +398,13 @@ export function NewsTrace({
   range: ResearchRange;
   onRange: (r: ResearchRange) => void;
   request: TraceRequest | null;
-  /** #321: quy tắc hiện tại chạy chưa hết khoảng đã chọn → ghi rõ phễu chỉ đếm từ lúc đó. */
-  rulesSince?: { v: number; at: string; sameDay: boolean } | null;
+  /**
+   * #413: version Rules hiện tại (`newsRulesVersion`); bài của version khác có chip "Rules vN" và banner ở trace. null =
+   * chưa biết (không gắn chip).
+   */
+  currentRules?: number | null;
+  /** #413: mốc bắt đầu / reader của từng version Rules (dòng ngăn cách của feed, câu "until …" của phễu). */
+  rulesHistory?: RulesHistory;
   /** #306: News bot version (bước Filter / Decide, story và lệnh của version); null = Baseline. */
   versionId?: string | null;
 }) {
@@ -491,6 +504,7 @@ export function NewsTrace({
 
   const tracing = sel !== null;
   const tot = totals(funnel, t);
+  const split = rulesSplit(funnel, rulesHistory);
   const pos = Math.min(step, stop);
   const finished = view !== null && step > stop;
   const tb = traceBands(view, model, step);
@@ -555,20 +569,6 @@ export function NewsTrace({
             <span className="md:hidden">{t("trace.subShort")}</span>
             <span className="max-md:hidden">{t("trace.sub")}</span>
           </p>
-          {rulesSince === null ? null : (
-            <p className="m-0 text-xs font-bold text-ink-2">
-              {rulesSince.sameDay
-                ? t("trace.rulesSince", {
-                    v: rulesSince.v,
-                    time: clock(rulesSince.at, ctx.tz, false),
-                  })
-                : t("trace.rulesSinceDay", {
-                    v: rulesSince.v,
-                    day: monthDay(rulesSince.at, ctx.tz),
-                    time: clock(rulesSince.at, ctx.tz, false),
-                  })}
-            </p>
-          )}
         </div>
         {tracing ? (
           <div className="flex flex-none gap-2 max-md:w-full">
@@ -621,6 +621,12 @@ export function NewsTrace({
       </div>
 
       {tracing ? <TraceHead article={data?.article ?? null} tz={ctx.tz} /> : null}
+      {tracing &&
+      data !== null &&
+      currentRules !== null &&
+      data.article.rulesVersion !== currentRules ? (
+        <OldRulesBanner article={data.article} />
+      ) : null}
 
       {/* Lưới 3 cột: feed rộng bằng ô giải thích đầu; phễu (và khung Context khi trace) chiếm 2 cột. Điện thoại: phễu
           trước, feed sau (mockup 390). */}
@@ -631,6 +637,9 @@ export function NewsTrace({
               ctx={ctx}
               filters={{ range, show, stage, reason }}
               versionId={versionId}
+              currentRules={currentRules}
+              rulesHistory={rulesHistory}
+              allRules={split !== null}
               sel={sel}
               fresh={feed.fresh}
               pending={tracing ? feed.queue.length : 0}
@@ -679,6 +688,28 @@ export function NewsTrace({
             {tracing ? null : (
               <p className="m-0 text-center text-xs text-muted">
                 {t("trace.unitNote", { range: t(`trace.range.${range}`) })}
+              </p>
+            )}
+            {/* #413: phễu theo khoảng gồm mọi version Rules; nói rõ bao nhiêu bài chạy theo luật nào. */}
+            {tracing || split === null ? null : (
+              <p data-testid="sr-rules-split" className="m-0 text-center text-xs text-ink-2">
+                {t.rich("trace.rulesSplit", {
+                  range: t(`trace.periods.${range}`),
+                  parts: split
+                    .map((p, i) =>
+                      i === split.length - 1
+                        ? t("trace.rulesSplitLast", { n: count(p.articles), v: p.v })
+                        : p.until === null
+                          ? t("trace.rulesSplitOldNoDate", { n: p.articles, v: p.v })
+                          : t("trace.rulesSplitOld", {
+                              n: p.articles,
+                              v: p.v,
+                              date: `${monthDay(p.until, ctx.tz)} ${clock(p.until, ctx.tz, false)}`,
+                            }),
+                    )
+                    .join(", "),
+                  b: (c) => <b className="text-ink">{c}</b>,
+                })}
               </p>
             )}
             {tracing &&
@@ -737,6 +768,11 @@ export function NewsTrace({
           asset={asset}
           tz={ctx.tz}
           scoreExtra={labelBox(data, ctx.tz)}
+          countedUnder={
+            data !== null && currentRules !== null && data.article.rulesVersion !== currentRules
+              ? data.article.rulesVersion
+              : null
+          }
           collectExtra={
             data === null ? null : (
               <LatencyTimeline
@@ -830,10 +866,18 @@ function Feed({
   onClear,
   onPick,
   versionId,
+  currentRules,
+  rulesHistory,
+  allRules,
 }: {
   ctx: PageCtx;
   filters: ArticleFilters;
   versionId: string | null;
+  /** #413: version Rules hiện tại; bài khác version có chip "Rules vN". */
+  currentRules: number | null;
+  rulesHistory: RulesHistory;
+  /** #413: khoảng đang xem có bài của hơn một version Rules ("· all rules" cạnh số bài). */
+  allRules: boolean;
   sel: string | null;
   /** #345: bài tới live trong phiên (badge "NEW"). */
   fresh: ReadonlySet<string>;
@@ -869,6 +913,7 @@ function Feed({
         {first === undefined ? null : (
           <span className="text-xs text-muted">
             {t("trace.feedCount", { n: count(first.total), total: first.totalInRange })}
+            {allRules ? `${t("trades.sep")}${t("trace.allRules")}` : null}
           </span>
         )}
       </div>
@@ -945,19 +990,24 @@ function Feed({
             aria-busy={q.isPlaceholderData}
             className={`m-0 flex list-none flex-col gap-2 p-0 ${q.isPlaceholderData ? "opacity-50" : ""}`}
           >
-            {items.map((a) => (
-              <li key={a.id}>
-                <ArticleCard
-                  a={a}
-                  tz={ctx.tz}
-                  fresh={fresh.has(a.id)}
-                  selected={a.id === sel}
-                  onPick={() => {
-                    onPick(a.id);
-                  }}
-                />
-              </li>
-            ))}
+            {feedRows(items, rulesHistory).map((r) =>
+              r.kind === "divider" ? (
+                <RulesDivider key={r.key} start={r.start} tz={ctx.tz} />
+              ) : (
+                <li key={r.a.id}>
+                  <ArticleCard
+                    a={r.a}
+                    tz={ctx.tz}
+                    fresh={fresh.has(r.a.id)}
+                    selected={r.a.id === sel}
+                    oldRules={currentRules !== null && r.a.rulesVersion !== currentRules}
+                    onPick={() => {
+                      onPick(r.a.id);
+                    }}
+                  />
+                </li>
+              ),
+            )}
           </ul>
           {q.hasNextPage ? (
             <button
@@ -975,11 +1025,61 @@ function Feed({
   );
 }
 
+/**
+ * #413: dòng ngăn cách chỗ đổi version Rules trong feed: "Rules v4 · Claude reader v4 started · Nov 21 15:02". Thiếu
+ * reader / mốc thì bỏ phần đó, không đoán.
+ */
+function RulesDivider({ start, tz }: { start: RulesStart; tz: string }) {
+  const t = useTranslations("signalAnalysis.research.trace");
+  const reader = readerShort(start.reader);
+  const date =
+    start.startedAt === null
+      ? null
+      : `${monthDay(start.startedAt, tz)} ${clock(start.startedAt, tz, false)}`;
+  const text =
+    reader !== null && date !== null
+      ? t("rulesStarted", { v: start.v, reader, date })
+      : reader !== null
+        ? t("rulesStartedNoDate", { v: start.v, reader })
+        : date !== null
+          ? t("rulesStartedNoReader", { v: start.v, date })
+          : t("rulesStartedBare", { v: start.v });
+  return (
+    <li
+      data-testid="sr-rules-divider"
+      className="my-1 flex items-center gap-2 text-[11.5px] font-extrabold text-accent-ink before:h-px before:flex-1 before:bg-accent/30 before:content-[''] after:h-px after:flex-1 after:bg-accent/30 after:content-['']"
+    >
+      <span className="min-w-0 text-center">{text}</span>
+    </li>
+  );
+}
+
+/** #413: banner trên trace của bài thuộc version Rules cũ (các bước là lịch sử thật, không chạy lại bằng Claude). */
+function OldRulesBanner({ article }: { article: ResearchArticle }) {
+  const t = useTranslations("signalAnalysis.research.trace");
+  const reader = readerShort(article.readerVersion);
+  const b = (c: ReactNode) => <b className="font-extrabold">{c}</b>;
+  return (
+    <p
+      data-testid="sr-old-rules-banner"
+      className="m-0 flex items-start gap-2.5 rounded-tile bg-old-bg px-3.5 py-2.5 text-[13px] text-old"
+    >
+      <Info aria-hidden="true" size={16} className="mt-0.5 flex-none" />
+      <span>
+        {reader === null
+          ? t.rich("oldBannerNoReader", { v: article.rulesVersion, b })
+          : t.rich("oldBanner", { v: article.rulesVersion, reader, b })}
+      </span>
+    </p>
+  );
+}
+
 function ArticleCard({
   a,
   tz,
   fresh = false,
   selected,
+  oldRules = false,
   onPick,
 }: {
   a: ResearchArticle;
@@ -987,6 +1087,8 @@ function ArticleCard({
   /** #345: bài tới live: badge "NEW", trượt vào một lần. */
   fresh?: boolean;
   selected: boolean;
+  /** #413: bài của version Rules cũ: chip "Rules vN" (bài của version hiện tại không gắn chip). */
+  oldRules?: boolean;
   onPick: () => void;
 }) {
   const t = useTranslations("signalAnalysis.research");
@@ -1009,7 +1111,14 @@ function ArticleCard({
             <span className="ml-2 font-extrabold text-accent-ink">{t("live.new")}</span>
           ) : null}
         </span>
-        <span>{cost ?? t("na")}</span>
+        <span className="flex flex-wrap items-center justify-end gap-1.5">
+          {oldRules ? (
+            <span className="whitespace-nowrap rounded-full bg-old-bg px-2 py-0.5 text-[11px] font-extrabold text-old">
+              {t("trace.rulesChip", { v: a.rulesVersion })}
+            </span>
+          ) : null}
+          <span>{cost ?? t("na")}</span>
+        </span>
       </span>
       <span className="mb-1.5 mt-1 block text-sm font-bold text-ink">{title ?? t("na")}</span>
       <span className="flex flex-wrap items-center gap-1.5">
@@ -1082,8 +1191,11 @@ function Steps({
   tz,
   scoreExtra = null,
   collectExtra = null,
+  countedUnder = null,
 }: {
   bands: TraceBand[];
+  /** #413: lệnh của bài thuộc version Rules cũ: thẻ Decide ghi "counted under vN" thay cho "passed". */
+  countedUnder?: number | null;
   context: ResearchSignalContext | null;
   asset: string;
   tz: string;
@@ -1149,7 +1261,9 @@ function Steps({
                   drop || merge ? "bg-bg text-ink-2" : "bg-pos-bg text-pos"
                 }`}
               >
-                {t(`trace.status.${drop ? "drop" : merge ? "merge" : "pass"}`)}
+                {s.key === "decide" && !drop && !merge && countedUnder !== null
+                  ? t("trace.countedUnder", { v: countedUnder })
+                  : t(`trace.status.${drop ? "drop" : merge ? "merge" : "pass"}`)}
               </span>
             </div>
             {s.summary === "" ? null : (

@@ -1,0 +1,151 @@
+<title>Research History Across Versions</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+/* Mockup: Signal research keeps every article and trade visible across Rules / reader versions. Frames: feed + funnel, trace of an old article, paper trades. DeskLabs tokens, light only like the app. */
+:root{
+  --bg:#eef1fa; --surface:#ffffff; --surface-2:#f5f7fd; --border:#e3e7f5; --border-input:#d5dcf2;
+  --ink:#141a33; --ink-2:#3b4262; --muted:#5f6684; --accent:#2e62e8; --accent-ink:#1d47b8; --accent-tint:#e6ecfe;
+  --accent-mid:#97b1f3; --accent-soft:#cbd8fa; --pos:#0f7a43; --pos-bg:#ddf4e7; --neg-ink:#a72826; --neg-bg:#fde4e1;
+  --warn:#7a3e00; --warn-bg:#fdebd3; --old:#6b5a2e; --old-bg:#f3ecdc; --note:#5a2ca0; --note-bg:#f0e6ff;
+  --f:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif; color-scheme:light;
+}
+body{background:var(--bg);color:var(--ink);font-family:var(--f);font-size:14px;line-height:1.5}
+.wrap{max-width:1280px;margin:0 auto;padding-block:28px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:22px}
+h1{margin:0;font-size:24px;font-weight:800}
+.lede{margin:4px 0 0;color:var(--ink-2);max-width:90ch}
+.note{border:2px dashed var(--note);background:var(--note-bg);color:var(--note);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600}
+.rule{border-left:4px solid var(--accent);background:var(--surface);border-radius:0 12px 12px 0;padding:12px 16px;font-size:14px}
+.rule b{font-weight:800}
+.flabel{font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.frame{display:grid;gap:8px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:22px;display:grid;gap:14px;min-width:0}
+.head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+.head h2{margin:0;font-size:20px;font-weight:800}
+.head span{color:var(--muted);font-size:13px}
+.seg{margin-left:auto;display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:3px;gap:2px}
+.seg span{min-height:36px;display:flex;align-items:center;padding:0 12px;border-radius:9px;font-size:12.5px;font-weight:800;color:var(--muted)}
+.seg span.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(20,26,51,.12)}
+.chip{display:inline-flex;align-items:center;font-size:11px;font-weight:800;border-radius:99px;padding:2px 8px;white-space:nowrap}
+.chip.old{background:var(--old-bg);color:var(--old)}
+.chip.cur{background:var(--accent-tint);color:var(--accent-ink)}
+.chip.ok{background:var(--pos-bg);color:var(--pos)}
+.chip.drop{background:var(--surface-2);color:var(--ink-2)}
+.grid2{display:grid;grid-template-columns:minmax(260px,320px) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:860px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.feed{display:grid;gap:8px;min-width:0}
+.fh{display:flex;justify-content:space-between;font-size:13px;font-weight:700}
+.fh .m{color:var(--muted);font-weight:500}
+.row{border:1px solid var(--border);border-radius:12px;padding:9px 12px;display:grid;gap:4px}
+.row.sel{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-tint)}
+.row .t{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted)}
+.row .h{font-weight:700;font-size:13.5px;line-height:1.35}
+.row .c{display:flex;flex-wrap:wrap;gap:6px}
+.div{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:800;color:var(--accent-ink);margin:4px 0}
+.div::before,.div::after{content:"";flex:1;height:1px;background:var(--accent-soft)}
+.fbox{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:16px;display:grid;gap:8px;justify-items:center;min-width:0}
+.band{width:var(--w);min-width:220px;max-width:100%;height:36px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 26px;box-sizing:border-box;font-size:13px;font-weight:700;clip-path:polygon(0 0,100% 0,97% 100%,3% 100%)}
+.band small{font-weight:600;opacity:.85;font-size:11px}
+.b1{background:var(--accent-ink);color:#fff}.b2{background:var(--accent);color:#fff}.b3{background:var(--accent-mid);color:var(--ink)}
+.b4{background:var(--surface);color:var(--ink);clip-path:none;border:2px dashed var(--accent);border-radius:8px}
+.b5{background:var(--accent-soft);color:var(--ink)}.b6{background:var(--pos);color:#fff}
+.fnote{font-size:12.5px;color:var(--ink-2);text-align:center;max-width:52ch}
+.fnote b{color:var(--ink)}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;align-items:start}
+@media (max-width:980px){.cols{grid-template-columns:minmax(0,1fr)}}
+.banner{display:flex;gap:10px;align-items:flex-start;background:var(--old-bg);color:var(--old);border-radius:12px;padding:10px 14px;font-size:13px}
+.banner b{font-weight:800}
+.steps{display:grid;gap:6px}
+.st{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13px}
+.st .n{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;color:#fff;background:var(--accent-ink)}
+.st .n.n2{background:var(--accent)}.st .n.n3{background:var(--accent-mid);color:var(--ink)}.st .n.n4{background:var(--accent-tint);color:var(--accent-ink)}.st .n.n5{background:var(--accent-soft);color:var(--ink)}.st .n.n6{background:var(--pos)}
+.st .r{font-size:12px;font-weight:700;color:var(--muted)}
+.st.end{border-color:var(--pos);background:var(--pos-bg)}
+.st.end .r{color:var(--pos)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:12px;color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+td.r,th.r{text-align:right}
+.pos{color:var(--pos);font-weight:700}.neg{color:var(--neg-ink);font-weight:700}
+.scroll{overflow-x:auto}
+tr.old td{color:var(--ink-2)}
+.sum{font-size:12.5px;color:var(--muted)}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Signal research · keep history across versions</h1>
+    <p class="lede">Mockup cách trang research giữ lại mọi bài và mọi lệnh khi đổi Rules hoặc Claude reader. Khung tím là ghi chú cho người duyệt. Câu chữ UI bằng tiếng Anh, PM duyệt.</p>
+  </header>
+
+  <p class="rule"><b>Nguyên tắc:</b> đổi Rules hay reader chỉ reset phần đếm (số lệnh được tính, nhãn, cổng 100 / 50). Không bao giờ ẩn dữ liệu: mọi bài và mọi lệnh luôn xem lại được, có gắn version. Phần “có ra tiền không” theo version hiện tại; phần “chuyện gì đã xảy ra” hiện đủ lịch sử.</p>
+
+  <div class="frame">
+    <span class="flabel">1 · From headline to trade · feed + phễu gồm mọi version</span>
+    <div class="card">
+      <div class="head"><h2>From headline to trade</h2><span>Every article, what happened to it, and why.</span>
+        <div class="seg" aria-label="Period"><span class="on">Last 24 h</span><span>7 days</span><span>30 days</span></div>
+      </div>
+      <div class="grid2">
+        <div class="feed">
+          <div class="fh"><span>News feed</span><span class="m">164 articles · all rules</span></div>
+          <div class="row"><div class="t"><span>16:40</span></div><div class="h">Upbit adds SUI trading pairs</div><div class="c"><span class="chip drop">Dropped at Filter</span></div></div>
+          <div class="row"><div class="t"><span>15:58</span></div><div class="h">Binance will list the PUMP perpetual</div><div class="c"><span class="chip ok">Long PUMP · paper trade</span></div></div>
+          <div class="div">Rules v4 · Claude reader v4 started · Nov 21 15:02</div>
+          <div class="row sel"><div class="t"><span>06:16</span><span class="chip old">Rules v3</span></div><div class="h">Bitcoin nodes could be stalled by repeating one ID 50,000 times. AI found the bug</div><div class="c"><span class="chip ok">Short BTC · paper trade</span></div></div>
+          <div class="row"><div class="t"><span>00:26</span><span class="chip old">Rules v3</span></div><div class="h">About $860 million in ETH was transferred, with the hacker involved in the Binance theft case…</div><div class="c"><span class="chip ok">Short ETH · paper trade</span></div></div>
+        </div>
+        <div class="fbox">
+          <div class="band b1" style="--w:94%"><span>1 · Collect</span><span>164</span></div>
+          <div class="band b2" style="--w:88%"><span>2 · Normalize</span><span>71</span></div>
+          <div class="band b3" style="--w:82%"><span>3 · Score</span><span>6</span></div>
+          <div class="band b4" style="--w:78%"><span>4 · Context</span><span>6</span></div>
+          <div class="band b5" style="--w:72%"><span>5 · Filter</span><span>3</span></div>
+          <div class="band b6" style="--w:66%"><span>6 · Decide</span><span>Long 1 · Short 2</span></div>
+          <p class="fnote">Last 24 h, <b>all rules</b>: 118 articles ran on Rules v3 (until Nov 21 15:02), 46 on Rules v4.</p>
+        </div>
+      </div>
+    </div>
+    <p class="note">Feed hiện mọi bài trong khoảng thời gian đã chọn. Bài của version cũ có chip “Rules v3”, bài của version hiện tại không gắn chip để đỡ rối. Chỗ đổi version có một dòng ngăn cách. Số trên phễu đếm theo khoảng thời gian, gồm mọi version, và có câu ghi rõ bao nhiêu bài chạy theo luật nào. Nút 24 h / 7 ngày / 30 ngày là mới; trước đây phễu luôn tính 24 giờ.</p>
+  </div>
+
+  <div class="cols">
+    <div class="frame">
+      <span class="flabel">2 · Trace một bài cũ · chạy theo luật của chính bài đó</span>
+      <div class="card">
+        <div class="banner"><span>ⓘ</span><span><b>This article ran on Rules v3 · Claude reader v3.</b> The steps show what happened then. Today’s rules may decide differently.</span></div>
+        <div class="steps">
+          <div class="st"><span class="n">1</span><span>Collect · 06:16, Coindesk</span><span class="r">passed</span></div>
+          <div class="st"><span class="n n2">2</span><span>Normalize · BTC-USD</span><span class="r">passed</span></div>
+          <div class="st"><span class="n n3">3</span><span>Score · reader v3: Hack or exploit · BTC-USD · Low</span><span class="r">passed</span></div>
+          <div class="st"><span class="n n4">4</span><span>Context · whales quiet · funding no crowd</span><span class="r">saved</span></div>
+          <div class="st"><span class="n n5">5</span><span>Filter · Baseline</span><span class="r">passed</span></div>
+          <div class="st end"><span class="n n6">6</span><span>Decide · Short BTC · closed at stop loss −1.13%</span><span class="r">counted under v3</span></div>
+        </div>
+      </div>
+      <p class="note">Trace đọc các bước đã lưu theo đúng rule version của bài, nên bài cũ bấm vào vẫn chạy trên phễu 6 bước như bài mới. Đây là lịch sử thật, không chạy lại bằng Claude. Lệnh v3 ghi “counted under v3” để không nhầm với số đếm của v4. Muốn biết luật mới sẽ xử lý bài đó ra sao thì để làm sau, bằng nút mô phỏng riêng.</p>
+    </div>
+
+    <div class="frame">
+      <span class="flabel">3 · Paper trades · cùng một cách gắn version</span>
+      <div class="card">
+        <div class="head"><h2 style="font-size:17px">Paper trades</h2>
+          <div class="seg" aria-label="Rules"><span class="on">Current rules (v4)</span><span>All rules</span></div>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Opened</th><th>Market</th><th>Rules</th><th>Exit</th><th class="r">Result</th></tr></thead>
+            <tbody>
+              <tr><td>Nov 21 15:58</td><td>PUMP · Long</td><td><span class="chip cur">v4</span></td><td>Open</td><td class="r">Not closed yet</td></tr>
+              <tr class="old"><td>Nov 21 06:20</td><td>BTC · Short</td><td><span class="chip old">v3</span></td><td>Stop loss</td><td class="r neg">−1.13%</td></tr>
+              <tr class="old"><td>Nov 21 00:35</td><td>ETH · Short</td><td><span class="chip old">v3</span></td><td>Take profit</td><td class="r pos">+2.24%</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="sum">All rules · 6 trades · v3 rows are history, not counted toward Rules v4 results.</p>
+      </div>
+      <p class="note">Bảng lệnh mặc định “Current rules”, vì nó đi chung với cổng và kết quả của version hiện tại. Bấm “All rules” là thấy đủ lịch sử, mỗi dòng có chip version. Nút “Older rules” đang có được đổi thành hai nút chọn này, cho giống phần feed. Mục Is it working? giữ nguyên: chỉ tính version hiện tại, version cũ là thẻ “Retired” như đã duyệt ở reader v4.</p>
+    </div>
+  </div>
+</div>

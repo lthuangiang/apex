@@ -1,0 +1,1 @@
+CREATE INDEX "signal_articles_collected_idx" ON "signal_articles" USING btree ("collected_at");

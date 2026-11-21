@@ -443,7 +443,7 @@ describe("signal research articles feed and trace (#291)", () => {
     await event("a-orig", 40, "normalize", "pass");
     await event("a-dup", 40, "normalize", "drop", { reason: "DUPLICATE" });
 
-    // Ngoài 1 ngày nhưng trong 7 ngày; backlog; version cũ.
+    // Ngoài 1 ngày nhưng trong 7 ngày; backlog; version Rules cũ (#413: vẫn hiện, gắn version, trong 7 ngày).
     await article({
       id: "a-week",
       published: 3 * 1440 + 5,
@@ -456,8 +456,8 @@ describe("signal research articles feed and trace (#291)", () => {
     await event("a-backlog", 20, "collect", "backlog", { reason: "BACKLOG_NOT_CLASSIFIED" });
     await article({
       id: "a-v1",
-      published: 10,
-      collected: 9,
+      published: 2 * 1440 + 10,
+      collected: 2 * 1440,
       status: "pending",
       ruleVersion: "news-v1",
     });
@@ -509,7 +509,7 @@ describe("signal research articles feed and trace (#291)", () => {
   it("validates the query: bad range / stage / reason / limit / cursor are 400 VALIDATION_FAILED", async () => {
     const tampered = Buffer.from(JSON.stringify({ t: "nope", id: "a" })).toString("base64url");
     for (const qs of [
-      "range=30d",
+      "range=90d",
       "stage=understand",
       "reason=BACKLOG_NOT_CLASSIFIED",
       "limit=500",
@@ -520,10 +520,10 @@ describe("signal research articles feed and trace (#291)", () => {
       expect(r.statusCode).toBe(400);
       expect(errorResponseSchema.parse(r.json()).error.code).toBe("VALIDATION_FAILED");
     }
-    expect((await team.request("GET", `${base}/summary?range=30d`)).statusCode).toBe(400);
+    expect((await team.request("GET", `${base}/summary?range=90d`)).statusCode).toBe(400);
   });
 
-  it("lists the last day newest first, without backlog or other rule versions; 7 days adds older ones", async () => {
+  it("lists the last day newest first, without backlog; 7 days adds older ones, older rules included (#413)", async () => {
     const day = await feed("range=1d&limit=100");
     const ids = day.items.map((x) => x.id);
     // art-1 (khối đầu file) nằm sau "now" của đồng hồ test nên cũng trong khoảng; là bài chờ ở Collect.
@@ -534,7 +534,10 @@ describe("signal research articles feed and trace (#291)", () => {
     expect(ids).not.toContain("a-v1");
     const week = await feed("range=7d&limit=100");
     expect(week.items.map((x) => x.id)).toContain("a-week");
-    expect(week.totalInRange).toBe(IN_DAY.length + 2);
+    // #413: bài của version Rules cũ không bị ẩn; mang số version của chính nó.
+    expect(week.items.find((x) => x.id === "a-v1")?.rulesVersion).toBe(1);
+    expect(week.items.find((x) => x.id === "a-week")?.rulesVersion).toBe(4);
+    expect(week.totalInRange).toBe(IN_DAY.length + 3);
     // Mặc định 1 ngày.
     expect((await feed("")).totalInRange).toBe(day.totalInRange);
   });
@@ -815,8 +818,9 @@ describe("signal research articles feed and trace (#291)", () => {
     expect(waiting.score).toMatchObject({ status: "notReached", detail: null });
   });
 
-  it("404 for an unknown, backlog or other-version article", async () => {
-    for (const id of ["nope", "a-backlog", "a-v1"]) {
+  it("404 for an unknown or backlog article; an older-rules article opens (#413)", async () => {
+    expect((await trace("a-v1")).article.rulesVersion).toBe(1);
+    for (const id of ["nope", "a-backlog"]) {
       const r = await team.request("GET", `${base}/articles/${id}/trace`);
       expect(r.statusCode).toBe(404);
       expect(errorResponseSchema.parse(r.json()).error.code).toBe("NOT_FOUND");

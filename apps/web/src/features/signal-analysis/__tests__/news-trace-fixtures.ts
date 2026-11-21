@@ -85,6 +85,9 @@ function article(p: Partial<ResearchArticle> & Pick<ResearchArticle, "id">): Res
     shadowTradeId: null,
     opposite: null,
     context: null,
+    // #413: version Rules hiện tại của RESEARCH_SUMMARY (không gắn chip); test bài cũ đặt riêng.
+    rulesVersion: 2,
+    readerVersion: null,
     ...p,
   };
 }
