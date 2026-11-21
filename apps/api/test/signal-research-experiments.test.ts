@@ -14,6 +14,7 @@ import {
   type ResearchVersion,
 } from "@drift/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { z } from "zod";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
@@ -45,10 +46,27 @@ async function advance(days: number) {
 const post = (path: string, body: unknown) =>
   team.request("POST", `${base}${path}`, { body, idempotencyKey: randomUUID() });
 const errOf = (r: { json: () => unknown }) => errorResponseSchema.parse(r.json()).error;
+/** #400: parse body; lỗi thì in kèm giá trị thật của field hỏng (và body rút gọn) để biết vì sao. */
+function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
+  const p = schema.safeParse(body);
+  if (p.success) return p.data;
+  const actual = p.error.issues.map((i) => {
+    const value = i.path.reduce<unknown>(
+      (o, k) =>
+        o !== null && typeof o === "object" ? (o as Record<PropertyKey, unknown>)[k] : undefined,
+      body,
+    );
+    return `${i.path.join(".")} = ${JSON.stringify(value)} (${i.message})`;
+  });
+  const raw = JSON.stringify(body);
+  throw new Error(
+    `response does not match schema:\n${actual.join("\n")}\nbody: ${raw.length > 1500 ? `${raw.slice(0, 1500)}…` : raw}`,
+  );
+}
 const list = async () => {
   const r = await team.request("GET", `${base}/versions`);
   expect(r.statusCode).toBe(200);
-  return researchVersionsSchema.parse(r.json());
+  return parseBody(researchVersionsSchema, r.json());
 };
 const item = async (id: string): Promise<ResearchVersion> => {
   const v = (await list()).items.find((x) => x.id === id);
@@ -69,7 +87,7 @@ async function create(
     hypothesis: opts.hypothesis ?? HYP,
   });
   expect(r.statusCode).toBe(201);
-  return researchVersionCreatedSchema.parse(r.json());
+  return parseBody(researchVersionCreatedSchema, r.json());
 }
 
 /**
