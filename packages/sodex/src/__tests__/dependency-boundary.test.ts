@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-// #336 (DEC-TBD-sodex-reconcile-package): `@drift/sodex` không phụ thuộc DB, để cây dependency của signer (nơi giữ key),
+// #336 (DEC-355): `@drift/sodex` không phụ thuộc DB, để cây dependency của signer (nơi giữ key),
 // engine và marketdata nhỏ nhất có thể. Đối soát chữ ký (đọc SoDEX + ghi DB) nằm ở package riêng `@drift/sodex-reconcile`,
 // chỉ api và jobs dùng. Test đọc package.json của workspace và đi hết cây `@drift/*` (kể cả gián tiếp).
 

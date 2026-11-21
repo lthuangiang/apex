@@ -168,7 +168,7 @@ drift/
 Quy tắc:
 - **`packages/strategies` là logic thuần**: nhận `(config, marketEvent, state)` và trả về `(actions, newState)`. Không I/O. Engine (chạy thật) và backtest (mô phỏng) dùng chung code này, để backtest phản ánh đúng hành vi bot thật.
 - Mọi enum đặt trong `packages/shared`, không hard-code chuỗi trong component.
-- **Ranh giới dependency (#336, DEC-TBD-sodex-reconcile-package):** `db` → `shared`; `sodex` → `shared` (không có `db`); `sodex-reconcile` → `sodex`, `db`, `shared`. signer, engine, marketdata không được dùng `@drift/sodex-reconcile`; signer (giữ key) không có `@drift/db` trong cây dependency. Guard: `packages/sodex/src/__tests__/dependency-boundary.test.ts`. Thêm package mới thì thêm dòng `COPY …/package.json` ở cả 11 Dockerfile (DEC-214).
+- **Ranh giới dependency (#336, DEC-355):** `db` → `shared`; `sodex` → `shared` (không có `db`); `sodex-reconcile` → `sodex`, `db`, `shared`. signer, engine, marketdata không được dùng `@drift/sodex-reconcile`; signer (giữ key) không có `@drift/db` trong cây dependency. Guard: `packages/sodex/src/__tests__/dependency-boundary.test.ts`. Thêm package mới thì thêm dòng `COPY …/package.json` ở cả 11 Dockerfile (DEC-214).
 - Mỗi chiến lược có một zod schema, dùng chung cho form tạo bot, API, engine và backtest.
 - Không có mock data trong code production. Mock chỉ nằm trong test và Storybook.
 

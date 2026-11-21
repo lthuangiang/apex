@@ -16,7 +16,7 @@ import { z } from "zod";
 // Đối soát request ký SoDEX đã gửi mà chưa rõ kết quả (`unknown`, quy tắc 1.7): chỉ ĐỌC lại trạng thái thật trên SoDEX
 // (key, builder approval), không bao giờ gửi lại. Một hàm dùng chung cho endpoint `POST .../reconciliation` của api và
 // vòng đối soát nền của jobs (#327), để hai đường luôn kết luận giống nhau. Package riêng `@drift/sodex-reconcile` (#336,
-// DEC-TBD-sodex-reconcile-package): `@drift/db` chỉ truy cập DB (không phụ thuộc client SoDEX hay viem), và `@drift/sodex`
+// DEC-355): `@drift/db` chỉ truy cập DB (không phụ thuộc client SoDEX hay viem), và `@drift/sodex`
 // không phụ thuộc DB (cây dependency của signer, nơi giữ key, càng nhỏ càng tốt).
 
 /** SoDEX chỉ nhận nonce trong (T − 2 ngày, T + 1 ngày) (SODEX.md mục 5.6): quá 2 ngày thì request không còn áp được. */
