@@ -157,6 +157,7 @@ export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitRea
  *
  * v4 so với v3 (#395): tin ETF (etf_approved, etf_delayed_or_rejected) không giao dịch BTC / ETH (`ETF_MAJOR_ASSET`), ra
  * cùng prompt `news-classifier-v4`. Bài v3 còn `collected` / `pending` lúc deploy được chuyển sang v4 (`adoptInFlightArticles`).
+ * Prompt `news-classifier-v5` (#399) chạy trên v4: chỉ đổi prompt nên không tăng version này.
  */
 export const NEWS_RULES = {
   version: "news-v4",
@@ -438,7 +439,7 @@ export const NEWS_CLASSIFIER = {
    * 1 phút (`SIGNAL_NEWS_CYCLE_MINUTES`) vẫn giữ 1 giờ để giờ ít tin không làm cache hết hạn giữa hai lần gọi.
    */
   cacheTtl: "1h",
-  promptVersion: "news-classifier-v4",
+  promptVersion: "news-classifier-v5",
   maxTokens: 400,
   /** Tối đa ngần này ký tự nội dung bài gửi cho Claude. */
   maxContentChars: 4000,
