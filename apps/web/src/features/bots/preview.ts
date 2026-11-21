@@ -441,6 +441,7 @@ export function previewModel(
     case "volume_farm":
     case "adaptive_dca":
     case "copy_trade":
+    case "news_signal":
       return null;
   }
 }
