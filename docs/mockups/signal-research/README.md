@@ -137,3 +137,19 @@ Những chỗ UI đổi khi ship Claude reader v4 (`news-classifier-v4`) và Rul
 - Hộp "What Claude reader v4 reads differently" có thêm dòng thứ 4 (PM review #398, sau dòng "The coin that was stolen…"): "Moving or laundering funds from an earlier hack is not a new hack." Dòng này không có trong ảnh.
 - "Why it stopped" là câu kết của trace ("Stopped at Score: …"), không thêm khối mới.
 - Pill "Collecting" của thẻ nhãn và câu "0 / 100 · new rules and reader, count starts again" của thẻ lệnh đóng chỉ hiện khi đã có reader cũ và số đếm của đoạn hiện tại bằng 0; không thì giữ câu đang có.
+
+## Giữ lịch sử qua các version Rules / reader (#413, người dùng duyệt 2026-11-21)
+
+Trang research giữ lại mọi bài và mọi lệnh khi đổi Rules hoặc Claude reader. Câu chữ PM đã duyệt (không đưa vào `_pendingReview`). Khung tím là ghi chú cho người duyệt. HTML tự chứa (chỉ có link Google Fonts).
+
+| File | Nội dung |
+|---|---|
+| `history-across-versions.html` | Ba khung: From headline to trade (nút Last 24 h / 7 days / 30 days, chip "Rules v3", dòng ngăn cách, câu "all rules" dưới phễu), trace một bài cũ (banner, "counted under v3"), Paper trades (Current rules / All rules, chip version, câu tóm tắt) |
+| `history-across-versions-1440.png`, `history-across-versions-390.png` | Ảnh chụp 1440 và 390 (Playwright, cả trang) |
+
+**Quy tắc khi code (DEC-357):**
+- Đổi version chỉ reset phần đếm, không ẩn dữ liệu. Is it working? giữ nguyên (chỉ version hiện tại).
+- Mốc "started" của mỗi version lấy từ dữ liệu thật (event sớm nhất của version, reader của bài phân loại sớm nhất); thiếu thì bỏ ngày / reader, không đoán.
+- Feed: bài version hiện tại không có chip; câu dưới phễu chỉ hiện khi khoảng có từ hai version trở lên.
+- Paper trades: hai nút chỉ hiện khi version đang xem có lệnh của Rules cũ. Chip version trên từng dòng chỉ hiện ở All rules (ở Current rules mọi dòng cùng version); bảng giữ các cột hiện có, chip nằm dưới tên lệnh, không thêm cột "Rules" như ảnh để không tràn ngang ở 1024 px.
+

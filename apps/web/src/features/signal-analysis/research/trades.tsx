@@ -14,7 +14,7 @@ import { useMarketNames } from "@/lib/markets";
 
 import { FilterSelect, ScrollTable, Seg } from "../components/bits";
 import type { PageCtx } from "../components/signal-analysis-page";
-import { clock, count, monthDay } from "../format";
+import { clock, monthDay } from "../format";
 
 import { RESEARCH_DEFAULT, useResearchTrades, type ResearchFilters } from "./api";
 import { ResearchTradeDetail } from "./detail";
@@ -184,13 +184,22 @@ function TypeLabel({ x }: { x: ResearchTrade }) {
   );
 }
 
-/** #321: lệnh / tín hiệu của quy tắc cũ (chỉ hiện khi bật "Show older rules"): "Rules v2 · not counted". */
-function OlderTag({ x, older }: { x: ResearchTrade; older: readonly number[] }) {
+/**
+ * #413: chip version Rules của dòng khi đang xem "All rules" (mockup history-across-versions): version hiện tại màu nhấn,
+ * version cũ màu "old". `current` null = đang xem "Current rules" (mọi dòng cùng version, không gắn chip).
+ */
+function RulesTag({ x, current }: { x: ResearchTrade; current: number | null }) {
   const t = useTranslations("signalAnalysis.research.trades");
-  if (!older.includes(x.rulesVersion)) return null;
+  if (current === null) return null;
+  const old = x.rulesVersion !== current;
   return (
-    <span className="mt-1 inline-block rounded-full bg-bg px-2 py-0.5 text-xs font-bold text-ink-2">
-      {t("olderTag", { v: x.rulesVersion })}
+    <span
+      data-testid="sr-trade-rules"
+      className={`mt-1 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-extrabold ${
+        old ? "bg-old-bg text-old" : "bg-accent-tint text-accent-ink"
+      }`}
+    >
+      {t("rulesChip", { v: x.rulesVersion })}
     </span>
   );
 }
@@ -204,13 +213,19 @@ export function ResearchTrades({
   onTrace,
   versionId = null,
   older = { trades: 0, versions: [] },
+  currentRules = null,
+  currentTrades = null,
 }: {
   ctx: PageCtx;
   assets: readonly string[];
   /** #306: News bot version của danh sách; null = Baseline. */
   versionId?: string | null;
-  /** #344: lệnh của quy tắc cũ (v2) của version này; có thì hiện "Show older rules (v2) · n". */
+  /** #344 / #413: lệnh của quy tắc cũ của version này; có thì hiện hai nút "Current rules (vN)" / "All rules". */
   older?: ResearchSummary["olderRules"];
+  /** #413: version Rules hiện tại (`newsRulesVersion`); null = chưa biết. */
+  currentRules?: number | null;
+  /** #413: số lệnh News · live của version Rules hiện tại (câu "All rules · N trades"); null = không biết. */
+  currentTrades?: number | null;
   /** Nút Trace (#292): mở phễu ở trên trên bài của dòng này. */
   onTrace: (articleId: string) => void;
 }) {
@@ -219,10 +234,12 @@ export function ResearchTrades({
   const [f, setF] = useState<ResearchFilters>(RESEARCH_DEFAULT);
   const [open, setOpen] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const [showOlder, setShowOlder] = useState(false);
+  const [rules, setRules] = useState<"current" | "all">("current");
   const hasOlder = older.trades > 0;
-  const q = useResearchTrades(f, true, versionId, hasOlder && showOlder);
-  const olderVersions = hasOlder && showOlder ? older.versions : [];
+  const showAll = hasOlder && rules === "all";
+  const q = useResearchTrades(f, true, versionId, showAll);
+  // Chip version chỉ khi đang xem "All rules" (mỗi dòng có version của nó).
+  const tagRules = showAll ? (currentRules ?? -1) : null;
   const items = q.data?.pages.flatMap((p) => p.items) ?? [];
   const set = (p: Partial<ResearchFilters>) => {
     setF((x) => ({ ...x, ...p }));
@@ -238,23 +255,26 @@ export function ResearchTrades({
       right={
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {hasOlder ? (
-            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-bold text-ink md:text-[13px]">
-              <input
-                type="checkbox"
-                checked={showOlder}
-                onChange={(e) => {
-                  setShowOlder(e.target.checked);
-                }}
-                className="size-5 accent-accent"
-              />
-              <span className="md:hidden">{t("trades.olderRulesShort")}</span>
-              <span className="max-md:hidden">
-                {t("trades.olderRules", {
-                  versions: rulesList(older.versions, t),
-                  n: count(older.trades),
-                })}
+            <span className="flex items-center">
+              <span id="sr-rules" className="sr-only">
+                {t("trades.rules")}
               </span>
-            </label>
+              <Seg
+                labelId="sr-rules"
+                value={rules}
+                options={[
+                  {
+                    value: "current" as const,
+                    label:
+                      currentRules === null
+                        ? t("trades.rulesCurrentShort")
+                        : t("trades.rulesCurrent", { v: currentRules }),
+                  },
+                  { value: "all" as const, label: t("trades.rulesAll") },
+                ]}
+                onChange={setRules}
+              />
+            </span>
           ) : null}
           <button
             type="button"
@@ -367,7 +387,7 @@ export function ResearchTrades({
             <TradesTable
               items={items}
               tz={ctx.tz}
-              older={olderVersions}
+              rules={tagRules}
               onOpen={setOpen}
               onTrace={onTrace}
             />
@@ -375,7 +395,7 @@ export function ResearchTrades({
           <TradeCards
             items={items}
             tz={ctx.tz}
-            older={olderVersions}
+            rules={tagRules}
             onOpen={setOpen}
             onTrace={onTrace}
           />
@@ -390,6 +410,20 @@ export function ResearchTrades({
         >
           {t("trades.loadMore")}
         </button>
+      ) : null}
+      {showAll && currentRules !== null ? (
+        <p data-testid="sr-all-rules-sum" className="m-0 text-[12.5px] text-muted">
+          {currentTrades === null
+            ? t("trades.allRulesSumNoCount", {
+                versions: rulesList(older.versions, t),
+                v: currentRules,
+              })
+            : t("trades.allRulesSum", {
+                n: currentTrades + older.trades,
+                versions: rulesList(older.versions, t),
+                v: currentRules,
+              })}
+        </p>
       ) : null}
       <ResearchTradeDetail
         id={open}
@@ -451,14 +485,14 @@ function TraceButton({
 function TradesTable({
   items,
   tz,
-  older,
+  rules,
   onOpen,
   onTrace,
 }: {
   items: ResearchTrade[];
   tz: string;
-  /** Version quy tắc cũ đang hiện (bật "Show older rules"); rỗng khi tắt. */
-  older: readonly number[];
+  /** #413: version Rules hiện tại khi đang xem "All rules" (gắn chip mỗi dòng); null = "Current rules". */
+  rules: number | null;
   onOpen: (id: string) => void;
   onTrace: (articleId: string) => void;
 }) {
@@ -515,7 +549,7 @@ function TradesTable({
                   <Sub>
                     <TypeLabel x={x} />
                   </Sub>
-                  <OlderTag x={x} older={older} />
+                  <RulesTag x={x} current={rules} />
                 </td>
                 <td className={tdW}>
                   {clock(x.seenAt, tz)}
@@ -621,14 +655,14 @@ function TradesTable({
 function TradeCards({
   items,
   tz,
-  older,
+  rules,
   onOpen,
   onTrace,
 }: {
   items: ResearchTrade[];
   tz: string;
-  /** Version quy tắc cũ đang hiện (bật "Show older rules"); rỗng khi tắt. */
-  older: readonly number[];
+  /** #413: version Rules hiện tại khi đang xem "All rules" (gắn chip mỗi dòng); null = "Current rules". */
+  rules: number | null;
   onOpen: (id: string) => void;
   onTrace: (articleId: string) => void;
 }) {
@@ -672,7 +706,7 @@ function TradeCards({
               <>
                 <span className="text-xs font-bold text-warn">{skip}</span>
                 <ShadowSub x={x} />
-                <OlderTag x={x} older={older} />
+                <RulesTag x={x} current={rules} />
               </>
             ) : (
               <>
@@ -697,7 +731,7 @@ function TradeCards({
                   })}
                 </span>
                 <OppositeTag x={x} tz={tz} />
-                <OlderTag x={x} older={older} />
+                <RulesTag x={x} current={rules} />
               </>
             )}
           </>

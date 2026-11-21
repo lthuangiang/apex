@@ -1312,40 +1312,49 @@ describe("Is it working? redesign (#344) and older rules (#321)", { timeout: 30_
     expect(intlErrors).toEqual([]);
   });
 
-  it("Paper trades: picked version only by default; Show older rules (v2) · 4 adds v2 trades tagged Rules v2 · not counted", async () => {
+  it("Paper trades: Current rules (v3) by default; All rules adds the v2 trade with a version chip (#413)", async () => {
     wrap();
     const tbl = await screen.findByRole("table", { name: "Signal research trades" });
-    expect(within(tbl).queryByText("Rules v2 · not counted")).not.toBeInTheDocument();
+    // Current rules: mọi dòng cùng version, không gắn chip.
+    expect(within(tbl).queryAllByTestId("sr-trade-rules")).toHaveLength(0);
     const last = () => [...state.paths].reverse().find((p) => p.includes("/trades?")) ?? "";
     expect(last()).not.toContain("olderRules");
-    const toggle = screen.getByRole("checkbox", { name: /Show older rules \(v2\) · 4/ });
-    expect(toggle).not.toBeChecked();
-    await userEvent.click(toggle);
+    const group = screen.getByRole("radiogroup", { name: "Rules" });
+    expect(within(group).getByRole("radio", { name: "Current rules (v3)" })).toBeChecked();
+    expect(screen.queryByTestId("sr-all-rules-sum")).not.toBeInTheDocument();
+    await userEvent.click(within(group).getByRole("radio", { name: "All rules" }));
     await waitFor(() => {
       expect(last()).toContain("olderRules=true");
     });
     const t2 = await screen.findByRole("table", { name: "Signal research trades" });
     await waitFor(() => {
-      expect(within(t2).getAllByText("Rules v2 · not counted")).toHaveLength(1);
+      expect(
+        within(t2)
+          .getAllByTestId("sr-trade-rules")
+          .map((x) => x.textContent),
+      ).toEqual(["v3", "v2"]);
     });
+    expect(screen.getByTestId("sr-all-rules-sum")).toHaveTextContent(
+      /^All rules · \d+ trades · v2 rows are history, not counted toward Rules v3 results\.$/,
+    );
     // Bots & labels ghi số lệnh rules cũ còn theo dõi.
     expect(
       within(region("Bots & labels")).getByText(
         "4 trades from older rules (v2) are still listed in Paper trades.",
       ),
     ).toBeInTheDocument();
-    // Phễu: rules v3 chạy chưa hết 1 ngày.
+    // #413: phễu không còn câu "Since rules v3 started" (phễu theo khoảng gồm mọi version).
     expect(
-      within(region(/From headline to trade/)).getByText(/^Since rules v3 started at \d\d:\d\d$/),
-    ).toBeInTheDocument();
+      within(region(/From headline to trade/)).queryByText(/^Since rules v3 started/),
+    ).not.toBeInTheDocument();
     await noViolations();
   });
 
-  it("no older rules: no toggle, no older-rules line in Bots & labels", async () => {
+  it("no older rules: no Current / All rules buttons, no older-rules line in Bots & labels", async () => {
     state.mode = "ok";
     wrap();
     await screen.findByRole("table", { name: "Signal research trades" });
-    expect(screen.queryByRole("checkbox", { name: /older rules/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Rules" })).not.toBeInTheDocument();
     expect(screen.queryByText(/from older rules/)).not.toBeInTheDocument();
   });
 });

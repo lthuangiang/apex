@@ -6144,14 +6144,20 @@
       "totalNa": "Your bots traded <b>{volume} USDC</b>. Fees came to <b>{fees} USDC</b>. The price part is Not available: a market price is missing.",
       "perMillion": "That's <b>{cost} per $1M</b> traded",
       "perMillionNa": "Cost per $1M: Not available",
-      "less": "{amount} less than {before}",
-      "more": "{amount} more than {before}",
+      "less": "{amount} per $1M less than {before}",
+      "more": "{amount} per $1M more than {before}",
       "same": "The same as {before}",
       "prevNa": "vs {before}: Not available · your bots didn't trade then.",
       "prevNaPrice": "vs {before}: Not available",
       "notPnl": "This is what trading cost, not your profit or loss. Your net result is on each bot's page. Practice bots aren't counted.",
       "barLabel": "Of {cost} per $1M: SoDEX fee {sodex}, DeskLabs builder fee {builder}, price moved against your trades {price}.",
       "barLabelFavour": "Per $1M: SoDEX fee {sodex}, DeskLabs builder fee {builder}. The price moved in your favour by {price}.",
+      "partsTitle": "Cost per $1M traded, by part",
+      "perMillionUnit": "per $1M",
+      "inPeriod": {
+        "7d": "{amount} USDC in these 7 days",
+        "30d": "{amount} USDC in these 30 days"
+      },
       "sodexFee": "SoDEX fee",
       "sodexFeeBody": "What SoDEX charges on each trade.",
       "builderFee": "DeskLabs builder fee",
@@ -7904,12 +7910,14 @@
         "title": "From headline to trade",
         "range": {
           "1d": "last 1 day",
-          "7d": "last 7 days"
+          "7d": "last 7 days",
+          "30d": "last 30 days"
         },
         "period": "Period",
         "periods": {
-          "1d": "1 day",
-          "7d": "7 days"
+          "1d": "Last 24 h",
+          "7d": "7 days",
+          "30d": "30 days"
         },
         "feed": "News feed",
         "feedCount": "{n} of {total, plural, one {# article} other {# articles}}",
@@ -8213,12 +8221,24 @@
           "checks": "{passed} of {total} checks",
           "trade": "{side} {size} USDC"
         },
-        "rulesSince": "Since rules v{v} started at {time}",
-        "rulesSinceDay": "Since rules v{v} started {day}, {time}",
+        "allRules": "all rules",
+        "rulesChip": "Rules v{v}",
+        "rulesStarted": "Rules v{v} · Claude reader {reader} started · {date}",
+        "rulesStartedNoReader": "Rules v{v} started · {date}",
+        "rulesStartedNoDate": "Rules v{v} · Claude reader {reader} started",
+        "rulesStartedBare": "Rules v{v} started",
+        "rulesSplit": "{range}, <b>all rules</b>: {parts}.",
+        "rulesSplitOld": "{n, plural, one {# article} other {# articles}} ran on Rules v{v} (until {date})",
+        "rulesSplitOldNoDate": "{n, plural, one {# article} other {# articles}} ran on Rules v{v}",
+        "rulesSplitLast": "{n} on Rules v{v}",
+        "oldBanner": "<b>This article ran on Rules v{v} · Claude reader {reader}.</b> The steps show what happened then. Today’s rules may decide differently.",
+        "oldBannerNoReader": "<b>This article ran on Rules v{v}.</b> The steps show what happened then. Today’s rules may decide differently.",
+        "countedUnder": "counted under v{v}",
         "costIn": "${usd} · {window}",
         "costWindow": {
           "1d": "last 24 h",
-          "7d": "last 7 days"
+          "7d": "last 7 days",
+          "30d": "last 30 days"
         },
         "costUnknown": "{n, plural, one {# article} other {# articles}} without cost data"
       },
@@ -8462,9 +8482,13 @@
         "oppositeTip": "Opposite news at {time} · {action, select, closed {closed} other {kept}} · closing then: {usd} ({pct})",
         "shadow": "Would have: {outcome}",
         "shadowPnl": "Would have: {outcome} · {pnl}",
-        "olderRules": "Show older rules ({versions}) · {n}",
-        "olderRulesShort": "Older rules",
-        "olderTag": "Rules v{v} · not counted",
+        "rules": "Rules",
+        "rulesCurrent": "Current rules (v{v})",
+        "rulesCurrentShort": "Current rules",
+        "rulesAll": "All rules",
+        "rulesChip": "v{v}",
+        "allRulesSum": "All rules · {n, plural, one {# trade} other {# trades}} · {versions} rows are history, not counted toward Rules v{v} results.",
+        "allRulesSumNoCount": "All rules · {versions} rows are history, not counted toward Rules v{v} results.",
         "colMarket": "Market at entry"
       },
       "detail": {
