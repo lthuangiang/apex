@@ -65,8 +65,9 @@ async function measure(page: Page) {
       ratio: r === undefined || r.width === 0 ? 0 : r.height / r.width,
       tabHeight: tab?.height ?? 0,
       dialogScrolls: dlg.scrollHeight > dlg.clientHeight,
-      // Đo trong drawer: trang nền ở 1024 px đã cuộn ngang từ trước (theo dõi ở #392), không phải do drawer.
       dialogOverflowX: dlg.scrollWidth - dlg.clientWidth,
+      // #392 đã sửa: trang nền không cuộn ngang khi drawer mở.
+      pageOverflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });
 }
@@ -77,6 +78,7 @@ function expectNotSquashed(m: Awaited<ReturnType<typeof measure>>) {
   expect.soft(m.tabHeight, "tabs stay at least 44 px tall").toBeGreaterThanOrEqual(44);
   expect.soft(m.dialogScrolls, "the drawer scrolls instead of squashing").toBe(true);
   expect.soft(m.dialogOverflowX, "no horizontal scroll inside the drawer").toBeLessThanOrEqual(0);
+  expect.soft(m.pageOverflowX, "the page does not scroll sideways").toBeLessThanOrEqual(0);
 }
 
 test("overview: drawer blocks keep their height, the diagram keeps its shape", async ({

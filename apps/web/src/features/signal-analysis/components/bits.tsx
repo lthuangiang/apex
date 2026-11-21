@@ -245,7 +245,11 @@ export function Tabs<T extends string>({
   );
 }
 
-/** Khung cuộn ngang cho bảng nhiều cột (390 px): focus được bằng bàn phím, có bóng mép. */
+/**
+ * Khung cuộn ngang cho bảng nhiều cột (390 px): focus được bằng bàn phím, có bóng mép. `relative` (#392): khung là
+ * containing block của phần tử absolute bên trong (chữ `sr-only` trong ô tiêu đề), nếu không chúng thoát khỏi khung cuộn
+ * và kéo giãn cả trang (cuộn ngang 449 px ở 1024 px).
+ */
 export function ScrollTable({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div
@@ -253,7 +257,7 @@ export function ScrollTable({ label, children }: { label: string; children: Reac
       aria-label={label}
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- khối cuộn được phải nhận focus để cuộn bằng bàn phím.
       tabIndex={0}
-      className="-mx-3 overflow-x-auto bg-[linear-gradient(to_right,var(--surface)_30%,transparent),linear-gradient(to_left,var(--surface)_30%,transparent),linear-gradient(to_right,var(--border),transparent),linear-gradient(to_left,var(--border),transparent)] bg-[length:40px_100%,40px_100%,12px_100%,12px_100%] bg-[position:left,right,left,right] bg-no-repeat [background-attachment:local,local,scroll,scroll] md:mx-0"
+      className="relative -mx-3 overflow-x-auto bg-[linear-gradient(to_right,var(--surface)_30%,transparent),linear-gradient(to_left,var(--surface)_30%,transparent),linear-gradient(to_right,var(--border),transparent),linear-gradient(to_left,var(--border),transparent)] bg-[length:40px_100%,40px_100%,12px_100%,12px_100%] bg-[position:left,right,left,right] bg-no-repeat [background-attachment:local,local,scroll,scroll] md:mx-0"
     >
       {children}
     </div>
