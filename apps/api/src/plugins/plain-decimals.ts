@@ -23,7 +23,13 @@ const IDENTIFIER_KEYS: ReadonlySet<string> = new Set([
   "label",
   "key",
 ]);
-const isIdentifierKey = (k: string) => IDENTIFIER_KEYS.has(k) || /id$/i.test(k);
+/**
+ * #400: đuôi id người làm (`createdBy`, `labeledBy`: 4 ký tự hex như "1e05") và đuôi ví (`walletTail`) cũng là định danh.
+ * "1e05" khớp EXPONENT nên từng bị đổi thành "100000" (khoảng 3 % id user), làm response hỏng schema `^[0-9a-f]{4}$`.
+ * Quy ước: field kết thúc bằng `Id` / `id`, `By` (ai làm) hoặc `Tail` không bao giờ là số.
+ */
+const isIdentifierKey = (k: string) =>
+  IDENTIFIER_KEYS.has(k) || /id$/i.test(k) || /(?:By|Tail)$/.test(k);
 
 export function plainDecimals(value: unknown): unknown {
   if (typeof value === "string") {

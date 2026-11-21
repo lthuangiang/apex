@@ -50,4 +50,20 @@ describe("plainDecimals", () => {
       dust: "0.0000000000000000000025",
     });
   });
+
+  it("keeps who-did-it tails and wallet tails that look like exponents (#400)", () => {
+    expect(
+      plainDecimals({
+        items: [{ createdBy: "1e05", net: "1e2" }],
+        myLabel: { labeledBy: "42e3" },
+        walletTail: "12345e67",
+        hiddenBy: { stale: 2 },
+      }),
+    ).toEqual({
+      items: [{ createdBy: "1e05", net: "100" }],
+      myLabel: { labeledBy: "42e3" },
+      walletTail: "12345e67",
+      hiddenBy: { stale: 2 },
+    });
+  });
 });

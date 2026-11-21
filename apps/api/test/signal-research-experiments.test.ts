@@ -13,7 +13,7 @@ import {
   type BotVersionConfig,
   type ResearchVersion,
 } from "@drift/shared";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { z } from "zod";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
@@ -147,8 +147,36 @@ beforeAll(async () => {
   );
 });
 
+// #400: mỗi test dừng version nó để lại (running / paused), để một test fail giữa chừng không giữ chỗ chạy (tối đa 3) hay
+// làm `finishSignalExperiments` của test sau thấy version lạ.
+afterEach(async () => {
+  const left = await env.pool.query<{ id: string }>(
+    "select id from signal_bot_versions where not is_baseline and status in ('running', 'paused')",
+  );
+  for (const { id } of left.rows)
+    await setSignalBotVersionStatus(env.db, { id, status: "stopped", userId: null });
+});
+
 afterAll(async () => {
   await env.close();
+});
+
+describe("experiments: who saved it (#400)", () => {
+  it("returns the saver's id tail as is even when it looks like a number (1e05)", async () => {
+    // Đuôi "1e05" từng bị hook plain-decimals đổi thành "100000" (khoảng 3 % id user), làm cả file test chập chờn.
+    const email = `exp-tail-${randomUUID()}@drift.test`;
+    const userId = `${randomUUID().slice(0, -4)}1e05`;
+    await env.pool.query("insert into users (id, email, role) values ($1, $2, 'team')", [
+      userId,
+      email,
+    ]);
+    team = new TestClient(env.app);
+    expect(meSchema.parse((await signIn(env, team, email)).json()).id).toBe(userId);
+    const v = await create("Tail like a number", { ...cfg, minLevel: "medium" });
+    expect(v.createdBy).toBe("1e05");
+    expect((await item(v.id)).createdBy).toBe("1e05");
+    await signInTeam();
+  });
 });
 
 describe("experiments: hypothesis (#377)", () => {
