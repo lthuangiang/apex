@@ -3,6 +3,7 @@ import {
   CLASSIFIER_GATE,
   NEWS_RULES,
   READER_NEW_BADGE,
+  RULES_NEW_BADGE,
   SIGNAL_CATALYSTS,
   type BotVersionConfig,
   type ResearchClassifierRow,
@@ -50,18 +51,28 @@ export function classifierShort(v: string): string {
 const DAY_MS = 86_400_000;
 
 /**
- * #395: nhãn "New in v4" còn hiện không: reader `READER_NEW_BADGE.classifierVersion` chưa chạy đủ `days` ngày tính từ
- * `startedAt` của API (chưa có started_at = chưa chạy = vẫn mới). Chưa có danh sách classifier (đang tải / lỗi) hoặc danh
- * sách không có reader đó → không hiện.
+ * #395, #399: nhãn "New in v{n}" còn hiện không: reader `badge.classifierVersion` (mặc định `READER_NEW_BADGE`, reader
+ * hiện tại; `RULES_NEW_BADGE` cho luật cố định của Rules v4) chưa chạy đủ `days` ngày tính từ `startedAt` của API (chưa có
+ * started_at = chưa chạy = vẫn mới). Chưa có danh sách classifier (đang tải / lỗi) hoặc danh sách không có reader đó →
+ * không hiện.
  */
 export function readerBadgeShown(
   items: readonly Pick<ResearchClassifierRow, "classifierVersion" | "startedAt">[] | undefined,
   now: number,
+  badge: { classifierVersion: string; days: number } = READER_NEW_BADGE,
 ): boolean {
-  const row = items?.find((r) => r.classifierVersion === READER_NEW_BADGE.classifierVersion);
+  const row = items?.find((r) => r.classifierVersion === badge.classifierVersion);
   if (row === undefined) return false;
   if (row.startedAt === null) return true;
-  return now - Date.parse(row.startedAt) < READER_NEW_BADGE.days * DAY_MS;
+  return now - Date.parse(row.startedAt) < badge.days * DAY_MS;
+}
+
+/** Nhãn của luật cố định Rules v4 (hộp "Not counted", chip "v3 → v4"): theo mốc của `RULES_NEW_BADGE`. */
+export function rulesBadgeShown(
+  items: readonly Pick<ResearchClassifierRow, "classifierVersion" | "startedAt">[] | undefined,
+  now: number,
+): boolean {
+  return readerBadgeShown(items, now, RULES_NEW_BADGE);
 }
 
 /**
