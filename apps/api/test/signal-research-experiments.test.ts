@@ -13,7 +13,8 @@ import {
   type BotVersionConfig,
   type ResearchVersion,
 } from "@drift/shared";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import type { z } from "zod";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
@@ -45,10 +46,27 @@ async function advance(days: number) {
 const post = (path: string, body: unknown) =>
   team.request("POST", `${base}${path}`, { body, idempotencyKey: randomUUID() });
 const errOf = (r: { json: () => unknown }) => errorResponseSchema.parse(r.json()).error;
+/** #400: parse body; lỗi thì in kèm giá trị thật của field hỏng (và body rút gọn) để biết vì sao. */
+function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
+  const p = schema.safeParse(body);
+  if (p.success) return p.data;
+  const actual = p.error.issues.map((i) => {
+    const value = i.path.reduce<unknown>(
+      (o, k) =>
+        o !== null && typeof o === "object" ? (o as Record<PropertyKey, unknown>)[k] : undefined,
+      body,
+    );
+    return `${i.path.join(".")} = ${JSON.stringify(value)} (${i.message})`;
+  });
+  const raw = JSON.stringify(body);
+  throw new Error(
+    `response does not match schema:\n${actual.join("\n")}\nbody: ${raw.length > 1500 ? `${raw.slice(0, 1500)}…` : raw}`,
+  );
+}
 const list = async () => {
   const r = await team.request("GET", `${base}/versions`);
   expect(r.statusCode).toBe(200);
-  return researchVersionsSchema.parse(r.json());
+  return parseBody(researchVersionsSchema, r.json());
 };
 const item = async (id: string): Promise<ResearchVersion> => {
   const v = (await list()).items.find((x) => x.id === id);
@@ -69,7 +87,7 @@ async function create(
     hypothesis: opts.hypothesis ?? HYP,
   });
   expect(r.statusCode).toBe(201);
-  return researchVersionCreatedSchema.parse(r.json());
+  return parseBody(researchVersionCreatedSchema, r.json());
 }
 
 /**
@@ -129,8 +147,36 @@ beforeAll(async () => {
   );
 });
 
+// #400: mỗi test dừng version nó để lại (running / paused), để một test fail giữa chừng không giữ chỗ chạy (tối đa 3) hay
+// làm `finishSignalExperiments` của test sau thấy version lạ.
+afterEach(async () => {
+  const left = await env.pool.query<{ id: string }>(
+    "select id from signal_bot_versions where not is_baseline and status in ('running', 'paused')",
+  );
+  for (const { id } of left.rows)
+    await setSignalBotVersionStatus(env.db, { id, status: "stopped", userId: null });
+});
+
 afterAll(async () => {
   await env.close();
+});
+
+describe("experiments: who saved it (#400)", () => {
+  it("returns the saver's id tail as is even when it looks like a number (1e05)", async () => {
+    // Đuôi "1e05" từng bị hook plain-decimals đổi thành "100000" (khoảng 3 % id user), làm cả file test chập chờn.
+    const email = `exp-tail-${randomUUID()}@drift.test`;
+    const userId = `${randomUUID().slice(0, -4)}1e05`;
+    await env.pool.query("insert into users (id, email, role) values ($1, $2, 'team')", [
+      userId,
+      email,
+    ]);
+    team = new TestClient(env.app);
+    expect(meSchema.parse((await signIn(env, team, email)).json()).id).toBe(userId);
+    const v = await create("Tail like a number", { ...cfg, minLevel: "medium" });
+    expect(v.createdBy).toBe("1e05");
+    expect((await item(v.id)).createdBy).toBe("1e05");
+    await signInTeam();
+  });
 });
 
 describe("experiments: hypothesis (#377)", () => {
@@ -352,8 +398,7 @@ describe("experiments: paired with Baseline, Finished at 100 pairs (#377)", () =
       await env.pool.query(
         `update signal_bot_versions set running_periods = '[{"from":"2026-01-01T00:00:00.000Z","to":null}]' where is_baseline`,
       );
-      // Nhường chỗ chạy (tối đa 3) cho test sau.
-      await setSignalBotVersionStatus(env.db, { id: v.id, status: "stopped", userId: null });
+      // Version của test được afterEach dừng (nhường chỗ chạy cho test sau).
     }
   });
 
