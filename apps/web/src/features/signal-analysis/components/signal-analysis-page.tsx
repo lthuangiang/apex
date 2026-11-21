@@ -14,6 +14,7 @@ import { ResearchTab } from "../research/research-tab";
 
 import { AllTab } from "./all-tab";
 import { MmTab } from "./mm-tab";
+import type { PageCtx, PageMeta } from "./page-ctx";
 import { VbTab } from "./vb-tab";
 
 // Signal Analysis (team, #233, docs/mockups/signal-analysis): tab All / Volume Builder / Market Making. Chỉ đọc, chỉ bot
@@ -21,20 +22,14 @@ import { VbTab } from "./vb-tab";
 // mọi tab. Mọi số đến từ `/api/v1/admin/signal-analysis/*` (role team); bundle chỉ có cách hiển thị. Tab Signal research
 // (#273, docs/mockups/signal-research) đọc `/api/v1/admin/signal-research/*` (#271): chỉ nghiên cứu, tiền giả.
 
-type Meta = { bots: number | null; computedAt: string } | null;
+type Meta = PageMeta;
 
 export type Tab = "all" | "vb" | "mm" | "research";
 const TABS: Tab[] = ["all", "vb", "mm", "research"];
 /** Nhãn ngắn dưới 768px (mockup signal-research/mobile.html). */
 const SHORT: Partial<Record<Tab, "vbShort" | "mmShort">> = { vb: "vbShort", mm: "mmShort" };
 
-export interface PageCtx {
-  tz: string;
-  utc: boolean;
-  /** Tab báo số bot (null = không hiện trên tab) và lúc tính để header hiện. */
-  onMeta: (m: Meta) => void;
-  onForbidden: () => void;
-}
+export type { PageCtx } from "./page-ctx";
 
 export function SignalAnalysisPage() {
   const t = useTranslations("signalAnalysis");

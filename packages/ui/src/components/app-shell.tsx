@@ -20,6 +20,8 @@ export interface NavItem {
    * có nhãn nhỏ; mục không có `section` nằm trong khối không nhãn.
    */
   section?: string;
+  /** Nhãn nhỏ sau tên mục (ví dụ "BETA" của Signal Research, #423), đẩy về mép phải của dòng. */
+  badge?: ReactNode;
 }
 
 export interface NavLinkProps {
@@ -111,6 +113,9 @@ export function AppShell({
             {item.icon}
           </span>
           {item.label}
+          {item.badge === undefined ? null : (
+            <span className="ml-auto flex-none">{item.badge}</span>
+          )}
         </>,
       )}
     </li>
@@ -230,6 +235,9 @@ function MobileBottomNav({
             {item.icon}
           </span>
           {item.label}
+          {item.badge === undefined ? null : (
+            <span className="ml-auto flex-none">{item.badge}</span>
+          )}
         </>,
       )}
     </li>

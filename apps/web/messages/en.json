@@ -58,7 +58,8 @@
       "marketHours": "Market hours",
       "architecture": "System Architecture Diagram",
       "sodexDebugger": "SoDEX Debugger",
-      "signalAnalysis": "Signal Analysis"
+      "signalAnalysis": "Signal Analysis",
+      "signalResearch": "Signal Research"
     },
     "dialog": {
       "consequences": "What happens"
@@ -4518,7 +4519,8 @@
       "actions": "Actions",
       "volumeBots": "Volume bots",
       "aiDesk": "AI Desk",
-      "adaptiveDca": "Adaptive DCA"
+      "adaptiveDca": "Adaptive DCA",
+      "signalResearch": "Signal Research"
     },
     "team": "Team",
     "notConnected": "Not connected",
@@ -4601,6 +4603,11 @@
         "one": "AI Adaptive DCA disappears from their Strategy Lab.",
         "two": "Running Adaptive DCA bots are paused. Open positions stay open until the user closes them."
       }
+    },
+    "signalResearch": {
+      "onLabel": "Turn on Signal Research for {email}",
+      "offLabel": "Turn off Signal Research for {email}",
+      "error": "Couldn’t save the change. Try again."
     }
   },
   "landing": {
@@ -9008,7 +9015,9 @@
         "resultHidden": "Result hidden while labelling",
         "noTrades": "No trade was opened from this article.",
         "trade": "{side} · {outcome}",
-        "tradeOpen": "{side} · open"
+        "tradeOpen": "{side} · open",
+        "testers": "Test users: {n, plural, one {# label} other {# labels}}, not counted",
+        "testersAgree": "agree with the team on {agree} of {compared} ({pct}%)"
       },
       "page": {
         "banner": {
@@ -9222,7 +9231,10 @@
             },
             "never": "<b>Never:</b> no order is sent to SoDEX and no user money is touched. Claude only names the news type. The side, TP and SL come from the rules table and price data, so every decision can be replayed."
           }
-        }
+        },
+        "teamGroup": "Team versions · view only",
+        "myGroup": "My versions · {n} of {max} running",
+        "myOption": "My · {name} (v{n})"
       },
       "context": {
         "recordsOnly": "saved, not used yet",
@@ -9467,7 +9479,8 @@
         "contextAnswered": "Context: {n, plural, one {# question} other {# questions}} compared",
         "contextNa": "Context:",
         "labelSignals": "Label signals",
-        "manage": "Manage versions"
+        "manage": "Manage versions",
+        "lineNameMine": "News bot · My · {name} (v{n})"
       },
       "botsLabels": {
         "title": "Bots & labels",
@@ -9655,5 +9668,9 @@
       }
     },
     "pricesMainnet": "Prices from mainnet"
+  },
+  "signalResearch": {
+    "title": "Signal Research",
+    "lede": "Crypto news turned into signals, tested with paper trades before any real money."
   }
 }
