@@ -217,7 +217,11 @@ const spacing: FieldSpec = {
   type: enumOf("spacing", ["arithmetic", "geometric"]),
 };
 
-export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
+/**
+ * Field của form Create / Edit ở Strategy Lab. `news_signal` (#419) không có ở đây: bot đó tạo từ trang Signal research
+ * (trình sửa version), nên `isLaunched` trả false và Strategy Lab không có thẻ hay route `/bots/new/news_signal`.
+ */
+export const FIELDS: Record<Exclude<Strategy, "news_signal">, readonly FieldSpec[]> = {
   spot_grid: [
     { key: "market", group: 2, locked: true, type: { kind: "market", engine: "spot" } },
     { key: "investment", group: 3, amount: true, type: dec("quote") },

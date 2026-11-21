@@ -120,6 +120,21 @@ export const SignalReason = {
   maxHold: "MAX_HOLD",
   /** Đóng vì tin ngược chiều (version chọn Close at market). */
   oppositeNews: "OPPOSITE_NEWS",
+  // bot `news_signal` mainnet, ghi theo từng bot (#419, DEC-360)
+  /** Tài sản không thuộc Markets của bot (bot đã thu hẹp so với version gốc). */
+  assetNotInBot: "ASSET_NOT_IN_BOT",
+  /** Tín hiệu tới bot đã quá `NEWS_SIGNAL_TTL_MS`: không vào lệnh. */
+  signalStale: "SIGNAL_STALE",
+  /** Bot đang pause (hoặc không running) lúc tín hiệu tới: không mở lệnh mới. */
+  botPaused: "BOT_PAUSED",
+  /** Tín hiệu ghi trước lúc Resume: không vào bù tín hiệu đã lỡ. */
+  missedWhilePaused: "MISSED_WHILE_PAUSED",
+  /** Account × market này đã có một lệnh `news_signal` mainnet đang mở (của bot này hoặc bot khác). */
+  accountMarketBusy: "ACCOUNT_MARKET_BUSY",
+  /** Giá trần × khối lượng vượt trần size mainnet `NEWS_SIGNAL_LIVE_MAX_USDC`: không gửi lệnh. */
+  newsCapExceeded: "NEWS_CAP_EXCEEDED",
+  /** Lệnh vào limit IOC không khớp gì trong giá trần: bỏ tín hiệu, không đuổi giá. */
+  entryNotFilled: "ENTRY_NOT_FILLED",
 } as const;
 export type SignalReason = (typeof SignalReason)[keyof typeof SignalReason];
 

@@ -23,6 +23,8 @@ const CHART_MODE: Record<Strategy, ChartMode> = {
   volume_farm: "price",
   adaptive_dca: "price",
   copy_trade: "price",
+  // Bot tín hiệu tin tức (#419) chạy nhiều market, không có màn Create ở Strategy Lab.
+  news_signal: "none",
 };
 
 export function chartModeOf(strategy: Strategy): ChartMode {
@@ -113,6 +115,7 @@ export function chartLevels(
     case "volume_farm":
     case "adaptive_dca":
     case "copy_trade":
+    case "news_signal":
       return [];
   }
 }
