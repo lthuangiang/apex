@@ -11,7 +11,7 @@ Not financial advice. Past results are not a forecast.
 ## Kỹ thuật
 
 **Signal research (chỉ team, paper trading, không bao giờ gửi lệnh tới SoDEX)**
-- Chu kỳ tin chỉnh bằng env (#394, DEC-TBD-sr-news-cycle-env, **chưa merge**):
+- Chu kỳ tin chỉnh bằng env (#394, DEC-352, **chưa merge**):
   - `SIGNAL_NEWS_CYCLE_MINUTES` (1–5, mặc định 5) cho scheduler; đặt 1 thì cả vòng Collect → Decide chạy mỗi phút. Giá trị sai → 5 kèm cảnh báo.
   - Tôn trọng 20 request / phút của SoSoValue: scheduler tự chặn (đếm cả trang sau); HTTP 429 / `code` 42901 → dừng chu kỳ, nguồn `rate_limited` ("Delayed"), không lưu bài của chu kỳ đó, con trỏ không tiến, chu kỳ sau thử lại.
   - Trần gọi Claude chia theo chu kỳ (50 mỗi 5 phút → 10 mỗi chu kỳ 1 phút), ngưỡng Live của nguồn SoSoValue = chu kỳ + 2 phút.
