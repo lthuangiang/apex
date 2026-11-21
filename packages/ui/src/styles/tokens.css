@@ -36,6 +36,10 @@
   --unknown: #5a2ca0;
   --unknown-bg: #f0e6ff;
 
+  /* #413: chip / banner của dữ liệu thuộc version Rules cũ (mockup history-across-versions). */
+  --old: #6b5a2e;
+  --old-bg: #f3ecdc;
+
   --bot-orange: #ffe3c7;
   --bot-teal: #cdf1ec;
 

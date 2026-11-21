@@ -1,6 +1,6 @@
 "use client";
 
-import type { ResearchRange, ResearchSummary } from "@drift/shared";
+import type { ResearchRange } from "@drift/shared";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -27,22 +27,6 @@ import { ResearchTrades } from "./trades";
 // bộ chọn Version cho cả trang (query `?version=`) và drawer How it works (research/how-it-works.tsx). Trang gọn (mockup
 // compact-*.html, duyệt 2026-11-20): dải tóm tắt → From headline to trade → Is it working? → Paper trades → Bots & labels
 // (gập sẵn).
-
-const RANGE_MS: Record<ResearchRange, number> = { "1d": 86_400_000, "7d": 7 * 86_400_000 };
-
-/**
- * #321: phễu chỉ đếm quy tắc hiện tại; quy tắc đó bắt đầu sau đầu khoảng đã chọn thì trả mốc để ghi "Since rules v3
- * started …" (không thì người xem tưởng thu tin bị hỏng). null khi quy tắc đã chạy hết khoảng hoặc thiếu số.
- */
-export function rulesSinceOf(
-  v: Pick<ResearchSummary, "computedAt" | "newsRulesSince" | "newsRulesVersion">,
-  range: ResearchRange,
-): { v: number; at: string; sameDay: boolean } | null {
-  if (v.newsRulesSince === null || v.newsRulesVersion === null) return null;
-  const age = Date.parse(v.computedAt) - Date.parse(v.newsRulesSince);
-  if (age >= RANGE_MS[range]) return null;
-  return { v: v.newsRulesVersion, at: v.newsRulesSince, sameDay: age < RANGE_MS["1d"] };
-}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -154,7 +138,8 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
             onRange={setRange}
             request={trace}
             versionId={versionId}
-            rulesSince={rulesSinceOf(v, range)}
+            currentRules={v.newsRulesVersion}
+            rulesHistory={v.rulesHistory}
             cycleMinutes={v.cycleMinutes}
           />
           <IsItWorking
@@ -170,6 +155,10 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
           assets={v.assets}
           versionId={versionId}
           older={v.olderRules}
+          currentRules={v.newsRulesVersion}
+          currentTrades={
+            v.rows.find((r) => r.type === "news" && r.label === "live")?.opened ?? null
+          }
           onTrace={(id) => {
             setTrace((x) => ({ id, seq: (x?.seq ?? 0) + 1 }));
           }}

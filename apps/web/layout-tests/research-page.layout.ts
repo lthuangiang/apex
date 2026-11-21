@@ -17,7 +17,36 @@ import {
 // của khung 4 · Context (svg dài hơn khung) và bảng Paper trades kéo giãn trang thêm ~449 px. Khi fail, test in danh sách
 // phần tử tràn (right > clientWidth) kèm testid / class để biết chính xác chỗ nào.
 
-async function open(page: Page, baseURL: string | undefined) {
+/**
+ * #413: dữ liệu có hai version Rules: Rules v3 hiện tại, bài / lệnh của Rules v2 là lịch sử (chip, dòng ngăn cách, câu
+ * "all rules" dưới phễu, banner ở trace, nút Current / All rules).
+ */
+const OLD = new Set(["art-sol", "art-kntq", "art-merged"]);
+const HISTORY_SUMMARY = {
+  ...SUMMARY_1D,
+  newsRulesVersion: 3,
+  olderRules: { trades: 2, versions: [2] },
+  rulesHistory: [
+    { v: 2, startedAt: "2026-11-01T00:00:00.000Z", reader: "news-classifier-v2" },
+    { v: 3, startedAt: "2026-11-19T03:18:00.000Z", reader: "news-classifier-v3" },
+  ],
+  funnel:
+    SUMMARY_1D.funnel === null
+      ? null
+      : {
+          ...SUMMARY_1D.funnel,
+          rules: [
+            { v: 2, articles: 40 },
+            { v: 3, articles: 18 },
+          ],
+        },
+};
+const withRules = <T extends { id: string }>(a: T) =>
+  OLD.has(a.id)
+    ? { ...a, rulesVersion: 2, readerVersion: "news-classifier-v2" }
+    : { ...a, rulesVersion: 3, readerVersion: "news-classifier-v3" };
+
+async function open(page: Page, baseURL: string | undefined, history = false) {
   await page
     .context()
     .addCookies([{ name: "drift_session", value: "x", url: baseURL ?? "http://127.0.0.1" }]);
@@ -25,18 +54,31 @@ async function open(page: Page, baseURL: string | undefined) {
     const p = new URL(r.request().url()).pathname;
     const json = (body: unknown, status = 200) =>
       r.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-    if (p.endsWith("/signal-research/summary")) return json(SUMMARY_1D);
-    if (p.endsWith("/signal-research/trades")) return json(RESEARCH_TRADES);
+    if (p.endsWith("/signal-research/summary")) return json(history ? HISTORY_SUMMARY : SUMMARY_1D);
+    if (p.endsWith("/signal-research/trades"))
+      return json(
+        history
+          ? {
+              ...RESEARCH_TRADES,
+              items: RESEARCH_TRADES.items.map((x, i) => ({ ...x, rulesVersion: i === 0 ? 3 : 2 })),
+            }
+          : RESEARCH_TRADES,
+      );
     if (p.endsWith("/signal-research/articles/new")) return json({ items: [], since: "c1" });
     if (p.endsWith("/signal-research/latency")) return json(LATENCY_1D);
     if (p.endsWith("/signal-research/versions")) return json(VERSIONS);
     if (p.endsWith("/signal-research/classifiers")) return json(CLASSIFIERS);
     if (p.endsWith("/signal-research/markets")) return json(MARKETS);
     if (p.endsWith("/signal-research/articles"))
-      return json({ items: ARTICLES, nextCursor: null, total: ARTICLES.length, totalInRange: 58 });
+      return json({
+        items: history ? ARTICLES.map(withRules) : ARTICLES,
+        nextCursor: null,
+        total: ARTICLES.length,
+        totalInRange: 58,
+      });
     const m = /\/signal-research\/articles\/([^/]+)\/trace$/.exec(p);
     const tr = m === null ? undefined : TRACES[decodeURIComponent(m[1] ?? "")];
-    if (tr !== undefined) return json(tr);
+    if (tr !== undefined) return json(history ? { ...tr, article: withRules(tr.article) } : tr);
     return json({ error: { code: "NOT_FOUND", message: "Not found." } }, 404);
   });
   await page.goto("/admin/signal-analysis?tab=research");
@@ -146,5 +188,25 @@ for (const narrow of [false, true]) {
       await expect(tab).toHaveAttribute("aria-selected", "true");
       await expectNoSideScroll(page, `Is it working? › ${name}`);
     }
+  });
+
+  test(`history across Rules versions${tag}: chips, divider, banner and All rules do not scroll sideways (#413)`, async ({
+    page,
+    baseURL,
+  }) => {
+    if (narrow) await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, baseURL, true);
+    await expect(page.getByTestId("sr-rules-divider").first()).toBeVisible();
+    await expect(page.getByTestId("sr-rules-split")).toBeVisible();
+    await expectNoSideScroll(page, "history · totals");
+    await page.getByRole("radio", { name: "All rules" }).click();
+    await expect(page.getByTestId("sr-all-rules-sum")).toBeVisible();
+    await expectNoSideScroll(page, "history · All rules");
+    await page
+      .getByRole("button", { name: /Solana Foundation flags exploit/ })
+      .first()
+      .click();
+    await expect(page.getByTestId("sr-old-rules-banner")).toBeVisible();
+    await expectNoSideScroll(page, "history · old trace");
   });
 }

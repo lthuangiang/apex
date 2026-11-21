@@ -31,6 +31,8 @@
   --color-warn-bar: var(--warn-bar);
   --color-unknown: var(--unknown);
   --color-unknown-bg: var(--unknown-bg);
+  --color-old: var(--old);
+  --color-old-bg: var(--old-bg);
   --color-bot-orange: var(--bot-orange);
   --color-bot-teal: var(--bot-teal);
   --color-cat-grid-ink: var(--cat-grid-ink);

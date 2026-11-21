@@ -222,6 +222,12 @@ export const researchFunnelSchema = z.object({
    * giữ "records only").
    */
   context: z.object({ reached: int, h1Yes: int, h2Yes: int, h3Yes: int }).nullable(),
+  /**
+   * #413 (DEC-357): số bài thu trong khoảng theo từng version Rules (`v` = số version), tăng
+   * dần. Có `range` thì phễu đếm mọi version (câu "{a} articles ran on Rules v3 …, {b} on Rules v4"); không có `range`
+   * thì chỉ version hiện tại như trước.
+   */
+  rules: z.array(z.object({ v: int, articles: int })),
 });
 
 export const researchLevelRowSchema = z.object({
@@ -603,6 +609,14 @@ export const researchSummarySchema = z.object({
    * `olderRules=true`.
    */
   olderRules: z.object({ trades: int, versions: z.array(int) }),
+  /**
+   * #413: mỗi version Rules đã có bài, tăng dần: `startedAt` = lần đầu thấy version đó (event sớm nhất của version), null khi
+   * không có event; `reader` = prompt Claude của bài được phân loại sớm nhất trong version đó (`news-classifier-v4`), null
+   * khi chưa có. Web dùng cho dòng ngăn cách "Rules v4 · Claude reader v4 started · {date}" của feed và câu "until {date}".
+   */
+  rulesHistory: z.array(
+    z.object({ v: int, startedAt: iso.nullable(), reader: z.string().nullable() }),
+  ),
 });
 
 export const researchWhatSchema = z.discriminatedUnion("type", [
@@ -853,7 +867,8 @@ export const researchTradeDetailSchema = z.object({
 
 // ── Feed bài và trace từng bài (#291, thiết kế docs/mockups/signal-research/news-trace.html) ─────────────────────────
 
-export const RESEARCH_RANGES = ["1d", "7d"] as const;
+/** #413: 30 ngày cho feed / phễu (gồm mọi version Rules). */
+export const RESEARCH_RANGES = ["1d", "7d", "30d"] as const;
 /** Năm bước của phễu; `score` = bước `understand` nội bộ (Claude + quy tắc). */
 export const RESEARCH_STAGES = ["collect", "normalize", "score", "filter", "decide"] as const;
 export const RESEARCH_ARTICLE_SHOWS = ["all", "traded", "dropped", "claude"] as const;
@@ -936,6 +951,10 @@ export const researchArticleSchema = z.object({
     .nullable(),
   /** #329: cờ ngữ cảnh lúc quyết định (dùng chung mọi version); null khi bài không có snapshot. */
   context: researchContextFlagsSchema.nullable(),
+  /** #413: version Rules mà bài đã chạy (`news-v3` → 3); feed / trace hiện bài của mọi version. */
+  rulesVersion: int,
+  /** #413: prompt Claude đã đọc bài (`news-classifier-v3`); null khi bài chưa gửi Claude hoặc không lưu. */
+  readerVersion: z.string().nullable(),
 });
 
 export const researchArticlesPageSchema = z.object({

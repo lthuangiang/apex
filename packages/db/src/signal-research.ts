@@ -55,6 +55,7 @@ import {
   or,
   sql,
   sum,
+  type AnyColumn,
   type SQL,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -351,6 +352,10 @@ export async function loadSignalResearchSummary(
   const today = utcDay(nowMs);
   // #291: `range` chỉ đổi phễu (`funnel`); bảng mức, cổng, Long / Short luôn tính mọi lệnh của version hiện tại.
   const since = range === undefined ? null : rangeSince(now, range);
+  // #413 (DEC-357): phễu theo khoảng gồm MỌI version Rules (đổi version chỉ reset phần đếm,
+  // không ẩn dữ liệu). Không có khoảng thì như trước: chỉ version hiện tại. Is it working? / cổng luôn chỉ version hiện tại.
+  const allRules = since !== null;
+  const funnelRule = (col: AnyColumn) => (allRules ? undefined : eq(col, v));
 
   const usage = await q
     .select()
@@ -376,7 +381,9 @@ export async function loadSignalResearchSummary(
       : await q
           .select({ n: count() })
           .from(signalArticles)
-          .where(and(eq(signalArticles.ruleVersion, v), gte(signalArticles.collectedAt, since)));
+          .where(
+            and(funnelRule(signalArticles.ruleVersion), gte(signalArticles.collectedAt, since)),
+          );
   check();
   // #343: chi phí Claude trong đúng cửa sổ của phễu, cùng tập bài với "articles read" (không trộn ngày UTC với 24 giờ).
   const claudeCost = claudeCostOf(
@@ -394,7 +401,7 @@ export async function loadSignalResearchSummary(
       .from(signalArticles)
       .where(
         and(
-          eq(signalArticles.ruleVersion, v),
+          funnelRule(signalArticles.ruleVersion),
           since === null ? undefined : gte(signalArticles.collectedAt, since),
           or(isNotNull(signalArticles.claudeCalls), isNotNull(signalArticles.classifiedAt)),
         ),
@@ -411,7 +418,7 @@ export async function loadSignalResearchSummary(
     .from(signalArticles)
     .where(
       and(
-        eq(signalArticles.ruleVersion, v),
+        funnelRule(signalArticles.ruleVersion),
         sql`${signalArticles.status} <> 'backlog'`,
         since === null ? undefined : gte(signalArticles.collectedAt, since),
       ),
@@ -427,7 +434,7 @@ export async function loadSignalResearchSummary(
     .from(signalEvents)
     .where(
       and(
-        eq(signalEvents.ruleVersion, v),
+        funnelRule(signalEvents.ruleVersion),
         since === null ? undefined : gte(signalEvents.at, since),
         versionEventWhere(scope),
       ),
@@ -446,10 +453,25 @@ export async function loadSignalResearchSummary(
     .where(and(eq(signalStories.ruleVersion, v), versionStoryWhere(scope)))
     .orderBy(asc(signalStories.storyKey), asc(signalStories.firstSeenAt));
   const stories = logicalStories(storyRows);
+  // #413: story của phễu theo khoảng gồm mọi version Rules; bảng mức / cổng (`stories`) vẫn chỉ version hiện tại.
   const funnelStories =
-    since === null ? stories : logicalStories(storyRows.filter((r) => r.at >= since));
+    since === null
+      ? stories
+      : logicalStories(
+          await q
+            .select({
+              key: signalStories.storyKey,
+              at: signalStories.firstSeenAt,
+              entry: signalStories.levelAtEntry,
+              later: signalStories.laterLevel,
+              locked: signalStories.locked,
+            })
+            .from(signalStories)
+            .where(and(gte(signalStories.firstSeenAt, since), versionStoryWhere(scope)))
+            .orderBy(asc(signalStories.storyKey), asc(signalStories.firstSeenAt)),
+        );
   check();
-  const articleStops = await loadArticleStops(q, since, scope);
+  const articleStops = await loadArticleStops(q, since, scope, allRules);
   check();
   // #358: tầng 4 · Context của phễu: snapshot live của bài thu trong khoảng (cùng đơn vị với `articleStops`).
   const [ctxRow] = await q
@@ -464,10 +486,10 @@ export async function loadSignalResearchSummary(
     .where(
       and(
         eq(signalContexts.source, "live"),
-        eq(signalContexts.ruleVersion, v),
+        funnelRule(signalContexts.ruleVersion),
         // #353: chỉ context version hiện tại (không gộp H1 context-v1 với v2).
         eq(signalContexts.contextVersion, SIGNAL_CONTEXT_VERSION),
-        eq(signalArticles.ruleVersion, v),
+        funnelRule(signalArticles.ruleVersion),
         since === null ? undefined : gte(signalArticles.collectedAt, since),
       ),
     );
@@ -505,7 +527,30 @@ export async function loadSignalResearchSummary(
       : openPnls.reduce<Decimal>((acc, x) => acc.add(x ?? 0), new Decimal(0));
   // Phễu theo khoảng (#297): cùng đơn vị với `articleStops` (bài THU trong khoảng). Lệnh tính theo bài đã mở nó
   // (`seen_at` = giờ thu bài đó), không theo giờ mở lệnh, để Long + Short khớp số bài tới Decide.
-  const inRange = since === null ? all : all.filter((t) => t.seenAt >= since);
+  // #413: theo khoảng thì gồm lệnh của mọi version Rules (cùng tập bài với `articleStops`).
+  const inRange =
+    since === null
+      ? all
+      : await q
+          .select()
+          .from(signalPaperTrades)
+          .where(
+            and(liveNewsHistory(), versionTradeWhere(scope), gte(signalPaperTrades.seenAt, since)),
+          );
+  check();
+  // #413: số bài trong khoảng theo version Rules, và mốc bắt đầu / reader của từng version (dòng ngăn cách của feed).
+  const rulesInRange =
+    since === null
+      ? null
+      : await q
+          .select({ rule: signalArticles.ruleVersion, n: count() })
+          .from(signalArticles)
+          .where(
+            and(sql`${signalArticles.status} <> 'backlog'`, gte(signalArticles.collectedAt, since)),
+          )
+          .groupBy(signalArticles.ruleVersion);
+  const rulesHistory = await loadRulesHistory(q);
+  check();
   const steps = funnelSteps(articleStops);
   const closedInRange = inRange.filter((t) => t.status === "closed" && t.resultPct !== null);
 
@@ -685,7 +730,9 @@ export async function loadSignalResearchSummary(
               ? 1
               : range === "7d"
                 ? 7
-                : Math.max(1, Math.ceil((nowMs - enabledSince.getTime()) / DAY_MS)),
+                : range === "30d"
+                  ? 30
+                  : Math.max(1, Math.ceil((nowMs - enabledSince.getTime()) / DAY_MS)),
           delayMedianSecs: delay?.secs == null ? null : Math.round(Number(delay.secs)),
           claudeCostPerDay:
             costs.length === 0
@@ -723,6 +770,12 @@ export async function loadSignalResearchSummary(
             open: inRange.filter((t) => t.status !== "closed").length,
           },
           context: funnelContext,
+          rules:
+            rulesInRange === null
+              ? [{ v: NEWS_RULES.versionNumber, articles: steps[0]?.in ?? 0 }]
+              : rulesInRange
+                  .map((r) => ({ v: versionNumberOf(r.rule), articles: r.n }))
+                  .sort((a, b) => a.v - b.v),
         }
       : null,
     cycleMinutes,
@@ -795,7 +848,34 @@ export async function loadSignalResearchSummary(
       trades: older.reduce((acc, r) => acc + r.n, 0),
       versions: [...new Set(older.map((r) => versionNumberOf(r.rule)))].sort((a, b) => a - b),
     },
+    rulesHistory,
   };
+}
+
+/**
+ * #413: mỗi version Rules đã có bài (không tính backlog), tăng dần. `startedAt` = event sớm nhất của version đó (lần đầu
+ * pipeline chạy theo luật đó; bài đang dở được chuyển sang version mới khi deploy vẫn giữ giờ thu cũ, nên không lấy
+ * `collected_at`); `reader` = prompt Claude của bài được phân loại sớm nhất trong version. Không có thì null, không đoán.
+ */
+async function loadRulesHistory(q: Q): Promise<ResearchSummary["rulesHistory"]> {
+  const readers = await q.execute<{ rule: string; reader: string | null }>(sql`
+    select rule_version as rule,
+      (array_agg(claude_prompt_version order by classified_at asc nulls last, id)
+        filter (where claude_prompt_version is not null))[1] as reader
+    from signal_articles where status <> 'backlog' group by rule_version`);
+  const starts = await q.execute<{ rule: string; at: Date | string | null }>(sql`
+    select rule_version as rule, min(at) as at from signal_events group by rule_version`);
+  const startOf = new Map(starts.rows.map((r) => [r.rule, r.at]));
+  return readers.rows
+    .map((r) => {
+      const at = startOf.get(r.rule) ?? null;
+      return {
+        v: versionNumberOf(r.rule),
+        startedAt: at === null ? null : iso(at instanceof Date ? at : new Date(at)),
+        reader: r.reader,
+      };
+    })
+    .sort((a, b) => a.v - b.v);
 }
 
 /** Số liệu thô cho CLI: lý do nội bộ, phân bố loại tin, Claude theo ngày, baseline. */

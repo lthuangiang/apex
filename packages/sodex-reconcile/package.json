@@ -1,0 +1,23 @@
+{
+  "name": "@drift/sodex-reconcile",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@drift/db": "workspace:*",
+    "@drift/shared": "workspace:*",
+    "@drift/sodex": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "viem": "2.57.12",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5"
+  }
+}

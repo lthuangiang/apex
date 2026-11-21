@@ -212,7 +212,7 @@ describe("Signal research · news feed and funnel trace", { timeout: 30_000 }, (
         "Every article, what happened to it, and why. Pick one to watch it go through.",
       ),
     ).toBeInTheDocument();
-    expect(within(f).getByRole("button", { name: "1 day" })).toHaveAttribute(
+    expect(within(f).getByRole("button", { name: "Last 24 h" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
