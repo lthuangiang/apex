@@ -134,3 +134,18 @@ describe("funnel band contrast (#343): 4.5:1 on the light funnel", () => {
       expect(globals).toContain(`@keyframes ${k} `);
   });
 });
+
+describe("trace text for a test user (#423)", () => {
+  it("no Claude tokens / cost rows and no cost in the verdict when the viewer can't see Claude cost", () => {
+    const team = traceView(ETH_TRACE, "UTC", t);
+    const tester = traceView(ETH_TRACE, "UTC", t, () => null, false);
+    const labels = (v: typeof team) => v.steps[2]?.rows.map((r) => r.label) ?? [];
+    expect(labels(team)).toContain("Claude cost");
+    expect(labels(tester)).not.toContain("Claude cost");
+    expect(labels(tester)).not.toContain("Tokens");
+    expect(team.cost).not.toBeNull();
+    expect(tester.cost).toBeNull();
+    expect(tester.steps[2]?.short).not.toMatch(/\$/);
+    expect(tester.verdict).toBe(team.verdict);
+  });
+});
