@@ -1,6 +1,7 @@
 import {
   adminUsersQuerySchema,
   adminAdaptiveDcaBodySchema,
+  adminSignalResearchBodySchema,
   adminAiDeskBodySchema,
   adminBuilderFeeBodySchema,
   adminVolumeBotsBodySchema,
@@ -25,6 +26,7 @@ import {
   adminUserDetail,
   adminUsers,
   setAdaptiveDca,
+  setSignalResearch,
   setAiDesk,
   setVolumeBots,
   analyst,
@@ -151,6 +153,13 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
     const { id } = parseOrThrow(z.object({ id: z.uuid() }), request.params);
     const body = parseOrThrow(adminAdaptiveDcaBodySchema, request.body);
     return setAdaptiveDca(deps, auth.userId, id, body.enabled, request.ip);
+  });
+
+  app.post("/api/v1/admin/users/:id/signal-research", async (request) => {
+    const auth = requireAuth(request);
+    const { id } = parseOrThrow(z.object({ id: z.uuid() }), request.params);
+    const body = parseOrThrow(adminSignalResearchBodySchema, request.body);
+    return setSignalResearch(deps, auth.userId, id, body.enabled, request.ip);
   });
 
   app.put("/api/v1/admin/users/:id/builder-fees", async (request) => {

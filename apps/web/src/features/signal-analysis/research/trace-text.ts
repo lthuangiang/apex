@@ -42,6 +42,7 @@ export function claudeCost(sent: boolean, usage: ResearchClaudeUsage | null, t: 
   const c = usage?.costUsd ?? null;
   return c === null ? null : usd4(c);
 }
+const claudeCostText = claudeCost;
 
 export function assetsText(a: ResearchArticle, t: Tr): string {
   return a.tagged.length === 0 ? t("trace.noCoin") : a.tagged.join(", ");
@@ -110,8 +111,11 @@ export interface TraceView {
   assets: string;
   /** Câu kết luận (không có phần chi phí Claude). */
   verdict: string;
-  /** "Claude $0.0021" / "No Claude call" / "Claude cost not available". */
-  cost: string;
+  /**
+   * "Claude $0.0021" / "No Claude call" / "Claude cost not available"; null khi người xem không thấy chi phí Claude
+   * (người dùng test, #423).
+   */
+  cost: string | null;
 }
 
 const PCT_NA = (v: number | null, f: (n: number) => string): string | null =>
@@ -224,6 +228,8 @@ interface StepCtx {
   story: TraceStory;
   /** Tick size của market (danh sách market SoDEX); null khi chưa biết. */
   tickOf: (market: string) => string | null;
+  /** #423: false = người dùng test, không có token / chi phí Claude trên thẻ Score. */
+  claudeCost: boolean;
 }
 
 /**
@@ -235,6 +241,8 @@ export function traceView(
   tz: string,
   t: Tr,
   tickOf: (market: string) => string | null = () => null,
+  /** #423: false = người dùng test (trang Signal Research BETA): bỏ mọi dòng chi phí / token Claude. */
+  claudeCost = true,
 ): TraceView {
   const a = tr.article;
   const assets = assetsText(a, t);
@@ -247,7 +255,7 @@ export function traceView(
     (normalize?.key === "normalize" ? normalize.detail?.candidates[0]?.market : undefined) ??
     assets;
   const steps: StepView[] = tr.steps.map((s) =>
-    stepView(s, a, { market, story: story ?? null, tickOf }, tz, t),
+    stepView(s, a, { market, story: story ?? null, tickOf, claudeCost }, tz, t),
   );
   let last = 0;
   tr.steps.forEach((s, i) => {
@@ -298,9 +306,10 @@ export function traceView(
   } else {
     verdict = t("trace.verdict.waiting", { stage: stageName });
   }
-  const c = claudeCost(a.sentToClaude, a.claude, t);
-  const cost =
-    c === null
+  const c = claudeCost ? claudeCostText(a.sentToClaude, a.claude, t) : null;
+  const cost = !claudeCost
+    ? null
+    : c === null
       ? t("trace.verdict.claudeNa")
       : a.sentToClaude
         ? t("trace.verdict.claude", { cost: c })
@@ -452,7 +461,7 @@ function stepView(
     case "score": {
       const d = s.detail;
       const u = d?.claude ?? a.claude;
-      const cost = u?.costUsd ?? null;
+      const cost = ctx.claudeCost ? (u?.costUsd ?? null) : null;
       const parts: string[] = [];
       let summary: string;
       if (drop) {
@@ -545,7 +554,7 @@ function stepView(
           });
       }
       if (drop) rows.push(droppedRow(s, t));
-      if (a.sentToClaude || u !== null) rows.push(...claudeRows(u, t));
+      if (ctx.claudeCost && (a.sentToClaude || u !== null)) rows.push(...claudeRows(u, t));
       return { ...base, short: parts.join(sep), band, summary, rows };
     }
     case "filter": {
