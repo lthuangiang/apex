@@ -105,3 +105,19 @@ Người dùng duyệt bố cục và 4 quy tắc nghiên cứu ngày 2026-11-20
   - Cảnh báo "Not a clean test"; ô Hypothesis trong sheet New version.
 - `catalyst-desktop.html`, `catalyst-mobile.html`: bản HTML tự chứa của các khung trên.
 - `catalyst-copy.md`: toàn bộ câu chữ mới.
+
+## How it works › Overview (#391, người dùng duyệt bố cục 2026-11-20)
+
+Tab đầu tiên của drawer How it works: sơ đồ một vòng chạy (Collect → Normalize → Score → Context → Filter → Decide → Watcher → Results), hoạt cảnh có caption, danh sách 6 bước mở / đóng, ô "Never". HTML tự chứa (chỉ có link Google Fonts), mở thẳng trong trình duyệt.
+
+| File | Nội dung |
+|---|---|
+| `how-it-works-overview.html` | Drawer tab Overview, có tương tác (chấm chạy qua 8 chặng, Previous / Pause / Next, bấm một bước mở mục tương ứng) |
+| `how-it-works-overview-1440.png`, `how-it-works-overview-390.png` | Ảnh chụp drawer (reduced motion, đã mở hết chiều cao) |
+
+**Quy tắc PM chốt khi code:**
+- Số 5 phút, 24 giờ, 30 phút, 4.000 ký tự, 7 ngày, 2× chi phí, 100 lệnh, 50 nhãn / 80%, 24 h / 4 h của Market state lấy từ hằng của `@drift/shared`, không viết cứng. Số lần gọi Claude mỗi vòng và ngân sách token mỗi ngày chỉnh bằng env nên câu không có số.
+- "Claude reader v3": version lấy từ Claude reader đang chạy; không có dữ liệu thì bỏ số version.
+- Câu level theo `levelOf`; watcher không ghi nhịp đọc giá (vòng watcher không cố định 1 giây).
+- Badge "New" cạnh tên tab có trong mockup nhưng chưa code (không có luật khi nào ẩn; chờ PM chốt ở PR #391).
+- Reduced motion: không tự chạy, chấm nhảy thẳng tới chặng, nét đứt không chạy. Mọi khối trong drawer giữ chiều cao (`shrink-0`).

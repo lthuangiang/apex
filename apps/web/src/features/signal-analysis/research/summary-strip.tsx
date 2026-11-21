@@ -15,7 +15,7 @@ import type { ReactNode } from "react";
 import { clock, count, monthDay } from "../format";
 
 import { balance, delay, tone, usdSigned } from "./format";
-import type { HowTab } from "./how-it-works";
+import { DEFAULT_HOW_TAB, type HowTab } from "./how-it-works";
 import { Na, Pill } from "./ui";
 import { gateText, versionShort, type Tv } from "./version-text";
 
@@ -423,7 +423,7 @@ export function SummaryStrip({
     <button
       type="button"
       onClick={() => {
-        onHow("news");
+        onHow(DEFAULT_HOW_TAB);
       }}
       className="inline-flex min-h-11 flex-none cursor-pointer items-center rounded-control border border-accent bg-surface px-3.5 text-[13px] font-extrabold text-accent-ink hover:bg-surface-2 md:text-sm"
     >

@@ -123,6 +123,44 @@
 }
 
 /*
+ * Signal research › How it works › Overview (#391): chấm của sơ đồ có quầng lan ra, cạnh đang chạy là nét đứt di chuyển.
+ * Reduced motion: không quầng, cạnh đang chạy là nét liền đứng yên.
+ */
+.sr-hiw-halo {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sr-hiw-halo {
+    animation: sr-hiw-halo 1.4s ease-out infinite;
+  }
+
+  .sr-hiw-go {
+    stroke-dasharray: 7 6;
+    animation: sr-hiw-dash 0.6s linear infinite;
+  }
+}
+
+@keyframes sr-hiw-halo {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.35;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@keyframes sr-hiw-dash {
+  to {
+    stroke-dashoffset: -13;
+  }
+}
+
+/*
  * Signal research › News feed và funnel trace (#292, docs/mockups/signal-research/news-trace.html). Chỉ dùng qua
  * `motion-safe:animate-[…]`, nên prefers-reduced-motion không chạy hiệu ứng nào.
  */
