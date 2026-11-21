@@ -512,6 +512,73 @@ describe("same SoDEX action twice with two Idempotency-Keys (#318)", () => {
     expect(errorCode(again.body)).toBe("STATE_CONFLICT");
   });
 
+  it("the first-ever Connect sent twice at once never returns 500 and makes one account, key and request (#326)", async () => {
+    const t = await newTrader();
+    const [a, b] = await Promise.all([connect(t), connect(t)]);
+    // Tuỳ thứ tự: bên sau dùng lại request của bên trước (201, cùng id), hoặc đụng race ghi account (409, test dưới).
+    for (const r of [a, b]) {
+      expect([201, 409], r.body).toContain(r.statusCode);
+      if (r.statusCode === 409) expect(errorCode(r.body)).toBe("STATE_CONFLICT");
+    }
+    const ok = [a, b].filter((r) => r.statusCode === 201).map((r) => parse(r).id);
+    expect(ok.length).toBeGreaterThan(0);
+    expect(new Set(ok).size).toBe(1);
+    const accounts = await env.pool.query(
+      "select id from sodex_accounts where sodex_account_id = $1",
+      [t.accountID],
+    );
+    expect(accounts.rowCount).toBe(1);
+    expect(await pendingKeys(t)).toBe(1);
+    expect(await requests(t, "add_api_key")).toHaveLength(1);
+  });
+
+  it("the loser of a first-ever Connect race gets 409 STATE_CONFLICT, not 500 (#326)", async () => {
+    // Ép đúng thứ tự của race: request kia đã thấy "chưa có account" và đang ghi dòng sodex_accounts (transaction
+    // chưa commit). Request này cũng không thấy dòng đó, nên phải chờ ở unique index rồi đụng nó sau khi bên kia commit.
+    const t = await newTrader();
+    const user = await env.pool.query<{ id: string }>(
+      "select u.id from users u order by u.created_at desc limit 1",
+    );
+    const other = await env.pool.connect();
+    try {
+      await other.query("begin");
+      await other.query(
+        `insert into sodex_accounts (id, user_id, address, sodex_account_id, network, status)
+         values (gen_random_uuid(), $1, $2, $3, 'mainnet', 'connecting')`,
+        [user.rows[0]?.id, t.wallet.address, t.accountID],
+      );
+      const pending = connect(t);
+      // Chờ tới khi request bị chặn ở unique index (đợi lock của transaction kia).
+      for (let i = 0; i < 100; i++) {
+        const w = await env.pool.query(
+          "select 1 from pg_stat_activity where wait_event_type = 'Lock' and query ilike 'insert into \"sodex_accounts\"%'",
+        );
+        if (w.rowCount !== null && w.rowCount > 0) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      await other.query("commit");
+      const res = await pending;
+      expect(res.statusCode, res.body).toBe(409);
+      const body = errorResponseSchema.parse(res.json());
+      expect(body.error.code).toBe("STATE_CONFLICT");
+      expect(res.body).not.toMatch(/stack|duplicate key|sodex_accounts_network_account_key/);
+    } finally {
+      other.release();
+    }
+    const accounts = await env.pool.query(
+      "select id from sodex_accounts where sodex_account_id = $1",
+      [t.accountID],
+    );
+    expect(accounts.rowCount).toBe(1);
+    // Request thua không tạo key ở signer, không tạo request ký (không có gì được gửi lên SoDEX).
+    expect(await pendingKeys(t)).toBe(0);
+    expect(await requests(t, "add_api_key")).toHaveLength(0);
+    // Thử lại (key mới) thì dùng account đã có và tạo đúng một request ký.
+    const again = parse(await connect(t));
+    expect(again.action).toBe("add_api_key");
+    expect(await pendingKeys(t)).toBe(1);
+  });
+
   it("replaces a request about to expire, so two requests are never signable at once", async () => {
     const t = await newTrader();
     const old = await connect(t);
