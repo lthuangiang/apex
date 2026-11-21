@@ -382,7 +382,7 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
 
   it("the queue plays one article at a time, in order", async () => {
     // Fake timers thuần (không `shouldAdvanceTime`): thời gian chỉ đi khi test tiến, nên mỗi bước kiểm được đúng một
-    // trạng thái dù máy CI chậm (#389). Không có gì được hẹn trước lúc này, nên cài lại không mất hẹn giờ nào.
+    // trạng thái dù máy CI chậm. Không có gì được hẹn trước lúc này, nên cài lại không mất hẹn giờ nào.
     vi.useRealTimers();
     vi.useFakeTimers();
     state.next = [page("c1"), page("c2", [ETH, SOL])];
