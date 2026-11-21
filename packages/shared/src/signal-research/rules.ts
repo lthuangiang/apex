@@ -453,10 +453,18 @@ export const NEWS_CLASSIFIER = {
 } as const;
 
 /**
- * Nhãn "New in v4" của drawer How it works › News types (#395): hiện tới khi Claude reader này đã chạy đủ ngần này ngày, tính
- * từ `signal_classifier_versions.started_at` (API `/classifiers`). Reader chưa chạy lần nào (chưa có started_at) vẫn là mới.
+ * Nhãn "New in v{n}" của hộp "What Claude reader v{n} reads differently" ở drawer How it works › News types (#395, #399):
+ * hiện tới khi Claude reader này đã chạy đủ ngần này ngày, tính từ `signal_classifier_versions.started_at` (API
+ * `/classifiers`). Reader chưa chạy lần nào (chưa có started_at) vẫn là mới. Đổi reader = đổi `classifierVersion` ở đây.
  */
-export const READER_NEW_BADGE = { classifierVersion: "news-classifier-v4", days: 14 } as const;
+export const READER_NEW_BADGE = { classifierVersion: "news-classifier-v5", days: 14 } as const;
+
+/**
+ * Nhãn "New in v4" của hộp "Not counted" và chip "v3 → v4" của dòng sub (luật cố định của Rules v4, #395). Rules v4 lên
+ * cùng lúc với Claude reader v4 nên mốc 14 ngày tính từ `started_at` của `news-classifier-v4`; reader v5 (#399) không đổi
+ * Rules nên không làm hai nhãn này hiện lại. Đổi Rules = đổi mốc ở đây theo reader lên cùng Rules mới.
+ */
+export const RULES_NEW_BADGE = { classifierVersion: "news-classifier-v4", days: 14 } as const;
 
 /**
  * Chu kỳ của lane tin tức (phút, #394): scheduler chạy Collect → Decide mỗi `SIGNAL_NEWS_CYCLE_MINUTES` phút (số nguyên
