@@ -71,6 +71,8 @@ export {
   stepVolumeFarm,
   VB_FADE_MOVE_MINS,
   volumeFarm,
+  XSTOP_NOT_SET,
+  xstopNotSetWhy,
   type VolumeFarmState,
 } from "./volume-farm";
 export {

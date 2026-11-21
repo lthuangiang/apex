@@ -209,6 +209,25 @@ export const NORMAL_REJECT_CODES = {
 /** Lệnh bị giới hạn rủi ro per-trade của DeskLabs chặn (không tới SoDEX): đếm riêng, không gọi là "refused by SoDEX". */
 export const RISK_LIMIT_REJECT_CODE = "RISK_PER_TRADE";
 
+/**
+ * #260: mã `orderReject` engine báo khi lệnh KHÔNG BAO GIỜ rời DeskLabs, nên SoDEX chưa thấy nó: kết quả `not_sent` của
+ * gateway (key, signer, epoch cũ, chưa đọc được market; `NotSentCode` của engine phải nằm trong danh sách này, typecheck
+ * kiểm), `NO_REAL_POSITION` (engine bỏ lệnh reduce-only vì vị thế thật bằng 0, #253) và `BOT_NOT_RUNNING` (bot đang dừng).
+ * Decisions không được ghi "SoDEX rejected it" cho các mã này.
+ */
+export const NOT_SENT_REJECT_CODES = [
+  "key_unusable",
+  "key_not_active",
+  "stale_epoch",
+  "signer_unavailable",
+  "market_info_unavailable",
+  "NO_REAL_POSITION",
+  "BOT_NOT_RUNNING",
+] as const;
+export type NotSentRejectCode = (typeof NOT_SENT_REJECT_CODES)[number];
+export const isNotSentReject = (code: string): code is NotSentRejectCode =>
+  (NOT_SENT_REJECT_CODES as readonly string[]).includes(code);
+
 /** Số lệnh bị từ chối theo loại (BD-05): post-only sẽ khớp ngay, chặn tự khớp; phần còn lại là lý do khác. */
 export const rejectSplitSchema = z.object({
   postOnly: z.number().int(),

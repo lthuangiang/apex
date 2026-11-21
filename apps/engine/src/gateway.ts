@@ -1,3 +1,4 @@
+import type { NotSentRejectCode } from "@drift/shared";
 import type { OrderIntent } from "@drift/strategies";
 
 // Cổng ra SoDEX của engine. Bản thật (http-gateway.ts) ký qua signer và gửi bằng SignedWriteClient;
@@ -37,6 +38,12 @@ export type NotSentCode =
    * (DEC-310).
    */
   | "market_info_unavailable";
+
+/**
+ * #260: mọi `NotSentCode` phải có trong `NOT_SENT_REJECT_CODES` (Decisions không gọi chúng là "SoDEX rejected it"). Thiếu
+ * một mã thì kiểu này thành `never` và typecheck báo lỗi.
+ */
+export const NOT_SENT_CODES_LISTED: NotSentCode extends NotSentRejectCode ? true : never = true;
 
 export type SubmitResult =
   | { clOrdID: string; outcome: "ok"; orderId: bigint }
