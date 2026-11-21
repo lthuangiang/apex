@@ -153,7 +153,7 @@ describe("How your bots performed", () => {
         (_, el) => el?.tagName === "P" && el.textContent === "That's $214 per $1M traded",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("$38 less than the week before")).toBeInTheDocument();
+    expect(screen.getByText("$38 per $1M less than the week before")).toBeInTheDocument();
     expect(
       screen.getByText(
         "This is what trading cost, not your profit or loss. Your net result is on each bot's page. Practice bots aren't counted.",
@@ -164,7 +164,7 @@ describe("How your bots performed", () => {
         name: /SoDEX fee \$106, DeskLabs builder fee \$45, price moved against your trades \$63/,
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/\$2 more than the week before/)).toBeInTheDocument();
+    expect(screen.getByText(/\$2 per \$1M more than the week before/)).toBeInTheDocument();
     // Giờ: nhãn chữ trên dải, khung giờ địa phương.
     expect(
       screen.getByRole("img", { name: /Cheapest 01:00–04:00\. Most expensive 21:00–00:00\./ }),
@@ -261,11 +261,108 @@ describe("How your bots performed", () => {
       }),
     };
     wrap();
-    expect(await screen.findByText("Price moved in your favour: −$33")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        (_, el) =>
+          el?.tagName === "STRONG" && el.textContent === "Price moved in your favour: −$33 per $1M",
+      ),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: /The price moved in your favour by \$33/ }),
     ).toBeInTheDocument();
+    // #415: số USDC thật của phần giá, có dấu âm (làm giảm chi phí).
+    expect(screen.getByText("−40 USDC in these 7 days")).toBeInTheDocument();
   });
+
+  // #415: nhãn "per $1M" và số USDC thật cho từng phần (mockup ai-desk-performance/cost-labels.html).
+  const MOCKUP = cost({
+    volume: "146000",
+    cost: "34.99",
+    sodexFee: "19.13",
+    builderFee: "7.15",
+    priceMove: "8.71",
+    perMillion: { cost: "239", sodexFee: "131", builderFee: "49", priceMove: "60" },
+  });
+  const strong = (text: string) =>
+    screen.getByText((_, el) => el?.tagName === "STRONG" && el.textContent === text);
+  const paidLines = () =>
+    screen.getAllByText(/ USDC in these (7|30) days$/).map((el) => el.textContent);
+
+  it("labels every part per $1M and adds the real USDC that adds up to the total", async () => {
+    state.view = {
+      ...READY,
+      current: MOCKUP,
+      previous: cost({
+        perMillion: { cost: "232", sodexFee: "116", builderFee: "38", priceMove: "79" },
+      }),
+    };
+    wrap();
+    expect(await screen.findByText(/Your bots traded/)).toHaveTextContent(
+      "Your bots traded 146K USDC and paid 35 USDC in fees and price moves.",
+    );
+    expect(screen.getByText("Cost per $1M traded, by part")).toBeInTheDocument();
+    expect(strong("SoDEX fee · $131 per $1M")).toBeInTheDocument();
+    expect(strong("DeskLabs builder fee · $49 per $1M")).toBeInTheDocument();
+    expect(strong("Price moved against your trades · $60 per $1M")).toBeInTheDocument();
+    // Từ 10 USDC trở lên làm tròn đô; dưới 10 hiện 2 chữ số thập phân (review #424).
+    expect(paidLines()).toEqual([
+      "19 USDC in these 7 days",
+      "7.15 USDC in these 7 days",
+      "8.71 USDC in these 7 days",
+    ]);
+    expect(screen.getByText("$7 per $1M more than the week before")).toBeInTheDocument();
+    expect(screen.getByText("$15 per $1M more than the week before")).toBeInTheDocument();
+    expect(screen.getByText("$11 per $1M more than the week before")).toBeInTheDocument();
+    expect(screen.getByText("$19 per $1M less than the week before")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Of $239 per $1M: SoDEX fee $131, DeskLabs builder fee $49, price moved against your trades $60.",
+      }),
+    ).toBeInTheDocument();
+    await axeClean();
+  }, 20_000);
+
+  it("says Not available for the price part, never 0 USDC, but shows a real 0", async () => {
+    state.view = {
+      ...READY,
+      period: "30d",
+      current: cost({
+        ...MOCKUP,
+        cost: null,
+        builderFee: "0",
+        priceMove: null,
+        perMillion: { cost: null, sodexFee: "131", builderFee: "0", priceMove: null },
+      }),
+    };
+    wrap();
+    expect(
+      await screen.findByText("Price moved against your trades: Not available"),
+    ).toBeInTheDocument();
+    // Phí builder bằng 0 thật (account của builder): hiện 0; phần giá thiếu: không có dòng USDC.
+    expect(paidLines()).toEqual(["19 USDC in these 30 days", "0 USDC in these 30 days"]);
+    expect(strong("DeskLabs builder fee · $0.00 per $1M")).toBeInTheDocument();
+    await axeClean();
+  }, 20_000);
+
+  it("never shows a non-zero amount under 0.5 USDC as 0: below 10 USDC it keeps 2 decimals", async () => {
+    state.view = {
+      ...READY,
+      current: cost({
+        ...MOCKUP,
+        sodexFee: "19.1",
+        builderFee: "0.42",
+        priceMove: "0",
+        perMillion: { cost: "239", sodexFee: "131", builderFee: "3", priceMove: "0" },
+      }),
+    };
+    wrap();
+    expect(await screen.findByText("Cost per $1M traded, by part")).toBeInTheDocument();
+    expect(paidLines()).toEqual([
+      "19 USDC in these 7 days",
+      "0.42 USDC in these 7 days",
+      "0 USDC in these 7 days",
+    ]);
+  }, 20_000);
 
   it("shows the empty, not-enough and error states", async () => {
     state.view = {
