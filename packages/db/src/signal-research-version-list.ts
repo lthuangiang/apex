@@ -24,13 +24,14 @@ import {
   type ResearchVersions,
   type SignalBotVersionStatus,
 } from "@drift/shared";
-import { and, desc, eq, isNotNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import type { Db } from "./client";
 import type { DbTx } from "./read-only";
 import { signalBotVersions, signalClassifierVersions, signalPaperTrades } from "./schema";
 import { experimentOf } from "./signal-research-experiments";
 import { classifierStatusOf, loadClassifierGates } from "./signal-research-labels";
+import { versionHiddenFrom, type SignalVersionViewer } from "./signal-research-versions";
 
 // Danh sách News bot version cho khối Paper bots (#305, DEC-328; thiết kế docs/mockups/signal-research/bot-versions.html).
 // Chỉ đọc; nơi gọi bọc trong transaction chỉ đọc. Mọi số lấy từ lệnh đã lưu; thiếu thì null, không bao giờ đoán.
@@ -39,6 +40,9 @@ import { classifierStatusOf, loadClassifierGates } from "./signal-research-label
 //   tổng kết; lịch sử news-v2 không tính (DEC-331).
 // - Đoạn đếm hiện tại = lệnh thật đã đóng của classifier hiện tại, mở sau `segmentStart` (mốc sau của lúc lưu version và
 //   lúc classifier bắt đầu). Cổng của version chỉ xét đoạn này, theo thứ tự đóng (`versionGateStatus`).
+// - #423: mỗi version có chủ (null = team). Người xem chỉ thấy version của team và version của chính mình; số version
+//   đang chạy / đã thử tính theo chủ (team: version của team; người dùng test: Baseline + version của họ), nên version
+//   của người dùng test không bao giờ cộng vào số của team (cổng, kiểm tra thêm).
 
 type Q = Db | DbTx;
 const DAY_MS = 86_400_000;
@@ -100,14 +104,22 @@ export function gateOfTrades(rows: readonly TradeLite[]): GateStatus {
 const tailOf = (id: string | null): string | null =>
   id === null ? null : id.replace(/-/g, "").slice(-4).toLowerCase();
 
-/** Mọi News bot version, mới nhất trước, kèm số dư, giới hạn, lệnh bị chặn và trạng thái cổng. */
+/**
+ * Mọi News bot version người xem thấy được, mới nhất trước, kèm số dư, giới hạn, lệnh bị chặn và trạng thái cổng.
+ * `viewer` không truyền = góc nhìn của team (chỉ version của team).
+ */
 export async function loadSignalBotVersions(
   q: Q,
   now: Date,
   check: () => void = () => undefined,
+  viewer?: SignalVersionViewer,
 ): Promise<ResearchVersions> {
-  const rows = await q.select().from(signalBotVersions).orderBy(desc(signalBotVersions.number));
+  const all = await q.select().from(signalBotVersions).orderBy(desc(signalBotVersions.number));
   check();
+  const rows = all.filter((r) =>
+    viewer === undefined ? r.ownerUserId === null : !versionHiddenFrom(r.ownerUserId, viewer),
+  );
+  const ids = rows.map((r) => r.id);
   const baseline = rows.find((r) => r.isBaseline)?.id ?? null;
   const trades: TradeLite[] = await q
     .select({
@@ -133,8 +145,11 @@ export async function loadSignalBotVersions(
         eq(signalPaperTrades.lane, NEWS_RULES.lane),
         eq(signalPaperTrades.label, "live"),
         or(
-          isNotNull(signalPaperTrades.versionId),
-          eq(signalPaperTrades.ruleVersion, NEWS_RULES.version),
+          ids.length === 0 ? sql`false` : inArray(signalPaperTrades.versionId, ids),
+          and(
+            isNull(signalPaperTrades.versionId),
+            eq(signalPaperTrades.ruleVersion, NEWS_RULES.version),
+          ),
         ),
       ),
     );
@@ -146,7 +161,7 @@ export async function loadSignalBotVersions(
       and(
         eq(signalPaperTrades.lane, NEWS_RULES.lane),
         eq(signalPaperTrades.label, "shadow"),
-        isNotNull(signalPaperTrades.versionId),
+        ids.length === 0 ? sql`false` : inArray(signalPaperTrades.versionId, ids),
       ),
     )
     .groupBy(signalPaperTrades.versionId);
@@ -195,7 +210,15 @@ export async function loadSignalBotVersions(
   const currentGate = gates.get(current) ?? classifierGate({ labeled: 0, right: 0 });
   const currentStatus = classifierStatusOf(gates, current);
   // PM chốt (#324): số version đã lưu (Baseline + version team tạo, mọi trạng thái); rules v1 / v2 không tính (DEC-331).
-  const versionsTried = versionsTriedOf(rows);
+  // #423: theo chủ. Version của team: chỉ version của team. Version của người dùng test: Baseline + version của họ.
+  const triedOf = (owner: string | null) =>
+    versionsTriedOf(
+      rows.filter((r) =>
+        owner === null ? r.ownerUserId === null : r.isBaseline || r.ownerUserId === owner,
+      ),
+    );
+  const viewerOwner = viewer === undefined || viewer.team ? null : viewer.userId;
+  const versionsTried = triedOf(viewerOwner);
   const dayStart = Math.floor(now.getTime() / DAY_MS) * DAY_MS;
 
   const items: ResearchVersion[] = rows.map((r) => {
@@ -226,7 +249,7 @@ export async function loadSignalBotVersions(
       classifier: currentStatus,
       closed: closed.length,
       segmentClosed: segment.length,
-      versionsTried,
+      versionsTried: triedOf(r.ownerUserId),
       gateOf: (from, to) => gateOfTrades(segment.slice(from, to)),
     });
     const used: string[] = [];
@@ -250,6 +273,7 @@ export async function loadSignalBotVersions(
       name: r.name,
       status: statusOf(r.status),
       isBaseline: r.isBaseline,
+      owner: r.ownerUserId === null ? ("team" as const) : ("me" as const),
       createdAt: iso(toDate(r.createdAt)),
       statusChangedAt: iso(toDate(r.statusChangedAt)),
       createdBy: tailOf(r.createdBy),
@@ -308,7 +332,8 @@ export async function loadSignalBotVersions(
   const startedAt = started.get(current);
   return {
     items,
-    running: rows.filter((r) => r.status === "running").length,
+    // #423: version đang chạy của chủ người xem (team: version của team; người dùng test: của họ).
+    running: rows.filter((r) => r.status === "running" && r.ownerUserId === viewerOwner).length,
     maxRunning: MAX_RUNNING_VERSIONS,
     versionsTried,
     extraCheck: extraCheckOn(versionsTried),

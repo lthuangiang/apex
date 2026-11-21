@@ -50,10 +50,12 @@ import {
   STREAM_HOLD_MS,
   TRADES_WEIGHT,
   FencedError,
+  GAVE_UP_RETRY_MS,
   LeaseExpiredError,
   effectiveReal,
   opensPosition,
   shardOf,
+  unknownGaveUpWhy,
   type EngineDeps,
 } from "../src/engine";
 import type {
@@ -2067,6 +2069,39 @@ describe("engine", () => {
       const state = rt?.state as { ledger: { position: string }; open: Record<string, unknown> };
       expect(state.ledger.position).toBe("1");
       expect(state.open[id]).toBeUndefined();
+      await b.stop();
+    });
+
+    it("books a trade that arrives after SoDEX ended a partly filled grid order, across a restart, once (#426)", async () => {
+      const { eq } = await import("drizzle-orm");
+      const gw = new FakeGateway();
+      const { botId, accountId } = await seedBot("running");
+      const a = makeEngine(gw, "w-426");
+      await a.tick();
+      await a.onPrice("vBTC_vUSDC", "100", clock);
+      const buy95 = gw.received.find((o) => o.side === "buy" && o.price === "95");
+      const id = buy95?.clOrdID ?? "";
+      // Khớp 0.4 rồi SoDEX báo lệnh đã huỷ (xác nhận huỷ): đối ứng cho 0.4.
+      await a.onFill(accountId, id, "0.4", "95", "0", clock);
+      let sent = gw.received.length;
+      await a.onOrderClosed(accountId, id, "cancelled", clock + 1);
+      const show = (o: OrderIntent) => `${o.tag} ${o.side} ${o.price ?? "mkt"} ${o.quantity}`;
+      expect(gw.received.slice(sent).map(show)).toEqual(["grid:2:sell sell 100 0.4"]);
+      // Engine khởi động lại giữa lúc lệnh kết thúc và trade tới muộn.
+      await a.stop();
+      const b = makeEngine(gw, "w-426");
+      await b.tick();
+      sent = gw.received.length;
+      // Trade tới muộn (đối soát, DEC-303): SoDEX báo khối lượng luỹ kế 0.6.
+      await b.onFill(accountId, id, "0.6", "95", "0", clock + 2);
+      expect(gw.received.slice(sent).map(show)).toEqual(["grid:2:sell sell 100 0.2"]);
+      // Báo lại cùng trade: không ghi trùng, không đặt thêm lệnh.
+      sent = gw.received.length;
+      await b.onFill(accountId, id, "0.6", "95", "0", clock + 3);
+      expect(gw.received.length).toBe(sent);
+      const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      // Vị thế sổ cái = vị thế SoDEX giả lập (0.4 + 0.2 đã mua; lệnh khởi tạo chưa khớp).
+      expect((rt?.state as { ledger: { position: string } }).ledger.position).toBe("0.6");
       await b.stop();
     });
   });
@@ -9264,6 +9299,153 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
       (await db.select().from(orders).where(eq(orders.clOrdId, init)))[0]?.doneFedAt,
     ).not.toBeNull();
     expect(await activeVersion(botId)).toBe(2);
+    await finish(e, botId);
+  });
+
+  /**
+   * Engine ghi lại log warn: đếm lượt đọc / ghi của đường bỏ cuộc theo log, vì lưới an toàn fill cũng đọc lịch sử khớp
+   * trong cùng vòng nên không đếm lời gọi cổng được.
+   */
+  const GAVE_UP_READ_FAILED = "could not read trades for a given-up order; the bot keeps waiting";
+  const GAVE_UP_DONE =
+    "given-up order is confirmed missing on SoDEX; its trades are booked and the bot moves on";
+  const gaveUpEngine = (gw: Gateway, workerId: string) => {
+    const warned: string[] = [];
+    const e = new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId,
+      log: {
+        ...log,
+        warn: (...args: unknown[]) => {
+          if (typeof args[1] === "string") warned.push(args[1]);
+        },
+      },
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+    });
+    return { e, count: (m: string) => warned.filter((x) => x === m).length };
+  };
+  /** Lệnh khởi tạo của grid gửi đi không rõ kết quả, rồi được xác nhận không còn trên SoDEX từ 11 phút trước. */
+  const lostInit = async (e: RealEngine, gw: FakeGateway, botId: string, sodexOrderId: bigint) => {
+    const { eq } = await import("drizzle-orm");
+    await e.tick();
+    gw.timeoutNext = "lost";
+    await e.onPrice("BTC-USD", "100", clock);
+    const row = async () =>
+      (await db.select().from(orders).where(eq(orders.botId, botId))).find(
+        (o) => o.tag === "grid:init",
+      );
+    const init = (await row())?.clOrdId ?? "";
+    expect((await row())?.status).toBe("unknown");
+    await db
+      .update(orders)
+      .set({ sodexOrderId, missingConfirmedAt: new Date(clock - 11 * 60_000) })
+      .where(eq(orders.clOrdId, init));
+    return { init, qty: (await row())?.size ?? "0", row };
+  };
+
+  it("retries a given-up order with trades: books them once, feeds orderDone once, at most once per GAVE_UP_RETRY_MS (#250, review #254)", async () => {
+    const { eq } = await import("drizzle-orm");
+    let failTrades = true;
+    const gw = new (class extends PosGateway {
+      override recentTrades(a: AccountRef): Promise<(OrderTrade & { clOrdID: string })[]> {
+        if (!failTrades) return super.recentTrades(a);
+        return Promise.reject(new Error("SoDEX down"));
+      }
+    })();
+    const { botId } = await seedBot("running", grid);
+    const { e, count } = gaveUpEngine(gw, "pos-gaveup-trades");
+    const { init, qty, row } = await lostInit(e, gw, botId, 81n);
+    const sentBefore = gw.received.length;
+
+    // Bỏ cuộc: ghi Decisions một lần, đọc trade ngay lúc đó nhưng SoDEX lỗi nên chưa báo kết thúc.
+    for (let i = 0; i < 4 && (await row())?.unknownGaveUpAt == null; i += 1) await step(e, 60_000);
+    expect((await row())?.unknownGaveUpAt).not.toBeNull();
+    expect((await row())?.doneFedAt).toBeNull();
+    expect(count(GAVE_UP_READ_FAILED)).toBe(1);
+    // Vòng sau thử lại một lần (lỗi), rồi chờ đủ GAVE_UP_RETRY_MS mới thử tiếp.
+    await step(e, 1_000);
+    expect(count(GAVE_UP_READ_FAILED)).toBe(2);
+    await step(e, GAVE_UP_RETRY_MS / 3);
+    await step(e, GAVE_UP_RETRY_MS / 3);
+    expect(count(GAVE_UP_READ_FAILED)).toBe(2);
+    await step(e, GAVE_UP_RETRY_MS / 3);
+    expect(count(GAVE_UP_READ_FAILED)).toBe(3);
+
+    // SoDEX đọc được trở lại và lệnh đã khớp đủ: lần thử sau ghi trade (dòng thành `filled`) rồi báo kết thúc.
+    const t = {
+      tradeId: 81_000n + BigInt(Math.floor(Math.random() * 1e9)),
+      price: "100",
+      quantity: qty,
+      fee: "0.02",
+      builderFee: null,
+      isMaker: false,
+      at: clock,
+    };
+    gw.trades.set(init, [t]);
+    gw.perpsPositions.set("BTC-USD", { size: qty, entryPrice: "100" });
+    failTrades = false;
+    await step(e, GAVE_UP_RETRY_MS);
+    const done = await row();
+    expect(done?.doneFedAt).not.toBeNull();
+    expect(done?.status).toBe("filled");
+    expect(Number(done?.filledSize)).toBe(Number(qty));
+    const booked = async () =>
+      (
+        await db
+          .select()
+          .from(fills)
+          .where(eq(fills.orderId, done?.id ?? ""))
+      ).map((f) => [f.sodexTradeId, Number(f.size)]);
+    expect(await booked()).toEqual([[t.tradeId, Number(qty)]]);
+    expect(await ledgerOf(botId)).toBe(dec(qty).toString());
+    expect(count(GAVE_UP_DONE)).toBe(1);
+    expect(count(GAVE_UP_READ_FAILED)).toBe(3);
+
+    // Sau lần thử thành công: không thử lại, không ghi trade lần hai, không báo kết thúc lần hai.
+    for (let i = 0; i < 3; i += 1) await step(e, GAVE_UP_RETRY_MS);
+    expect((await row())?.doneFedAt).toEqual(done?.doneFedAt);
+    expect(await booked()).toEqual([[t.tradeId, Number(qty)]]);
+    expect(await ledgerOf(botId)).toBe(dec(qty).toString());
+    expect(count(GAVE_UP_DONE)).toBe(1);
+    expect(count(GAVE_UP_READ_FAILED)).toBe(3);
+    // Không gửi lại lệnh khởi tạo (quy tắc 1.7); Decisions "Order result unknown" chỉ một dòng.
+    expect(gw.received.slice(sentBefore).filter((o) => o.tag === "grid:init")).toEqual([]);
+    const unknownEvents = (await allEvents(botId)).filter(
+      (x) => x.decision === "Order result unknown",
+    );
+    expect(unknownEvents.map((x) => x.why)).toEqual([unknownGaveUpWhy(init)]);
+    await finish(e, botId);
+  });
+
+  it("feeds orderDone once after a successful retry of a given-up order with no trades (#250, review #254)", async () => {
+    let failTrades = true;
+    const gw = new (class extends PosGateway {
+      override recentTrades(a: AccountRef): Promise<(OrderTrade & { clOrdID: string })[]> {
+        return failTrades ? Promise.reject(new Error("SoDEX down")) : super.recentTrades(a);
+      }
+    })();
+    const { botId } = await seedBot("running", grid);
+    const { e, count } = gaveUpEngine(gw, "pos-gaveup-once");
+    const { row } = await lostInit(e, gw, botId, 82n);
+    for (let i = 0; i < 4 && (await row())?.unknownGaveUpAt == null; i += 1) await step(e, 60_000);
+    expect(count(GAVE_UP_READ_FAILED)).toBe(1);
+    // SoDEX không có trade nào của lệnh: dòng vẫn `unknown`, chỉ `done_fed_at` giữ cho lần thử không lặp lại.
+    failTrades = false;
+    await step(e, GAVE_UP_RETRY_MS);
+    const done = await row();
+    expect(done?.status).toBe("unknown");
+    expect(done?.doneFedAt).not.toBeNull();
+    expect(count(GAVE_UP_DONE)).toBe(1);
+    for (let i = 0; i < 3; i += 1) await step(e, GAVE_UP_RETRY_MS);
+    expect(count(GAVE_UP_DONE)).toBe(1);
+    expect((await row())?.doneFedAt).toEqual(done?.doneFedAt);
+    expect(Number((await row())?.filledSize)).toBe(0);
     await finish(e, botId);
   });
 

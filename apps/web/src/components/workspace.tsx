@@ -48,6 +48,7 @@ export function PageHead({
   full = false,
   back,
   paper = false,
+  badge,
 }: {
   title: string;
   /** Thường là chuỗi; AI Desk thêm chấm trạng thái trước dòng "Watching …" (artboard BP-Home). */
@@ -60,6 +61,8 @@ export function PageHead({
   back?: { href: string; label: string };
   /** Trang bài thử tiền giả: bỏ chip LIVE · MAINNET (DEC-105). */
   paper?: boolean;
+  /** Nhãn nhỏ ngay sau tiêu đề (ví dụ "BETA" của Signal Research, #423). */
+  badge?: ReactNode;
 }) {
   return (
     <PaperPageContext.Provider value={paper}>
@@ -76,7 +79,10 @@ export function PageHead({
                 <ArrowLeft aria-hidden="true" size={22} />
               </Link>
             )}
-            <h1 className="m-0 min-w-0 flex-1 text-2xl font-extrabold">{title}</h1>
+            <h1 className="m-0 flex min-w-0 flex-1 items-center gap-2.5 text-2xl font-extrabold">
+              {title}
+              {badge}
+            </h1>
             <MobileLiveChip />
             <MobileBell />
           </div>
@@ -85,7 +91,10 @@ export function PageHead({
         </div>
         <div className="hidden flex-wrap items-center justify-between gap-x-4 gap-y-3 lg:flex">
           <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-1">
-            <h1 className="m-0 text-[28px] font-extrabold">{title}</h1>
+            <h1 className="m-0 flex items-center gap-2.5 text-[28px] font-extrabold">
+              {title}
+              {badge}
+            </h1>
             <p className="m-0 text-sm text-ink-2">{subtitle}</p>
           </div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2.5">

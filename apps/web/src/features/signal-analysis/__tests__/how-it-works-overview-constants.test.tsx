@@ -1,10 +1,10 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
 import { HowItWorksDrawer } from "../research/how-it-works";
@@ -34,6 +34,13 @@ vi.mock("@drift/shared", async (importOriginal) => {
 vi.mock("@/lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/api")>();
   return { ...real, api: () => Promise.reject(new real.ApiError("NOT_FOUND", 404)) };
+});
+
+// #430: vitest không bật `globals` nên Testing Library không tự unmount sau mỗi test. Tab Overview tự chạy (setTimeout
+// sang chặng sau, requestAnimationFrame cho chấm chạy): không unmount thì các vòng đó còn lên lịch render sau khi jsdom
+// teardown, React báo "window is not defined". Unmount ở đây để cleanup của component huỷ timer và rAF khi window còn.
+afterEach(() => {
+  cleanup();
 });
 
 describe("How it works › Overview numbers", { timeout: 30_000 }, () => {

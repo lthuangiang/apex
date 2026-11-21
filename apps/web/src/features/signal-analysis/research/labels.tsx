@@ -328,6 +328,19 @@ function QualityTable({ rows }: { rows: readonly ResearchClassifierRow[] }) {
                       {t("fromTraces", { n: r.traceLabeled })}
                     </span>
                   ) : null}
+                  {/* #423: nhãn của người dùng test hiện riêng để đối chiếu, không tính vào cổng. */}
+                  {r.testers.labeled > 0 ? (
+                    <span data-testid="sr-tester-labels" className="block text-xs text-muted">
+                      {t("testers", { n: r.testers.labeled })}
+                      {r.testers.agreePct === null
+                        ? null
+                        : ` · ${t("testersAgree", {
+                            agree: r.testers.agree,
+                            compared: r.testers.compared,
+                            pct: Math.round(r.testers.agreePct),
+                          })}`}
+                    </span>
+                  ) : null}
                 </td>
                 <td className={td}>
                   {r.precisionPct === null ? (
