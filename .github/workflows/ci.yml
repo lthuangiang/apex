@@ -8,7 +8,7 @@
 #   compose dựng hạ tầng docker compose.
 #   check   gom kết quả: fail nếu job nào fail / bị huỷ. Dùng làm tên duy nhất khi bật "Require status checks".
 # Typecheck và test dùng cache Turbo (.turbo/cache) lưu theo sha, khôi phục từ lần chạy gần nhất của nhánh
-# (rồi của main): package không đổi thì cache hit. Shard test KHÔNG dùng `--only` (#414, DEC-TBD-ci-downstream-tests):
+# (rồi của main): package không đổi thì cache hit. Shard test KHÔNG dùng `--only` (#414, DEC-358):
 # `--only` bỏ `dependsOn`, nên hash test của engine / backtest không tính `@drift/strategies` và PR đổi strategies chỉ
 # phát lại log cũ. Không có `--only`, test phụ thuộc `^typecheck` (turbo.json): hash test gồm hash typecheck của mọi
 # package nó dùng (bắc cầu), nên đổi một package thì test của nó và của mọi package dùng nó chạy lại; PR chỉ đổi docs

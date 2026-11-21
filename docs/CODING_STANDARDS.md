@@ -144,7 +144,7 @@ UI không hiển thị `message` thô của server cho người dùng; UI map `c
 - Mỗi PR một mục đích, càng nhỏ càng tốt (ưu tiên < 400 dòng thay đổi không tính file sinh tự động).
 - Mô tả PR gồm: làm gì, vì sao, cách test, ảnh chụp (nếu có UI), checklist mục 14.
 - CI chạy theo thứ tự: install → lint → typecheck → unit → integration → build → e2e (trên nhánh `main` và PR có nhãn `e2e`).
-- Test trong CI dùng cache Turbo nhưng hash test luôn tính cả các package nó phụ thuộc (không dùng `turbo run test --only`, #414, DEC-TBD-ci-downstream-tests): đổi một package thì test của nó và của mọi package dùng nó (ví dụ `@drift/strategies` → engine, backtest) chạy lại.
+- Test trong CI dùng cache Turbo nhưng hash test luôn tính cả các package nó phụ thuộc (không dùng `turbo run test --only`, #414, DEC-358): đổi một package thì test của nó và của mọi package dùng nó (ví dụ `@drift/strategies` → engine, backtest) chạy lại.
 
 ## C16. Lint và format
 - ESLint với `typescript-eslint` (strict + stylistic), `eslint-plugin-import` (sắp xếp import, cấm import vòng), `eslint-plugin-jsx-a11y`.
