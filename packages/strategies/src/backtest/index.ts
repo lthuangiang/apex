@@ -326,11 +326,28 @@ export interface BacktestData {
   intervalMs: number;
 }
 
+/**
+ * Chiến lược không có backtest: tín hiệu không suy ra được từ nến (bot `news_signal` chạy theo tin tức, #419). Gọi
+ * `backtest` với các chiến lược này ném `BacktestNotSupportedError`, không bao giờ trả kết quả giả.
+ */
+export const BACKTEST_UNSUPPORTED: readonly string[] = [Strategy.newsSignal];
+
+export const backtestSupported = (strategy: string): boolean =>
+  !BACKTEST_UNSUPPORTED.includes(strategy);
+
+export class BacktestNotSupportedError extends Error {
+  readonly code = "not_supported";
+  constructor(readonly strategy: string) {
+    super(`Backtest is not supported for ${strategy}`);
+  }
+}
+
 export function backtest(
   strategy: string,
   rawConfig: unknown,
   data: BacktestData,
 ): BacktestSummary & { output: BacktestOutput<unknown> } {
+  if (!backtestSupported(strategy)) throw new BacktestNotSupportedError(strategy);
   const entry = (
     STRATEGIES as Record<
       string,
