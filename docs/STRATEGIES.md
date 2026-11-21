@@ -429,4 +429,12 @@ Câu chữ theo mockup đã duyệt ("Start bot from a version", bản online ht
 - **Stop "Close all now":** đóng từng lệnh đang mở.
 - **Sửa bot** (`applyVersion`): chỉ áp khi không còn lệnh nào.
 
+**Tín hiệu từ scheduler (DEC-365):**
+- Scheduler ghi `news_signals` khi `SIGNAL_NEWS_PUBLISH_ENABLED` bật, rồi phát chuông NATS `sr.signal.new`.
+- Mọi câu chuyện qua Understand đều được phát, không lọc theo version; bot tự lọc theo thứ tự ở trên.
+- `level` chỉ tính từ nguồn của các bài trong chu kỳ đó, không cộng nguồn của lần thử trước. Vì vậy level có thể chặt hơn level mà research version tính cho cùng câu chuyện.
+- `typical_by_hold_hours` có khoá cho giờ giữ mặc định, cho research versions đang chạy và cho bot `news_signal` còn hoạt động.
+- `article_id`, `first_published_at` và `collected_at` lấy từ bài đầu nhóm.
+- `expires_at` = `decided_at` + 120 s. Thiếu báo giá thì để null.
+
 Sự kiện riêng của chiến lược: `newsSignal`, `newsCommand`, `newsStop`, `paused`. Hành động riêng: `signalOutcome` (ghi `news_signal_deliveries`) và `commandResult` (ghi `news_signal_commands`). Engine nối các sự kiện và hành động này ở PR engine.

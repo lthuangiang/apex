@@ -25,4 +25,4 @@ Not financial advice. Past results are not a forecast.
 
 **Bật Signal Research cho tài khoản test (#423):** sau deploy, team vào Admin › Users, cột **Signal Research**, bấm **Turn on** ở dòng của tài khoản đó (ghi audit `admin.signal_research`). Người đó tải lại trang sẽ thấy mục Signal Research · BETA ngay sau AI Desk. Tắt bằng **Turn off**: mục biến mất, route trả Not found, API trả 403 ngay, version đang chạy của họ tự pause (audit `signal_research_disabled`). Bật lại không tự resume; người đó tự Resume từng version.
 
-**Biến môi trường mới:** `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, tuỳ chọn, mặc định 10; DEPLOY mục 2.17).
+**Biến môi trường mới:** `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, tuỳ chọn, mặc định 10; DEPLOY mục 2.17); `SIGNAL_NEWS_PUBLISH_ENABLED` (scheduler, mặc định `false`; ghi `news_signals` và phát NATS `sr.signal.new` cho bot `news_signal` mainnet, #419 PR 4, **chưa merge**; DEPLOY mục 2.16).
