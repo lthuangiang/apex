@@ -2,10 +2,15 @@ import { randomUUID } from "node:crypto";
 
 import { finishSignalExperiments, type Db } from "@drift/db";
 import {
+  claudeCallsForCycle,
+  NEWS_CYCLE,
   NEWS_LIMIT_DEFAULTS,
   NEWS_RULES,
+  SR_LANE_KEY,
+  SR_LANE_TTL_MS,
   SR_QUOTES_KEY,
   SR_QUOTES_TTL_MS,
+  type SrLaneSnapshot,
   type SrQuotesSnapshot,
 } from "@drift/shared";
 import { z } from "zod";
@@ -14,7 +19,7 @@ import { anthropicClassifier, type NewsClassifier } from "./classifier";
 import { runContextBackfill } from "./context-backfill";
 import { runNewsCycle, type MarketInfo, type PipelineConfig } from "./pipeline";
 import { LiveBooks, QuoteSource } from "./prices";
-import { sosoClient, type SosoClient } from "./soso";
+import { sosoClient, SosoRateLimiter, type SosoClient } from "./soso";
 import { spreadHists } from "./store";
 import { PaperWatcher } from "./watcher";
 
@@ -40,12 +45,29 @@ export const signalResearchEnvSchema = z.object({
     .int()
     .positive()
     .default(NEWS_LIMIT_DEFAULTS.claudeDailyInputBudget),
-  /** Số lần gọi API Claude tối đa mỗi chu kỳ, kể cả thử lại. */
+  /**
+   * Chu kỳ Collect → Decide (phút, #394): số nguyên 1–5, mặc định 5. Giá trị sai không bao giờ làm lane hay scheduler dừng:
+   * `parseSignalEnv` bỏ giá trị đó, dùng 5 và trả cảnh báo.
+   */
+  SIGNAL_NEWS_CYCLE_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(NEWS_CYCLE.minMinutes)
+    .max(NEWS_CYCLE.maxMinutes)
+    .default(NEWS_CYCLE.defaultMinutes),
+  /**
+   * Số lần gọi API Claude tối đa mỗi 5 phút (= một chu kỳ mặc định), kể cả thử lại. Chu kỳ ngắn hơn chia theo tỷ lệ
+   * (`claudeCallsForCycle`: 50 ở chu kỳ 1 phút → 10 mỗi chu kỳ), để tổng mỗi giờ không tăng khi chạy 1 phút.
+   */
   SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE: z.coerce
     .number()
     .int()
     .positive()
     .default(NEWS_LIMIT_DEFAULTS.claudeMaxCallsPerCycle),
+  /**
+   * Số trang tin tối đa mỗi chu kỳ (1–5). Chu kỳ ≥ 1 phút và không chồng nhau nên mỗi phút ≤ 5 request, dưới trần 20 / phút
+   * của SoSoValue; `SosoRateLimiter` vẫn chặn cứng ở 20 request / phút trượt.
+   */
   SIGNAL_SOSO_MAX_PAGES: z.coerce
     .number()
     .int()
@@ -73,35 +95,68 @@ export type SignalResearchEnv = z.infer<typeof signalResearchEnvSchema>;
 
 const ENV_KEYS = Object.keys(signalResearchEnvSchema.shape);
 
+const CYCLE_KEY = "SIGNAL_NEWS_CYCLE_MINUTES";
+
 /**
  * Parse env của lane RIÊNG (không gộp vào env chung của scheduler), để giá trị `SIGNAL_*` sai không bao giờ làm scheduler
  * (risk, leaderboard, fee tier…) không khởi động được. Flag tắt mà giá trị khác sai → bỏ qua, dùng mặc định, kèm cảnh
- * báo. Flag bật mà giá trị sai → lane không chạy (`env = null`) kèm lý do. Không bao giờ in giá trị.
+ * báo. Flag bật mà giá trị sai → lane không chạy (`env = null`) kèm lý do. Riêng `SIGNAL_NEWS_CYCLE_MINUTES` (#394): sai
+ * thì luôn dùng 5 kèm cảnh báo, lane vẫn chạy. Không bao giờ in giá trị.
  */
 export function parseSignalEnv(raw: Readonly<Record<string, string | undefined>>): {
   env: SignalResearchEnv | null;
   warning: string | null;
 } {
-  const input = Object.fromEntries(ENV_KEYS.map((k) => [k, raw[k]]));
+  const input: Record<string, string | undefined> = Object.fromEntries(
+    ENV_KEYS.map((k) => [k, raw[k]]),
+  );
+  const notes: string[] = [];
+  if (!signalResearchEnvSchema.shape[CYCLE_KEY].safeParse(input[CYCLE_KEY]).success) {
+    input[CYCLE_KEY] = undefined;
+    notes.push(`invalid ${CYCLE_KEY}, using ${String(NEWS_CYCLE.defaultMinutes)}`);
+  }
   const p = signalResearchEnvSchema.safeParse(input);
-  if (p.success) return { env: p.data, warning: null };
+  if (p.success) return { env: p.data, warning: notes.length === 0 ? null : notes.join("; ") };
   const bad = [...new Set(p.error.issues.map((i) => String(i.path[0] ?? "?")))].join(", ");
   const on = flag.parse(raw.SIGNAL_RESEARCH_ENABLED);
-  if (on) return { env: null, warning: `invalid ${bad}` };
+  if (on) return { env: null, warning: [`invalid ${bad}`, ...notes].join("; ") };
   return {
     env: signalResearchEnvSchema.parse({
       SIGNAL_RESEARCH_ENABLED: "false",
       SOSO_API_KEY: raw.SOSO_API_KEY,
       DESK_AI_API_KEY: raw.DESK_AI_API_KEY,
+      [CYCLE_KEY]: input[CYCLE_KEY],
     }),
-    warning: `ignored invalid ${bad} (signal research is off)`,
+    warning: [`ignored invalid ${bad} (signal research is off)`, ...notes].join("; "),
   };
+}
+
+/** Hẹn `run` mỗi `cycleMinutes` phút (`setInterval`); `every` thay được trong test. */
+export function scheduleNewsCycle(
+  run: () => void,
+  cycleMinutes: number,
+  every: (fn: () => void, ms: number) => ReturnType<typeof setInterval> = setInterval,
+): ReturnType<typeof setInterval> {
+  return every(run, cycleMinutes * 60_000);
+}
+
+/**
+ * Cảnh báo khi trần tháng `SIGNAL_SOSO_MONTHLY_LIMIT` sẽ hết trước cuối tháng ở chu kỳ đang đặt (ít nhất 1 request mỗi
+ * chu kỳ, tháng 31 ngày); null khi đủ. Không tự nâng trần: chỉ người dùng nâng sau khi xác nhận quota thật của key.
+ */
+export function monthlyLimitWarning(env: SignalResearchEnv): string | null {
+  const need = Math.ceil((31 * 24 * 60) / env.SIGNAL_NEWS_CYCLE_MINUTES);
+  if (need <= env.SIGNAL_SOSO_MONTHLY_LIMIT) return null;
+  return `SIGNAL_SOSO_MONTHLY_LIMIT ${String(env.SIGNAL_SOSO_MONTHLY_LIMIT)} is below about ${String(need)} requests a month needed at ${String(env.SIGNAL_NEWS_CYCLE_MINUTES)} min per cycle; collection stops (Delayed) when it is reached`;
 }
 
 export function pipelineConfig(env: SignalResearchEnv): PipelineConfig {
   return {
     claudeDailyInputBudget: env.SIGNAL_CLAUDE_DAILY_INPUT_TOKENS,
-    claudeMaxCallsPerCycle: env.SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE,
+    claudeMaxCallsPerCycle: claudeCallsForCycle(
+      env.SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE,
+      env.SIGNAL_NEWS_CYCLE_MINUTES,
+    ),
     sosoMaxPages: env.SIGNAL_SOSO_MAX_PAGES,
     sosoMonthlyLimit: env.SIGNAL_SOSO_MONTHLY_LIMIT,
     startLookbackMinutes: env.SIGNAL_NEWS_START_LOOKBACK_MIN,
@@ -206,6 +261,23 @@ export function createSignalResearch(input: {
         }),
   });
   const soso = input.soso ?? sosoClient(input.env.SOSO_API_KEY);
+  // Một bộ đếm cho cả tiến trình: mọi chu kỳ (và `signals:once`) dùng chung trần 20 request / phút của key.
+  const sosoLimiter = new SosoRateLimiter(now);
+  /** Ghi `sr:lane` (#394); lỗi Redis chỉ log, không bao giờ chặn chu kỳ. */
+  const publishLane = async (): Promise<void> => {
+    if (redisSet === undefined) return;
+    const snap: SrLaneSnapshot = {
+      cycleMinutes: input.env.SIGNAL_NEWS_CYCLE_MINUTES,
+      sosoMonthlyLimit: input.env.SIGNAL_SOSO_MONTHLY_LIMIT,
+      updatedAt: new Date(now()).toISOString(),
+    };
+    await redisSet(SR_LANE_KEY, JSON.stringify(snap), "PX", SR_LANE_TTL_MS).catch((e: unknown) => {
+      input.log.warn(
+        { err: e instanceof Error ? { name: e.name, message: e.message } : String(e) },
+        "signal research lane snapshot not written",
+      );
+    });
+  };
   const classifier = input.classifier ?? anthropicClassifier(input.env.DESK_AI_API_KEY, input.log);
   let cycleBusy = false;
   let backfillBusy = false;
@@ -214,9 +286,17 @@ export function createSignalResearch(input: {
   return {
     books,
     watcher,
-    /** Một chu kỳ 5 phút; chu kỳ trước chưa xong thì bỏ qua. */
+    /** Chu kỳ (phút) đã parse từ `SIGNAL_NEWS_CYCLE_MINUTES`. */
+    cycleMinutes: input.env.SIGNAL_NEWS_CYCLE_MINUTES,
+    /**
+     * Một chu kỳ (`SIGNAL_NEWS_CYCLE_MINUTES`, mặc định 5 phút); chu kỳ trước chưa xong thì bỏ qua. Mỗi lần tới nhịp ghi bản
+     * chụp `sr:lane` để api biết chu kỳ thật: sau chu kỳ (để không chen vào đồng hồ của chu kỳ), hoặc ngay khi bỏ qua.
+     */
     async runCycle(): Promise<void> {
-      if (cycleBusy) return;
+      if (cycleBusy) {
+        await publishLane();
+        return;
+      }
       cycleBusy = true;
       const log = input.log.child({ traceId: randomUUID(), job: "signal-research" });
       try {
@@ -229,6 +309,7 @@ export function createSignalResearch(input: {
           now,
           log,
           config: pipelineConfig(input.env),
+          sosoLimiter,
           onTradeOpened: () => {
             watcher.invalidate();
           },
@@ -255,6 +336,7 @@ export function createSignalResearch(input: {
       } finally {
         cycleBusy = false;
       }
+      await publishLane();
     },
     /**
      * Backfill ngữ cảnh cho tín hiệu cũ (#333): một lượt mỗi ngày UTC (lượt đầu khi nhận lease); lượt trước chưa xong thì bỏ

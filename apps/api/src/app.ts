@@ -89,6 +89,8 @@ export interface AppDeps {
    * null.
    */
   srQuotes?: () => Promise<string | null>;
+  /** #394: Redis `sr:lane` (chu kỳ lane tin tức do scheduler ghi) cho Signal research; không có → null. */
+  srLane?: () => Promise<string | null>;
   rateLimiter: RateLimiter;
   /** Nhà cung cấp bản đồ thanh lý (IMP-05). Không có / null: tab Liquidation map ẩn. */
   liquidations?: LiquidationProvider | null;
@@ -218,6 +220,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     now,
     srQuotes: deps.srQuotes ?? (() => Promise.resolve(null)),
     srMarkets: deps.srMarkets ?? (() => Promise.resolve(null)),
+    srLane: deps.srLane ?? (() => Promise.resolve(null)),
   });
   const oauth = deps.oauth ?? {
     issuer: "https://desklabs.xyz",

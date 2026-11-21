@@ -32,7 +32,12 @@ import {
   signalResearchEnvSchema,
   type Logger,
 } from "../src/signal-research/index";
-import { SOSO_BASE_URL, type SosoClient, type SosoNewsItem } from "../src/signal-research/soso";
+import {
+  SOSO_BASE_URL,
+  SosoError,
+  type SosoClient,
+  type SosoNewsItem,
+} from "../src/signal-research/soso";
 import { adoptInFlightArticles, saveNewsState } from "../src/signal-research/store";
 
 // Pipeline lane tin tức (#271) trên Postgres thật: SoSoValue và Claude là mock, giá đến từ "marketdata" giả (sổ lệnh NATS /
@@ -1161,6 +1166,155 @@ describe("latency clocks (#375)", () => {
     expect(oAt).toBeGreaterThan(dAt);
     // Event Decide · open mang đúng mốc quyết định của lệnh.
     expect(decided.find((e) => e.stage === "decide")?.decidedClockAt?.getTime()).toBe(dAt);
+  });
+});
+
+// #394: chu kỳ chỉnh bằng env, trần 20 request / phút của SoSoValue, 429 / 42901.
+describe("SoSoValue rate limit in the news cycle", () => {
+  const health = async () => {
+    const r = await pool.query<{
+      last_error: string | null;
+      last_ok_at: Date | null;
+      last_cycle_at: Date | null;
+      watermark_at: Date | null;
+    }>(
+      "select last_error, last_ok_at, last_cycle_at, watermark_at from signal_source_health where source = 'sosovalue'",
+    );
+    return r.rows[0];
+  };
+  const articles = async () =>
+    Number((await pool.query<{ n: string }>("select count(*) n from signal_articles")).rows[0]?.n);
+  const sosoUsed = async () =>
+    Number(
+      (
+        await pool.query<{ n: string | null }>(
+          "select sum(soso_requests) n from signal_research_usage",
+        )
+      ).rows[0]?.n ?? 0,
+    );
+  /** 150 bài mới, mỗi giây một bài trước `at`: trang 1 đầy và toàn bài mới → cần trang 2. */
+  const burst = (at: number) =>
+    Array.from({ length: 150 }, (_, i) =>
+      item(`b${String(i)}`, at - (i + 1) * 1_000, `Story ${String(i)}`, {
+        matched_currencies: [{ symbol: "BTC", name: "Bitcoin" }],
+      }),
+    );
+
+  it.each([
+    ["HTTP 429", () => new SosoError("SoSoValue answered 429", 429, 42901)],
+    ["code 42901 in the body", () => new SosoError("SoSoValue answered 200", 200, 42901)],
+  ])(
+    "%s on page 2: stops the cycle, marks rate_limited, no retry, nothing saved, the cursor stays; the next cycle gets every article",
+    async (_name, err) => {
+      let now = T0;
+      const first = setup({ items: () => [], claude: fakeClaude({}), now: () => now });
+      await first.sr.runCycle();
+      const before = await health();
+      expect(before?.last_cycle_at?.getTime()).toBe(T0);
+
+      now = T0 + MIN;
+      const items = burst(now);
+      const calls: number[] = [];
+      const limited: SosoClient = {
+        newsPage(page) {
+          calls.push(page);
+          if (page === 2) return Promise.reject(err());
+          return Promise.resolve({
+            items: [...items].slice(0, 100),
+            invalid: 0,
+          });
+        },
+      };
+      const { sr, errors } = setup({
+        items: () => items,
+        claude: fakeClaude({}),
+        now: () => now,
+        soso: limited,
+      });
+      await sr.runCycle();
+      expect(errors).toEqual([]);
+      // Trang 1, rồi trang 2 bị chặn: không thử lại trang 2 hay trang nào khác trong chu kỳ này.
+      expect(calls).toEqual([1, 2]);
+      const after = await health();
+      expect(after?.last_error).toBe("rate_limited");
+      // Con trỏ không tiến; trang 1 đã lấy cũng không lưu (để chu kỳ sau đọc lại cả trang 2).
+      expect(after?.last_cycle_at?.getTime()).toBe(before?.last_cycle_at?.getTime());
+      expect(after?.watermark_at?.getTime()).toBe(before?.watermark_at?.getTime());
+      expect(after?.last_ok_at?.getTime()).toBe(T0);
+      expect(await articles()).toBe(0);
+      const summary = await loadSignalResearchSummary(db, new Date(now), {
+        sosoMonthlyLimit: 9500,
+        claudeDailyInputBudget: 1000,
+        cycleMinutes: 1,
+      });
+      // Bị giới hạn tốc độ: chủ ý chờ chu kỳ sau → "Delayed", không "Down".
+      expect(summary.sources.find((s) => s.key === "sosoNews")?.status).toBe("delayed");
+      expect(summary.cycleMinutes).toBe(1);
+
+      // Chu kỳ sau, SoSoValue trả lại bình thường: đủ 150 bài, không mất bài nào.
+      now = T0 + 2 * MIN;
+      const ok = setup({ items: () => items, claude: fakeClaude({}), now: () => now });
+      await ok.sr.runCycle();
+      expect(ok.soso.calls).toBe(2);
+      expect(await articles()).toBe(150);
+      expect((await health())?.last_cycle_at?.getTime()).toBe(now);
+    },
+  );
+
+  it("never sends more than 20 requests a minute, counting every page; blocked requests are not sent or counted", async () => {
+    const now = T0;
+    const { sr, soso } = setup({
+      items: () => [item("x1", T0 - MIN, "One story")],
+      claude: fakeClaude({}),
+      now: () => now,
+      env: { SIGNAL_NEWS_CYCLE_MINUTES: "1" },
+    });
+    // 21 lần tới nhịp trong cùng một phút (mỗi chu kỳ 1 trang): lần thứ 21 bị chặn phía DeskLabs.
+    for (let i = 0; i < 21; i += 1) await sr.runCycle();
+    expect(soso.calls).toBe(20);
+    expect(await sosoUsed()).toBe(20);
+    expect((await health())?.last_error).toBe("rate_limited");
+    expect(await articles()).toBe(1);
+  });
+
+  it("pages of one cycle count toward the minute: page 2 is blocked once 20 are used", async () => {
+    let t = T0;
+    const items = burst(T0);
+    const { sr, soso } = setup({ items: () => items, claude: fakeClaude({}), now: () => t });
+    // Dùng hết 19 lượt trong phút này bằng 19 chu kỳ 1 trang (sau chu kỳ đầu, trang 1 đã biết → không đọc trang 2).
+    await sr.runCycle(); // 2 trang (trang 1 đầy, toàn bài mới)
+    for (let i = 0; i < 17; i += 1) await sr.runCycle();
+    expect(soso.calls).toBe(19);
+    // Sang phút sau một chút: 2 request đầu (ở T0) vẫn trong cửa sổ trượt.
+    t = T0 + 30_000;
+    // 100 bài mới hơn mọi bài đã lưu: trang 1 đầy, toàn bài mới → cần trang 2.
+    const fresh = Array.from({ length: 100 }, (_, i) =>
+      item(`n${String(i)}`, t - (i + 1) * 100, `New ${String(i)}`, {
+        matched_currencies: [{ symbol: "BTC", name: "Bitcoin" }],
+      }),
+    );
+    items.unshift(...fresh);
+    await sr.runCycle(); // trang 1 (lượt 20) đầy, toàn bài mới → cần trang 2, bị chặn
+    expect(soso.calls).toBe(20);
+    expect((await health())?.last_error).toBe("rate_limited");
+  });
+
+  it("the scheduler writes the cycle it uses to sr:lane on every tick", async () => {
+    const { sr, written } = setup({
+      items: () => [],
+      claude: fakeClaude({}),
+      now: () => T0,
+      env: { SIGNAL_NEWS_CYCLE_MINUTES: "1" },
+    });
+    expect(sr.cycleMinutes).toBe(1);
+    await sr.runCycle();
+    const lane = written.get("sr:lane");
+    expect(lane?.ms).toBe(15 * MIN);
+    expect(JSON.parse(lane?.value ?? "null")).toEqual({
+      cycleMinutes: 1,
+      sosoMonthlyLimit: 9500,
+      updatedAt: new Date(T0).toISOString(),
+    });
   });
 });
 

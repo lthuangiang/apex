@@ -79,20 +79,20 @@ export function latencyRows(l: ResearchLatency | null): LatencyRow[] {
 export function LatencyCard({
   range,
   versionId,
-  pollSecs,
+  cycleMinutes,
   className = "",
 }: {
   range: ResearchRange;
   versionId: VersionId;
-  /** Nhịp hỏi SoSoValue (giây) từ tổng kết; null = không biết. */
-  pollSecs: number | null;
+  /** #394: chu kỳ hỏi SoSoValue (phút) từ API tổng kết (`cycleMinutes`); null = không biết, câu chữ bỏ con số. */
+  cycleMinutes: number | null;
   className?: string;
 }) {
   const t = useTranslations("signalAnalysis.research");
   const q = useResearchLatency(range, versionId);
   const data = q.data ?? null;
   const rows = latencyRows(data);
-  const minutes = pollSecs === null ? null : Math.max(1, Math.round(pollSecs / 60));
+  const minutes = cycleMinutes;
   const articles = data?.stages.find((s) => s.key === "publishedToCollected")?.n ?? null;
   const measured = rows.filter((r) => r.key !== "sourceToSoso");
   // Tổng = median của cả quãng published → opened do API tính trên bài đủ mọi chặng (không cộng các median).
@@ -223,16 +223,17 @@ const gapMs = (from: string | null, to: string | null): number | null =>
 export function LatencyTimeline({
   article,
   latency,
-  pollSecs,
+  cycleMinutes,
   tz,
 }: {
   article: ResearchArticle;
   latency: ResearchTraceLatency;
-  pollSecs: number | null;
+  /** #394: chu kỳ (phút) từ API; null = không biết. */
+  cycleMinutes: number | null;
   tz: string;
 }) {
   const t = useTranslations("signalAnalysis.research");
-  const minutes = pollSecs === null ? null : Math.max(1, Math.round(pollSecs / 60));
+  const minutes = cycleMinutes;
   const gap = (from: string | null, to: string | null, wait = false): string | null => {
     const ms = gapMs(from, to);
     if (ms === null) return null;

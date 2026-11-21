@@ -209,6 +209,8 @@ services:
       SIGNAL_SOSO_MAX_PAGES: ${SIGNAL_SOSO_MAX_PAGES:-2}
       SIGNAL_NEWS_START_LOOKBACK_MIN: ${SIGNAL_NEWS_START_LOOKBACK_MIN:-15}
       SIGNAL_NEWS_MAX_CATCHUP_MIN: ${SIGNAL_NEWS_MAX_CATCHUP_MIN:-30}
+      # Chu kỳ tin (#394): phút 1–5, mặc định 5. Chỉ scheduler đọc; api lấy chu kỳ từ Redis sr:lane.
+      SIGNAL_NEWS_CYCLE_MINUTES: ${SIGNAL_NEWS_CYCLE_MINUTES:-5}
       # Research wallets (#353 / #365): số ví K, trần 40, 0 = tắt. Chỉ scheduler đọc biến này.
       SIGNAL_RESEARCH_WALLETS_K: ${SIGNAL_RESEARCH_WALLETS_K:-30}
 

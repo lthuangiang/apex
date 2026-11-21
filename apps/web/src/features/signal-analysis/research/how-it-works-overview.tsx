@@ -5,7 +5,6 @@ import {
   GATE_MIN_CLOSED,
   MARKET_STATE_RULES,
   NEWS_CLASSIFIER,
-  NEWS_CYCLE_MINUTES,
   NEWS_RULES,
 } from "@drift/shared";
 import { Button } from "@drift/ui";
@@ -40,15 +39,16 @@ import { classifierShort } from "./version-text";
 
 // Tab Overview của drawer How it works (#391, mockup docs/mockups/signal-research/how-it-works-overview.html): một vòng chạy
 // Collect → Decide → Watcher → Results. Mọi con số lấy từ hằng của @drift/shared (NEWS_RULES, NEWS_CLASSIFIER,
-// CLASSIFIER_GATE, GATE_MIN_CLOSED, MARKET_STATE_RULES, NEWS_CYCLE_MINUTES); số lần gọi Claude mỗi vòng và ngân sách token
-// mỗi ngày chỉnh bằng env nên câu chữ không có số. Drawer (BottomSheet side) xếp khối theo cột và tự cuộn: mọi khối con có
+// CLASSIFIER_GATE, GATE_MIN_CLOSED, MARKET_STATE_RULES), trừ chu kỳ (#394): chu kỳ chỉnh bằng env của scheduler nên lấy từ
+// API (`cycleMinutes` của tổng kết); không có thì câu chữ ghi "Not available", không đoán. Số lần gọi Claude mỗi vòng và
+// ngân sách token mỗi ngày chỉnh bằng env nên câu chữ không có số. Drawer (BottomSheet side) xếp khối theo cột và tự cuộn: mọi khối con có
 // `shrink-0` để dải tab và sơ đồ không bị ép dẹt (lỗi của mockup v1). Reduced motion: không tự chạy, chấm nhảy thẳng tới
 // chặng, nét đứt không chạy.
 
 const b = (c: ReactNode) => <b className="text-ink">{c}</b>;
 const m = (c: ReactNode) => <span className="text-muted">{c}</span>;
 
-export function OverviewPanel() {
+export function OverviewPanel({ cycleMinutes = null }: { cycleMinutes?: number | null }) {
   const t = useTranslations("signalAnalysis.research.page.drawer.overview");
   const reduce = usePrefersReducedMotion();
   const q = useResearchClassifiers();
@@ -109,7 +109,11 @@ export function OverviewPanel() {
 
   return (
     <>
-      <p className="m-0 shrink-0">{t.rich("intro", { min: NEWS_CYCLE_MINUTES, b })}</p>
+      <p data-testid="hiw-intro" className="m-0 shrink-0">
+        {cycleMinutes === null
+          ? t.rich("introNa", { b })
+          : t.rich("intro", { min: cycleMinutes, b })}
+      </p>
 
       <div
         data-testid="hiw-player"
@@ -169,6 +173,7 @@ export function OverviewPanel() {
               setArrived(true);
             }}
             reader={v}
+            cycleMinutes={cycleMinutes}
           />
           {STEP_KEYS.map((k) => {
             const r = STEP_BOX[k];
@@ -230,7 +235,7 @@ export function OverviewPanel() {
               </span>
             </summary>
             <div className="grid gap-2 px-3.5 pb-3.5 text-[13.5px] text-ink-2 sm:pl-12">
-              <StepBody k={k} reader={v} />
+              <StepBody k={k} reader={v} cycleMinutes={cycleMinutes} />
             </div>
           </details>
         ))}
@@ -246,14 +251,24 @@ export function OverviewPanel() {
   );
 }
 
-function StepBody({ k, reader }: { k: ListKey; reader: string | null }) {
+function StepBody({
+  k,
+  reader,
+  cycleMinutes,
+}: {
+  k: ListKey;
+  reader: string | null;
+  cycleMinutes: number | null;
+}) {
   const t = useTranslations("signalAnalysis.research.page.drawer.overview.steps");
   const drops = (c: ReactNode) => <p className="m-0 text-muted">{c}</p>;
   switch (k) {
     case "collect":
       return (
         <>
-          <p className="m-0">{t("collect.body", { min: NEWS_CYCLE_MINUTES })}</p>
+          <p className="m-0">
+            {cycleMinutes === null ? t("collect.bodyNa") : t("collect.body", { min: cycleMinutes })}
+          </p>
           {drops(t("collect.drops"))}
         </>
       );
@@ -274,9 +289,7 @@ function StepBody({ k, reader }: { k: ListKey; reader: string | null }) {
             className="grid gap-1.5 rounded-[10px] border border-unknown bg-unknown-bg px-3.5 py-3"
           >
             <div className="text-xs font-extrabold text-unknown">{t("score.whenTitle")}</div>
-            <p className="m-0">
-              {t("score.whenIntro", { min: NEWS_CYCLE_MINUTES, n: checks.length })}
-            </p>
+            <p className="m-0">{t("score.whenIntro", { n: checks.length })}</p>
             <ol className="m-0 grid gap-[3px] pl-5">
               {checks.map((c) => (
                 <li key={c}>
@@ -365,12 +378,14 @@ function Diagram({
   arrived,
   onArrive,
   reader,
+  cycleMinutes,
 }: {
   stage: number;
   move: number;
   arrived: boolean;
   onArrive: () => void;
   reader: string | null;
+  cycleMinutes: number | null;
 }) {
   const t = useTranslations("signalAnalysis.research.page.drawer.overview");
   const id = useId().replace(/:/g, "");
@@ -475,7 +490,9 @@ function Diagram({
         {t("diagram.soso.l1")}
       </text>
       <text x={16} y={77} fontSize={11} className={muted}>
-        {t("diagram.soso.l2", { min: NEWS_CYCLE_MINUTES })}
+        {cycleMinutes === null
+          ? t("diagram.soso.l2Na")
+          : t("diagram.soso.l2", { min: cycleMinutes })}
       </text>
       <rect x={4} y={296} width={150} height={72} rx={10} className={src} />
       <text x={16} y={320} fontSize={13} fontWeight={800} className="fill-ink">

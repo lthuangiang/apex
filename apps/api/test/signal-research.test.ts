@@ -882,6 +882,44 @@ describe("signal research articles feed and trace (#291)", () => {
     expect(f.long).toBe(1);
   });
 
+  it("#394: cycleMinutes and the SoSoValue monthly limit come from the scheduler's sr:lane snapshot; missing or broken → null", async () => {
+    const summary = async () =>
+      researchSummarySchema.parse((await team.request("GET", `${base}/summary?range=1d`)).json());
+    try {
+      env.srLane.value = JSON.stringify({
+        cycleMinutes: 1,
+        sosoMonthlyLimit: 60_000,
+        updatedAt: env.clock.now.toISOString(),
+      });
+      const one = await summary();
+      expect(one.cycleMinutes).toBe(1);
+      expect(one.funnel?.soso?.limit).toBe(60_000);
+      expect(one.funnel).not.toHaveProperty("pollSecs");
+
+      env.srLane.value = JSON.stringify({
+        cycleMinutes: 5,
+        sosoMonthlyLimit: 9_500,
+        updatedAt: env.clock.now.toISOString(),
+      });
+      expect((await summary()).cycleMinutes).toBe(5);
+
+      // Ngoài 1–5, JSON hỏng: không đoán chu kỳ; trần tháng về mặc định.
+      for (const bad of [
+        JSON.stringify({ cycleMinutes: 7, sosoMonthlyLimit: 9_500, updatedAt: "x" }),
+        "{not json",
+      ]) {
+        env.srLane.value = bad;
+        const s = await summary();
+        expect(s.cycleMinutes).toBeNull();
+        expect(s.funnel?.soso?.limit).toBe(9_500);
+      }
+    } finally {
+      env.srLane.value = null;
+    }
+    // Scheduler không ghi (lane tắt, key hết hạn): null → web "Not available".
+    expect((await summary()).cycleMinutes).toBeNull();
+  });
+
   it("#297/#308: open trades are marked at the real exit price (Long → bid); stale or no price → null, never 0", async () => {
     const nowMs = env.clock.now.getTime();
     const quotes = (q: object) => {

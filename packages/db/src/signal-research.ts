@@ -13,7 +13,8 @@ import {
   paperBalance,
   RESEARCH_BOT_START_USDC,
   SIGNAL_CONTEXT_VERSION,
-  SOURCE_HEALTH,
+  SOSO_RATE_LIMITED_ERROR,
+  sourceHealthOf,
   summarizeByDay,
   tradesNeeded,
   type DayObs,
@@ -105,7 +106,6 @@ type StoryRow = typeof signalStories.$inferSelect;
 type EventRow = typeof signalEvents.$inferSelect;
 
 const DAY_MS = 86_400_000;
-const POLL_SECS = 300;
 
 const iso = (d: Date) => d.toISOString();
 const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -238,28 +238,34 @@ export function logicalStories(
 export interface SummaryLimits {
   sosoMonthlyLimit: number;
   claudeDailyInputBudget: number;
+  /**
+   * #394: chu kỳ (phút) scheduler đang chạy (Redis `sr:lane`); null / thiếu = không biết → `cycleMinutes` null và ngưỡng
+   * nguồn theo chu kỳ mặc định.
+   */
+  cycleMinutes?: number | null;
 }
 
 /** Hết hạn mức SoSoValue tháng: nguồn "Delayed" (chủ ý ngừng gọi), không phải "Down". */
 export const SOSO_MONTHLY_QUOTA_ERROR = "monthly_quota";
 
-function sourceStatus(
+export function sourceStatus(
   key: SignalSourceKey,
   lastOk: Date | null,
   lastErr: Date | null,
   now: number,
   lastError: string | null = null,
+  cycleMinutes: number | null = null,
 ): "live" | "delayed" | "down" {
-  if (
-    lastError === SOSO_MONTHLY_QUOTA_ERROR &&
-    lastErr !== null &&
-    (lastOk === null || lastErr > lastOk)
-  )
-    return "delayed";
+  const errLatest = lastErr !== null && (lastOk === null || lastErr > lastOk);
+  if (lastError === SOSO_MONTHLY_QUOTA_ERROR && errLatest) return "delayed";
   if (lastOk === null) return "down";
   const age = now - lastOk.getTime();
-  const t = SOURCE_HEALTH[key];
-  if (lastErr !== null && lastErr > lastOk && age > t.liveMs) return "down";
+  const t = sourceHealthOf(key, cycleMinutes);
+  // #394: SoSoValue trả 429 / 42901 (hoặc DeskLabs tự chặn ở 20 request / phút): chủ ý chờ chu kỳ sau, nên "Delayed" tới
+  // ngưỡng Delayed, không "Down" ngay khi quá ngưỡng Live.
+  if (lastError === SOSO_RATE_LIMITED_ERROR && errLatest)
+    return age <= t.delayedMs ? "delayed" : "down";
+  if (errLatest && age > t.liveMs) return "down";
   if (age <= t.liveMs) return "live";
   return age <= t.delayedMs ? "delayed" : "down";
 }
@@ -338,6 +344,7 @@ export async function loadSignalResearchSummary(
   versionId?: string,
 ): Promise<ResearchSummary> {
   const v = NEWS_RULES.version;
+  const cycleMinutes = limits.cycleMinutes ?? null;
   const scope = await resolveSignalVersion(q, versionId);
   check();
   const nowMs = now.getTime();
@@ -594,7 +601,7 @@ export async function loadSignalResearchSummary(
     sources.push({
       key: api,
       mode: "live",
-      status: sourceStatus(key, h.lastOkAt, h.lastErrorAt, nowMs, h.lastError),
+      status: sourceStatus(key, h.lastOkAt, h.lastErrorAt, nowMs, h.lastError, cycleMinutes),
       lastAt: h.lastOkAt === null ? null : iso(h.lastOkAt),
       gap: null,
     });
@@ -658,7 +665,8 @@ export async function loadSignalResearchSummary(
             mode: "live",
             state:
               soso?.lastCycleAt != null &&
-              nowMs - soso.lastCycleAt.getTime() <= SOURCE_HEALTH.sosovalue.delayedMs
+              nowMs - soso.lastCycleAt.getTime() <=
+                sourceHealthOf("sosovalue", cycleMinutes).delayedMs
                 ? "running"
                 : "paused",
             balance: realized.toDecimalPlaces(6).toFixed(),
@@ -679,7 +687,6 @@ export async function loadSignalResearchSummary(
                 ? 7
                 : Math.max(1, Math.ceil((nowMs - enabledSince.getTime()) / DAY_MS)),
           delayMedianSecs: delay?.secs == null ? null : Math.round(Number(delay.secs)),
-          pollSecs: POLL_SECS,
           claudeCostPerDay:
             costs.length === 0
               ? null
@@ -718,6 +725,7 @@ export async function loadSignalResearchSummary(
           context: funnelContext,
         }
       : null,
+    cycleMinutes,
     newsRulesVersion: on ? NEWS_RULES.versionNumber : null,
     levels: on ? levels : [],
     costPct: num(entryCost),

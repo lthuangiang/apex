@@ -19,6 +19,7 @@ import {
   ClassificationVerdict,
   LABEL_NOTE_MAX,
 } from "../signal-research/labels";
+import { cycleMinutesSchema } from "../signal-research/lane";
 import { BTC_TRENDS, VOLATILITY_STATES } from "../signal-research/market-state";
 import { SIGNAL_CATALYSTS, type SignalCatalyst } from "../signal-research/rules";
 import {
@@ -169,7 +170,6 @@ const dropSchema = z.object({
 export const researchFunnelSchema = z.object({
   days: int,
   delayMedianSecs: int.nullable(),
-  pollSecs: int,
   claudeCostPerDay: dec.nullable(),
   articlesRead: int.nullable(),
   /**
@@ -570,6 +570,11 @@ export const researchSummarySchema = z.object({
   sources: z.array(researchSourceSchema),
   bots: z.array(researchPaperBotSchema),
   funnel: researchFunnelSchema.nullable(),
+  /**
+   * #394: chu kỳ (phút) của lane tin tức mà scheduler đang chạy (bản chụp Redis `sr:lane`; thay `funnel.pollSecs` cố định
+   * 300). null khi scheduler không ghi (lane tắt, scheduler ngừng, key hết hạn): web hiện "Not available", không đoán.
+   */
+  cycleMinutes: cycleMinutesSchema.nullable(),
   newsRulesVersion: int.nullable(),
   levels: z.array(researchLevelRowSchema),
   /** Chi phí khứ hồi một lệnh, % (taker + builder hai chiều + spread). */

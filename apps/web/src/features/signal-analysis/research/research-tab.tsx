@@ -155,6 +155,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
             request={trace}
             versionId={versionId}
             rulesSince={rulesSinceOf(v, range)}
+            cycleMinutes={v.cycleMinutes}
           />
           <IsItWorking
             v={v}
@@ -228,6 +229,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
           }}
           version={picked}
           rulesVersion={v?.newsRulesVersion ?? null}
+          cycleMinutes={v?.cycleMinutes ?? null}
           maxRunning={versions.data?.maxRunning ?? null}
           baselineNumber={versions.data?.items.find((x) => x.isBaseline)?.number ?? null}
         />
