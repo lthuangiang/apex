@@ -43,11 +43,23 @@ function volume(v: string): string {
   if (n >= 10_000) return `${formatInteger(Math.round(n / 1000))}K`;
   return formatInteger(Math.round(n));
 }
-/** USDC làm tròn đô bằng decimal ("1,284", "−3"); câu tổng và từng phần dùng chung để cộng lại khớp nhau (#415). */
-const usdc = (v: string) =>
-  (
-    formatDecimal(v, { locale: "en-US", maximumFractionDigits: 0, signDisplay: "negative" }) ?? ""
+/**
+ * USDC bằng decimal; câu tổng và từng phần dùng chung (#415). |x| < 10 hiện 2 chữ số thập phân ("0.42", "7.15") để số
+ * khác 0 không bao giờ thành "0"; từ 10 trở lên làm tròn đô ("19", "1,284"). Số 0 thật hiện "0".
+ */
+const usdc = (v: string) => {
+  const d = dec(v);
+  const small = !d.isZero() && d.abs().lt(10);
+  const digits = small ? 2 : 0;
+  return (
+    formatDecimal(v, {
+      locale: "en-US",
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+      signDisplay: "negative",
+    }) ?? ""
   ).replace("-", "−");
+};
 const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
 
 function Compare({

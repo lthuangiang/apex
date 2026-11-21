@@ -304,14 +304,12 @@ describe("How your bots performed", () => {
     expect(strong("SoDEX fee · $131 per $1M")).toBeInTheDocument();
     expect(strong("DeskLabs builder fee · $49 per $1M")).toBeInTheDocument();
     expect(strong("Price moved against your trades · $60 per $1M")).toBeInTheDocument();
+    // Từ 10 USDC trở lên làm tròn đô; dưới 10 hiện 2 chữ số thập phân (review #424).
     expect(paidLines()).toEqual([
       "19 USDC in these 7 days",
-      "7 USDC in these 7 days",
-      "9 USDC in these 7 days",
+      "7.15 USDC in these 7 days",
+      "8.71 USDC in these 7 days",
     ]);
-    // Ba dòng USDC cộng lại khớp câu bên trái (cùng làm tròn đô).
-    const total = paidLines().reduce((s, l) => s + Number(l.split(" ")[0]), 0);
-    expect(total).toBe(35);
     expect(screen.getByText("$7 per $1M more than the week before")).toBeInTheDocument();
     expect(screen.getByText("$15 per $1M more than the week before")).toBeInTheDocument();
     expect(screen.getByText("$11 per $1M more than the week before")).toBeInTheDocument();
@@ -344,6 +342,26 @@ describe("How your bots performed", () => {
     expect(paidLines()).toEqual(["19 USDC in these 30 days", "0 USDC in these 30 days"]);
     expect(strong("DeskLabs builder fee · $0.00 per $1M")).toBeInTheDocument();
     await axeClean();
+  }, 20_000);
+
+  it("never shows a non-zero amount under 0.5 USDC as 0: below 10 USDC it keeps 2 decimals", async () => {
+    state.view = {
+      ...READY,
+      current: cost({
+        ...MOCKUP,
+        sodexFee: "19.1",
+        builderFee: "0.42",
+        priceMove: "0",
+        perMillion: { cost: "239", sodexFee: "131", builderFee: "3", priceMove: "0" },
+      }),
+    };
+    wrap();
+    expect(await screen.findByText("Cost per $1M traded, by part")).toBeInTheDocument();
+    expect(paidLines()).toEqual([
+      "19 USDC in these 7 days",
+      "0.42 USDC in these 7 days",
+      "0 USDC in these 7 days",
+    ]);
   }, 20_000);
 
   it("shows the empty, not-enough and error states", async () => {
