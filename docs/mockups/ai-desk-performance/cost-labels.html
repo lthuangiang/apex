@@ -1,0 +1,103 @@
+<title>Bot Cost Labels</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+/* Mockup: AI Desk "How your bots performed" with per-$1M labels made explicit and the real USDC amount under each part. Before / after. DeskLabs tokens, light only like the app. */
+:root{
+  --bg:#eef1fa; --surface:#ffffff; --surface-2:#f5f7fd; --border:#e3e7f5; --ink:#141a33; --ink-2:#3b4262; --muted:#5f6684;
+  --accent:#2e62e8; --accent-ink:#1d47b8; --accent-tint:#e6ecfe; --warn-bar:#e08a2e; --neg-ink:#a72826; --pos:#0f7a43;
+  --note:#5a2ca0; --note-bg:#f0e6ff; --old:#a72826;
+  --f:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif; color-scheme:light;
+}
+body{background:var(--bg);color:var(--ink);font-family:var(--f);font-size:14px;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding-block:28px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:22px}
+h1{margin:0;font-size:24px;font-weight:800}
+.lede{margin:4px 0 0;color:var(--ink-2);max-width:90ch}
+.note{border:2px dashed var(--note);background:var(--note-bg);color:var(--note);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600}
+.flabel{font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.frame{display:grid;gap:8px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:24px;display:grid;gap:18px;min-width:0}
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start}
+.top h2{margin:0;font-size:22px;font-weight:800}
+.top p{margin:4px 0 0;color:var(--ink-2);font-size:14px}
+.seg{display:inline-flex;background:var(--surface-2);border-radius:14px;padding:4px;gap:2px}
+.seg span{min-height:40px;display:flex;align-items:center;padding:0 14px;border-radius:10px;font-weight:700;color:var(--ink-2)}
+.seg span.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(20,26,51,.12)}
+.body{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr);gap:20px;align-items:start}
+@media (max-width:900px){.body{grid-template-columns:minmax(0,1fr)}}
+.lead{background:var(--surface-2);border-radius:18px;padding:20px;display:grid;gap:8px}
+.lead p{margin:0}
+.lead .big{font-size:24px;font-weight:800}
+.more{color:var(--neg-ink);font-weight:700;font-size:13.5px}
+.less{color:var(--pos);font-weight:700;font-size:13.5px}
+.muted{color:var(--muted);font-size:12.5px}
+.right{display:grid;gap:12px;min-width:0}
+.bh{font-size:12.5px;font-weight:800;color:var(--muted)}
+.bar{display:flex;height:36px;border-radius:12px;overflow:hidden;font-size:12.5px;font-weight:800;color:#fff}
+.bar span{display:flex;align-items:center;justify-content:center;min-width:0}
+.s1{background:var(--accent)}.s2{background:var(--accent-ink)}.s3{background:var(--warn-bar);color:var(--ink)}
+.legs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:620px){.legs{grid-template-columns:minmax(0,1fr)}}
+.leg{display:grid;grid-template-columns:12px 1fr;gap:4px 8px;align-content:start}
+.leg i{width:12px;height:12px;border-radius:3px;margin-top:4px;grid-row:span 4}
+.leg b{font-size:14px}
+.leg .pm{font-weight:600;color:var(--muted);font-size:12.5px}
+.leg .usd{font-size:13px;color:var(--ink);font-weight:700}
+.leg .d{font-size:13px;color:var(--ink-2)}
+.chg{display:inline-block;font-size:10.5px;font-weight:800;color:#0f7a43;background:#ddf4e7;border-radius:99px;padding:1px 7px;margin-left:6px;vertical-align:1px}
+.cmp{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px}
+@media (max-width:980px){.cmp{grid-template-columns:minmax(0,1fr)}}
+.oldv{opacity:.92}
+.strike{color:var(--old)}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>AI Desk · How your bots performed · nhãn chi phí</h1>
+    <p class="lede">Mockup sửa nhãn cho rõ: các số trên thanh màu là chi phí trên mỗi $1M giao dịch, không phải số tiền đã trả. Dưới mỗi phần có thêm số USDC thật trong kỳ. Bố cục không đổi. Số liệu lấy theo ảnh màn hình 7 ngày (146K USDC, 35 USDC chi phí). Khung tím là ghi chú cho người duyệt.</p>
+  </header>
+
+  <div class="frame">
+    <span class="flabel">Sau khi sửa</span>
+    <div class="card">
+      <div class="top">
+        <div><h2>How your bots performed</h2><p>Your live Market Making and Volume Builder bots · last 7 days vs the 7 days before</p></div>
+        <div class="seg"><span class="on">7 days</span><span>30 days</span></div>
+      </div>
+      <div class="body">
+        <div class="lead">
+          <p>Your bots traded <b>146K USDC</b> and paid <b>35 USDC</b> in fees and price moves.</p>
+          <p class="big">That's $239 per $1M traded</p>
+          <p class="more">▲ $7 per $1M more than the week before</p>
+          <p class="muted">This is what trading cost, not your profit or loss. Your net result is on each bot's page. Practice bots aren't counted.</p>
+        </div>
+        <div class="right">
+          <div class="bh">Cost per $1M traded, by part<span class="chg">New</span></div>
+          <div class="bar" role="img" aria-label="Of $239 per $1M: SoDEX fee $131, DeskLabs builder fee $49, price moved against your trades $60."><span class="s1" style="flex:131">$131</span><span class="s2" style="flex:49">$49</span><span class="s3" style="flex:60">$60</span></div>
+          <div class="legs">
+            <div class="leg"><i class="s1"></i><b>SoDEX fee · $131 <span class="pm">per $1M</span></b><span class="usd">19 USDC in these 7 days</span><span class="d">What SoDEX charges on each trade.</span><span class="more">▲ $15 per $1M more than the week before</span></div>
+            <div class="leg"><i class="s2"></i><b>DeskLabs builder fee · $49 <span class="pm">per $1M</span></b><span class="usd">7 USDC in these 7 days</span><span class="d">What DeskLabs charges on each trade.</span><span class="more">▲ $11 per $1M more than the week before</span></div>
+            <div class="leg"><i class="s3"></i><b>Price moved against your trades · $60 <span class="pm">per $1M</span></b><span class="usd">9 USDC in these 7 days</span><span class="d">The price went the wrong way after your orders filled, before the trade closed.</span><span class="less">▼ $19 per $1M less than the week before</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Ba thay đổi, chỉ đổi câu chữ, không đổi bố cục: (1) thêm dòng tiêu đề nhỏ “Cost per $1M traded, by part” trên thanh màu; (2) mỗi phần ghi “$131 per $1M” và thêm dòng số USDC thật trong kỳ (19 + 7 + 9 = 35, khớp câu bên trái); (3) dòng so sánh ghi “per $1M” cho khỏi nhầm là số tiền. Số USDC thật đã có sẵn trong API (`sodexFee`, `builderFee`, `priceMove`), không cần thêm dữ liệu. Khi giá có lợi cho mình, phần thứ ba giữ câu “Price moved in your favour” như hiện tại, kèm số USDC.</p>
+  </div>
+
+  <div class="frame oldv">
+    <span class="flabel">Hiện tại (để so)</span>
+    <div class="card">
+      <div class="right">
+        <div class="bar"><span class="s1" style="flex:131">$131</span><span class="s2" style="flex:49">$49</span><span class="s3" style="flex:60">$60</span></div>
+        <div class="legs">
+          <div class="leg"><i class="s1"></i><b>SoDEX fee · $131</b><span class="d">What SoDEX charges on each trade.</span><span class="more">▲ $15 more than the week before</span></div>
+          <div class="leg"><i class="s2"></i><b>DeskLabs builder fee · $49</b><span class="d">What DeskLabs charges on each trade.</span><span class="more">▲ $11 more than the week before</span></div>
+          <div class="leg"><i class="s3"></i><b>Price moved against your trades · $60</b><span class="d">The price went the wrong way after your orders filled, before the trade closed.</span><span class="less">▼ $19 less than the week before</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Đọc bản hiện tại thì dễ tưởng đã trả $131 + $49 + $60 = $240, trong khi câu bên trái nói chỉ trả 35 USDC.</p>
+  </div>
+</div>
