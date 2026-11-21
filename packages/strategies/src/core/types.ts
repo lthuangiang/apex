@@ -131,7 +131,62 @@ export type StrategyEvent =
       allowanceReason?: "liquidity" | "min_hold";
     }
   /** Vị thế của leader đọc lại định kỳ qua REST, để bù fill bị lỡ khi stream rớt. `size` có dấu. */
-  | { type: "leaderPosition"; at: number; market: string; size: string };
+  | { type: "leaderPosition"; at: number; market: string; size: string }
+  /**
+   * Tín hiệu tin tức dùng chung (bot `news_signal`, #419): một dòng `news_signals`. Mỗi bot lọc riêng. `book`: giá tốt
+   * nhất SoDEX của market lúc engine giao tín hiệu (null / thiếu = không có giá mới). `accountMarketBusy`: account × market
+   * đã có lệnh `news_signal` đang mở của bot khác (engine đọc `news_signal_trades`).
+   */
+  | {
+      type: "newsSignal";
+      at: number;
+      signal: NewsSignalInput;
+      book?: { bid: string; ask: string } | null;
+      accountMarketBusy?: boolean;
+    }
+  /** Lệnh của người dùng trên một lệnh `news_signal` (Edit TP/SL, Close now; bảng `news_signal_commands`). */
+  | { type: "newsCommand"; at: number; command: NewsCommandInput }
+  /**
+   * Người dùng Stop bot `news_signal` (DEC-115): `close = false` là "Keep open trades" (TP/SL ở lại SoDEX, thôi áp max
+   * hold), `true` là "Close all now".
+   */
+  | { type: "newsStop"; at: number; close: boolean }
+  /**
+   * Bot đã pause nhưng runner vẫn chạy để quản lý lệnh đang mở (bot `news_signal`, `MANAGED_WHILE_PAUSED`): không mở lệnh
+   * mới. Chiến lược khác không nhận sự kiện này.
+   */
+  | { type: "paused"; at: number };
+
+/** Một tín hiệu tin tức (cột của `news_signals`), thời gian là ms, tiền / giá là chuỗi thập phân. */
+export interface NewsSignalInput {
+  id: string;
+  storyKey: string;
+  market: string;
+  kind: "crypto" | "stock";
+  catalyst: string;
+  side: "long" | "short";
+  level: "high" | "medium" | "low";
+  firstPublishedAt: number;
+  collectedAt: number;
+  decidedAt: number;
+  expiresAt: number;
+  /** Báo giá lúc quyết định; null = không có. */
+  quote: { bid: string; ask: string; mid: string; at: number } | null;
+  /** Biến động thường gặp (%) theo số giờ giữ; null = thiếu nến. */
+  typicalByHoldHours: Readonly<Record<string, string | null>>;
+}
+
+/** Lệnh Edit TP/SL / Close now. `signalId` xác định lệnh (mỗi bot một lệnh mỗi tín hiệu). */
+export interface NewsCommandInput {
+  id: string;
+  signalId: string;
+  kind: "edit_tpsl" | "close";
+  /** Tăng theo lệnh (`news_signal_commands.seq`); là tag `close:<seq>` của lệnh đóng. */
+  seq: number;
+  /** Chỉ `edit_tpsl`: giá mới, null = giữ nguyên. */
+  tp: string | null;
+  sl: string | null;
+}
 
 /** Nến 1 phút đã đóng (cũ → mới), số thập phân dạng chuỗi như mọi giá khác. */
 export interface MinuteCandle {
@@ -170,6 +225,19 @@ export type StrategyAction =
   /** Dời giá kích hoạt của stop loss gốc trên SoDEX (DEC-118); SoDEX từ chối thì engine báo `orderReject` cho lệnh đó. */
   | { type: "modifyStop"; clOrdID: string; stopPrice: string }
   | { type: "pause"; reason: ReasonCode }
+  /**
+   * Kết quả một tín hiệu trên bot này (bot `news_signal`): engine ghi `news_signal_deliveries`. `reason` là `SignalReason`
+   * khi `dropped`.
+   */
+  | {
+      type: "signalOutcome";
+      signalId: string;
+      outcome: "accepted" | "dropped";
+      reason?: string;
+      detail?: Record<string, string | number | boolean>;
+    }
+  /** Kết quả một lệnh Edit TP/SL / Close now (bot `news_signal`): engine ghi `news_signal_commands.status`. */
+  | { type: "commandResult"; commandId: string; status: "applied" | "rejected"; code?: string }
   | { type: "stop"; reason: ReasonCode; close: boolean }
   | { type: "flag"; needsAttention: boolean }
   /** Một dòng "Decisions & actions" (bot_events). */
@@ -291,4 +359,9 @@ export interface StrategyModule<C, S> {
    * lại `orderDone` / `orderReject` khi lần huỷ lại gặp dòng lệnh đã kết thúc, như Volume Farm (DEC-317).
    */
   awaitsEnd?: (state: S, clOrdID: string) => boolean;
+  /**
+   * Stop "Keep open trades" (bot `news_signal`, DEC-115): clOrdID của các lệnh engine KHÔNG được huỷ khi Stop (TP / SL
+   * đang nằm trên SoDEX). Thiếu hàm thì Stop huỷ mọi lệnh như trước.
+   */
+  keepOnStop?: (state: S) => readonly string[];
 }

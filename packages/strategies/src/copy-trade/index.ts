@@ -616,6 +616,10 @@ function stepMarket(
     case "marginRatio":
     case "positionSync":
     case "fair":
+    case "newsSignal":
+    case "newsCommand":
+    case "newsStop":
+    case "paused":
     case "book":
       return none(s);
   }
@@ -845,6 +849,10 @@ export function stepCopyTrade(
     case "marginRatio":
     case "positionSync":
     case "fair":
+    case "newsSignal":
+    case "newsCommand":
+    case "newsStop":
+    case "paused":
     case "book":
       return none2(s);
   }
