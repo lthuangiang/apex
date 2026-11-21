@@ -42,7 +42,7 @@ import {
   approveMessageSchema,
   reconcileSignatureRequest,
   SODEX_NONCE_WINDOW_MS,
-} from "@drift/sodex/reconcile";
+} from "@drift/sodex-reconcile";
 import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import { getAddress, type Address, type Hex } from "viem";
 import { z } from "zod";
@@ -531,7 +531,7 @@ export async function submitSignature(
 
 /**
  * Đọc lại trạng thái từ SoDEX cho request đã gửi (`unknown`). Chỉ đọc, không gửi lại. Cùng hàm với vòng đối soát nền
- * của jobs (`@drift/sodex/reconcile`, #327).
+ * của jobs (`@drift/sodex-reconcile`, #327).
  */
 export async function reconcile(
   deps: SodexDeps,

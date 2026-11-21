@@ -102,6 +102,8 @@ export default config(
                 "@drift/db/*",
                 "@drift/sodex",
                 "@drift/sodex/*",
+                "@drift/sodex-reconcile",
+                "@drift/sodex-reconcile/*",
                 "@drift/runtime",
                 "@drift/runtime/*",
                 "@drift/hyperliquid",
