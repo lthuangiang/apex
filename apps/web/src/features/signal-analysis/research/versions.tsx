@@ -63,15 +63,12 @@ export function NewsVersions({
   tz,
   selected,
   onSelect,
-  others,
   unrealized,
 }: {
   tz: string;
   /** Version đang xem ở dưới; null = Baseline (mặc định của API). */
   selected: string | null;
   onSelect: (id: string) => void;
-  /** Thẻ bot replay (Whales, Funding · Price patterns) giữ như trước. */
-  others: ReactNode;
   /**
    * #297: lãi / lỗ chưa chốt của bot News trong tổng kết (theo giá SoDEX gần nhất), chỉ của version tổng kết đang mô tả;
    * null = không có (không cộng một phần).
@@ -138,7 +135,6 @@ export function NewsVersions({
         ) : (
           <p className="m-0 text-sm text-muted">{t("loading")}</p>
         )}
-        {others}
       </>
     );
 
@@ -218,7 +214,6 @@ export function NewsVersions({
         current={current}
         onSelect={onSelect}
       />
-      {others}
       {sheet === null ? null : (
         <VersionSheet
           key={sheet.kind === "rules" ? `r-${sheet.of.id}` : `n-${sheet.from?.id ?? "new"}`}
