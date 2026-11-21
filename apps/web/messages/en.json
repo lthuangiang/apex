@@ -7884,32 +7884,7 @@
         "statusSr": "Status: {status}."
       },
       "bots": {
-        "names": {
-          "news": "News bot",
-          "whales": "Whales bot",
-          "group": "Funding · Price patterns"
-        },
-        "body": {
-          "news": "Trades each news signal the moment it passes the checks, then closes at take profit, stop loss or max hold.",
-          "whales": "Each night replays the day’s whale moves with the same rules, entering at the price when DeskLabs saw them.",
-          "group": "Same as Whales: two more bots replaying stored funding rates and candles every night."
-        },
-        "state": {
-          "live": "Running · live",
-          "replay": "Replays nightly",
-          "paused": "Paused"
-        },
         "balance": "Balance",
-        "open": "Open",
-        "openN": "{n, plural, one {# trade} other {# trades}}",
-        "rules": "Rules",
-        "version": "v{v}",
-        "lastRun": "Last run",
-        "lastRunValue": "{time} · {n, plural, one {# trade} other {# trades}}",
-        "fundingBalance": "Funding balance",
-        "priceBalance": "Price patterns balance",
-        "pause": "Pause",
-        "pauseReplays": "Pause replays",
         "unrealized": "{pnl} unrealized",
         "olderRules": "{n, plural, one {# trade} other {# trades}} from older rules ({versions}) are still listed in Paper trades."
       },

@@ -346,7 +346,7 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(within(src).getByText(/^Claude · Delayed · /)).toBeInTheDocument();
   });
 
-  it("paper bots: News bot versions, replay bots with balance, last run and rule version", async () => {
+  it("paper bots: News bot versions only, no replay cards (#385)", async () => {
     wrap();
     await screen.findByRole("region", { name: "Bots & labels" });
     const bots = region("Bots & labels");
@@ -357,8 +357,9 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     expect(within(baseline).getByText("+$3.25 unrealized")).toBeInTheDocument();
     const v4 = within(bots).getByRole("article", { name: "News bot v4 · Strict subject" });
     expect(within(v4).queryByText(/unrealized/)).not.toBeInTheDocument();
-    expect(within(bots).getByText("01:00 · 23 trades")).toBeInTheDocument();
-    expect(within(bots).getByText("9,623.4")).toBeInTheDocument();
+    // #385: thẻ replay (Whales, Funding · Price patterns) đã bỏ: API không bao giờ trả bot replay.
+    expect(within(bots).queryByText("Whales bot")).not.toBeInTheDocument();
+    expect(within(bots).queryByText("Funding · Price patterns")).not.toBeInTheDocument();
   });
 
   it("the per-level table sits under Is it working? › By level and says Not enough trades, never 0", async () => {
@@ -639,8 +640,7 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     wrap();
     await screen.findByRole("region", { name: "Bots & labels" });
     const bots = region("Bots & labels");
-    // Whales balance, Funding balance, Price patterns balance (lane News: News bot versions).
-    expect(within(bots).getAllByText("Not available").length).toBeGreaterThanOrEqual(3);
+    // #385: không còn thẻ replay (trước đây ba số dư "Not available" của Whales / Funding / Price patterns nằm ở đây).
     // Số dư thiếu không bao giờ thành "0.0". (Số đếm 0 thật của API versions, như Closed 0, vẫn hiện: từ #342 danh sách
     // version tải ngay ở đầu trang.)
     expect(within(bots).queryByText(/^0\.0$/)).not.toBeInTheDocument();
