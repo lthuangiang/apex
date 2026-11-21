@@ -19,6 +19,8 @@ const IDENTIFIER_KEYS: ReadonlySet<string> = new Set([
   "publicKey",
   "name",
   "symbol",
+  // #400: ký hiệu coin của SoDEX (như `symbol`).
+  "coin",
   "tail",
   "label",
   "key",
@@ -26,10 +28,14 @@ const IDENTIFIER_KEYS: ReadonlySet<string> = new Set([
 /**
  * #400: đuôi id người làm (`createdBy`, `labeledBy`: 4 ký tự hex như "1e05") và đuôi ví (`walletTail`) cũng là định danh.
  * "1e05" khớp EXPONENT nên từng bị đổi thành "100000" (khoảng 3 % id user), làm response hỏng schema `^[0-9a-f]{4}$`.
- * Quy ước: field kết thúc bằng `Id` / `id`, `By` (ai làm) hoặc `Tail` không bao giờ là số.
+ * Quy ước: field kết thúc bằng `Id` / `id`, `By` (ai làm), `Tail` hoặc `Last<n>` / `last<n>` không bao giờ là số.
+ *
+ * NHẮC KHI THÊM FIELD MỚI: field chuỗi định danh (đuôi id / key / ví, mã hex, hash ngắn, ký hiệu coin…) phải đặt tên theo
+ * quy ước trên, hoặc thêm tên vào IDENTIFIER_KEYS kèm test trong `test/plain-decimals.test.ts`. Không thì đuôi dạng
+ * "1e05" sẽ bị đổi thành số.
  */
 const isIdentifierKey = (k: string) =>
-  IDENTIFIER_KEYS.has(k) || /id$/i.test(k) || /(?:By|Tail)$/.test(k);
+  IDENTIFIER_KEYS.has(k) || /id$/i.test(k) || /(?:By|Tail|[Ll]ast\d+)$/.test(k);
 
 export function plainDecimals(value: unknown): unknown {
   if (typeof value === "string") {

@@ -66,4 +66,20 @@ describe("plainDecimals", () => {
       hiddenBy: { stale: 2 },
     });
   });
+
+  it("keeps API key and coin identifiers whose value looks like an exponent (#400 review)", () => {
+    expect(
+      plainDecimals({
+        apiKey: { last4: "1e05", status: "active" },
+        keys: [{ last4: "42e3" }],
+        tokenLast6: "12e345",
+        positions: [{ coin: "1E3", size: "1e2" }],
+      }),
+    ).toEqual({
+      apiKey: { last4: "1e05", status: "active" },
+      keys: [{ last4: "42e3" }],
+      tokenLast6: "12e345",
+      positions: [{ coin: "1E3", size: "100" }],
+    });
+  });
 });
