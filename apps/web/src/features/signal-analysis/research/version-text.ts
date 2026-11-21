@@ -2,6 +2,7 @@ import {
   AssetMode,
   CLASSIFIER_GATE,
   NEWS_RULES,
+  READER_NEW_BADGE,
   SIGNAL_CATALYSTS,
   type BotVersionConfig,
   type ResearchClassifierRow,
@@ -44,6 +45,39 @@ export const catalystName = (c: SignalCatalyst, t: Tn): string =>
 /** "news-classifier-v2" → "v2" (thẻ và bảng của thiết kế); tên khác giữ nguyên. */
 export function classifierShort(v: string): string {
   return /-(v\d+)$/.exec(v)?.[1] ?? v;
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * #395: nhãn "New in v4" còn hiện không: reader `READER_NEW_BADGE.classifierVersion` chưa chạy đủ `days` ngày tính từ
+ * `startedAt` của API (chưa có started_at = chưa chạy = vẫn mới). Chưa có danh sách classifier (đang tải / lỗi) hoặc danh
+ * sách không có reader đó → không hiện.
+ */
+export function readerBadgeShown(
+  items: readonly Pick<ResearchClassifierRow, "classifierVersion" | "startedAt">[] | undefined,
+  now: number,
+): boolean {
+  const row = items?.find((r) => r.classifierVersion === READER_NEW_BADGE.classifierVersion);
+  if (row === undefined) return false;
+  if (row.startedAt === null) return true;
+  return now - Date.parse(row.startedAt) < READER_NEW_BADGE.days * DAY_MS;
+}
+
+/**
+ * #395: reader vừa bị thay (thẻ "Claude reader v3 · Retired {date}"): classifier ngay trước classifier hiện tại (API xếp
+ * hiện tại trước rồi mới nhất trước), ngày retired = `startedAt` của classifier hiện tại. null khi chưa có reader cũ hoặc
+ * không biết lúc reader hiện tại bắt đầu (không bao giờ đoán ngày).
+ */
+export function retiredReader(items: readonly ResearchClassifierRow[] | undefined): {
+  row: ResearchClassifierRow;
+  current: ResearchClassifierRow;
+  retiredAt: string;
+} | null {
+  const current = items?.find((r) => r.current);
+  const row = items?.find((r) => !r.current);
+  if (current === undefined || row === undefined || current.startedAt === null) return null;
+  return { row, current, retiredAt: current.startedAt };
 }
 
 /** Bội số như người lưu đã nhập ("1.5", "0.75", "1.0" như thiết kế "SL 0.75× → 1.0×"). */

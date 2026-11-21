@@ -1,0 +1,69 @@
+import { createTranslator } from "next-intl";
+import { describe, expect, it } from "vitest";
+
+import messages from "../../../../messages/en.json";
+import { reasonText, type Tr } from "../research/text";
+import { readerBadgeShown, retiredReader } from "../research/version-text";
+
+import { CLASSIFIERS } from "./versions-fixtures";
+
+// #395: nhãn "New in v4" ẩn sau 14 ngày tính từ started_at của reader v4 (API); thẻ reader cũ "Retired"; lý do ETF_MAJOR_ASSET.
+
+const DAY = 86_400_000;
+const NOW = Date.parse("2026-12-01T00:00:00Z");
+const v4 = (startedAt: string | null) => [{ classifierVersion: "news-classifier-v4", startedAt }];
+
+describe("New in v4 label", () => {
+  it("shows while v4 is under 14 days old, hides from day 14", () => {
+    expect(readerBadgeShown(v4(new Date(NOW - 13 * DAY).toISOString()), NOW)).toBe(true);
+    expect(readerBadgeShown(v4(new Date(NOW - 14 * DAY + 1).toISOString()), NOW)).toBe(true);
+    expect(readerBadgeShown(v4(new Date(NOW - 14 * DAY).toISOString()), NOW)).toBe(false);
+    expect(readerBadgeShown(v4(new Date(NOW - 30 * DAY).toISOString()), NOW)).toBe(false);
+  });
+
+  it("v4 that has not run yet is still new; no list or no v4 row shows nothing", () => {
+    expect(readerBadgeShown(v4(null), NOW)).toBe(true);
+    expect(readerBadgeShown(undefined, NOW)).toBe(false);
+    expect(
+      readerBadgeShown([{ classifierVersion: "news-classifier-v3", startedAt: null }], NOW),
+    ).toBe(false);
+  });
+});
+
+describe("retired reader", () => {
+  it("is the reader just before the current one, retired when the current one started", () => {
+    const r = retiredReader(CLASSIFIERS.items);
+    expect(r?.row.classifierVersion).toBe("news-classifier-v1");
+    expect(r?.retiredAt).toBe("2026-11-19T06:00:00.000Z");
+  });
+
+  it("is null without an older reader or without the current start time (never a guessed date)", () => {
+    const [cur, old] = CLASSIFIERS.items;
+    if (cur === undefined || old === undefined) throw new Error("fixture");
+    expect(retiredReader([cur])).toBeNull();
+    expect(retiredReader([{ ...cur, startedAt: null }, old])).toBeNull();
+    expect(retiredReader(undefined)).toBeNull();
+  });
+});
+
+describe("ETF_MAJOR_ASSET copy", () => {
+  const t = createTranslator({
+    locale: "en",
+    messages,
+    namespace: "signalAnalysis.research" as never,
+  }) as unknown as Tr;
+  const tr = createTranslator({
+    locale: "en",
+    messages,
+    namespace: "signalAnalysis.research.trace" as never,
+  }) as unknown as (k: string) => string;
+
+  it("funnel, trace label and Why it stopped", () => {
+    expect(reasonText(t, "etfMajorAsset", null)).toBe("ETF on BTC or ETH");
+    expect(tr("reasonLabels.etfMajorAsset")).toBe("ETF on BTC or ETH");
+    expect(tr("noteReasons.etfMajorAsset")).toBe("ETF on BTC / ETH");
+    expect(tr("why.etfMajorAsset")).toBe(
+      "BTC and ETH already have many ETFs, so one more rarely moves the price. Rules v4 skip ETF news on these two coins.",
+    );
+  });
+});

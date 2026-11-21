@@ -7995,6 +7995,7 @@
           "duplicate": "duplicate",
           "assetNotInText": "asset not in article",
           "treasuryMajorAsset": "treasury on BTC / ETH",
+          "etfMajorAsset": "ETF on BTC / ETH",
           "newsTypeOff": "news type off",
           "assetNotInVersion": "asset not in version",
           "levelTooLow": "level too low",
@@ -8019,6 +8020,7 @@
           "duplicate": "Duplicate",
           "assetNotInText": "Asset not in the article",
           "treasuryMajorAsset": "Treasury on BTC or ETH",
+          "etfMajorAsset": "ETF on BTC or ETH",
           "newsTypeOff": "News type off",
           "assetNotInVersion": "Asset not in version",
           "levelTooLow": "Level too low",
@@ -8070,6 +8072,7 @@
           "duplicate": "same text as an article already stored",
           "assetNotInText": "the asset is not named in the title or text",
           "treasuryMajorAsset": "treasury news on BTC or ETH is not traded",
+          "etfMajorAsset": "BTC and ETH already have many ETFs, so one more rarely moves the price. Rules v4 skip ETF news on these two coins.",
           "newsTypeOff": "this news type is off in the version",
           "assetNotInVersion": "the asset is not in the version",
           "levelTooLow": "level below the version’s lowest level to trade",
@@ -8235,6 +8238,7 @@
         "duplicate": "Duplicate",
         "assetNotInText": "Asset not in the article",
         "treasuryMajorAsset": "Treasury news on BTC or ETH",
+        "etfMajorAsset": "ETF on BTC or ETH",
         "newsTypeOff": "News type off in this version",
         "assetNotInVersion": "Asset not in this version",
         "levelTooLow": "Level below this version’s lowest",
@@ -8265,6 +8269,20 @@
           "earnings": "Earnings beat or raised guidance / miss or cut (stock markets)",
           "unlock": "Token unlock over 2% of supply within 7 days",
           "notSignals": "Not signals: partnerships, price analysis and opinion, macro data (macro goes to the risk filter)"
+        },
+        "subReader": "Rules v{v} · Claude reader {name} · a starting guess that the results prove or drop",
+        "changed": "v{from} → v{to}",
+        "newIn": "New in v4",
+        "notCounted": {
+          "title": "Not counted",
+          "etf": "<b>ETF news on BTC or ETH.</b> Both already have many ETFs, so one more rarely moves the price. Dropped at Score as “ETF on BTC or ETH”.",
+          "treasury": "<b>Treasury buys and sells of BTC or ETH.</b> Too small next to their market. Dropped at Score as “Treasury on BTC or ETH”."
+        },
+        "readerV4": {
+          "title": "What Claude reader v4 reads differently",
+          "bug": "<b>A bug report or a fixed vulnerability</b> with no funds lost is not a hack.",
+          "stolen": "<b>The coin that was stolen</b> is never the hacked asset. In “$860M in ETH drained”, ETH only measures the loss.",
+          "etf": "<b>An ETF listed on a smaller exchange</b> for a coin that already has ETFs is not “ETF approved”."
         },
         "tiers": "<b>Source tiers</b><br></br><t>Top:</t> the primary source itself (exchange, company, regulator, ETF issuer), Bloomberg, Reuters.<br></br><t>Mid:</t> established crypto media and verified founders or executives.<br></br><t>Low:</t> aggregators, anonymous and influencer accounts.",
         "tiersNote": "The full list of SoSoValue source names is kept in the rules and versioned with them.",
@@ -9314,7 +9332,12 @@
         "closedLineWaits": "<b>{n} / {gate}</b> · not counting yet · label {k} signals first",
         "closedLineUnder": "<b>{n} / {gate}</b> · not counting yet · Claude reader under 80% right",
         "closedShortWaits": "{n} / {gate} · not counting yet · label {k} signals first",
-        "closedShortUnder": "{n} / {gate} · not counting yet"
+        "closedShortUnder": "{n} / {gate} · not counting yet",
+        "retired": {
+          "title": "Claude reader {name}",
+          "pill": "Retired {date}",
+          "line": "{closed, plural, one {# closed trade} other {# closed trades}} · {labels, plural, one {# label} other {# labels}} · kept for history, not counted toward {current}"
+        }
       },
       "contextHelp": {
         "title": "Does context make news signals better?",

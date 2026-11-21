@@ -264,12 +264,15 @@ const filterReasons = async (versionId: string) =>
       .where(and(eq(signalEvents.versionId, versionId), eq(signalEvents.stage, "filter")))
   ).map((e) => `${e.outcome}:${e.reason ?? ""}`);
 
+const BASELINE_NUMBER = 3;
+
 describe("baseline version", () => {
   it("is seeded by the migration with the current NEWS_RULES decision parameters", async () => {
     const rows = await db.select().from(signalBotVersions);
     expect(rows).toHaveLength(1);
+    // Migration 0047 seed Baseline số 3 (lúc đó là news-v3); số version bot không đi theo rule version (#395: news-v4).
     expect(rows[0]).toMatchObject({
-      number: NEWS_RULES.versionNumber,
+      number: BASELINE_NUMBER,
       name: "Baseline",
       status: "running",
       isBaseline: true,
@@ -286,10 +289,7 @@ describe("version service", () => {
   it("allows at most 3 running versions (service and DB trigger), keeps config immutable, writes audit", async () => {
     const v2 = await newVersion("Two", { minLevel: "medium" });
     const v3 = await newVersion("Three", { minLevel: "high" });
-    expect([v2.number, v3.number]).toEqual([
-      NEWS_RULES.versionNumber + 1,
-      NEWS_RULES.versionNumber + 2,
-    ]);
+    expect([v2.number, v3.number]).toEqual([BASELINE_NUMBER + 1, BASELINE_NUMBER + 2]);
     await expect(newVersion("Four", {})).rejects.toMatchObject({
       code: "STATE_CONFLICT",
       details: { reason: "MAX_RUNNING_VERSIONS" },
@@ -355,11 +355,11 @@ describe("version service", () => {
   });
 });
 
-describe("classifier v3 starts a new classifier segment (#320)", () => {
-  it("trades classified by v3 count from v3's start, and v2 labels do not open the v3 gate", async () => {
-    const prev = "news-classifier-v2";
-    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v3");
-    // v2 chạy trước (mốc cũ hơn), rồi deploy v3: chu kỳ đầu của v3 ghi mốc của nó.
+describe("a new classifier starts a new classifier segment (#320; v4 since #395)", () => {
+  it("trades classified by v4 count from v4's start, and v3 labels do not open the v4 gate", async () => {
+    const prev = "news-classifier-v3";
+    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v4");
+    // v3 chạy trước (mốc cũ hơn), rồi deploy v4: chu kỳ đầu của v4 ghi mốc của nó.
     await db
       .insert(signalClassifierVersions)
       .values({ promptVersion: prev, model: "m", startedAt: new Date(T0 - 48 * HOUR) })
@@ -372,24 +372,24 @@ describe("classifier v3 starts a new classifier segment (#320)", () => {
     book("SOL-USD", "99.99", "100.01", T0);
     await sr.runCycle();
     const [t] = await tradesOf(baselineId);
-    expect(t?.classifierVersion).toBe("news-classifier-v3");
+    expect(t?.classifierVersion).toBe("news-classifier-v4");
     const rows = await db.select().from(signalClassifierVersions);
     const startOf = (v: string) => rows.find((r) => r.promptVersion === v)?.startedAt;
-    const v3Start = startOf("news-classifier-v3");
-    expect(v3Start).toBeDefined();
-    expect(v3Start?.getTime()).toBeGreaterThan(startOf(prev)?.getTime() ?? Infinity);
-    // Version lưu trước cả v2: đoạn đếm hiện tại bắt đầu ở mốc v3, không phải mốc v2.
+    const v4Start = startOf("news-classifier-v4");
+    expect(v4Start).toBeDefined();
+    expect(v4Start?.getTime()).toBeGreaterThan(startOf(prev)?.getTime() ?? Infinity);
+    // Version lưu trước cả v3: đoạn đếm hiện tại bắt đầu ở mốc v4, không phải mốc v3.
     const savedAt = new Date(T0 - 72 * HOUR);
     expect(
       await versionSegmentStart(db, {
         versionCreatedAt: savedAt,
-        promptVersion: "news-classifier-v3",
+        promptVersion: "news-classifier-v4",
       }),
-    ).toEqual(v3Start);
+    ).toEqual(v4Start);
     expect(
       await versionSegmentStart(db, { versionCreatedAt: savedAt, promptVersion: prev }),
     ).toEqual(startOf(prev));
-    // 50 nhãn Right của v2 mở cổng của v2, không mở cổng của v3: lệnh v3 chưa được tính.
+    // 50 nhãn Right của v3 mở cổng của v3, không mở cổng của v4: lệnh v4 chưa được tính.
     const [u] = await db
       .insert(users)
       .values({ email: "labeler-320@example.com" })
@@ -408,7 +408,7 @@ describe("classifier v3 starts a new classifier segment (#320)", () => {
     try {
       const gates = await loadClassifierGates(db);
       expect(classifierStatusOf(gates, prev)).toBe("passed");
-      expect(gates.has("news-classifier-v3")).toBe(false);
+      expect(gates.has("news-classifier-v4")).toBe(false);
       expect(classifierStatusOf(gates, t?.classifierVersion ?? null)).toBe("needsLabels");
     } finally {
       await db

@@ -90,6 +90,8 @@ export const SignalReason = {
   assetNotInText: "ASSET_NOT_IN_TEXT",
   /** news-v3 (#298): treasury_buy / treasury_sell trên BTC hoặc ETH không bao giờ giao dịch. */
   treasuryMajorAsset: "TREASURY_MAJOR_ASSET",
+  /** news-v4 (#395): etf_approved / etf_delayed_or_rejected trên BTC hoặc ETH không bao giờ giao dịch. */
+  etfMajorAsset: "ETF_MAJOR_ASSET",
   // filter
   sameStory: "SAME_STORY",
   /** Câu chuyện chưa vào lệnh nhưng bài đầu tiên đã quá `retryWindowMinutes`: gộp, không vào lệnh. */
@@ -137,11 +139,14 @@ export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitRea
  * `NEWS_CLASSIFIER.promptVersion`, DEC-335). Lệnh của version cũ vẫn hiện ở
  * danh sách lệnh (lịch sử) nhưng không tính vào tổng kết và cổng. Danh sách tài sản (market cổ phiếu, alias) có version
  * riêng `NEWS_ASSET_MAP_VERSION` (#309): đổi danh sách không đổi version này và không reset cổng.
+ *
+ * v4 so với v3 (#395): tin ETF (etf_approved, etf_delayed_or_rejected) không giao dịch BTC / ETH (`ETF_MAJOR_ASSET`), ra
+ * cùng prompt `news-classifier-v4`. Bài v3 còn `collected` / `pending` lúc deploy được chuyển sang v4 (`adoptInFlightArticles`).
  */
 export const NEWS_RULES = {
-  version: "news-v3",
+  version: "news-v4",
   /** Số version (API hiện dạng số). */
-  versionNumber: 3,
+  versionNumber: 4,
   lane: "news",
   /** Bảng loại tin → chiều + giữ tối đa. Chiều do loại tin quyết định, Claude chỉ gọi tên loại tin và tài sản. */
   catalysts: {
@@ -195,6 +200,11 @@ export const NEWS_RULES = {
    * tác động tới giá. Token khác vẫn giữ; Claude không trích được số tiền thì gắn cờ `smallTreasury` để phân tích sau.
    */
   treasuryExcludedMarkets: ["BTC-USD", "ETH-USD"],
+  /**
+   * Tin ETF (approved, delayed or rejected) trên các market này không bao giờ giao dịch (news-v4, #395): BTC và ETH đã có
+   * rất nhiều ETF, thêm một ETF hiếm khi làm giá đổi. Coin khác vẫn giữ.
+   */
+  etfExcludedMarkets: ["BTC-USD", "ETH-USD"],
   /** Cỡ lệnh paper cố định (USDC). */
   sizeUsdc: "500",
   /** TP / SL = bội số của biến động thường gặp trong khoảng giữ tối đa. */
@@ -410,7 +420,7 @@ export const NEWS_CLASSIFIER = {
   model: "claude-haiku-4-5",
   /** TTL của prompt cache: chu kỳ 5 phút đúng bằng TTL mặc định nên dùng 1 giờ (ghi 2×, đọc 0.1×). */
   cacheTtl: "1h",
-  promptVersion: "news-classifier-v3",
+  promptVersion: "news-classifier-v4",
   maxTokens: 400,
   /** Tối đa ngần này ký tự nội dung bài gửi cho Claude. */
   maxContentChars: 4000,
@@ -422,6 +432,12 @@ export const NEWS_CLASSIFIER = {
     cacheReadMultiple: "0.1",
   },
 } as const;
+
+/**
+ * Nhãn "New in v4" của drawer How it works › News types (#395): hiện tới khi Claude reader này đã chạy đủ ngần này ngày, tính
+ * từ `signal_classifier_versions.started_at` (API `/classifiers`). Reader chưa chạy lần nào (chưa có started_at) vẫn là mới.
+ */
+export const READER_NEW_BADGE = { classifierVersion: "news-classifier-v4", days: 14 } as const;
 
 /**
  * Chu kỳ của lane tin tức (phút): scheduler chạy Collect → Decide mỗi ngần này phút. Drawer How it works › Overview đọc cùng

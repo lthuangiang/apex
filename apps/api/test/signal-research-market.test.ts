@@ -49,7 +49,7 @@ async function snapshot(articleId: string, decidedAt: string, m: Mkt) {
     `insert into signal_contexts (id, article_id, market, direction, decided_at, source, context_version, rule_version,
        h1_status, h2_status, h3_status, market_version, market_btc_change_24h_pct, market_btc_trend, market_vol_4h_pct,
        market_vol_percentile, market_volatility)
-     values (gen_random_uuid(), $1, 'ETH-USD', 'long', $2, $10, $3, 'news-v3', 'na', 'na', 'na', $4, $5, $6, $7, $8, $9)`,
+     values (gen_random_uuid(), $1, 'ETH-USD', 'long', $2, $10, $3, 'news-v4', 'na', 'na', 'na', $4, $5, $6, $7, $8, $9)`,
     [
       articleId,
       decidedAt,
@@ -82,7 +82,7 @@ async function bulk(
        exit_price, exit_reason, exited_at, exit_fee, result_usdc, result_pct, random_pct, rule_version, classifier_version)
      select gen_random_uuid(), 'news', 'live', $1, $2 || '-' || g, 'ETH-USD', 'ETH', 'etf_approved', 'long', 500, 0.15, 3400, 3400,
        0.01, 0.05, 0.25, 1, 1.6, 0.8, 3454, 3372, t + interval '3 days', t, t, t, 'medium', '[]', false, 'book', 'closed', 3450,
-       'take_profit', t + interval '30 minutes', 0.25, $5::numeric * 5, $5::numeric, 0, 'news-v3', $3
+       'take_profit', t + interval '30 minutes', 0.25, $5::numeric * 5, $5::numeric, 0, 'news-v4', $3
      from (select g, $4::timestamptz + (g * interval '7 hours') as t from generate_series(1, $6::int) g) s`,
     [versionId, prefix, cls, from, pct, n],
   );
@@ -148,7 +148,7 @@ describe("market state in the trace (#376)", () => {
         `insert into signal_articles (id, source, title, content, published_at, collected_at, matched_currencies, candidates,
            content_hash, status, classification, claude_prompt_version, rule_version)
          values ($1, 'Reuters', $1, 'Body', $2, $2, '[]', '[]', $3, 'classified',
-           '{"catalyst":"etf_approved","market":"ETH-USD","relevance":"direct","promotional":false}', $4, 'news-v3')`,
+           '{"catalyst":"etf_approved","market":"ETH-USD","relevance":"direct","promotional":false}', $4, 'news-v4')`,
         [id, ago(60), `hash-${id}`, CLS],
       );
       for (const [stage, outcome] of [
@@ -159,7 +159,7 @@ describe("market state in the trace (#376)", () => {
       ])
         await env.pool.query(
           `insert into signal_events (id, article_id, stage, outcome, rule_version, at)
-           values (gen_random_uuid(), $1, $2, $3, 'news-v3', $4)`,
+           values (gen_random_uuid(), $1, $2, $3, 'news-v4', $4)`,
           [id, stage, outcome, ago(59)],
         );
       await snapshot(id, ago(58), m);

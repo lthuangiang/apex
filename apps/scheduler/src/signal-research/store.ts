@@ -66,6 +66,28 @@ export async function recordEvents(db: Exec, events: readonly EventInput[]): Pro
   );
 }
 
+/**
+ * Bài của rule version cũ còn dở lúc deploy rule version mới (#395, DEC-TBD-sr-reader-v4): `collected` / `pending` là bài
+ * chưa qua Score (chưa có story, lệnh hay snapshot ngữ cảnh), nên chuyển hẳn sang version hiện tại, cùng mọi event của
+ * chúng (chỉ có Collect / Normalize), để pipeline (lọc theo `rule_version`) xử lý tiếp bằng luật và prompt hiện tại, trace và
+ * phễu không bị tách đôi. Một câu lệnh, nguyên tử. Trả số bài đã chuyển (0 sau lần chạy đầu).
+ */
+export async function adoptInFlightArticles(db: Pick<Db, "execute">): Promise<number> {
+  const v = NEWS_RULES.version;
+  const r = await db.execute<{ n: string | number }>(sql`
+    with moved as (
+      update signal_articles set rule_version = ${v}
+      where status in ('collected', 'pending') and rule_version <> ${v}
+      returning id
+    ), ev as (
+      update signal_events set rule_version = ${v}
+      where article_id in (select id from moved) and rule_version <> ${v}
+      returning 1
+    )
+    select (select count(*) from moved) as n, (select count(*) from ev) as e`);
+  return Number(r.rows[0]?.n ?? 0);
+}
+
 // ── Hạn mức ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export async function addSosoRequests(db: Exec, now: number, n: number): Promise<void> {

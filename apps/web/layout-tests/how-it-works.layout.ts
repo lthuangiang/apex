@@ -12,7 +12,7 @@ import { CLASSIFIERS } from "../src/features/signal-analysis/__tests__/versions-
 // dài hơn màn hình (mockup v1: dải tab và sơ đồ bị dẹt). Test đo trên trình duyệt thật ở 1024 / 1280 / 1440, ở 390, và ở
 // màn thấp (500 px) để chắc chắn cột phải cuộn: mỗi khối cao bằng nội dung, sơ đồ giữ tỉ lệ 680 × 860, trang không cuộn ngang.
 
-async function open(page: Page, baseURL: string | undefined) {
+async function open(page: Page, baseURL: string | undefined, classifiers: unknown = CLASSIFIERS) {
   await page
     .context()
     .addCookies([{ name: "drift_session", value: "x", url: baseURL ?? "http://127.0.0.1" }]);
@@ -24,7 +24,7 @@ async function open(page: Page, baseURL: string | undefined) {
     if (p.endsWith("/signal-research/trades")) return json(RESEARCH_TRADES);
     if (p.endsWith("/signal-research/articles/new")) return json({ items: [], since: "c1" });
     if (p.endsWith("/signal-research/latency")) return json(LATENCY_1D);
-    if (p.endsWith("/signal-research/classifiers")) return json(CLASSIFIERS);
+    if (p.endsWith("/signal-research/classifiers")) return json(classifiers);
     if (p.endsWith("/signal-research/articles"))
       return json({ items: ARTICLES, nextCursor: null, total: ARTICLES.length, totalInRange: 58 });
     return json({ error: { code: "NOT_FOUND", message: "Not found." } }, 404);
@@ -117,3 +117,51 @@ test("overview at 390: full-screen drawer, the diagram scrolls inside its own bo
   if (shots !== undefined && info.project.name === "w1440")
     await page.screenshot({ path: `${shots}/overview-390.png` });
 });
+
+/** #395: reader v4 chạy được 2 ngày (nhãn "New in v4" còn hiện), reader v3 đã retired. */
+function readerV4() {
+  const [cur, old] = CLASSIFIERS.items;
+  if (cur === undefined || old === undefined) throw new Error("fixture");
+  return {
+    ...CLASSIFIERS,
+    items: [
+      {
+        ...cur,
+        classifierVersion: "news-classifier-v4",
+        startedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+      },
+      { ...old, classifierVersion: "news-classifier-v3" },
+    ],
+  };
+}
+
+for (const width of [1440, 390]) {
+  test(`news types at ${String(width)}: the two v4 boxes keep their height, nothing overflows`, async ({
+    page,
+    baseURL,
+  }, info) => {
+    if (width === 390) await page.setViewportSize({ width: 390, height: 844 });
+    const dlg = await open(page, baseURL, readerV4());
+    await dlg.getByRole("tab", { name: "News types" }).click();
+    await expect(dlg.getByRole("region", { name: /^Not counted/ })).toBeVisible();
+    await expect(dlg.getByText("New in v4")).toHaveCount(2);
+    const m = await dlg.evaluate((el) => {
+      const boxes = [...el.querySelectorAll<HTMLElement>("[role='tabpanel'] section")];
+      return {
+        boxes: boxes.length,
+        squashed: boxes.filter((b) => b.getBoundingClientRect().height + 1 < b.scrollHeight).length,
+        overflowX: el.scrollWidth - el.clientWidth,
+        wide: boxes.filter((b) => b.scrollWidth > b.clientWidth + 1).length,
+      };
+    });
+    expect.soft(m.boxes, "two boxes").toBe(2);
+    expect.soft(m.squashed, "no box is squashed").toBe(0);
+    expect.soft(m.wide, "box text wraps inside the box").toBe(0);
+    expect.soft(m.overflowX, "no horizontal scroll inside the drawer").toBeLessThanOrEqual(0);
+    const shots = process.env.HIW_SHOTS;
+    if (shots !== undefined && info.project.name === "w1440") {
+      await dlg.getByRole("region", { name: /^What Claude reader v4/ }).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${shots}/news-types-${String(width)}.png` });
+    }
+  });
+}

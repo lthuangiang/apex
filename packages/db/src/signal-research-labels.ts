@@ -441,19 +441,31 @@ export async function loadSignalClassifiers(
     from signal_classification_labels where verdict = 'wrong'
     group by classifier_version, reason`);
   check();
-  const traced = await q.execute<{ v: string; n: string | number }>(sql`
-    select classifier_version as v, count(distinct article_id) as n
-    from signal_classification_labels where source = 'trace'
+  const traced = await q.execute<{ v: string; n: string | number; a: string | number }>(sql`
+    select classifier_version as v,
+      count(distinct article_id) filter (where source = 'trace') as n,
+      count(distinct article_id) as a
+    from signal_classification_labels
     group by classifier_version`);
   check();
   const signals = await q.execute<{ v: string; n: string | number }>(sql`
     select a.claude_prompt_version as v, count(*) as n from signal_articles a
     where ${IS_SIGNAL} group by a.claude_prompt_version`);
   check();
+  // #395: lệnh thật đã đóng theo classifier, mọi rule version (lịch sử của reader đã retired).
+  const closed = await q.execute<{ v: string; n: string | number }>(sql`
+    select classifier_version as v, count(*) as n from signal_paper_trades
+    where lane = 'news' and label = 'live' and status = 'closed' and classifier_version is not null
+    group by classifier_version`);
+  check();
   const started = await q.select().from(signalClassifierVersions);
   const startedAt = new Map(started.map((s) => [s.promptVersion, s.startedAt]));
   const signalsOf = new Map(signals.rows.map((s) => [s.v, Number(s.n)]));
-  const tracedOf = new Map(traced.rows.map((s) => [s.v, Number(s.n)]));
+  const tracedOf = new Map(
+    traced.rows.flatMap((s) => (Number(s.n) > 0 ? [[s.v, Number(s.n)] as const] : [])),
+  );
+  const anyOf = new Map(traced.rows.map((s) => [s.v, Number(s.a)]));
+  const closedOf = new Map(closed.rows.map((s) => [s.v, Number(s.n)]));
   const current = NEWS_CLASSIFIER.promptVersion;
   const versions = new Set<string>([
     current,
@@ -478,6 +490,8 @@ export async function loadSignalClassifiers(
       labeled: g.labeled,
       right: g.right,
       traceLabeled: tracedOf.get(v) ?? 0,
+      closedTrades: closedOf.get(v) ?? 0,
+      labeledAny: anyOf.get(v) ?? 0,
       precisionPct: g.precisionPct,
       interval: g.interval,
       passes: g.passes,

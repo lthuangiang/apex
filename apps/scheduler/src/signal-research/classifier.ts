@@ -218,13 +218,13 @@ export interface ClassifierLog {
 }
 
 /** Phần cố định của request (tools + system có `cache_control`), dùng chung cho gọi thật và đếm token. */
-function prefixOf(universe: readonly string[]) {
+function prefixOf(universe: readonly string[], system: string = CLASSIFIER_SYSTEM) {
   return {
     tools: [classifierTool(universe)],
     system: [
       {
         type: "text" as const,
-        text: CLASSIFIER_SYSTEM,
+        text: system,
         cache_control: { type: "ephemeral" as const, ttl: NEWS_CLASSIFIER.cacheTtl },
       },
     ],
@@ -286,7 +286,15 @@ export function cacheSelfCheck(log: ClassifierLog, now: () => number = Date.now)
   };
 }
 
-export function anthropicClassifier(apiKey: string, log?: ClassifierLog): NewsClassifier {
+/**
+ * `system` chỉ dùng cho script đánh giá so prompt cũ / mới (#395, `src/cli/classifier-eval.ts`); scheduler luôn dùng prompt
+ * hiện tại `CLASSIFIER_SYSTEM`.
+ */
+export function anthropicClassifier(
+  apiKey: string,
+  log?: ClassifierLog,
+  opts: { system?: string } = {},
+): NewsClassifier {
   // Thử lại do chính lớp này quyết định (một lần), không để SDK tự thử thêm.
   const client = new Anthropic({ apiKey, timeout: TIMEOUT_MS, maxRetries: 0 });
   const check = log === undefined ? null : cacheSelfCheck(log);
@@ -300,7 +308,7 @@ export function anthropicClassifier(apiKey: string, log?: ClassifierLog): NewsCl
       const r = await client.messages.create({
         model: NEWS_CLASSIFIER.model,
         max_tokens: NEWS_CLASSIFIER.maxTokens,
-        ...prefixOf(input.universe),
+        ...prefixOf(input.universe, opts.system),
         tool_choice: { type: "tool", name: TOOL_NAME },
         messages: [{ role: "user", content: userMessage(input) }],
       });

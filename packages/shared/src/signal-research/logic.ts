@@ -206,6 +206,14 @@ export function treasuryOnMajorAsset(catalyst: SignalCatalyst, market: string): 
   return isTreasury(catalyst) && TREASURY_EXCLUDED.has(market);
 }
 
+const isEtf = (c: SignalCatalyst) => c === "etf_approved" || c === "etf_delayed_or_rejected";
+const ETF_EXCLUDED: ReadonlySet<string> = new Set(NEWS_RULES.etfExcludedMarkets);
+
+/** news-v4 (#395): tin ETF (approved / delayed or rejected) trên BTC / ETH không bao giờ giao dịch (`ETF_MAJOR_ASSET`). */
+export function etfOnMajorAsset(catalyst: SignalCatalyst, market: string): boolean {
+  return isEtf(catalyst) && ETF_EXCLUDED.has(market);
+}
+
 /**
  * Cờ "small treasury?" (#298): tin treasury mà Claude không trích được số tiền (thiếu, rỗng hoặc "unknown"). Chỉ để phân
  * tích sau, không chặn lệnh; không bao giờ tự đoán số tiền.

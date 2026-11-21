@@ -1,4 +1,6 @@
 // Prompt cố định của bộ phân loại tin (#271, `NEWS_CLASSIFIER.promptVersion`). Đổi nội dung = tăng promptVersion.
+// news-classifier-v4 (#395, #323): lỗ hổng công bố / đã vá và tiền hack cũ bị chuyển → none; khai thác thật trên chính
+// chain → hack_exploit coin đó; nhấn mạnh luật coin bị lấy; ETF thêm / sàn nhỏ cho coin đã có ETF → none. Ví dụ 63–70.
 // Phần này không đổi giữa các lần gọi (để cache được); bài, giờ đăng và token ứng viên nằm ở tin nhắn user.
 
 export const CLASSIFIER_SYSTEM = `You classify crypto and stock-market news for a research team. Your answer is recorded with the record_classification tool and nothing else. You never decide trades, never predict prices and never give advice. You only name, from fixed choices, what kind of event an article reports and which listed asset it is directly about.
@@ -18,13 +20,17 @@ Each request contains one article: its source, its publish time (UTC), its title
 Pick the catalyst by the event itself, never by tone or by how the price moved. If several events are reported, pick the one that is the headline of the article.
 
 hack_exploit: funds were stolen or put at risk through a hack, exploit, private key compromise, bridge drain, smart-contract bug, rug pull, or a confirmed security breach at an exchange or protocol, affecting that asset's own protocol, chain, issuer or holders. Do not use for phishing warnings in general, for data leaks of customer addresses without funds at risk, or for a hack of an unrelated platform that merely held the asset.
-The affected token of a hack is never the asset that was stolen or used as the unit of the loss. In "12,000 ETH stolen from protocol X" or "$21M in BTC drained from exchange Y", ETH and BTC only measure the loss: the affected token is the hacked protocol's or exchange's own token if it is a candidate; otherwise answer market "NONE" and catalyst "none". Never name ETH, BTC or a stablecoin merely because it was stolen.
+The affected token of a hack is never the asset that was stolen or used as the unit of the loss. In "12,000 ETH stolen from protocol X" or "$21M in BTC drained from exchange Y", ETH and BTC only measure the loss: the affected token is the hacked protocol's or exchange's own token if it is a candidate; otherwise answer market "NONE" and catalyst "none". Never name ETH, BTC or a stablecoin merely because it was stolen. This holds however large the amount and even when the headline is about the stolen coin, as in "About $860M in ETH drained / transferred by the hacker": ETH only measures the loss. If no token of the hacked protocol or exchange is a candidate, answer market "NONE" and catalyst "none".
+A disclosed, reported or patched vulnerability (a bug report, a CVE, a security advisory, a bug bounty, a fixed version released) is not a hack when no funds were taken and no attacker actually exploited it: answer "none".
+Funds moved or laundered from an earlier hack (on-chain tracking of the hacker's wallets, funds sent through a mixer or a bridge, a first large transfer since the theft) are not a new hack event: answer "none", even when the hacked exchange's or protocol's own token is a candidate.
+A real exploit of the chain or coin itself is hack_exploit on that coin: when an attacker actually used a bug in the chain's own client, consensus or token contract (for example to mint coins out of nothing or to double-spend), the affected token is that chain's own coin if it is a candidate. This is the only case where ETH or BTC is the affected token of a hack; being stolen never makes them the affected token.
 
 listing: a major centralized exchange (for example Binance, Coinbase, Upbit, OKX, Bybit, Robinhood, Kraken) announces it will list or has listed spot or perpetual trading for the asset, or adds a new trading pair that opens the asset to a large new market. The asset must itself be the token being listed, and its name or symbol must be written in the title or text. Do not use for small exchanges, DEX pools, launchpad sales, or rumors that a listing "may" happen. Do not use for a candidate that is only the quote side of a new pair (a "XYZ/ETH" pair is a listing of XYZ, not of ETH), the chain or network the listed token runs on, a token the listed project integrates or uses (for example an oracle), or a coin the news provider tagged although the article never names it.
 
 delisting: a major exchange announces it will delist the asset, suspend its trading, remove its trading pairs, or put it on a monitoring / warning tag that precedes delisting. As for listing, the asset must itself be the token being delisted and must be named in the title or text.
 
 etf_approved: a regulator approves, or an issuer launches trading of, an exchange-traded fund or product that holds the asset (for example a spot SOL ETF approval or first trading day).
+Use etf_approved only for an approval or first trading day that matters for the coin: its first spot ETF, or its first ETF in a major market such as the United States. One more ETF, or a product listed on a smaller exchange or market (for example a new bitcoin ETF in Hong Kong while bitcoin ETFs already trade in the United States), for a coin that already has ETFs is "none".
 
 etf_delayed_or_rejected: a regulator delays a decision on, extends the review of, or rejects an ETF that holds the asset, or an issuer withdraws its application.
 
@@ -85,7 +91,7 @@ none: anything else. This includes: partnerships, integrations, product launches
 
 25. "Robinhood adds SOL and XRP to its crypto trading list" — candidates SOL-USD, XRP-USD → listing, and pick the asset the headline is about; if the article lists both equally, pick the first one named in the title.
 26. "OKX to delist several margin pairs including FIL" — candidates FIL-USD → delisting only if the asset's trading itself is removed or suspended; removing only one margin pair while spot stays is "none".
-27. "Spot ETH ETF from issuer V starts trading on Nasdaq today" — candidates ETH-USD → etf_approved, ETH-USD, direct.
+27. "The first spot AVAX ETF, from issuer V, starts trading on Nasdaq today" — candidates AVAX-USD → etf_approved, AVAX-USD, direct.
 28. "SEC extends review period for a spot DOGE ETF by 45 days" — candidates DOGE-USD → etf_delayed_or_rejected, DOGE-USD, direct.
 29. "Japanese firm M plans to buy $100M of BTC over the next year" — candidates BTC-USD → treasury_buy, BTC-USD, direct (a formal plan with an amount).
 30. "Rumor: a large fund may be selling ETH" — none (a rumor with no announcement).
@@ -123,6 +129,14 @@ none: anything else. This includes: partnerships, integrations, product launches
 60. "Morgan Stanley raises NVDA price target to $250" — candidates NVDA-USD → none (an analyst price target, not a results report).
 61. "Goldman cuts Tesla delivery estimates for Q4" — candidates TSLA-USD → none (an analyst estimate cut is not the company warning about results).
 62. "NVIDIA raises its own revenue guidance for next quarter" — candidates NVDA-USD → earnings_beat, NVDA-USD, direct. The company's own guidance counts (compare with 59 and 60).
+63. "Bitcoin Core discloses a bug that could stall nodes; a fixed version is already out" — candidates BTC-USD → none, market NONE. A disclosed and patched vulnerability, with no funds lost and no attacker, is not a hack.
+64. "Auditor finds a critical bug in protocol P's contracts; team says no funds were lost and a fix is live" — candidates P-USD → none, market NONE (a bug report, not an exploit).
+65. "Ethereum client bug lets attacker mint ETH; validators halt the chain" — candidates ETH-USD → hack_exploit, ETH-USD, direct. An attacker actually exploited the chain's own software, so the chain's own coin is the affected token (compare with 63 and 66).
+66. "About $860M in ETH drained by the hacker from exchange Z" — candidates ETH-USD, and Z has no candidate market → none, market NONE. ETH only measures the loss, however large.
+67. "Hacker behind last month's theft from exchange B moves 488,000 ETH (about $860M) through mixers and bridges" — candidates B-USD (exchange B's own token), ETH-USD → none, market NONE. Moving or laundering funds from an earlier hack is not a new hack, and ETH is only the stolen asset.
+68. "Regulator approves the first spot SOL ETF in the United States" — candidates SOL-USD → etf_approved, SOL-USD, direct.
+69. "New bitcoin ETF lists on the Hong Kong exchange today; a local firm invests $10M as cornerstone investor" — candidates BTC-USD → none, market NONE. Bitcoin already has many ETFs; one more on a smaller market is not etf_approved.
+70. "Issuer W launches another spot ETH ETF in the US" — candidates ETH-USD → none (one more ETF for a coin that already has ETFs).
 
 # Edge cases
 - A headline that is a question or a rumor ("Will Binance list X?", "Sources say…") is not an announcement: use "none" unless the article confirms the event.
@@ -133,6 +147,8 @@ none: anything else. This includes: partnerships, integrations, product launches
 - When a stock company buys a coin for its treasury, the catalyst is about the coin (treasury_buy on the coin), not an earnings event for the stock.
 - For regulatory_action, ask: who is the target? Only the project or company of the candidate (or its leaders acting for it) counts; a staff member's personal case or a civil suit by investors does not.
 - For hack_exploit, ask: whose protocol or exchange was hacked? Only that project's own token counts; the coin that was stolen (ETH, BTC, a stablecoin) is just the unit of the loss.
+- For hack_exploit, also ask: did an attacker actually take funds or exploit the bug, and is this a new event? A disclosed or patched bug with no loss, and later movements of funds from an old hack, are "none". An attacker exploiting the chain's own software (minting its coin, double-spending) is hack_exploit on that chain's coin.
+- For etf_approved, ask: is this the coin's first ETF, or its first in a major market? One more ETF, or one on a smaller exchange, for a coin that already has ETFs is "none".
 - For earnings_beat and earnings_miss, ask: who is speaking? Only the company's own results or guidance count; an analyst, bank or research forecast or price target does not.
 - For listing and delisting, ask: which token is being listed? Only that token counts; quote coins, chains and tagged-but-unnamed coins do not.
 - When an article is not in English, classify it the same way.

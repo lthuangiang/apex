@@ -34,6 +34,7 @@ import {
   catalystSide,
   classifierShort,
   configLine,
+  readerBadgeShown,
   versionShort,
 } from "./version-text";
 
@@ -249,7 +250,7 @@ function Panel({
     case "news":
       return (
         <>
-          {rulesVersion === null ? null : <Sub>{tr("sub", { v: rulesVersion })}</Sub>}
+          <NewsSub rulesVersion={rulesVersion} />
           <p className="m-0">{tr.rich("intro", { b })}</p>
           <ScrollTable label={tr("typesTable")}>
             <table className="w-full border-collapse">
@@ -292,6 +293,7 @@ function Panel({
               </tbody>
             </table>
           </ScrollTable>
+          <NewsBoxes />
           <p className="m-0 text-muted">{tr("rows.notSignals")}</p>
         </>
       );
@@ -423,6 +425,75 @@ function MarketStatePanel() {
       <p className="m-0 text-xs text-muted">
         {t("candles", { pct: Math.round(r.volMinCoverage * 100), h: r.volHours })}
       </p>
+    </>
+  );
+}
+
+/** #395: nhãn "New in v4" / "v3 → v4", chỉ hiện trong 14 ngày đầu của Claude reader v4 (`readerBadgeShown`). */
+function NewBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="ml-1.5 inline-block rounded-full bg-pos-bg px-[7px] py-px align-[1px] text-[10.5px] font-extrabold text-pos">
+      {children}
+    </span>
+  );
+}
+
+/** Dòng sub của tab News types: "Rules v4 · Claude reader v4 · …" (reader lấy từ classifier đang chạy). */
+function NewsSub({ rulesVersion }: { rulesVersion: number | null }) {
+  const tr = useTranslations("signalAnalysis.research.rules");
+  const q = useResearchClassifiers();
+  if (rulesVersion === null) return null;
+  const cur = q.data?.items.find((r) => r.current) ?? null;
+  const fresh = readerBadgeShown(q.data?.items, Date.now());
+  return (
+    <Sub>
+      {cur === null
+        ? tr("sub", { v: rulesVersion })
+        : tr("subReader", { v: rulesVersion, name: classifierShort(cur.classifierVersion) })}
+      {fresh && rulesVersion > 1 ? (
+        <NewBadge>{tr("changed", { from: rulesVersion - 1, to: rulesVersion })}</NewBadge>
+      ) : null}
+    </Sub>
+  );
+}
+
+/**
+ * #395 (mockup docs/mockups/signal-research/reader-v4.html): hai hộp của tab News types. "Not counted" = luật cố định trong
+ * code (`etfExcludedMarkets`, `treasuryExcludedMarkets`); hộp thứ hai = thay đổi trong prompt của Claude reader v4.
+ */
+function NewsBoxes() {
+  const tr = useTranslations("signalAnalysis.research.rules");
+  const q = useResearchClassifiers();
+  const fresh = readerBadgeShown(q.data?.items, Date.now());
+  const badge = fresh ? <NewBadge>{tr("newIn")}</NewBadge> : null;
+  const box = "flex flex-col gap-2 rounded-tile border px-3.5 py-3";
+  const list = "m-0 flex list-disc flex-col gap-1.5 pl-[18px] text-ink-2";
+  return (
+    <>
+      <section
+        aria-labelledby="hiw-not-counted"
+        className={`${box} ${fresh ? "border-pos bg-surface" : "border-border bg-surface-2"}`}
+      >
+        <h3 id="hiw-not-counted" className="m-0 text-sm font-extrabold text-ink">
+          {tr("notCounted.title")}
+          {badge}
+        </h3>
+        <ul className={list}>
+          <li>{tr.rich("notCounted.etf", { b })}</li>
+          <li>{tr.rich("notCounted.treasury", { b })}</li>
+        </ul>
+      </section>
+      <section aria-labelledby="hiw-reader-v4" className={`${box} border-border bg-surface-2`}>
+        <h3 id="hiw-reader-v4" className="m-0 text-sm font-extrabold text-ink">
+          {tr("readerV4.title")}
+          {badge}
+        </h3>
+        <ul className={list}>
+          <li>{tr.rich("readerV4.bug", { b })}</li>
+          <li>{tr.rich("readerV4.stolen", { b })}</li>
+          <li>{tr.rich("readerV4.etf", { b })}</li>
+        </ul>
+      </section>
     </>
   );
 }

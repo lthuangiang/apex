@@ -40,7 +40,7 @@ import {
   tdW,
   thR,
 } from "./ui";
-import { classifierShort } from "./version-text";
+import { classifierShort, retiredReader } from "./version-text";
 
 // "Is it working?" của Signal research (#344; thiết kế docs/mockups/signal-research/redesign-full-page*.html và
 // redesign-does-context-help.html): ba thanh tiến độ (lệnh đóng cho cổng, nhãn classifier, Context H1) rồi ba tab Overall /
@@ -126,6 +126,7 @@ export function IsItWorking({
       }
     >
       <ProgressCards v={v} versions={versions} classifiers={classifiers} />
+      <RetiredReader classifiers={classifiers} tz={tz} />
       <div
         id="sr-judge-panel"
         role="tabpanel"
@@ -340,6 +341,39 @@ function ProgressCards({
           </>
         )}
       </Card>
+    </div>
+  );
+}
+
+/**
+ * #395: thẻ "Claude reader v3 · Retired {date}": reader vừa bị thay, chỉ để xem lại, không cộng vào reader hiện tại. Ngày
+ * retired = lúc reader hiện tại bắt đầu chạy (`startedAt` của API); không biết thì không hiện thẻ.
+ */
+function RetiredReader({
+  classifiers,
+  tz,
+}: {
+  classifiers: ResearchClassifiers | undefined;
+  tz: string;
+}) {
+  const t = useTranslations("signalAnalysis.research.judge.retired");
+  const r = retiredReader(classifiers?.items);
+  if (r === null) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-2 rounded-tile border border-border bg-surface-2 px-4 py-3.5">
+      <div className="flex justify-between gap-2 text-[13px]">
+        <strong>{t("title", { name: classifierShort(r.row.classifierVersion) })}</strong>
+        <span className="whitespace-nowrap rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11.5px] font-extrabold text-muted">
+          {t("pill", { date: monthDay(r.retiredAt, tz) })}
+        </span>
+      </div>
+      <p className="m-0 text-[13px] text-ink-2">
+        {t("line", {
+          closed: r.row.closedTrades,
+          labels: r.row.labeledAny,
+          current: classifierShort(r.current.classifierVersion),
+        })}
+      </p>
     </div>
   );
 }

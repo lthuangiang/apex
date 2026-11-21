@@ -1,0 +1,154 @@
+<title>Claude Reader v4</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+/* Mockup: what changes in the Signal research UI when Claude reader v4 + rules v4 ship. Three frames: drawer News types, Is it working label card, trace drop. DeskLabs tokens, light only like the app. */
+:root{
+  --bg:#eef1fa; --surface:#ffffff; --surface-2:#f5f7fd; --border:#e3e7f5; --border-input:#d5dcf2;
+  --ink:#141a33; --ink-2:#3b4262; --muted:#5f6684; --accent:#2e62e8; --accent-ink:#1d47b8; --accent-tint:#e6ecfe;
+  --pos:#0f7a43; --pos-bg:#ddf4e7; --neg-ink:#a72826; --neg-bg:#fde4e1; --warn:#7a3e00; --warn-bg:#fdebd3;
+  --note:#5a2ca0; --note-bg:#f0e6ff; --new:#0f7a43;
+  --f:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif; color-scheme:light;
+}
+body{background:var(--bg);color:var(--ink);font-family:var(--f);font-size:14px;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding-block:28px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:22px}
+h1{margin:0;font-size:24px;font-weight:800}
+.lede{margin:4px 0 0;color:var(--ink-2);max-width:80ch}
+.note{border:2px dashed var(--note);background:var(--note-bg);color:var(--note);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600}
+.frames{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:22px;align-items:start}
+@media (max-width:980px){.frames{grid-template-columns:minmax(0,1fr)}}
+.col{display:grid;gap:22px;min-width:0}
+.frame{display:grid;gap:8px;min-width:0}
+.flabel{font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:22px;display:grid;gap:14px;min-width:0}
+.dh{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.dh h2{margin:0;font-size:20px;font-weight:800}
+.dh p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.x{border:1px solid var(--border-input);background:var(--surface);border-radius:10px;min-height:44px;padding:0 14px;font:700 13px var(--f);color:var(--ink-2)}
+.tabs{display:flex;gap:4px;overflow-x:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:4px;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent)}
+.tabs span{flex:none;white-space:nowrap;min-height:44px;display:flex;align-items:center;padding:0 14px;border-radius:10px;font-size:13px;font-weight:800;color:var(--muted)}
+.tabs span.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(20,26,51,.12)}
+.sub{font-size:12.5px;font-weight:700;color:var(--muted)}
+.chg{display:inline-block;font-size:10.5px;font-weight:800;color:var(--new);background:var(--pos-bg);border-radius:99px;padding:1px 7px;margin-left:6px;vertical-align:1px}
+.ink2{color:var(--ink-2);margin:0}
+.ink2 b{color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:12px;color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid var(--border)}
+td.r,th.r{text-align:right}
+.long{color:var(--pos);font-weight:700}.short{color:var(--neg-ink);font-weight:700}
+.box{border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:grid;gap:8px;background:var(--surface-2)}
+.box h3{margin:0;font-size:14px;font-weight:800}
+.box ul{margin:0;padding-left:18px;display:grid;gap:5px;color:var(--ink-2)}
+.box li b{color:var(--ink)}
+.box.new{border-color:var(--pos);background:var(--surface)}
+.muted{color:var(--muted)}
+/* label cards */
+.cards3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.lc{border:1px solid var(--border);border-radius:14px;padding:14px 16px;display:grid;gap:8px}
+.lc .t{font-weight:800;font-size:13.5px;display:flex;justify-content:space-between;gap:8px}
+.bar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent)}
+.lc p{margin:0;font-size:13px;color:var(--ink-2)}
+.lc a{color:var(--accent-ink);font-weight:600;text-decoration:none}
+.pill{font-size:11.5px;font-weight:800;border-radius:99px;padding:2px 8px;white-space:nowrap}
+.pill.col{background:var(--warn-bg);color:var(--warn)}
+.pill.ret{background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
+/* trace */
+.feed{display:grid;gap:8px}
+.row{border:1px solid var(--border);border-radius:12px;padding:10px 12px;display:grid;gap:4px}
+.row .tm{font-size:12px;color:var(--muted)}
+.row .h{font-weight:700;font-size:13.5px}
+.chip{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--surface-2);color:var(--ink-2);margin-top:2px}
+.chip.ok{background:var(--pos-bg);color:var(--pos)}
+.why{font-size:12.5px;color:var(--ink-2);background:var(--surface-2);border-radius:10px;padding:8px 10px}
+.why b{color:var(--ink)}
+.steps{display:grid;gap:6px}
+.st{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13px}
+.st .n{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;color:#fff;background:var(--accent-ink)}
+.st .n.b{background:var(--accent)}.st .n.c{background:#9ab4f3;color:var(--ink)}
+.st.stop{border-color:var(--neg-ink);background:var(--neg-bg)}
+.st .r{font-size:12px;font-weight:700;color:var(--muted)}
+.st.stop .r{color:var(--neg-ink)}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Claude reader v4 · Rules v4</h1>
+    <p class="lede">Mockup những chỗ UI đổi khi ship reader v4. Khung tím là ghi chú cho người duyệt, không có trong sản phẩm. Câu chữ UI bằng tiếng Anh, PM đã duyệt.</p>
+  </header>
+
+  <p class="note">Vì sao làm bây giờ: trong 4 lệnh đã đóng trên prod, 2 lệnh lỗ đều do Claude chọn sai loại tin (một bug report bị tính là hack; một ETF nhỏ ở Hong Kong bị tính là ETF approved cho BTC). Lệnh ETH thắng cũng là đọc sai (ETH chỉ là tài sản bị đánh cắp). Đổi reader thì số đếm reset, nên đổi khi số đếm còn gần 0 là rẻ nhất.</p>
+
+  <div class="frames">
+    <div class="col">
+      <div class="frame">
+        <span class="flabel">1 · Drawer How it works › News types</span>
+        <div class="card">
+          <div class="dh"><div><h2>How it works</h2><p>Rules of Baseline (v3).</p></div><span class="x">Close</span></div>
+          <div class="tabs"><span>Overview</span><span class="on">News types</span><span>Levels</span><span>Take profit / Stop loss</span><span>When a signal passes</span><span>Context questions</span></div>
+          <div class="sub">Rules v4 · Claude reader v4 · a starting guess that the results prove or drop<span class="chg">v3 → v4</span></div>
+          <p class="ink2">A signal is <b>one story</b> about one SoDEX asset, of a type on the list below. The <b>type sets the direction</b>; Claude only names the type and the asset.</p>
+          <table>
+            <thead><tr><th>News type</th><th class="r">Direction</th><th class="r">Max hold</th></tr></thead>
+            <tbody>
+              <tr><td>Hack or exploit</td><td class="r short">Short</td><td class="r">24 h</td></tr>
+              <tr><td>ETF approved</td><td class="r long">Long</td><td class="r">72 h</td></tr>
+              <tr><td>ETF delayed or rejected</td><td class="r short">Short</td><td class="r">48 h</td></tr>
+              <tr><td class="muted" colspan="3">… 9 more types, unchanged</td></tr>
+            </tbody>
+          </table>
+          <div class="box new">
+            <h3>Not counted <span class="chg">New in v4</span></h3>
+            <ul>
+              <li><b>ETF news on BTC or ETH.</b> Both already have many ETFs, so one more rarely moves the price. Dropped at Score as “ETF on BTC or ETH”.</li>
+              <li><b>Treasury buys and sells of BTC or ETH.</b> Too small next to their market. Dropped at Score as “Treasury on BTC or ETH”.</li>
+            </ul>
+          </div>
+          <div class="box">
+            <h3>What Claude reader v4 reads differently <span class="chg">New in v4</span></h3>
+            <ul>
+              <li><b>A bug report or a fixed vulnerability</b> with no funds lost is not a hack.</li>
+              <li><b>The coin that was stolen</b> is never the hacked asset. In “$860M in ETH drained”, ETH only measures the loss.</li>
+              <li><b>An ETF listed on a smaller exchange</b> for a coin that already has ETFs is not “ETF approved”.</li>
+            </ul>
+          </div>
+          <p class="ink2 muted">Not signals: partnerships, price analysis and opinion, macro data (macro goes to the risk filter)</p>
+        </div>
+        <p class="note">Giữ nguyên bố cục tab News types; chỉ thêm 2 hộp. Hộp “Not counted” là luật cố định trong code (Rules v4, mới thêm luật ETF trên BTC/ETH). Hộp thứ hai là thay đổi trong prompt của Claude. Bỏ hai nhãn “New in v4” sau 14 ngày.</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="frame">
+        <span class="flabel">2 · Is it working? › Overall</span>
+        <div class="card">
+          <div class="cards3">
+            <div class="lc"><div class="t">Closed trades counted</div><div class="bar"><i></i></div><p><b>0 / 100</b> · new rules and reader, count starts again</p></div>
+            <div class="lc"><div class="t">Labels for Claude reader v4 <span class="pill col">Collecting</span></div><div class="bar"><i></i></div><p><b>0 / 50</b> · needs 50 more · <a href="#">Label signals</a></p></div>
+          </div>
+          <div class="lc" style="background:var(--surface-2)"><div class="t">Claude reader v3 <span class="pill ret">Retired Nov 22</span></div><p>4 closed trades · 1 label · kept for history, not counted toward v4</p></div>
+        </div>
+        <p class="note">Đổi reader thì số nhãn tính lại từ 0, đúng luật hiện có (“A new reader starts its count again”). Thẻ v3 chỉ để xem lại, không cộng vào v4. Ngày “Retired” lấy từ lúc v4 bắt đầu chạy.</p>
+      </div>
+
+      <div class="frame">
+        <span class="flabel">3 · From headline to trade · bài bị loại bởi luật mới</span>
+        <div class="card">
+          <div class="feed">
+            <div class="row"><span class="tm">13:03</span><span class="h">Gao Teng Bitcoin ETF listed on HKEX today</span><span><span class="chip">Dropped at Score · ETF on BTC or ETH</span></span></div>
+            <div class="row"><span class="tm">06:16</span><span class="h">Bitcoin nodes could be stalled by repeating one ID 50,000 times. AI found the bug</span><span><span class="chip">Dropped at Score · Not a signal type</span></span></div>
+          </div>
+          <div class="steps" aria-label="Trace of the first article">
+            <div class="st"><span class="n">1</span><span>Collect</span><span class="r">passed</span></div>
+            <div class="st"><span class="n b">2</span><span>Normalize · BTC-USD</span><span class="r">passed</span></div>
+            <div class="st stop"><span class="n c">3</span><span>Score · Claude: ETF approved · BTC-USD</span><span class="r">ETF on BTC or ETH</span></div>
+          </div>
+          <div class="why"><b>Why it stopped:</b> BTC and ETH already have many ETFs, so one more rarely moves the price. Rules v4 skip ETF news on these two coins.</div>
+        </div>
+        <p class="note">Mã lý do mới: ETF_MAJOR_ASSET, cùng kiểu với TREASURY_MAJOR_ASSET. Phễu và trace chỉ thêm một lý do vào danh sách đang có, không đổi bố cục. Bài “bug report” bị loại ngay từ Claude, nên hiện lý do Not a signal type như các bài khác.</p>
+      </div>
+    </div>
+  </div>
+</div>
