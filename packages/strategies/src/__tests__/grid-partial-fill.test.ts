@@ -1,7 +1,7 @@
 import { dec, ReasonCode } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
-import type { GridBotState } from "../common/grid-bot";
+import { GRID_KEEP_ENDED, type GridBotState } from "../common/grid-bot";
 import type {
   OrderIntent,
   StepResult,
@@ -223,7 +223,7 @@ describe("grid partial fills (#261)", () => {
     b.fill(buy95, "0.4");
     // Một lệnh đã huỷ trước đó khớp trễ 4.4 → vị thế 4.8; neutral: mua ≤ 5 − 4.8 = 0.2. Phần mua chưa khớp 1 (90) + 0.6
     // (95) vượt: huỷ 90 (xa giá) rồi 95; 95 đã khớp 0.4 nên đặt bán 0.4 ở 100.
-    b.s = { ...b.s, cancelled: { late: { level: 2, side: "buy" } } };
+    b.s = { ...b.s, cancelled: { late: { level: -2, side: "buy" } } };
     const r = b.fill("late", "4.4", "100");
     expect(b.s.ledger.position).toBe("4.8");
     expect(cancels(r.actions)).toEqual([
@@ -231,9 +231,10 @@ describe("grid partial fills (#261)", () => {
       { type: "cancel", clOrdID: buy95.clOrdID },
     ]);
     expect(placed(r.actions).map(show)).toEqual(["sell@100x0.4"]);
-    // Phần còn lại của lệnh đã huỷ khớp trễ: vào sổ cái, không đặt đối ứng.
+    // Phần còn lại khớp trước khi huỷ xong (#426): vào sổ cái, và grid đang chạy nên đặt thêm đối ứng cho đúng phần
+    // khớp thêm (tổng đối ứng 0.4 + 0.6 = tổng đã khớp 1).
     const late = b.fill(buy95, "0.6");
-    expect(placed(late.actions)).toEqual([]);
+    expect(placed(late.actions).map(show)).toEqual(["sell@100x0.6"]);
     expect(b.s.ledger.position).toBe("5.4");
   });
 
@@ -325,6 +326,205 @@ describe("grid partial fills (#261)", () => {
       expect(placed(b.fill(o, "0.5").actions)).toEqual([]);
       expect(placed(b.fill(o, "0.3").actions).map(show)).toEqual([counter]);
       expect(dec(b.s.ledger.position).sub(pos0).toString()).toBe(side === "buy" ? "1" : "-1");
+    },
+  );
+});
+
+// #426 (DEC-TBD-grid-late-fills): fill của chính lệnh đó tới SAU khi SoDEX đã báo lệnh kết thúc (`orderDone` / xác nhận
+// huỷ). Lịch sử lệnh REST của SoDEX trễ hơn trade (DEC-303), nên đối soát có thể ghi trade sau khi lệnh đã kết thúc.
+describe("grid late fills after the order ended (#426)", () => {
+  it("partial fill → orderDone → late fill: booked, and one more counter for just the late part", () => {
+    const b = bot(futuresGrid, perps());
+    const buy95 = at(started(b), "buy", "95");
+    b.fill(buy95, "0.4");
+    expect(placed(b.done(buy95).actions).map(show)).toEqual(["sell@100x0.4"]);
+    const r = b.fill(buy95, "0.2");
+    expect(b.s.ledger.position).toBe("0.6");
+    expect(placed(r.actions).map(show)).toEqual(["sell@100x0.2"]);
+    expect(b.s.cancelled?.[buy95.clOrdID]).toEqual({
+      level: 1,
+      side: "buy",
+      filled: "0.6",
+      ended: true,
+      countered: "0.6",
+    });
+  });
+
+  it("late parts below SoDEX min size add up until they reach it", () => {
+    const b = bot(futuresGrid, perps());
+    const buy95 = at(started(b), "buy", "95");
+    // 0.03 × 100 = 3 < min notional 5: không đặt đối ứng lúc kết thúc.
+    b.fill(buy95, "0.03");
+    expect(placed(b.done(buy95).actions)).toEqual([]);
+    expect(placed(b.fill(buy95, "0.01").actions)).toEqual([]);
+    // 0.03 + 0.01 + 0.02 = 0.06 → 6 ≥ 5: một lệnh đối ứng cho cả 0.06.
+    expect(placed(b.fill(buy95, "0.02").actions).map(show)).toEqual(["sell@100x0.06"]);
+    expect(b.s.ledger.position).toBe("0.06");
+  });
+
+  it("cap cancel → cancel ack (orderDone) → late fill: booked, counter for the late part", () => {
+    const b = bot(futuresGrid, perps());
+    const orders = started(b);
+    const buy95 = at(orders, "buy", "95");
+    b.fill(buy95, "0.4");
+    b.s = { ...b.s, cancelled: { ...b.s.cancelled, late: { level: -2, side: "buy" } } };
+    b.fill("late", "4.4", "100");
+    expect(b.s.cancelled?.[buy95.clOrdID]).toMatchObject({ countered: "0.4" });
+    b.done(buy95);
+    expect(b.s.cancelled?.[buy95.clOrdID]).toMatchObject({ ended: true });
+    const r = b.fill(buy95, "0.2");
+    expect(b.s.ledger.position).toBe("5");
+    expect(placed(r.actions).map(show)).toEqual(["sell@100x0.2"]);
+  });
+
+  it("a replayed late fill is not booked twice (never past the order size)", () => {
+    const b = bot(futuresGrid, perps());
+    const buy95 = at(started(b), "buy", "95");
+    b.fill(buy95, "0.4");
+    b.done(buy95);
+    b.fill(buy95, "0.6");
+    const before = b.s;
+    const r = b.fill(buy95, "0.6");
+    expect(r.actions).toEqual([]);
+    expect(b.s).toBe(before);
+    expect(b.s.ledger.position).toBe("1");
+  });
+
+  it("survives an engine restart between orderDone and the late fill", () => {
+    const b = bot(futuresGrid, perps());
+    const buy95 = at(started(b), "buy", "95");
+    b.fill(buy95, "0.4");
+    b.done(buy95);
+    b.restart();
+    const r = b.fill(buy95, "0.2");
+    expect(b.s.ledger.position).toBe("0.6");
+    expect(placed(r.actions).map(show)).toEqual(["sell@100x0.2"]);
+  });
+
+  it("halted: a kept order ends, then a late fill: booked, no new order", () => {
+    const b = bot(futuresGrid, perps({ maxLoss: "3" }));
+    const buy95 = at(started(b), "buy", "95");
+    const sell100 = placed(b.fill(buy95, "1").actions)[0];
+    if (sell100 === undefined) throw new Error("no counter");
+    b.tick("91");
+    b.fill(sell100, "0.4");
+    b.done(sell100);
+    const r = b.fill(sell100, "0.1");
+    expect(placed(r.actions)).toEqual([]);
+    expect(b.s.ledger.position).toBe("0.5");
+  });
+
+  it("halt cancel → cancel ack → late fill: booked, no counter even after resume", () => {
+    const b = bot(futuresGrid, perps({ stopBelow: "80" }));
+    const buy95 = at(started(b), "buy", "95");
+    b.fill(buy95, "0.4");
+    b.tick("79");
+    b.done(buy95);
+    const r = b.fill(buy95, "0.3");
+    expect(placed(r.actions)).toEqual([]);
+    expect(b.s.ledger.position).toBe("0.7");
+  });
+
+  it("old-version order ends, then a late fill: booked on its own side", () => {
+    const b = bot(futuresGrid, perps());
+    const buy95 = at(started(b), "buy", "95");
+    b.fill(buy95, "0.4");
+    const next = futuresGrid.applyVersion?.(perps(), b.s, ctx);
+    if (next === null || next === undefined) throw new Error("not applied");
+    b.s = next;
+    b.done(buy95);
+    expect(b.s.retiring?.[buy95.clOrdID]).toBeUndefined();
+    expect(b.s.cancelled?.[buy95.clOrdID]).toMatchObject({ level: -2, ended: true });
+    const r = b.fill(buy95, "0.5");
+    expect(placed(r.actions)).toEqual([]);
+    expect(b.s.ledger.position).toBe("0.9");
+    // Không bao giờ quá khối lượng đặt của lệnh cũ.
+    b.fill(buy95, "0.5");
+    expect(b.s.ledger.position).toBe("1");
+  });
+
+  it("keeps at most GRID_KEEP_ENDED ended level orders, never the initial order", () => {
+    const b = bot(futuresGrid, perps());
+    started(b);
+    const many = Object.fromEntries(
+      Array.from({ length: GRID_KEEP_ENDED + 5 }, (_, i) => [
+        `old-${String(i)}`,
+        { level: 1, side: "buy" as const, ended: true },
+      ]),
+    );
+    b.s = { ...b.s, cancelled: { init: { level: -1, side: "buy", ended: true }, ...many } };
+    b.s = { ...b.s, cancelled: { ...b.s.cancelled, x: { level: 1, side: "buy" } } };
+    b.done({ clOrdID: "x" } as OrderIntent);
+    const left = Object.keys(b.s.cancelled ?? {});
+    expect(left).toContain("init");
+    expect(left).toContain("x");
+    expect(left).not.toContain("old-0");
+    expect(left.filter((k) => k !== "init")).toHaveLength(GRID_KEEP_ENDED);
+  });
+
+  it("a version change carries ended orders without their counter rule", () => {
+    const b = bot(futuresGrid, perps());
+    const buy95 = at(started(b), "buy", "95");
+    b.fill(buy95, "0.4");
+    b.done(buy95);
+    const next = futuresGrid.applyVersion?.(perps(), b.s, ctx);
+    expect(next?.cancelled?.[buy95.clOrdID]).toEqual({
+      level: 1,
+      side: "buy",
+      qty: "1",
+      filled: "0.4",
+      ended: true,
+    });
+  });
+
+  const lateCases: {
+    name: string;
+    run: () => Runner;
+    side: "buy" | "sell";
+    price: string;
+    counter: string;
+  }[] = [
+    {
+      name: "perps neutral",
+      run: () => bot(futuresGrid, perps()),
+      side: "sell",
+      price: "105",
+      counter: "buy@100x0.2",
+    },
+    {
+      name: "perps long",
+      run: () => bot(futuresGrid, perps({ direction: "long" })),
+      side: "buy",
+      price: "95",
+      counter: "sell@100x0.2",
+    },
+    {
+      name: "perps short",
+      run: () => bot(futuresGrid, perps({ direction: "short" })),
+      side: "sell",
+      price: "105",
+      counter: "buy@100x0.2",
+    },
+    {
+      name: "spot (long)",
+      run: () => bot(spotGrid, spot),
+      side: "sell",
+      price: "110",
+      counter: "buy@105x0.2",
+    },
+  ];
+  it.each(lateCases)(
+    "$name: late fill after orderDone is booked like SoDEX's position",
+    ({ run, side, price, counter }) => {
+      const b = run();
+      const o = at(started(b), side, price);
+      const pos0 = b.s.ledger.position;
+      b.fill(o, "0.5");
+      b.done(o);
+      const r = b.fill(o, "0.2");
+      expect(placed(r.actions).map(show)).toEqual([counter]);
+      // Vị thế SoDEX giả lập = vị thế trước + mọi phần đã khớp (0.5 + 0.2).
+      expect(dec(b.s.ledger.position).sub(pos0).toString()).toBe(side === "buy" ? "0.7" : "-0.7");
     },
   );
 });
