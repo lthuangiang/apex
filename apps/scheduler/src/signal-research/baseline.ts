@@ -22,6 +22,17 @@ const MIN_MS = 60_000;
 /** Mỗi chu kỳ tính tối đa ngần này lệnh (mỗi lệnh 1 truy vấn nến theo market, ≤ 3 ngày). */
 const PER_CYCLE = 20;
 
+/**
+ * Nến đầu tiên lệnh ngẫu nhiên được xét (#405, DEC-TBD-sr-baseline-entry-clock): phút kế tiếp sau lúc vào lệnh THẬT
+ * (`opened_clock_at`, #379), vì entry là giá live đọc lúc đó; nến trước entry (từ đầu chu kỳ tới lúc vào) không được chạm
+ * TP / SL. Lệnh cũ chưa có `opened_clock_at` giữ `opened_at` (giờ đầu chu kỳ) như trước. Làm tròn lên phút kế tiếp như cũ
+ * (không nhìn nến chứa lúc vào, vì nến đó có phần trước entry).
+ */
+export function randomReplayFrom(t: { openedAt: Date; openedClockAt: Date | null }): number {
+  const at = (t.openedClockAt ?? t.openedAt).getTime();
+  return Math.floor(at / MIN_MS) * MIN_MS + MIN_MS;
+}
+
 export async function fillRandomBaselines(db: Db, now: number): Promise<number> {
   const todo = await db
     .select()
@@ -40,7 +51,8 @@ export async function fillRandomBaselines(db: Db, now: number): Promise<number> 
   if (todo.length === 0) return 0;
   let done = 0;
   for (const t of todo) {
-    const from = Math.floor(t.openedAt.getTime() / MIN_MS) * MIN_MS + MIN_MS;
+    // Chỉ lệnh chưa có baseline (`random_done_at` null) đi qua đây: baseline đã lưu không bị tính lại (#405).
+    const from = randomReplayFrom(t);
     const holdEnd = t.maxHoldUntil.getTime();
     const until = holdEnd;
     const candles = until > from ? await candlesOf(db, t.market, from, until) : [];

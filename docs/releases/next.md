@@ -10,7 +10,7 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-Chưa có thay đổi.
+- Signal research: random baseline phát lại nến từ phút sau lúc vào lệnh thật (`opened_clock_at`), không từ đầu chu kỳ; lệnh cũ không có cột này giữ `opened_at`, baseline đã lưu không tính lại (#405, DEC-TBD-sr-baseline-entry-clock). **Chưa merge.**
 
 **Migration (chạy khi deploy):** chưa có.
 
