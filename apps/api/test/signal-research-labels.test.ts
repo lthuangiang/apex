@@ -518,7 +518,8 @@ describe("classification labels (#304)", () => {
     expect(byId.get(tFail)).toEqual({ version: "cls-39", status: "underPrecision" });
     expect(byId.get(s1Trade)).toEqual({ version: CURRENT, status: "underPrecision" });
 
-    // #395: lệnh đã đóng theo classifier, mọi rule version (thẻ "Claude reader vX · Retired"), và số bài có nhãn bất kỳ.
+    // #395: lệnh đã đóng theo classifier, mọi rule version (thẻ "Claude reader vX · Retired"). Thẻ đếm nhãn bằng `labeled`
+    // (chỉ nhãn random, như cổng 50 nhãn; PM #398), không cộng nhãn trace.
     await env.pool.query(`update signal_paper_trades set rule_version = 'news-v3' where id = $1`, [
       tFail,
     ]);
@@ -526,9 +527,11 @@ describe("classification labels (#304)", () => {
       (await team.request("GET", `${base}/classifiers`)).json(),
     );
     const of = (v: string) => c.items.find((x) => x.classifierVersion === v);
-    expect(of("cls-39")).toMatchObject({ closedTrades: 1, labeledAny: 50 });
+    expect(of("cls-39")).toMatchObject({ closedTrades: 1, labeled: 50 });
     expect(of("cls-50")).toMatchObject({ closedTrades: 1 });
-    expect(of(CURRENT)).toMatchObject({ closedTrades: 1, labeledAny: 3 });
+    expect(of(CURRENT)).toMatchObject({ closedTrades: 1 });
+    // 50 nhãn trace không bao giờ thành "labels" của thẻ.
+    expect(of("cls-trace")).toMatchObject({ labeled: 0, traceLabeled: 50, closedTrades: 0 });
   });
 });
 

@@ -57,11 +57,21 @@ type Mode =
   | "one"
   | "noVersions"
   | "judge";
-const state = vi.hoisted((): { mode: Mode; paths: string[]; classifiers: unknown } => ({
-  mode: "ok",
-  paths: [],
-  classifiers: null,
-}));
+const state = vi.hoisted(
+  (): {
+    mode: Mode;
+    paths: string[];
+    classifiers: unknown;
+    summary: unknown;
+    versions: unknown;
+  } => ({
+    mode: "ok",
+    paths: [],
+    classifiers: null,
+    summary: null,
+    versions: null,
+  }),
+);
 
 vi.mock("@/features/account/market-hours-time", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/features/account/market-hours-time")>();
@@ -153,7 +163,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
       // #306: News bot versions (thẻ, bảng) có test riêng ở versions.test.tsx.
       if (m === "noVersions" && (p.endsWith("/versions") || p.endsWith("/classifiers")))
         return Promise.reject(new real.ApiError("INTERNAL_ERROR", 500));
-      if (p.endsWith("/signal-research/versions")) return Promise.resolve(schema.parse(VERSIONS));
+      if (p.endsWith("/signal-research/versions"))
+        return Promise.resolve(schema.parse(state.versions ?? VERSIONS));
       if (p.endsWith("/signal-research/classifiers"))
         return Promise.resolve(schema.parse(state.classifiers ?? CLASSIFIERS));
       if (p.endsWith("/signal-research/markets")) return Promise.resolve(schema.parse(MARKETS));
@@ -161,6 +172,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
       if (p.endsWith("/signal-research/latency"))
         return Promise.resolve(schema.parse(LATENCY_EMPTY));
       if (p.endsWith("/signal-research/summary")) {
+        if (state.summary !== null) return Promise.resolve(schema.parse(state.summary));
         if (m === "error") return Promise.reject(new real.ApiError("INTERNAL_ERROR", 500));
         if (m === "empty")
           return Promise.resolve(
@@ -279,6 +291,8 @@ beforeEach(() => {
   state.mode = "ok";
   state.paths = [];
   state.classifiers = null;
+  state.summary = null;
+  state.versions = null;
   intlErrors.length = 0;
   window.history.replaceState(null, "", "/admin/signal-analysis?tab=research");
 });
@@ -1352,7 +1366,6 @@ function readerV4(startedAt: string) {
         right: 0,
         traceLabeled: 0,
         closedTrades: 0,
-        labeledAny: 0,
         precisionPct: null,
         interval: null,
         labelsToGo: 50,
@@ -1363,11 +1376,11 @@ function readerV4(startedAt: string) {
         classifierVersion: "news-classifier-v3",
         startedAt: "2026-11-19T06:00:00.000Z",
         closedTrades: 4,
-        labeledAny: 1,
-        traceLabeled: 1,
-        labeled: 0,
-        right: 0,
-        precisionPct: null,
+        // PM #398: thẻ Retired chỉ đếm nhãn random (1), không cộng 2 nhãn trace.
+        traceLabeled: 2,
+        labeled: 1,
+        right: 1,
+        precisionPct: 100,
         interval: null,
         status: "needsLabels",
         labelsToGo: 50,
@@ -1410,6 +1423,7 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
     ).toEqual([
       "A bug report or a fixed vulnerability with no funds lost is not a hack.",
       "The coin that was stolen is never the hacked asset. In “$860M in ETH drained”, ETH only measures the loss.",
+      "Moving or laundering funds from an earlier hack is not a new hack.",
       "An ETF listed on a smaller exchange for a coin that already has ETFs is not “ETF approved”.",
     ]);
     expect(within(dlg).getAllByText("New in v4")).toHaveLength(2);
@@ -1449,6 +1463,66 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
       within(r).getByText("4 closed trades · 1 label · kept for history, not counted toward v4"),
     ).toBeInTheDocument();
     await noViolations();
+  });
+
+  /** Tổng kết ngay sau khi đổi reader / luật: dòng News · live chưa có lệnh đóng nào được tính. */
+  const zeroCounted = () => ({
+    ...JUDGE,
+    rows: JUDGE.rows.map((x) =>
+      x.type === "news" && x.label === "live"
+        ? {
+            ...x,
+            closed: 0,
+            classifiers:
+              x.classifiers === null ? null : { ...x.classifiers, counted: 0, notCounted: [] },
+          }
+        : x,
+    ),
+  });
+
+  it("right after the switch (counts at 0, an older reader exists): count starts again and Collecting", async () => {
+    state.mode = "judge";
+    state.classifiers = readerV4("2026-11-21T06:00:00.000Z");
+    state.summary = zeroCounted();
+    state.versions = {
+      ...VERSIONS,
+      classifier: {
+        ...VERSIONS.classifier,
+        current: "news-classifier-v4",
+        labeled: 0,
+        precisionPct: null,
+        labelsToGo: 50,
+      },
+    };
+    wrap();
+    const r = await screen.findByRole("region", { name: "Is it working?" });
+    // Desktop (có <b>) và dòng ngắn của mobile cùng câu.
+    expect(
+      await within(r).findAllByText(
+        (_, el) =>
+          el?.tagName === "DIV" &&
+          el.textContent === "0 / 100 · new rules and reader, count starts again",
+      ),
+    ).toHaveLength(2);
+    const head = within(r).getByText("Labels for Claude reader v4").parentElement;
+    if (head === null) throw new Error("labels card");
+    expect(within(head).getByText("Collecting")).toBeInTheDocument();
+    expect(within(r).queryByText(/not counting yet/)).not.toBeInTheDocument();
+    await noViolations();
+  });
+
+  it("without an older reader the cards keep their usual lines and no Collecting pill", async () => {
+    state.mode = "judge";
+    const [cur] = CLASSIFIERS.items;
+    state.classifiers = { ...CLASSIFIERS, items: cur === undefined ? [] : [cur] };
+    state.summary = zeroCounted();
+    state.versions = { ...VERSIONS, classifier: { ...VERSIONS.classifier, labeled: 0 } };
+    wrap();
+    const r = await screen.findByRole("region", { name: "Is it working?" });
+    const head = (await within(r).findByText("Labels for Claude reader v2")).parentElement;
+    if (head === null) throw new Error("labels card");
+    expect(within(r).queryByText(/count starts again/)).not.toBeInTheDocument();
+    expect(within(head).queryByText("Collecting")).not.toBeInTheDocument();
   });
 
   it("no retired card without an older reader", async () => {

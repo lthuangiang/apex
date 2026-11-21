@@ -209,6 +209,11 @@ function ProgressCards({
   const labelsMore = c === null || min === null ? 0 : Math.max(0, min - c.labeled);
   // Chưa đếm (Claude reader chưa qua nhãn, chưa có lệnh nào được tính): nói bằng lời thường thay vì "needs 100 more".
   const waits = c !== null && c.status !== "passed" && closed === 0 ? c : null;
+  // #395 (PM #398): vừa đổi reader / luật (đã có reader cũ) và đoạn đếm hiện tại còn 0 → "count starts again" và pill
+  // "Collecting" như khung 2 của mockup reader-v4; không có reader cũ thì giữ câu đang có.
+  const hasRetired = retiredReader(classifiers?.items) !== null;
+  const restart = hasRetired && closed === 0;
+  const labelsCollecting = hasRetired && c !== null && c.labeled === 0;
 
   const h1 = v.context?.questions.find((q) => q.key === "h1") ?? null;
   const ctxMin = v.context?.minClosedPerGroup ?? null;
@@ -217,7 +222,7 @@ function ProgressCards({
       <Card>
         <div className="flex justify-between gap-2 text-[13px]">
           <strong>{t("closedTitle")}</strong>
-          {weeks === null || more === 0 || waits !== null ? null : (
+          {weeks === null || more === 0 || waits !== null || restart ? null : (
             <span className="text-muted max-md:hidden">{t("weeksToGo", { weeks })}</span>
           )}
         </div>
@@ -227,51 +232,55 @@ function ProgressCards({
           <>
             <Bar label={t("closedAria")} now={closed} max={GATE_MIN_CLOSED} />
             <div className="text-[13px] text-ink-2 max-md:hidden">
-              {waits !== null
-                ? waits.status === "needsLabels"
-                  ? t.rich("closedLineWaits", {
-                      b,
-                      n: count(closed),
-                      gate: GATE_MIN_CLOSED,
-                      k: waits.labelsToGo,
-                    })
-                  : t.rich("closedLineUnder", { b, n: count(closed), gate: GATE_MIN_CLOSED })
-                : more === 0
-                  ? t.rich("closedLineDone", { b, n: count(closed), gate: GATE_MIN_CLOSED })
-                  : t.rich("closedLine", {
-                      b,
-                      n: count(closed),
-                      gate: GATE_MIN_CLOSED,
-                      more: count(more),
-                    })}
+              {restart
+                ? t.rich("closedLineRestart", { b, n: count(0), gate: GATE_MIN_CLOSED })
+                : waits !== null
+                  ? waits.status === "needsLabels"
+                    ? t.rich("closedLineWaits", {
+                        b,
+                        n: count(closed),
+                        gate: GATE_MIN_CLOSED,
+                        k: waits.labelsToGo,
+                      })
+                    : t.rich("closedLineUnder", { b, n: count(closed), gate: GATE_MIN_CLOSED })
+                  : more === 0
+                    ? t.rich("closedLineDone", { b, n: count(closed), gate: GATE_MIN_CLOSED })
+                    : t.rich("closedLine", {
+                        b,
+                        n: count(closed),
+                        gate: GATE_MIN_CLOSED,
+                        more: count(more),
+                      })}
             </div>
             <div className="text-xs text-ink-2 md:hidden">
-              {waits !== null
-                ? waits.status === "needsLabels"
-                  ? t("closedShortWaits", {
-                      n: count(closed),
-                      gate: GATE_MIN_CLOSED,
-                      k: waits.labelsToGo,
-                    })
-                  : t("closedShortUnder", { n: count(closed), gate: GATE_MIN_CLOSED })
-                : more === 0
-                  ? t.rich("closedLineDone", {
-                      b: (x) => <>{x}</>,
-                      n: count(closed),
-                      gate: GATE_MIN_CLOSED,
-                    })
-                  : weeks === null
-                    ? t("closedShortNoWeeks", {
+              {restart
+                ? t("closedShortRestart", { n: count(0), gate: GATE_MIN_CLOSED })
+                : waits !== null
+                  ? waits.status === "needsLabels"
+                    ? t("closedShortWaits", {
                         n: count(closed),
                         gate: GATE_MIN_CLOSED,
-                        more: count(more),
+                        k: waits.labelsToGo,
                       })
-                    : t("closedShort", {
+                    : t("closedShortUnder", { n: count(closed), gate: GATE_MIN_CLOSED })
+                  : more === 0
+                    ? t.rich("closedLineDone", {
+                        b: (x) => <>{x}</>,
                         n: count(closed),
                         gate: GATE_MIN_CLOSED,
-                        more: count(more),
-                        weeks,
-                      })}
+                      })
+                    : weeks === null
+                      ? t("closedShortNoWeeks", {
+                          n: count(closed),
+                          gate: GATE_MIN_CLOSED,
+                          more: count(more),
+                        })
+                      : t("closedShort", {
+                          n: count(closed),
+                          gate: GATE_MIN_CLOSED,
+                          more: count(more),
+                          weeks,
+                        })}
             </div>
           </>
         )}
@@ -279,7 +288,9 @@ function ProgressCards({
       <Card>
         <div className="flex justify-between gap-2 text-[13px]">
           <strong>{name === null ? t("labelsTitleNa") : t("labelsTitle", { name })}</strong>
-          {pct === null ? null : (
+          {labelsCollecting ? (
+            <Pill tone="warn">{t("collecting")}</Pill>
+          ) : pct === null ? null : (
             <span className="text-muted max-md:hidden">
               {t("labelsRight", { pct: Math.round(pct) })}
             </span>
@@ -370,7 +381,8 @@ function RetiredReader({
       <p className="m-0 text-[13px] text-ink-2">
         {t("line", {
           closed: r.row.closedTrades,
-          labels: r.row.labeledAny,
+          // PM #398: chỉ nhãn random (cùng số với cổng 50 nhãn), không cộng nhãn trace.
+          labels: r.row.labeled,
           current: classifierShort(r.current.classifierVersion),
         })}
       </p>

@@ -491,6 +491,7 @@ function NewsBoxes() {
         <ul className={list}>
           <li>{tr.rich("readerV4.bug", { b })}</li>
           <li>{tr.rich("readerV4.stolen", { b })}</li>
+          <li>{tr.rich("readerV4.laundering", { b })}</li>
           <li>{tr.rich("readerV4.etf", { b })}</li>
         </ul>
       </section>

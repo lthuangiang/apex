@@ -8282,6 +8282,7 @@
           "title": "What Claude reader v4 reads differently",
           "bug": "<b>A bug report or a fixed vulnerability</b> with no funds lost is not a hack.",
           "stolen": "<b>The coin that was stolen</b> is never the hacked asset. In “$860M in ETH drained”, ETH only measures the loss.",
+          "laundering": "<b>Moving or laundering funds</b> from an earlier hack is not a new hack.",
           "etf": "<b>An ETF listed on a smaller exchange</b> for a coin that already has ETFs is not “ETF approved”."
         },
         "tiers": "<b>Source tiers</b><br></br><t>Top:</t> the primary source itself (exchange, company, regulator, ETF issuer), Bloomberg, Reuters.<br></br><t>Mid:</t> established crypto media and verified founders or executives.<br></br><t>Low:</t> aggregators, anonymous and influencer accounts.",
@@ -9333,6 +9334,9 @@
         "closedLineUnder": "<b>{n} / {gate}</b> · not counting yet · Claude reader under 80% right",
         "closedShortWaits": "{n} / {gate} · not counting yet · label {k} signals first",
         "closedShortUnder": "{n} / {gate} · not counting yet",
+        "closedLineRestart": "<b>{n} / {gate}</b> · new rules and reader, count starts again",
+        "closedShortRestart": "{n} / {gate} · new rules and reader, count starts again",
+        "collecting": "Collecting",
         "retired": {
           "title": "Claude reader {name}",
           "pill": "Retired {date}",

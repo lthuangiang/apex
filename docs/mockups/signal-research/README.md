@@ -133,6 +133,7 @@ Những chỗ UI đổi khi ship Claude reader v4 (`news-classifier-v4`) và Rul
 
 **Quy tắc khi code (DEC-TBD-sr-reader-v4):**
 - Nhãn "New in v4" (và chip "v3 → v4" ở dòng sub) ẩn sau `READER_NEW_BADGE.days` = 14 ngày, tính từ `started_at` của `news-classifier-v4` lấy từ API `/classifiers`, không dùng hằng ngày của web.
-- Thẻ "Claude reader v3 · Retired {date}": reader ngay trước reader hiện tại; ngày = `started_at` của reader hiện tại; số lệnh đóng và số nhãn từ `closedTrades` / `labeledAny` của API.
+- Thẻ "Claude reader v3 · Retired {date}": reader ngay trước reader hiện tại; ngày = `started_at` của reader hiện tại; số lệnh đóng từ `closedTrades`, số nhãn từ `labeled` (chỉ nhãn random, như cổng 50 nhãn; PM review #398).
+- Hộp "What Claude reader v4 reads differently" có thêm dòng thứ 4 (PM review #398, sau dòng "The coin that was stolen…"): "Moving or laundering funds from an earlier hack is not a new hack." Dòng này không có trong ảnh.
 - "Why it stopped" là câu kết của trace ("Stopped at Score: …"), không thêm khối mới.
-- Pill "Collecting" của thẻ nhãn và câu "new rules and reader, count starts again" của thẻ lệnh đóng trong khung 2 chưa code: hai thẻ giữ câu chữ hiện có (số đếm vẫn về 0 / 50 và 0 / 100).
+- Pill "Collecting" của thẻ nhãn và câu "0 / 100 · new rules and reader, count starts again" của thẻ lệnh đóng chỉ hiện khi đã có reader cũ và số đếm của đoạn hiện tại bằng 0; không thì giữ câu đang có.

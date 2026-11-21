@@ -1194,8 +1194,6 @@ export const researchClassifierRowSchema = z.object({
    * thẻ "Claude reader v3 · Retired" hiện lịch sử sau khi rule version đổi).
    */
   closedTrades: int,
-  /** #395: số bài có ít nhất một nhãn, random hoặc trace (thẻ reader đã retired: "{n} labels"). */
-  labeledAny: int,
   precisionPct: z.number().nullable(),
   /** Khoảng Wilson 95% của precision, đơn vị %; null khi chưa có nhãn. */
   interval: z.object({ lo: z.number(), hi: z.number() }).nullable(),

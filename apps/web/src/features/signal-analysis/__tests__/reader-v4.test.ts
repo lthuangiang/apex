@@ -67,3 +67,28 @@ describe("ETF_MAJOR_ASSET copy", () => {
     );
   });
 });
+
+describe("copy approved in PM review #398", () => {
+  const t = createTranslator({
+    locale: "en",
+    messages,
+    namespace: "signalAnalysis.research" as never,
+  }) as unknown as (k: string, v?: Record<string, unknown>) => string;
+
+  it("fourth line of the reader box, the count-restart line and the Collecting pill", () => {
+    expect(t("rules.readerV4.laundering", { b: (c: unknown) => c })).toBe(
+      "Moving or laundering funds from an earlier hack is not a new hack.",
+    );
+    expect(t("judge.closedShortRestart", { n: "0", gate: 100 })).toBe(
+      "0 / 100 · new rules and reader, count starts again",
+    );
+    expect(t("judge.collecting")).toBe("Collecting");
+  });
+
+  it("is not waiting for copy review", () => {
+    const pending = (messages as { _pendingReview?: string[] })._pendingReview ?? [];
+    expect(
+      pending.filter((k) => /readerV4|Restart|judge\.collecting|etfMajorAsset/.test(k)),
+    ).toEqual([]);
+  });
+});
