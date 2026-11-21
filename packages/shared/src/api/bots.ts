@@ -55,6 +55,8 @@ export const featuresSchema = z.object({
   aiDesk: z.boolean().default(false),
   /** AI Adaptive DCA (Beta, DEC-107): cờ riêng (DEC-192), mặc định bật, team tắt được (DEC-218). */
   adaptiveDca: z.boolean().default(false),
+  /** #423: Signal Research (BETA) trên menu chính: role team, hoặc team đã bật cờ cho tài khoản. */
+  signalResearch: z.boolean().default(false),
   /** Builder fee hiệu lực theo chiến lược của user (DEC-159), phần mười bp; thiếu key = mặc định. */
   builderFees: z.record(z.string(), z.number().int()).default({}),
   /** Thẻ builder fee Market Making; null khi chưa đăng nhập. */

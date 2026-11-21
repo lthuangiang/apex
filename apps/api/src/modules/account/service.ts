@@ -52,6 +52,7 @@ import {
   type AdminUserDetail,
   type AdminUsersView,
   type AdminAdaptiveDca,
+  type AdminSignalResearch,
   type AdminAiDesk,
   type AnalystBot,
   type AdminVolumeBots,
@@ -813,6 +814,7 @@ interface AdminUserRow {
   volumeBots: boolean;
   aiDesk: boolean;
   adaptiveDca: boolean;
+  signalResearch: boolean;
 }
 
 /** Dòng user cho team: tài khoản SoDEX, builder fee, số bot, số dư và khối lượng. */
@@ -919,6 +921,7 @@ async function adminItems(
       volumeBots: r.volumeBots,
       aiDesk: r.aiDesk,
       adaptiveDca: r.adaptiveDca,
+      signalResearch: r.signalResearch,
     };
   });
 }
@@ -944,6 +947,7 @@ export async function adminUserDetail(
       volumeBots: users.volumeBots,
       aiDesk: users.aiDesk,
       adaptiveDca: users.adaptiveDca,
+      signalResearch: users.signalResearch,
     })
     .from(users)
     .where(and(eq(users.id, targetId), isNull(users.deletedAt)))
@@ -1072,6 +1076,7 @@ export async function adminUsers(
       volumeBots: users.volumeBots,
       aiDesk: users.aiDesk,
       adaptiveDca: users.adaptiveDca,
+      signalResearch: users.signalResearch,
     })
     .from(users)
     .where(where)
@@ -1109,6 +1114,35 @@ export async function setAiDesk(
     ip,
   });
   return { aiDesk: enabled };
+}
+
+/**
+ * #423: team bật / tắt Signal Research (BETA) cho một user, như công tắc AI Desk. Tắt: mục biến mất khỏi menu, API của
+ * trang trả 403 ngay request sau; version riêng của user giữ nguyên trong DB (scheduler vẫn chạy version đang chạy, như
+ * version của team). Ghi audit.
+ */
+export async function setSignalResearch(
+  deps: AccountDeps,
+  actorId: string,
+  targetId: string,
+  enabled: boolean,
+  ip: string | null,
+): Promise<AdminSignalResearch> {
+  await requireTeam(deps.db, actorId, "Users is for the DeskLabs team only.");
+  const [u] = await deps.db
+    .update(users)
+    .set({ signalResearch: enabled })
+    .where(and(eq(users.id, targetId), isNull(users.deletedAt)))
+    .returning({ id: users.id });
+  if (u === undefined) throw new AppError(ErrorCode.notFound, "User not found.");
+  await audit(deps.db, {
+    userId: actorId,
+    action: AuditAction.signalResearchChanged,
+    target: targetId,
+    metadata: { enabled },
+    ip,
+  });
+  return { signalResearch: enabled };
 }
 
 /**

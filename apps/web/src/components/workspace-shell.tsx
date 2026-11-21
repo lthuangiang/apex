@@ -20,6 +20,7 @@ import {
   LayoutDashboard,
   Network,
   ListOrdered,
+  Newspaper,
   OctagonX,
   Settings,
   ShieldAlert,
@@ -62,6 +63,8 @@ const ITEMS = [
   // Trading Agent luôn ở vị trí thứ 3 (DEC-108), dù AI Desk có bật hay không.
   ["agent", "/agent", Bot, "main"],
   ["desk", "/desk", BrainCircuit, "main"],
+  // Signal Research (BETA, #423): ngay sau AI Desk; chỉ team và tài khoản team bật cờ `signal_research`.
+  ["signalResearch", "/signal-research", Newspaper, "main"],
   ["bots", "/bots", FlaskConical, "main"],
   ["orders", "/orders", ListOrdered, "main"],
   ["risk", "/risk", ShieldAlert, "main"],
@@ -119,10 +122,20 @@ export function WorkspaceShell({
   const t = useTranslations("common.nav");
   const tc = useTranslations("common");
   // AI Desk chỉ hiện khi team bật cho tài khoản; khi bật, AI Analyst gộp vào tab Your bots (DEC-105).
-  const desk = useFeatures().data?.aiDesk === true;
+  const features = useFeatures().data;
+  const desk = features?.aiDesk === true;
+  // #423: Signal Research (BETA): API trả true cho role team và tài khoản có cờ.
+  const research = features?.signalResearch === true;
   const navItems: NavItem[] = ITEMS.filter(
     ([key]) =>
-      (!TEAM_ONLY.has(key) || isTeam) && (key === "desk" ? desk : key === "analyst" ? !desk : true),
+      (!TEAM_ONLY.has(key) || isTeam) &&
+      (key === "desk"
+        ? desk
+        : key === "analyst"
+          ? !desk
+          : key === "signalResearch"
+            ? research
+            : true),
   )
     .filter(([key]) => desk || !COPY_ITEMS.has(key))
     .map(([key, href, Icon, group]) => ({
@@ -133,6 +146,7 @@ export function WorkspaceShell({
       current: key === current,
       group,
       ...(COPY_ITEMS.has(key) ? { section: t("sections.copy") } : {}),
+      ...(key === "signalResearch" ? { badge: <NavBeta label={t("beta")} /> } : {}),
     }));
   const byKey = (key: WorkspaceKey) => navItems.find((i) => i.key === key);
   const pick = (keys: readonly WorkspaceKey[]) =>
@@ -159,6 +173,7 @@ export function WorkspaceShell({
       // Cùng thứ tự với sidebar (DEC-181); Settings và các mục TEAM giữ nguyên vị trí.
       items: pick([
         desk ? "portfolio" : "desk",
+        "signalResearch",
         "orders",
         "risk",
         "traders",
@@ -203,6 +218,15 @@ export function WorkspaceShell({
       {children}
       <NotificationToasts />
     </AppShell>
+  );
+}
+
+/** Nhãn "BETA" của mục Signal Research (mockup docs/mockups/signal-research/menu-beta.html, #423). */
+function NavBeta({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-unknown-bg px-[7px] py-0.5 text-[10.5px] font-extrabold tracking-[0.04em] text-unknown">
+      {label}
+    </span>
   );
 }
 

@@ -23,6 +23,7 @@ import {
   useVersionStatus,
   type VersionStatusVars,
 } from "./api";
+import { useResearchAudience } from "./audience";
 import { useBotsLabels } from "./bots-labels-context";
 import { Experiments } from "./experiments";
 import { balance, pctSigned, tone, usdSigned } from "./format";
@@ -44,6 +45,8 @@ import {
 // Khối Paper bots với News bot versions (#306; thiết kế docs/mockups/signal-research/bot-versions.html, API #305):
 // thanh tóm tắt, cảnh báo kiểm tra thêm, thẻ các version đang chạy / tạm dừng, ô "One more slot", bảng mọi version. Chọn
 // một version (tiêu đề thẻ hoặc ô Version của bảng) đổi `versionId` của tổng kết, News feed, trace và bảng Trades.
+// #423: người dùng test (trang Signal Research BETA) thấy version của team ở chế độ chỉ xem (không có Pause / Resume / Stop;
+// vẫn chép được thành version của mình) và My versions của họ; số đang chạy / ô trống tính theo chủ (API).
 
 const STATE_TONE: Record<ResearchVersion["status"], PillTone> = {
   // Trạng thái chạy là trung tính (xanh dương); xanh lá chỉ cho lệnh đã vào / có lãi (trang gọn, 2026-11-20).
@@ -312,6 +315,8 @@ function VersionCard({
   const tn = useTranslations("signalAnalysis.research");
   const ts = useTranslations("states");
   const status = useVersionStatus();
+  // #423: người dùng test không đổi trạng thái version của team (API trả 403).
+  const viewOnly = useResearchAudience() === "tester" && v.owner === "team";
   const [stopAsk, setStopAsk] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const tc = useTranslations("common.errors");
@@ -414,7 +419,7 @@ function VersionCard({
         <p className="m-0 text-xs leading-normal text-warn">{lines.join(" ")}</p>
       )}
       <div className="flex flex-wrap gap-2">
-        {v.status === "running" ? (
+        {viewOnly ? null : v.status === "running" ? (
           <button
             type="button"
             className={btn}
@@ -439,17 +444,19 @@ function VersionCard({
             {pendingTo === "running" ? ts("resuming") : t("resume")}
           </button>
         )}
-        <button
-          type="button"
-          className={btn}
-          disabled={status.isPending}
-          onClick={() => {
-            setErr(null);
-            setStopAsk(true);
-          }}
-        >
-          {pendingTo === "stopped" ? ts("stopping") : t("stop")}
-        </button>
+        {viewOnly ? null : (
+          <button
+            type="button"
+            className={btn}
+            disabled={status.isPending}
+            onClick={() => {
+              setErr(null);
+              setStopAsk(true);
+            }}
+          >
+            {pendingTo === "stopped" ? ts("stopping") : t("stop")}
+          </button>
+        )}
         <button type="button" className={btn} onClick={onCopy}>
           {v.isBaseline ? t("copy") : t("edit")}
         </button>

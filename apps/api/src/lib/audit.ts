@@ -24,6 +24,8 @@ export const AuditAction = {
   volumeBotsChanged: "admin.volume_bots",
   aiDeskChanged: "admin.ai_desk",
   adaptiveDcaChanged: "admin.adaptive_dca",
+  /** #423: team bật / tắt Signal Research (BETA) cho một user. */
+  signalResearchChanged: "admin.signal_research",
   builderFeeChanged: "admin.builder_fee",
   adminUserViewed: "admin.user_viewed",
   telegramConnected: "telegram.connected",

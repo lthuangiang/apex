@@ -19,10 +19,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ApiError } from "@/lib/api";
 import { useMarketNames } from "@/lib/markets";
 
-import type { PageCtx } from "../components/signal-analysis-page";
+import type { PageCtx } from "../components/page-ctx";
 import { clock, count, monthDay } from "../format";
 
 import { useResearchArticles, useResearchTrace, type ArticleFilters } from "./api";
+import { useShowsClaudeCost } from "./audience";
 import {
   ACCENT_SOFT,
   ContextCard,
@@ -417,9 +418,12 @@ export function NewsTrace({
 
   const trace = useResearchTrace(sel, versionId);
   const names = useMarketNames();
+  const showCost = useShowsClaudeCost();
   const data = (trace.data?.article.id === sel ? trace.data : undefined) ?? null;
   const view: TraceView | null =
-    data === null ? null : traceView(data, ctx.tz, t, (m) => names.info(m)?.tickSize ?? null);
+    data === null
+      ? null
+      : traceView(data, ctx.tz, t, (m) => names.info(m)?.tickSize ?? null, showCost);
   const model = view === null || data === null ? null : traceModel(view, data.context);
   const stop = model?.stop ?? BAND_COUNT;
   const recorded = model?.reach === "recorded";
@@ -449,7 +453,7 @@ export function NewsTrace({
   const liveView: TraceView | null =
     liveData === null
       ? null
-      : traceView(liveData, ctx.tz, t, (m) => names.info(m)?.tickSize ?? null);
+      : traceView(liveData, ctx.tz, t, (m) => names.info(m)?.tickSize ?? null, showCost);
   const liveModel =
     liveView === null || liveData === null ? null : traceModel(liveView, liveData.context);
   const liveRecorded = liveModel?.reach === "recorded";
@@ -524,7 +528,7 @@ export function NewsTrace({
             name: t(`trace.stages.${BANDS[pos - 1] ?? "collect"}`),
           });
   else {
-    verdict = `${view.verdict}${t("trades.sep")}${view.cost}`;
+    verdict = view.cost === null ? view.verdict : `${view.verdict}${t("trades.sep")}${view.cost}`;
     if (view.end === "traded") verdictTone = "text-pos";
   }
 
@@ -1092,6 +1096,8 @@ function ArticleCard({
   onPick: () => void;
 }) {
   const t = useTranslations("signalAnalysis.research");
+  // #423: người dùng test không thấy chi phí Claude (không vẽ "Not available" thay vào).
+  const showCost = useShowsClaudeCost();
   const cost = claudeCost(a.sentToClaude, a.claude, t);
   const chip = reached(a, t);
   const title = articleTitle(a);
@@ -1117,7 +1123,7 @@ function ArticleCard({
               {t("trace.rulesChip", { v: a.rulesVersion })}
             </span>
           ) : null}
-          <span>{cost ?? t("na")}</span>
+          {showCost ? <span>{cost ?? t("na")}</span> : null}
         </span>
       </span>
       <span className="mb-1.5 mt-1 block text-sm font-bold text-ink">{title ?? t("na")}</span>
@@ -1326,6 +1332,8 @@ function TotalsPanel({
   onReason: (r: ResearchDropReason) => void;
 }) {
   const t = useTranslations("signalAnalysis.research");
+  // #423: người dùng test không có ô độ trễ theo chặng (API chỉ team) và ô Claude cost.
+  const team = useShowsClaudeCost();
   const card = "rounded-[14px] border border-border px-4 py-3.5";
   // #343: chi phí trong đúng cửa sổ của phễu (24 giờ / 7 ngày), cùng tập bài với "articles read". Mọi bài gọi Claude
   // đều không biết chi phí → "Not available"; có bài không biết → cộng bài biết và ghi số bài thiếu.
@@ -1335,41 +1343,45 @@ function TotalsPanel({
   return (
     <div className="flex flex-wrap gap-3">
       {/* #375: "Where the time goes" thay ô "Delay, news out → collected" (median từng chặng, chặng chậm nhất). */}
-      <LatencyCard
-        range={range}
-        versionId={versionId}
-        cycleMinutes={cycleMinutes}
-        className="flex-[2_1_320px]"
-      />
-      <div className={`flex-[1_1_180px] ${card}`}>
-        <div className="text-xs text-muted">{t("trace.cost")}</div>
-        <div className="text-[22px] font-extrabold">
-          {cost === null ? (
-            <Na />
-          ) : (
-            t("trace.costIn", {
-              usd: Number(cost).toFixed(2),
-              window: t(`trace.costWindow.${range}`),
-            })
-          )}
+      {team ? (
+        <LatencyCard
+          range={range}
+          versionId={versionId}
+          cycleMinutes={cycleMinutes}
+          className="flex-[2_1_320px]"
+        />
+      ) : null}
+      {team ? (
+        <div className={`flex-[1_1_180px] ${card}`}>
+          <div className="text-xs text-muted">{t("trace.cost")}</div>
+          <div className="text-[22px] font-extrabold">
+            {cost === null ? (
+              <Na />
+            ) : (
+              t("trace.costIn", {
+                usd: Number(cost).toFixed(2),
+                window: t(`trace.costWindow.${range}`),
+              })
+            )}
+          </div>
+          {cc !== null && cost !== null && cc.unknown > 0 ? (
+            <Sub>{t("trace.costUnknown", { n: cc.unknown })}</Sub>
+          ) : null}
+          <Sub>
+            {f === null || read === null ? (
+              <Na />
+            ) : f.soso === null ? (
+              t("trace.costSubNoSoso", { articles: read })
+            ) : (
+              t("trace.costSub", {
+                articles: read,
+                used: count(f.soso.used),
+                limit: count(f.soso.limit),
+              })
+            )}
+          </Sub>
         </div>
-        {cc !== null && cost !== null && cc.unknown > 0 ? (
-          <Sub>{t("trace.costUnknown", { n: cc.unknown })}</Sub>
-        ) : null}
-        <Sub>
-          {f === null || read === null ? (
-            <Na />
-          ) : f.soso === null ? (
-            t("trace.costSubNoSoso", { articles: read })
-          ) : (
-            t("trace.costSub", {
-              articles: read,
-              used: count(f.soso.used),
-              limit: count(f.soso.limit),
-            })
-          )}
-        </Sub>
-      </div>
+      ) : null}
       <div className={`flex flex-[2_1_320px] flex-col gap-2 ${card}`}>
         <h3 className="m-0 text-[13px] font-extrabold">{t("trace.drops")}</h3>
         {f === null ? (

@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 
 import { useMarketNames } from "@/lib/markets";
 
-import type { PageCtx } from "../components/signal-analysis-page";
+import type { PageCtx } from "../components/page-ctx";
 import { clock, count, monthDay, shortDate, signed } from "../format";
 
 import { useResearchTrade } from "./api";

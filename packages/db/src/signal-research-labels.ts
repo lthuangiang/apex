@@ -4,6 +4,8 @@ import {
   AppError,
   articleClaudeUsage,
   articleVerdict,
+  ClassificationLabeler,
+  testerAgreement,
   CLASSIFICATION_WRONG_REASONS,
   CLASSIFIER_GATE,
   ClassificationLabelSource,
@@ -53,6 +55,10 @@ import { newsTypeOrNull } from "./signal-research-keys";
 // một lần, và chỉ nhận khi người gọi CHƯA có nhãn cho bài. Sửa một nhãn `random` mà giữ nguyên Right / Wrong (đổi lý do,
 // ghi chú) thì vẫn `random`; đổi Right / Wrong thì thành `trace` (có thể đã thấy kết quả lệnh). Mọi trường hợp khác (không
 // token, token sai / hết hạn / đã dùng / của bài khác) vẫn lưu, nhưng là `trace`. "Most common mistakes" đếm cả hai.
+//
+// Người chấm (#423, DEC-TBD-sr-menu-beta): `labeler` ghi lúc lưu theo role của người gọi (`team` / `tester`). Mọi số của
+// precision, cổng, "from traces" và "Most common mistakes" CHỈ tính nhãn `team`; nhãn `tester` chỉ vào `testers` (mức
+// đồng thuận với team) để đối chiếu.
 
 type Q = Db | DbTx;
 type Exec = Pick<Db, "select" | "execute">;
@@ -305,10 +311,13 @@ export async function saveSignalClassificationLabel(
     note: string | null;
     /** #348: token của `labels/next`; chỉ token hợp lệ mới cho nhãn `random`. */
     labelToken?: string | null;
+    /** #423: role của người gọi lúc lưu (API quyết định); mặc định `team`. */
+    labeler?: ClassificationLabeler;
     ip?: string | null;
     now?: Date;
   },
 ): Promise<ResearchLabelSaved> {
+  const labeler = input.labeler ?? ClassificationLabeler.team;
   const now = input.now ?? new Date();
   const reason = input.verdict === "wrong" ? input.reason : null;
   const note = input.note === null || input.note.trim() === "" ? null : input.note.trim();
@@ -352,12 +361,22 @@ export async function saveSignalClassificationLabel(
         reason,
         note,
         source,
+        labeler,
         createdAt: now,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [signalClassificationLabels.articleId, signalClassificationLabels.labeledBy],
-        set: { classifierVersion, verdict: input.verdict, reason, note, source, updatedAt: now },
+        // Sửa nhãn ghi lại người chấm theo role lúc sửa (role đổi thì nhãn mới theo role mới).
+        set: {
+          classifierVersion,
+          verdict: input.verdict,
+          reason,
+          note,
+          source,
+          labeler,
+          updatedAt: now,
+        },
       })
       .returning();
     if (row === undefined) throw new AppError(ErrorCode.internal, "Label not saved.");
@@ -372,6 +391,7 @@ export async function saveSignalClassificationLabel(
         reason,
         hasNote: note !== null,
         source,
+        labeler,
         // Có gửi token mà không được nhận (sai / hết hạn / đã dùng / bài đã có nhãn): để soi khi cần.
         tokenRejected: input.labelToken != null && !tokenOk,
         previous:
@@ -399,7 +419,7 @@ async function labelTallies(q: Exec): Promise<Map<string, { labeled: number; rig
       count(*) filter (where verdict = 'right') as r,
       count(*) filter (where verdict = 'wrong') as w
     from signal_classification_labels
-    where source = 'random'
+    where source = 'random' and labeler = 'team'
     group by classifier_version, article_id`);
   const out = new Map<string, { labeled: number; right: number }>();
   for (const x of r.rows) {
@@ -435,17 +455,46 @@ export async function loadSignalClassifiers(
 ): Promise<ResearchClassifiers> {
   const tallies = await labelTallies(q);
   check();
-  // Lý do sai: cả nhãn random lẫn trace (#348).
+  // Lý do sai: cả nhãn random lẫn trace (#348), chỉ nhãn team (#423).
   const mistakes = await q.execute<{ v: string; reason: string; n: string | number }>(sql`
     select classifier_version as v, reason, count(*) as n
-    from signal_classification_labels where verdict = 'wrong'
+    from signal_classification_labels where verdict = 'wrong' and labeler = 'team'
     group by classifier_version, reason`);
   check();
   const traced = await q.execute<{ v: string; n: string | number }>(sql`
     select classifier_version as v, count(distinct article_id) as n
-    from signal_classification_labels where source = 'trace'
+    from signal_classification_labels where source = 'trace' and labeler = 'team'
     group by classifier_version`);
   check();
+  // #423: nhãn tester theo bài (mọi nguồn), kèm phiếu của team trên cùng bài, để đối chiếu.
+  const testerVotes = await q.execute<{
+    v: string;
+    tr: string | number;
+    tw: string | number;
+    sr: string | number;
+    sw: string | number;
+  }>(sql`
+    select classifier_version as v,
+      count(*) filter (where labeler = 'team' and verdict = 'right') as tr,
+      count(*) filter (where labeler = 'team' and verdict = 'wrong') as tw,
+      count(*) filter (where labeler = 'tester' and verdict = 'right') as sr,
+      count(*) filter (where labeler = 'tester' and verdict = 'wrong') as sw
+    from signal_classification_labels
+    where article_id in (select article_id from signal_classification_labels where labeler = 'tester')
+    group by classifier_version, article_id`);
+  check();
+  const testerByVersion = new Map<
+    string,
+    { team: { right: number; wrong: number }; tester: { right: number; wrong: number } }[]
+  >();
+  for (const x of testerVotes.rows) {
+    const list = testerByVersion.get(x.v) ?? [];
+    list.push({
+      team: { right: Number(x.tr), wrong: Number(x.tw) },
+      tester: { right: Number(x.sr), wrong: Number(x.sw) },
+    });
+    testerByVersion.set(x.v, list);
+  }
   const signals = await q.execute<{ v: string; n: string | number }>(sql`
     select a.claude_prompt_version as v, count(*) as n from signal_articles a
     where ${IS_SIGNAL} group by a.claude_prompt_version`);
@@ -492,6 +541,7 @@ export async function loadSignalClassifiers(
       status: g.status,
       labelsToGo: g.labelsToGo,
       mostCommonMistakes: commonMistakes(counts),
+      testers: testerAgreement(testerByVersion.get(v) ?? []),
     };
   });
   items.sort(

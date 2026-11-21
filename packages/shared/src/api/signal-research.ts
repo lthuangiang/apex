@@ -1226,6 +1226,15 @@ export const researchClassifierRowSchema = z.object({
   labelsToGo: int,
   /** Lý do Wrong hay gặp nhất (đếm theo nhãn, cả `random` lẫn `trace`), nhiều trước. */
   mostCommonMistakes: z.array(z.object({ reason: z.enum(CLASSIFICATION_WRONG_REASONS), n: int })),
+  /**
+   * #423: nhãn của người dùng test (`labeler = tester`), hiện riêng để đối chiếu, KHÔNG tính vào precision / cổng ở trên
+   * (mọi số ở trên chỉ tính nhãn của team). `labeled` = số bài có ít nhất một nhãn tester (random hoặc trace); `compared` =
+   * trong số đó, bài có cả kết luận của team (đa số mọi nhãn team, hoà tính Wrong); `agree` = bài mà kết luận của tester
+   * (đa số nhãn tester, hoà tính Wrong) trùng kết luận của team; `agreePct` null khi `compared` = 0.
+   */
+  testers: z
+    .object({ labeled: int, compared: int, agree: int, agreePct: z.number().nullable() })
+    .default({ labeled: 0, compared: 0, agree: 0, agreePct: null }),
 });
 
 export const researchClassifiersSchema = z.object({
@@ -1540,6 +1549,11 @@ export const researchVersionSchema = z.object({
   name: z.string(),
   status: z.enum(SIGNAL_BOT_VERSION_STATUSES),
   isBaseline: z.boolean(),
+  /**
+   * #423: chủ của version theo góc nhìn người xem: `team` = version của team (người dùng test chỉ xem), `me` = version riêng
+   * của chính người xem (My versions). Version riêng của người khác không bao giờ có trong danh sách (404).
+   */
+  owner: z.enum(["team", "me"]).default("team"),
   createdAt: iso,
   statusChangedAt: iso,
   /** 4 ký tự cuối id người lưu ("··a91f"); null với Baseline (seed ở migration). */
@@ -1601,9 +1615,14 @@ export const researchVersionSchema = z.object({
 export const researchVersionsSchema = z.object({
   /** Mới nhất trước. */
   items: z.array(researchVersionSchema),
+  /** #423: số version đang chạy của chủ người xem (team: version của team; người dùng test: My versions). */
   running: int,
+  /** Trần mỗi chủ (3). */
   maxRunning: int,
-  /** Số version đã lưu (Baseline + version team tạo, mọi trạng thái); rules v1 / v2 không tính. */
+  /**
+   * Số version đã lưu (Baseline + version team tạo, mọi trạng thái); rules v1 / v2 không tính. #423: người dùng test thì là
+   * Baseline + version của họ; version của người dùng test không bao giờ cộng vào số của team.
+   */
   versionsTried: int,
   /** > 3 version đã thử: version qua cổng phải lặp lại trên 100 lệnh đóng tiếp theo. */
   extraCheck: z.boolean(),
