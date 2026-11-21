@@ -12,7 +12,7 @@ import { WorkspaceShell } from "../workspace-shell";
 
 // Thứ tự sidebar và menu More (DEC-181; Trading Agent vẫn thứ 3, DEC-108).
 
-const flags = vi.hoisted(() => ({ aiDesk: true }));
+const flags = vi.hoisted(() => ({ aiDesk: true, signalResearch: false }));
 
 vi.mock("@/lib/api", () => ({
   ApiError: class extends Error {},
@@ -20,7 +20,9 @@ vi.mock("@/lib/api", () => ({
 }));
 vi.mock("@/lib/queries", () => ({
   NOTIFICATIONS_KEY: ["notifications"],
-  useFeatures: () => ({ data: { aiDesk: flags.aiDesk } }),
+  useFeatures: () => ({
+    data: { aiDesk: flags.aiDesk, signalResearch: flags.signalResearch },
+  }),
   useMe: () => ({ data: undefined }),
   useSodexConnection: () => ({ data: undefined, isSuccess: false, dataUpdatedAt: 0 }),
   useNotifications: () => ({ data: undefined }),
@@ -141,5 +143,44 @@ describe("WorkspaceShell sidebar order", () => {
     renderShell(false);
     expect(bottomBar()).toEqual(["Home", "Portfolio", "Agent", "Strategy"]);
     flags.aiDesk = true;
+  });
+});
+
+describe("Signal Research (BETA, #423)", () => {
+  afterEach(() => {
+    flags.signalResearch = false;
+  });
+
+  it("is hidden without the flag", () => {
+    flags.aiDesk = true;
+    flags.signalResearch = false;
+    renderShell(false);
+    const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    if (nav === undefined) throw new Error("sidebar nav missing");
+    expect(linkNames(nav).some((n) => n.startsWith("Signal Research"))).toBe(false);
+    expect(screen.queryByText("Beta")).toBeNull();
+  });
+
+  it("with the flag: right after AI Desk, with a Beta tag, linking outside /admin", () => {
+    flags.aiDesk = true;
+    flags.signalResearch = true;
+    renderShell(false);
+    const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    if (nav === undefined) throw new Error("sidebar nav missing");
+    const names = linkNames(nav);
+    expect(names.slice(3, 5)).toEqual(["AI Desk", "Signal ResearchBeta"]);
+    const link = within(nav).getByRole("link", { name: /Signal Research/ });
+    expect(link).toHaveAttribute("href", "/signal-research");
+    expect(within(link).getByText("Beta")).toBeInTheDocument();
+  });
+
+  it("is in the mobile More sheet right after the AI Desk slot", async () => {
+    flags.aiDesk = true;
+    flags.signalResearch = true;
+    const user = userEvent.setup({ delay: null });
+    renderShell(false);
+    await user.click(screen.getByRole("button", { name: "More" }));
+    const sheet = await screen.findByRole("dialog", { name: "More" });
+    expect(linkNames(sheet).slice(0, 2)).toEqual(["Portfolio", "Signal ResearchBeta"]);
   });
 });
