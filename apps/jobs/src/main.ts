@@ -18,6 +18,11 @@ import nodemailer from "nodemailer";
 import pino from "pino";
 import { z } from "zod";
 
+import {
+  IDEMPOTENCY_ABANDONED_INTERVAL_MS,
+  idempotencyAbandonedEnvSchema,
+  markAbandonedIdempotencyKeysOnce,
+} from "./idempotency-abandoned";
 import { runImport } from "./import";
 import { handleNotify } from "./notify";
 import { relayOnce } from "./outbox";
@@ -49,6 +54,8 @@ const env = z
     NODE_ENV: z.string().optional(),
     /** Gốc URL web app cho nút trong tin Telegram (không chứa token đăng nhập). */
     DRIFT_APP_URL: z.url().default("https://desklabs.xyz"),
+    /** #319: dòng Idempotency-Key đang chạy quá ngần này phút → `failed_unknown` (ABANDONED). */
+    IDEMPOTENCY_ABANDONED_AFTER_MIN: idempotencyAbandonedEnvSchema,
   })
   .refine((e) => !e.TELEGRAM_ENABLED || (e.DRIFT_TELEGRAM_BOT_TOKEN ?? "").length >= 20, {
     message: "TELEGRAM_ENABLED=true needs DRIFT_TELEGRAM_BOT_TOKEN",
@@ -224,9 +231,26 @@ const signatureReconcile = (async () => {
   }
 })();
 
+// Key Idempotency đang chạy bị bỏ dở (#319): mỗi phút, UPDATE có điều kiện (mọi bản jobs chạy được, không cần lease).
+const abandonedKeys = (async () => {
+  while (state.running) {
+    try {
+      await markAbandonedIdempotencyKeysOnce(
+        { db, now: () => new Date(), afterMin: env.IDEMPOTENCY_ABANDONED_AFTER_MIN },
+        log,
+      );
+    } catch (error) {
+      log.error({ err: error }, "abandoned idempotency key pass failed");
+    }
+    const until = Date.now() + IDEMPOTENCY_ABANDONED_INTERVAL_MS;
+    while (isRunning() && Date.now() < until) await new Promise((r) => setTimeout(r, 1000));
+  }
+})();
+
 async function shutdown() {
   state.running = false;
   await signatureReconcile;
+  await abandonedKeys;
   await stopImport();
   await stopNotify();
   await stopTeamOps();
