@@ -121,3 +121,19 @@ Tab đầu tiên của drawer How it works: sơ đồ một vòng chạy (Collec
 - Câu level theo `levelOf`; watcher không ghi nhịp đọc giá (vòng watcher không cố định 1 giây).
 - Badge "New" cạnh tên tab có trong mockup nhưng chưa code (không có luật khi nào ẩn; chờ PM chốt ở PR #391).
 - Reduced motion: không tự chạy, chấm nhảy thẳng tới chặng, nét đứt không chạy. Mọi khối trong drawer giữ chiều cao (`shrink-0`).
+
+## Claude reader v4 + Rules v4 (#395, người dùng duyệt 2026-11-21)
+
+Những chỗ UI đổi khi ship Claude reader v4 (`news-classifier-v4`) và Rules v4 (`news-v4`). Bố cục không đổi, chỉ thêm nội dung. Câu chữ PM đã duyệt (không đưa vào `_pendingReview`). Khung tím là ghi chú cho người duyệt. HTML tự chứa (chỉ có link Google Fonts).
+
+| File | Nội dung |
+|---|---|
+| `reader-v4.html` | Ba khung: drawer How it works › News types (2 hộp mới), Is it working? › Overall (thẻ nhãn reader v4, thẻ reader v3 Retired), From headline to trade (bài bị loại bởi `ETF_MAJOR_ASSET`, câu "Why it stopped") |
+| `reader-v4-1440.png` | Ảnh chụp 1440 |
+
+**Quy tắc khi code (DEC-353):**
+- Nhãn "New in v4" (và chip "v3 → v4" ở dòng sub) ẩn sau `READER_NEW_BADGE.days` = 14 ngày, tính từ `started_at` của `news-classifier-v4` lấy từ API `/classifiers`, không dùng hằng ngày của web.
+- Thẻ "Claude reader v3 · Retired {date}": reader ngay trước reader hiện tại; ngày = `started_at` của reader hiện tại; số lệnh đóng từ `closedTrades`, số nhãn từ `labeled` (chỉ nhãn random, như cổng 50 nhãn; PM review #398).
+- Hộp "What Claude reader v4 reads differently" có thêm dòng thứ 4 (PM review #398, sau dòng "The coin that was stolen…"): "Moving or laundering funds from an earlier hack is not a new hack." Dòng này không có trong ảnh.
+- "Why it stopped" là câu kết của trace ("Stopped at Score: …"), không thêm khối mới.
+- Pill "Collecting" của thẻ nhãn và câu "0 / 100 · new rules and reader, count starts again" của thẻ lệnh đóng chỉ hiện khi đã có reader cũ và số đếm của đoạn hiện tại bằng 0; không thì giữ câu đang có.

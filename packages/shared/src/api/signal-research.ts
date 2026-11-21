@@ -90,6 +90,8 @@ export const RESEARCH_DROP_REASONS = [
   "assetNotInText",
   /** #298 (news-v3): tin treasury trên BTC / ETH không giao dịch (`TREASURY_MAJOR_ASSET`). */
   "treasuryMajorAsset",
+  /** #395 (news-v4): tin ETF (approved / delayed or rejected) trên BTC / ETH không giao dịch (`ETF_MAJOR_ASSET`). */
+  "etfMajorAsset",
   /** #303 (DEC-331), riêng từng News bot version: loại tin bị tắt trong version (`NEWS_TYPE_OFF`). */
   "newsTypeOff",
   /** Tài sản không thuộc danh sách / loại tài sản của version (`ASSET_NOT_IN_VERSION`). */
@@ -1192,6 +1194,11 @@ export const researchClassifierRowSchema = z.object({
   right: int,
   /** #348: số bài có ít nhất một nhãn `trace` (không tính cổng; hiện riêng "from traces: n"). */
   traceLabeled: int,
+  /**
+   * #395: số lệnh thật (lane news, `live`) đã đóng do classifier này tạo ra, mọi rule version và mọi News bot version (để
+   * thẻ "Claude reader v3 · Retired" hiện lịch sử sau khi rule version đổi).
+   */
+  closedTrades: int,
   precisionPct: z.number().nullable(),
   /** Khoảng Wilson 95% của precision, đơn vị %; null khi chưa có nhãn. */
   interval: z.object({ lo: z.number(), hi: z.number() }).nullable(),

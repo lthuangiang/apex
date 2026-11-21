@@ -48,6 +48,7 @@ import {
   storyTooOld,
   stripHtml,
   TradeDirection,
+  etfOnMajorAsset,
   treasuryOnMajorAsset,
   versionHoldHours,
   type Candidate,
@@ -78,6 +79,7 @@ import {
 import {
   addClaudeUsage,
   addSosoRequests,
+  adoptInFlightArticles,
   earlierAttempts,
   markSource,
   movedBeforeEntry,
@@ -244,6 +246,14 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     skipped,
     watermarkAt: null,
   };
+
+  // #395: bài `collected` / `pending` của rule version cũ (còn dở lúc deploy) chạy tiếp theo version hiện tại.
+  const adopted = await adoptInFlightArticles(db);
+  if (adopted > 0)
+    deps.log.info(
+      { adopted, ruleVersion: NEWS_RULES.version },
+      "signal research: in-flight articles moved to current rules",
+    );
 
   // ── 1. Collect ────────────────────────────────────────────────────────────────────────────────────────────────
   const state = await newsState(db);
@@ -490,6 +500,8 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       reason = SignalReason.assetNotInText;
     else if (treasuryOnMajorAsset(c.catalyst, candidate.market))
       reason = SignalReason.treasuryMajorAsset;
+    // news-v4 (#395): tin ETF trên BTC / ETH không giao dịch.
+    else if (etfOnMajorAsset(c.catalyst, candidate.market)) reason = SignalReason.etfMajorAsset;
     else if (eventTooOld(c.eventDate, a.publishedAt.getTime())) reason = SignalReason.eventTooOld;
     const signal: Signal | null =
       candidate === undefined || c.catalyst === "none"

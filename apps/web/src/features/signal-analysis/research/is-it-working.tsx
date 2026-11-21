@@ -40,7 +40,7 @@ import {
   tdW,
   thR,
 } from "./ui";
-import { classifierShort } from "./version-text";
+import { classifierShort, retiredReader } from "./version-text";
 
 // "Is it working?" của Signal research (#344; thiết kế docs/mockups/signal-research/redesign-full-page*.html và
 // redesign-does-context-help.html): ba thanh tiến độ (lệnh đóng cho cổng, nhãn classifier, Context H1) rồi ba tab Overall /
@@ -126,6 +126,7 @@ export function IsItWorking({
       }
     >
       <ProgressCards v={v} versions={versions} classifiers={classifiers} />
+      <RetiredReader classifiers={classifiers} tz={tz} />
       <div
         id="sr-judge-panel"
         role="tabpanel"
@@ -208,6 +209,11 @@ function ProgressCards({
   const labelsMore = c === null || min === null ? 0 : Math.max(0, min - c.labeled);
   // Chưa đếm (Claude reader chưa qua nhãn, chưa có lệnh nào được tính): nói bằng lời thường thay vì "needs 100 more".
   const waits = c !== null && c.status !== "passed" && closed === 0 ? c : null;
+  // #395 (PM #398): vừa đổi reader / luật (đã có reader cũ) và đoạn đếm hiện tại còn 0 → "count starts again" và pill
+  // "Collecting" như khung 2 của mockup reader-v4; không có reader cũ thì giữ câu đang có.
+  const hasRetired = retiredReader(classifiers?.items) !== null;
+  const restart = hasRetired && closed === 0;
+  const labelsCollecting = hasRetired && c !== null && c.labeled === 0;
 
   const h1 = v.context?.questions.find((q) => q.key === "h1") ?? null;
   const ctxMin = v.context?.minClosedPerGroup ?? null;
@@ -216,7 +222,7 @@ function ProgressCards({
       <Card>
         <div className="flex justify-between gap-2 text-[13px]">
           <strong>{t("closedTitle")}</strong>
-          {weeks === null || more === 0 || waits !== null ? null : (
+          {weeks === null || more === 0 || waits !== null || restart ? null : (
             <span className="text-muted max-md:hidden">{t("weeksToGo", { weeks })}</span>
           )}
         </div>
@@ -226,51 +232,55 @@ function ProgressCards({
           <>
             <Bar label={t("closedAria")} now={closed} max={GATE_MIN_CLOSED} />
             <div className="text-[13px] text-ink-2 max-md:hidden">
-              {waits !== null
-                ? waits.status === "needsLabels"
-                  ? t.rich("closedLineWaits", {
-                      b,
-                      n: count(closed),
-                      gate: GATE_MIN_CLOSED,
-                      k: waits.labelsToGo,
-                    })
-                  : t.rich("closedLineUnder", { b, n: count(closed), gate: GATE_MIN_CLOSED })
-                : more === 0
-                  ? t.rich("closedLineDone", { b, n: count(closed), gate: GATE_MIN_CLOSED })
-                  : t.rich("closedLine", {
-                      b,
-                      n: count(closed),
-                      gate: GATE_MIN_CLOSED,
-                      more: count(more),
-                    })}
+              {restart
+                ? t.rich("closedLineRestart", { b, n: count(0), gate: GATE_MIN_CLOSED })
+                : waits !== null
+                  ? waits.status === "needsLabels"
+                    ? t.rich("closedLineWaits", {
+                        b,
+                        n: count(closed),
+                        gate: GATE_MIN_CLOSED,
+                        k: waits.labelsToGo,
+                      })
+                    : t.rich("closedLineUnder", { b, n: count(closed), gate: GATE_MIN_CLOSED })
+                  : more === 0
+                    ? t.rich("closedLineDone", { b, n: count(closed), gate: GATE_MIN_CLOSED })
+                    : t.rich("closedLine", {
+                        b,
+                        n: count(closed),
+                        gate: GATE_MIN_CLOSED,
+                        more: count(more),
+                      })}
             </div>
             <div className="text-xs text-ink-2 md:hidden">
-              {waits !== null
-                ? waits.status === "needsLabels"
-                  ? t("closedShortWaits", {
-                      n: count(closed),
-                      gate: GATE_MIN_CLOSED,
-                      k: waits.labelsToGo,
-                    })
-                  : t("closedShortUnder", { n: count(closed), gate: GATE_MIN_CLOSED })
-                : more === 0
-                  ? t.rich("closedLineDone", {
-                      b: (x) => <>{x}</>,
-                      n: count(closed),
-                      gate: GATE_MIN_CLOSED,
-                    })
-                  : weeks === null
-                    ? t("closedShortNoWeeks", {
+              {restart
+                ? t("closedShortRestart", { n: count(0), gate: GATE_MIN_CLOSED })
+                : waits !== null
+                  ? waits.status === "needsLabels"
+                    ? t("closedShortWaits", {
                         n: count(closed),
                         gate: GATE_MIN_CLOSED,
-                        more: count(more),
+                        k: waits.labelsToGo,
                       })
-                    : t("closedShort", {
+                    : t("closedShortUnder", { n: count(closed), gate: GATE_MIN_CLOSED })
+                  : more === 0
+                    ? t.rich("closedLineDone", {
+                        b: (x) => <>{x}</>,
                         n: count(closed),
                         gate: GATE_MIN_CLOSED,
-                        more: count(more),
-                        weeks,
-                      })}
+                      })
+                    : weeks === null
+                      ? t("closedShortNoWeeks", {
+                          n: count(closed),
+                          gate: GATE_MIN_CLOSED,
+                          more: count(more),
+                        })
+                      : t("closedShort", {
+                          n: count(closed),
+                          gate: GATE_MIN_CLOSED,
+                          more: count(more),
+                          weeks,
+                        })}
             </div>
           </>
         )}
@@ -278,7 +288,9 @@ function ProgressCards({
       <Card>
         <div className="flex justify-between gap-2 text-[13px]">
           <strong>{name === null ? t("labelsTitleNa") : t("labelsTitle", { name })}</strong>
-          {pct === null ? null : (
+          {labelsCollecting ? (
+            <Pill tone="warn">{t("collecting")}</Pill>
+          ) : pct === null ? null : (
             <span className="text-muted max-md:hidden">
               {t("labelsRight", { pct: Math.round(pct) })}
             </span>
@@ -340,6 +352,40 @@ function ProgressCards({
           </>
         )}
       </Card>
+    </div>
+  );
+}
+
+/**
+ * #395: thẻ "Claude reader v3 · Retired {date}": reader vừa bị thay, chỉ để xem lại, không cộng vào reader hiện tại. Ngày
+ * retired = lúc reader hiện tại bắt đầu chạy (`startedAt` của API); không biết thì không hiện thẻ.
+ */
+function RetiredReader({
+  classifiers,
+  tz,
+}: {
+  classifiers: ResearchClassifiers | undefined;
+  tz: string;
+}) {
+  const t = useTranslations("signalAnalysis.research.judge.retired");
+  const r = retiredReader(classifiers?.items);
+  if (r === null) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-2 rounded-tile border border-border bg-surface-2 px-4 py-3.5">
+      <div className="flex justify-between gap-2 text-[13px]">
+        <strong>{t("title", { name: classifierShort(r.row.classifierVersion) })}</strong>
+        <span className="whitespace-nowrap rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11.5px] font-extrabold text-muted">
+          {t("pill", { date: monthDay(r.retiredAt, tz) })}
+        </span>
+      </div>
+      <p className="m-0 text-[13px] text-ink-2">
+        {t("line", {
+          closed: r.row.closedTrades,
+          // PM #398: chỉ nhãn random (cùng số với cổng 50 nhãn), không cộng nhãn trace.
+          labels: r.row.labeled,
+          current: classifierShort(r.current.classifierVersion),
+        })}
+      </p>
     </div>
   );
 }

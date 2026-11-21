@@ -223,11 +223,75 @@ describe("classifier answer", () => {
   });
 });
 
-describe("classifier prompt news-classifier-v3 (#320)", () => {
-  it("bumps only the classifier version, not the rule or asset map version", () => {
-    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v3");
-    expect(NEWS_RULES.version).toBe("news-v3");
+describe("classifier prompt news-classifier-v4 (#395, #323)", () => {
+  it("ships with rules news-v4", () => {
+    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v4");
+    expect(NEWS_RULES.version).toBe("news-v4");
   });
+  it("hack: a disclosed or patched vulnerability with no funds lost is none", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "A disclosed, reported or patched vulnerability (a bug report, a CVE, a security advisory, a bug bounty, a fixed version released) is not a hack when no funds were taken and no attacker actually exploited it",
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /Bitcoin Core discloses a bug that could stall nodes.*→ none, market NONE/,
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /critical bug in protocol P's contracts.*→ none, market NONE/,
+    );
+  });
+  it("hack: a real exploit of the chain itself is hack_exploit on that chain's coin (#323)", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "A real exploit of the chain or coin itself is hack_exploit on that coin",
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /Ethereum client bug lets attacker mint ETH; validators halt the chain" — candidates ETH-USD → hack_exploit, ETH-USD, direct/,
+    );
+  });
+  it("hack: the stolen-coin rule is restated with the $860M ETH example", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      'This holds however large the amount and even when the headline is about the stolen coin, as in "About $860M in ETH drained / transferred by the hacker"',
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /About \$860M in ETH drained by the hacker.*→ none, market NONE/,
+    );
+  });
+  it("hack: moving or laundering funds from an earlier hack is not a new hack", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "Funds moved or laundered from an earlier hack (on-chain tracking of the hacker's wallets, funds sent through a mixer or a bridge, a first large transfer since the theft) are not a new hack event",
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /moves 488,000 ETH \(about \$860M\) through mixers.*→ none, market NONE/,
+    );
+  });
+  it("ETF: one more ETF or one on a smaller exchange for a coin that already has ETFs is none", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "Use etf_approved only for an approval or first trading day that matters for the coin",
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /New bitcoin ETF lists on the Hong Kong exchange.*→ none, market NONE/,
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /launches another spot ETH ETF in the US" — candidates ETH-USD → none/,
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /first spot SOL ETF in the United States.*→ etf_approved, SOL-USD, direct/,
+    );
+    // Ví dụ 27 cũ ("Spot ETH ETF … → etf_approved") mâu thuẫn với luật mới nên đổi sang ETF đầu tiên của một coin.
+    expect(CLASSIFIER_SYSTEM).not.toContain(
+      "Spot ETH ETF from issuer V starts trading on Nasdaq today",
+    );
+  });
+  it("adds the v4 edge-case questions", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "For hack_exploit, also ask: did an attacker actually take funds or exploit the bug, and is this a new event?",
+    );
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "For etf_approved, ask: is this the coin's first ETF, or its first in a major market?",
+    );
+  });
+});
+
+describe("classifier prompt rules from news-classifier-v3 (#320)", () => {
   it("hack: the stolen asset (unit of the loss) is never the affected token", () => {
     expect(CLASSIFIER_SYSTEM).toContain(
       "The affected token of a hack is never the asset that was stolen or used as the unit of the loss",
@@ -344,8 +408,10 @@ describe("classifier prompt rules from news-classifier-v2 (#298)", () => {
       "Protocol Q drained of 12,000 ETH; Q token falls",
     );
     expect(JSON.stringify(body.system)).toContain("Morgan Stanley raises NVDA price target");
+    // v4 (#395): the same cached prefix carries the v4 examples.
+    expect(JSON.stringify(body.system)).toContain("Ethereum client bug lets attacker mint ETH");
     expect(articleUsageValues({ usage: { ...emptyUsage(), calls: 1 } }).claudePromptVersion).toBe(
-      "news-classifier-v3",
+      "news-classifier-v4",
     );
   });
 });

@@ -38,7 +38,7 @@ import {
   type SosoClient,
   type SosoNewsItem,
 } from "../src/signal-research/soso";
-import { saveNewsState } from "../src/signal-research/store";
+import { adoptInFlightArticles, saveNewsState } from "../src/signal-research/store";
 
 // Pipeline lane tin tức (#271) trên Postgres thật: SoSoValue và Claude là mock, giá đến từ "marketdata" giả (sổ lệnh NATS /
 // Redis md:last). Không có client SoDEX nào trong cả bài test.
@@ -998,8 +998,8 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
          '[{"name":"Bloomberg","tier":"top"}]', false, 'book', 'closed', 139.3, 'take_profit', '2026-11-18T09:12:00Z', 0.24, 9.5, 1.9, 'news-v2')`,
       [tradeId, storyId],
     );
-    expect(NEWS_RULES.version).toBe("news-v3");
-    // Một chu kỳ v3 (bài không phải tín hiệu) để lane có dữ liệu của version hiện tại.
+    expect(NEWS_RULES.version).toBe("news-v4");
+    // Một chu kỳ v4 (bài không phải tín hiệu) để lane có dữ liệu của version hiện tại.
     const { sr } = setup({
       items: () => [item("now-1", T0 - MIN, "SOL market recap")],
       claude: fakeClaude({}),
@@ -1012,7 +1012,7 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
       claudeDailyInputBudget: 2_000_000,
     });
     expect(summary.rows[0]).toMatchObject({
-      rulesVersion: 3,
+      rulesVersion: 4,
       closed: 0,
       opened: 0,
     });
@@ -1092,7 +1092,7 @@ describe("#309: company tags use the SoDEX market list, asset map version", () =
       ]),
     );
     // Đổi danh sách tài sản không đổi version quy tắc (không reset cổng).
-    expect(NEWS_RULES.version).toBe("news-v3");
+    expect(NEWS_RULES.version).toBe("news-v4");
     expect(NEWS_ASSET_MAP_VERSION).toMatch(/^assets-\d{4}-\d{2}-\d{2}[a-z]$/);
     expect(drops.some((d) => d.articleId === "spx" && d.reason !== null)).toBe(false);
   });
@@ -1315,5 +1315,124 @@ describe("SoSoValue rate limit in the news cycle", () => {
       sosoMonthlyLimit: 9500,
       updatedAt: new Date(T0).toISOString(),
     });
+  });
+});
+
+describe("news-v4 (#395): ETF on BTC / ETH, in-flight articles of the previous rules", () => {
+  const perps = () => [
+    ...PERPS,
+    { name: "ETH-USD", status: "TRADING", tickSize: "0.01", takerFee: "0.0004" },
+  ];
+
+  it("drops ETF news on BTC and ETH at Score (ETF_MAJOR_ASSET), keeps ETF news on other coins", async () => {
+    const items = [
+      item("e1", T0 - 3 * MIN, "New BTC fund lists in Hong Kong", {
+        matched_currencies: [{ symbol: "BTC", name: "Bitcoin" }],
+      }),
+      item("e2", T0 - 2 * MIN, "Regulator delays a decision on an ETH product", {
+        matched_currencies: [{ symbol: "ETH", name: "Ethereum" }],
+      }),
+      item("e3", T0 - MIN, "Regulator approves the first SOL fund"),
+    ];
+    const claude = fakeClaude({
+      "New BTC fund lists in Hong Kong": { ...hack, catalyst: "etf_approved", market: "BTC-USD" },
+      "Regulator delays a decision on an ETH product": {
+        ...hack,
+        catalyst: "etf_delayed_or_rejected",
+        market: "ETH-USD",
+      },
+      "Regulator approves the first SOL fund": { ...hack, catalyst: "etf_approved" },
+    });
+    const { sr, errors } = setup({ items: () => items, claude, now: () => T0, perps });
+    await sr.runCycle();
+    expect(errors).toEqual([]);
+
+    const ev = await db
+      .select({
+        articleId: signalEvents.articleId,
+        outcome: signalEvents.outcome,
+        reason: signalEvents.reason,
+        ruleVersion: signalEvents.ruleVersion,
+      })
+      .from(signalEvents)
+      .where(eq(signalEvents.stage, "understand"));
+    const by = new Map(ev.map((e) => [e.articleId, e]));
+    expect(by.get("e1")).toMatchObject({ outcome: "drop", reason: "ETF_MAJOR_ASSET" });
+    expect(by.get("e2")).toMatchObject({ outcome: "drop", reason: "ETF_MAJOR_ASSET" });
+    expect(by.get("e3")).toMatchObject({ outcome: "pass", reason: null, ruleVersion: "news-v4" });
+    // Lỗi của bài: không tạo story cho BTC / ETH.
+    const stories = await db.select({ market: signalStories.market }).from(signalStories);
+    expect(stories.map((s) => s.market)).toEqual(["SOL-USD"]);
+
+    const summary = await loadSignalResearchSummary(db, new Date(T0), {
+      sosoMonthlyLimit: 9500,
+      claudeDailyInputBudget: 2_000_000,
+    });
+    expect(summary.funnel?.drops.score.reasons).toEqual(
+      expect.arrayContaining([{ reason: "etfMajorAsset", n: 2 }]),
+    );
+  });
+
+  it("moves news-v3 articles still collected / pending at deploy to news-v4 with their events, then classifies them", async () => {
+    const sol = JSON.stringify([{ symbol: "SOL", name: "Solana" }]);
+    await pool.query(
+      `insert into signal_articles (id, source, title, content, published_at, collected_at, matched_currencies, candidates, content_hash, status, rule_version)
+       values ('p-v3', 'Odaily', 'Solana lending protocol drained', 'Solana lending protocol drained', $1, $1, $2,
+               '[{"market":"SOL-USD","symbol":"SOL","kind":"crypto"}]', 'h-p-v3', 'pending', 'news-v3'),
+              ('c-v3', 'Odaily', 'Solana bridge exploited', 'Solana bridge exploited', $1, $1, $2, '[]', 'h-c-v3', 'collected', 'news-v3'),
+              ('done-v3', 'Odaily', 'Old classified story', 'Old classified story', $1, $1, $2, '[]', 'h-done', 'classified', 'news-v3')`,
+      [new Date(T0 - 4 * MIN), sol],
+    );
+    await pool.query(
+      `insert into signal_events (id, article_id, stage, outcome, rule_version, at)
+       values (gen_random_uuid(), 'p-v3', 'collect', 'pass', 'news-v3', $1),
+              (gen_random_uuid(), 'p-v3', 'normalize', 'pass', 'news-v3', $1),
+              (gen_random_uuid(), 'c-v3', 'collect', 'pass', 'news-v3', $1),
+              (gen_random_uuid(), 'done-v3', 'understand', 'drop', 'news-v3', $1)`,
+      [new Date(T0 - 4 * MIN)],
+    );
+    const claude = fakeClaude({
+      "Solana lending protocol drained": hack,
+      "Solana bridge exploited": hack,
+    });
+    const { sr, errors } = setup({ items: () => [], claude, now: () => T0 });
+    await sr.runCycle();
+    expect(errors).toEqual([]);
+
+    // Bài dở dang chạy tiếp theo luật và prompt hiện tại; không bài nào bị bỏ rơi.
+    expect(claude.titles.sort()).toEqual([
+      "Solana bridge exploited",
+      "Solana lending protocol drained",
+    ]);
+    const arts = await db
+      .select({
+        id: signalArticles.id,
+        status: signalArticles.status,
+        rule: signalArticles.ruleVersion,
+      })
+      .from(signalArticles);
+    const a = new Map(arts.map((x) => [x.id, x]));
+    expect(a.get("p-v3")).toMatchObject({ status: "classified", rule: "news-v4" });
+    expect(a.get("c-v3")).toMatchObject({ status: "classified", rule: "news-v4" });
+    // Bài v3 đã xong giữ nguyên là lịch sử của v3.
+    expect(a.get("done-v3")).toMatchObject({ status: "classified", rule: "news-v3" });
+
+    const ev = await db
+      .select({
+        articleId: signalEvents.articleId,
+        stage: signalEvents.stage,
+        rule: signalEvents.ruleVersion,
+      })
+      .from(signalEvents);
+    // Event Collect / Normalize cũ đi cùng bài sang v4 (trace và phễu không tách đôi).
+    for (const e of ev.filter((x) => x.articleId === "p-v3" || x.articleId === "c-v3"))
+      expect(e.rule).toBe("news-v4");
+    expect(ev.filter((x) => x.articleId === "p-v3").map((x) => x.stage)).toEqual(
+      expect.arrayContaining(["collect", "normalize", "understand"]),
+    );
+    expect(ev.find((x) => x.articleId === "done-v3")?.rule).toBe("news-v3");
+
+    // Lần chạy sau không còn gì để chuyển.
+    expect(await adoptInFlightArticles(db)).toBe(0);
   });
 });

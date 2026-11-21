@@ -18,6 +18,7 @@ import {
   smallTreasury,
   sourceTierOf,
   spreadPctOf,
+  etfOnMajorAsset,
   storyKey,
   treasuryOnMajorAsset,
   typicalMovePct,
@@ -59,10 +60,11 @@ describe("rules v3", () => {
     });
     expect(catalystRule("token_unlock")).toMatchObject({ direction: "short", maxHoldHours: 48 });
     expect(SIGNAL_CATALYSTS).toHaveLength(12);
-    expect(NEWS_RULES.version).toBe("news-v3");
-    expect(NEWS_RULES.versionNumber).toBe(3);
+    expect(NEWS_RULES.version).toBe("news-v4");
+    expect(NEWS_RULES.versionNumber).toBe(4);
     expect(SignalReason.assetNotInText).toBe("ASSET_NOT_IN_TEXT");
     expect(SignalReason.treasuryMajorAsset).toBe("TREASURY_MAJOR_ASSET");
+    expect(SignalReason.etfMajorAsset).toBe("ETF_MAJOR_ASSET");
   });
 });
 
@@ -203,6 +205,24 @@ describe("treasury rules (news-v3, #298)", () => {
     expect(smallTreasury("treasury_buy", " unknown ")).toBe(true);
     expect(smallTreasury("treasury_buy", "$40M")).toBe(false);
     expect(smallTreasury("listing", null)).toBe(false);
+  });
+});
+
+describe("ETF rules (news-v4, #395)", () => {
+  it("never trades ETF news (approved, delayed or rejected) on BTC or ETH", () => {
+    expect(etfOnMajorAsset("etf_approved", "BTC-USD")).toBe(true);
+    expect(etfOnMajorAsset("etf_approved", "ETH-USD")).toBe(true);
+    expect(etfOnMajorAsset("etf_delayed_or_rejected", "BTC-USD")).toBe(true);
+    expect(etfOnMajorAsset("etf_delayed_or_rejected", "ETH-USD")).toBe(true);
+    expect(NEWS_RULES.etfExcludedMarkets).toEqual(["BTC-USD", "ETH-USD"]);
+  });
+
+  it("keeps ETF news on other coins and other news types on BTC / ETH", () => {
+    expect(etfOnMajorAsset("etf_approved", "SOL-USD")).toBe(false);
+    expect(etfOnMajorAsset("etf_delayed_or_rejected", "1000PEPE-USD")).toBe(false);
+    expect(etfOnMajorAsset("hack_exploit", "ETH-USD")).toBe(false);
+    expect(etfOnMajorAsset("treasury_buy", "BTC-USD")).toBe(false);
+    expect(etfOnMajorAsset("listing", "BTC-USD")).toBe(false);
   });
 });
 

@@ -362,6 +362,8 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 
 > **Bản sau v2.14.0** (#394, `docs/releases/next.md`): biến mới `SIGNAL_NEWS_CYCLE_MINUTES` chỉ cho `scheduler` (mặc định `5`, giữ nguyên nhịp cũ). Thêm dòng `SIGNAL_NEWS_CYCLE_MINUTES: ${SIGNAL_NEWS_CYCLE_MINUTES:-5}` vào khối `environment` của `scheduler` trong `/opt/drift/docker-compose.yml` (như mẫu `deploy/server/docker-compose.yml`). Không có migration. Muốn chạy 1 phút: đặt `SIGNAL_NEWS_CYCLE_MINUTES=1` **và** nâng `SIGNAL_SOSO_MONTHLY_LIMIT` lên khoảng `60000` trong `/opt/drift/.env`, nhưng chỉ sau khi người dùng xác nhận quota thật của key; rồi `docker compose up -d scheduler`.
 
+> **Bản sau v2.14.0 có Claude reader v4 + Rules v4 (#395):** không có migration, không có biến môi trường mới. Sau deploy, chu kỳ tin đầu tiên chuyển bài news-v3 còn `collected` / `pending` sang news-v4 (log `signal research: in-flight articles moved to current rules`, chỉ khi có bài) và ghi mốc `signal_classifier_versions.started_at` của `news-classifier-v4`. Tổng kết, nhãn và cổng đếm lại từ 0; lệnh news-v3 đang mở vẫn được watcher đóng như cũ. Kiểm (chỉ đọc): `select rule_version, status, count(*) from signal_articles where status in ('collected', 'pending') group by 1, 2;` chỉ còn news-v4.
+
 **3. Service cần pull lại:** cả 11 app. `infra/deploy/changed-apps.sh v2.12.0 <tag mới>` trả cả 11 vì `packages/**` đổi (shared, db). `build-push.sh --deploy-only <tag>` đã pull và `up -d` hết; không cần chọn tay.
 
 **4. Thứ tự làm:**
