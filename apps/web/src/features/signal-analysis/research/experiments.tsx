@@ -349,7 +349,13 @@ function ExperimentTable({
                   </span>
                   <span className="block text-xs text-muted">{line ?? <Na />}</span>
                 </th>
-                <td className={tdR}>{monthDay(r.v.createdAt, ctx.tz)}</td>
+                <td className={tdR}>
+                  {r.e.startedAt === null ? (
+                    <span className="text-muted">{t("notStarted")}</span>
+                  ) : (
+                    monthDay(r.e.startedAt, ctx.tz)
+                  )}
+                </td>
                 {finished ? (
                   <td className={tdR}>
                     {r.e.finishedAt === null ? <Na /> : monthDay(r.e.finishedAt, ctx.tz)}
@@ -397,7 +403,8 @@ function ExperimentCard({
           : t("mChanges", { n, list: list.join(" · ") });
   const have = count(r.e.pairs);
   const need = count(r.e.needed);
-  const start = monthDay(r.v.createdAt, ctx.tz);
+  // #385: mốc lần đầu chạy (API `experiment.startedAt`); null = đã lưu nhưng chưa từng chạy.
+  const start = r.e.startedAt === null ? null : monthDay(r.e.startedAt, ctx.tz);
   return (
     <li
       className={`flex flex-col gap-1.5 rounded-tile border bg-surface p-3 text-[13px] ${unclean ? "border-warn-border" : "border-border"}`}
@@ -420,12 +427,14 @@ function ExperimentCard({
       <span className="text-xs text-muted">
         {finished
           ? t("mFinished", {
-              start,
+              start: start ?? t("notStarted"),
               stop: r.e.finishedAt === null ? tn("na") : monthDay(r.e.finishedAt, ctx.tz),
               have,
               need,
             })
-          : t("mSince", { start, have, need })}
+          : start === null
+            ? t("mNotStarted", { have, need })
+            : t("mSince", { start, have, need })}
       </span>
       {unclean ? (
         <div className="mt-1">

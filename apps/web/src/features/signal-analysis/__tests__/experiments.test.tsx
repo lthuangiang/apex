@@ -15,7 +15,7 @@ import { BotsAndLabels } from "../research/bots-labels";
 import { Experiments, experimentGroups } from "../research/experiments";
 import { HowItWorksDrawer, HowItWorksProvider, type HowTab } from "../research/how-it-works";
 
-import { E5, EXPERIMENT_VERSIONS, EXPERIMENT_VERSIONS_OLD } from "./experiments-fixtures";
+import { E4, E5, EXPERIMENT_VERSIONS, EXPERIMENT_VERSIONS_OLD } from "./experiments-fixtures";
 import { CLASSIFIERS, VERSIONS } from "./versions-fixtures";
 
 // Sổ thí nghiệm (#377; mockup docs/mockups/signal-research/catalyst-experiments-{1440,390}.png,
@@ -223,6 +223,54 @@ describe("Experiments block", { timeout: 20_000 }, () => {
       "Nov 22 → stopped Nov 28 · Result after fees, paired with Baseline · 100 / 100 paired trades",
     );
     expect(v8).toHaveTextContent("Worse");
+  });
+
+  describe("Started (#385)", () => {
+    /** Thay E4 / E5 trong bộ mẫu bằng bản đã sửa. */
+    const withVersions = (...vs: ResearchVersion[]): ResearchVersions => ({
+      ...EXPERIMENT_VERSIONS,
+      items: EXPERIMENT_VERSIONS.items.map((x) => vs.find((v) => v.id === x.id) ?? x),
+    });
+    const startedCell = (version: string) =>
+      within(rowOf(table("Running experiments"), version)).getAllByRole("cell")[1];
+
+    it("comes from the first run (experiment.startedAt), not from the saved time", () => {
+      const e4 = E4.experiment;
+      if (e4 === null) throw new Error("fixture");
+      block(
+        withVersions({
+          ...E4,
+          createdAt: "2026-11-15T03:00:00.000Z",
+          experiment: { ...e4, startedAt: "2026-11-20T03:00:00.000Z" },
+        }),
+      );
+      expect(startedCell("v4 · Strict subject")).toHaveTextContent(/^Nov 20$/);
+      const card = within(screen.getByRole("list", { name: "Running experiments" }))
+        .getByText("v4 · Strict subject")
+        .closest("li");
+      expect(card).toHaveTextContent("Since Nov 20 ·");
+      expect(card).not.toHaveTextContent("Nov 15");
+    });
+
+    it("saved but never run: Not started yet, never a date", () => {
+      const e5 = E5.experiment;
+      if (e5 === null) throw new Error("fixture");
+      block(withVersions({ ...E5, status: "paused", experiment: { ...e5, startedAt: null } }));
+      expect(startedCell("v5 · Majors only")).toHaveTextContent(/^Not started yet$/);
+      const card = within(screen.getByRole("list", { name: "Running experiments" }))
+        .getByText("v5 · Majors only")
+        .closest("li");
+      expect(card).toHaveTextContent(
+        "Not started yet · Result after fees, paired with Baseline · 31 / 100 paired trades",
+      );
+      expect(card).not.toHaveTextContent("Since");
+    });
+
+    it("an old version without running periods shows the saved time the API sends as startedAt", () => {
+      block(EXPERIMENT_VERSIONS_OLD);
+      // API trả createdAt (2026-11-18T05:00Z) làm startedAt cho version lưu trước running_periods.
+      expect(startedCell("v9 · Old rules")).toHaveTextContent(/^Nov 18$/);
+    });
   });
 
   it("an old version without a hypothesis shows the backend result, no hypothesis; reader not yet checked", async () => {
