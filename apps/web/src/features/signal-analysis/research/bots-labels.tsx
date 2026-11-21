@@ -7,23 +7,19 @@ import {
   type ResearchVersions,
 } from "@drift/shared";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
-
-import { clock } from "../format";
 
 import { experimentsMeta } from "./experiments";
-import { balance } from "./format";
 import type { HowTab } from "./how-it-works";
 import { ClassifierQuality } from "./labels";
 import { rulesList } from "./text";
-import { Na, Pill } from "./ui";
+import { Na } from "./ui";
 import { classifierShort } from "./version-text";
 import { NewsVersions } from "./versions";
 import { ResearchWalletsBlock } from "./wallet-links";
 
 // Khu "Bots & labels" ở cuối trang Signal research (thiết kế docs/mockups/signal-research/compact-desktop.html, khung A
-// và B): gập sẵn bằng <details>. Bên trong giữ nguyên nội dung cũ của Paper bots (News bot versions, thẻ bot replay, lệnh
-// của quy tắc cũ) và Classifier quality (đổi tên trên UI thành "Is Claude reading news right?"). "Manage versions" và
+// và B): gập sẵn bằng <details>. Bên trong giữ nguyên nội dung cũ của Paper bots (News bot versions, lệnh của quy tắc
+// cũ) và Classifier quality (đổi tên trên UI thành "Is Claude reading news right?"). "Manage versions" và
 // "Label signals" (dải tóm tắt, Is it working?) mở khu này và cuộn tới (bots-labels-context.ts).
 
 export const BOTS_LABELS_ID = "sr-bots-labels";
@@ -117,7 +113,6 @@ export function BotsAndLabels({
             tz={tz}
             selected={versionId}
             onSelect={onVersion}
-            others={<ReplayBots bots={bots} tz={tz} />}
             unrealized={
               summaryVersion === null || news === undefined
                 ? null
@@ -161,117 +156,5 @@ export function BotsAndLabels({
         </div>
       </details>
     </section>
-  );
-}
-
-/* ---------------------------------------------------------------- Bot replay (Whales, Funding · Price patterns) */
-
-function Stat({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-xs font-bold text-muted">{label}</div>
-      <div className="font-extrabold">{value}</div>
-    </div>
-  );
-}
-
-const btn =
-  "inline-flex min-h-11 items-center rounded-control border border-border-input bg-surface px-4 font-bold text-ink no-underline disabled:cursor-not-allowed disabled:opacity-60";
-
-function BotCard({
-  title,
-  pill,
-  body,
-  children,
-  actions,
-}: {
-  title: string;
-  pill: ReactNode;
-  body: string;
-  children: ReactNode;
-  actions?: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-2.5 rounded-tile border border-border p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="m-0 text-[17px] font-extrabold">{title}</h3>
-        {pill}
-      </div>
-      <p className="m-0 text-[13px] leading-normal text-ink-2">{body}</p>
-      {children}
-      {actions === undefined ? null : <div className="flex flex-wrap gap-2">{actions}</div>}
-    </div>
-  );
-}
-
-function BotPill({ bot }: { bot: ResearchPaperBot }) {
-  const t = useTranslations("signalAnalysis.research.bots");
-  if (bot.state === "paused") return <Pill tone="neutral">{t("state.paused")}</Pill>;
-  // Trạng thái chạy là trung tính (xanh dương); xanh lá chỉ cho lệnh đã vào / có lãi.
-  return bot.mode === "live" ? (
-    <Pill tone="accent">{t("state.live")}</Pill>
-  ) : (
-    <Pill tone="neutral">{t("state.replay")}</Pill>
-  );
-}
-
-function ReplayBots({ bots, tz }: { bots: readonly ResearchPaperBot[]; tz: string }) {
-  const t = useTranslations("signalAnalysis.research.bots");
-  const by = (k: ResearchPaperBot["type"]) => bots.find((b) => b.type === k);
-  const whales = by("whales");
-  const funding = by("funding");
-  const price = by("price");
-  const group = funding ?? price;
-  const bal = (b: ResearchPaperBot | undefined) =>
-    b === undefined || b.balance === null ? <Na /> : balance(b.balance);
-  const ver = (b: ResearchPaperBot) =>
-    b.rulesVersion === null ? <Na /> : t("version", { v: b.rulesVersion });
-  if (whales === undefined && group === undefined) return null;
-  return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(290px,1fr))] gap-3.5 max-md:hidden">
-      {whales === undefined ? null : (
-        <BotCard
-          title={t("names.whales")}
-          pill={<BotPill bot={whales} />}
-          body={t("body.whales")}
-          actions={
-            <>
-              <button type="button" disabled className={btn}>
-                {t("pauseReplays")}
-              </button>
-              <button type="button" disabled className={btn}>
-                {t("rules")}
-              </button>
-            </>
-          }
-        >
-          <div className="grid grid-cols-3 gap-2">
-            <Stat label={t("balance")} value={bal(whales)} />
-            <Stat
-              label={t("lastRun")}
-              value={
-                whales.lastRun === null ? (
-                  <Na />
-                ) : (
-                  t("lastRunValue", {
-                    time: clock(whales.lastRun.at, tz, false),
-                    n: whales.lastRun.trades,
-                  })
-                )
-              }
-            />
-            <Stat label={t("rules")} value={ver(whales)} />
-          </div>
-        </BotCard>
-      )}
-      {group === undefined ? null : (
-        <BotCard title={t("names.group")} pill={<BotPill bot={group} />} body={t("body.group")}>
-          <div className="grid grid-cols-2 gap-2">
-            <Stat label={t("fundingBalance")} value={bal(funding)} />
-            <Stat label={t("priceBalance")} value={bal(price)} />
-          </div>
-        </BotCard>
-      )}
-    </div>
   );
 }

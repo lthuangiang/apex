@@ -19,6 +19,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 
@@ -558,6 +559,11 @@ export const bots = pgTable(
         >
       >(),
     activeVersionId: uuid("active_version_id"),
+    /**
+     * Bot `news_signal`: Signal research version gốc đã dùng để tạo bot (DEC-360). Null với mọi chiến lược khác. Bot chỉ
+     * được thu hẹp version này (`narrowsVersion`).
+     */
+    signalVersionId: uuid("signal_version_id").references((): AnyPgColumn => signalBotVersions.id),
     archivedAt: tstz("archived_at"),
     ...timestamps,
   },
@@ -2248,6 +2254,198 @@ export const signalContexts = pgTable(
     check(
       "signal_contexts_volatility_ck",
       sql`${t.marketVolatility} is null or ${t.marketVolatility} in ('low', 'normal', 'high')`,
+    ),
+  ],
+);
+
+/**
+ * Tín hiệu tin tức dùng chung cho bot `news_signal` mainnet (#419, DEC-360). Scheduler ghi một dòng mỗi câu chuyện mỗi chu
+ * kỳ (unique `story_key` × `cycle_at`, ghi lặp lại không tạo dòng mới); engine đọc dòng chưa hết hạn rồi lọc riêng cho từng
+ * bot. Bất biến: trigger DB chặn UPDATE / DELETE (migration 0059). Không có FK tới bài / story, như các bảng signal khác.
+ */
+export const newsSignals = pgTable(
+  "news_signals",
+  {
+    id: id(),
+    storyKey: text("story_key").notNull(),
+    /** Giờ bắt đầu chu kỳ scheduler đã quyết định tín hiệu này. */
+    cycleAt: tstz("cycle_at").notNull(),
+    /** Bài đầu tiên của câu chuyện (`signal_articles.id`). */
+    articleId: text("article_id").notNull(),
+    market: text("market").notNull(),
+    /** `crypto` | `stock` (`AssetKind`). */
+    kind: text("kind").notNull(),
+    catalyst: text("catalyst").notNull(),
+    /** `long` | `short`. */
+    side: text("side").notNull(),
+    /** `high` | `medium` | `low` lúc quyết định. */
+    level: text("level").notNull(),
+    /** Giờ đăng của bài đầu tiên, giờ DeskLabs thu bài, giờ quyết định (đồng hồ scheduler). */
+    firstPublishedAt: tstz("first_published_at").notNull(),
+    collectedAt: tstz("collected_at").notNull(),
+    decidedAt: tstz("decided_at").notNull(),
+    /** = `decided_at` + `NEWS_SIGNAL_TTL_MS`; quá giờ này engine bỏ với `SIGNAL_STALE`. */
+    expiresAt: tstz("expires_at").notNull(),
+    /** Báo giá SoDEX lúc quyết định; null = không có giá lúc đó ("Not available"), không bao giờ 0. */
+    quoteBid: money("quote_bid"),
+    quoteAsk: money("quote_ask"),
+    quoteMid: money("quote_mid"),
+    quoteAt: tstz("quote_at"),
+    /**
+     * Biến động thường gặp (%) theo số giờ giữ: `{ "<holdHours>": "<pct>" | null }`, một khoá cho mỗi `maxHoldHours` mà
+     * các version đang bật cho loại tin này. null = thiếu nến (bot bỏ tín hiệu, không tự tính lại).
+     */
+    typicalByHoldHours: jsonb("typical_by_hold_hours")
+      .$type<Record<string, string | null>>()
+      .notNull(),
+    /** `NEWS_CLASSIFIER.promptVersion`, `NEWS_ASSET_MAP_VERSION`, version Rules lúc quyết định. */
+    classifierVersion: text("classifier_version").notNull(),
+    assetMapVersion: text("asset_map_version").notNull(),
+    ruleVersion: text("rule_version").notNull(),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("news_signals_story_cycle_uq").on(t.storyKey, t.cycleAt),
+    index("news_signals_expires_idx").on(t.expiresAt),
+    index("news_signals_decided_idx").on(t.decidedAt),
+    check("news_signals_kind_ck", sql`${t.kind} in ('crypto', 'stock')`),
+    check("news_signals_side_ck", sql`${t.side} in ('long', 'short')`),
+    check("news_signals_level_ck", sql`${t.level} in ('high', 'medium', 'low')`),
+    check("news_signals_expiry_ck", sql`${t.expiresAt} > ${t.decidedAt}`),
+  ],
+);
+
+/**
+ * Mỗi tín hiệu chỉ tạo đúng một tác dụng trên một bot (#419): engine ghi `(signal_id, bot_id)` trước khi làm gì với tín
+ * hiệu; ghi trùng thì bỏ qua (ON CONFLICT DO NOTHING). `accepted` = chuyển cho chiến lược; `dropped` = bỏ với `reason`
+ * (`SignalReason`, ví dụ `ASSET_NOT_IN_BOT`, `SIGNAL_STALE`). `epoch` = fencing token của shard lúc ghi.
+ */
+export const newsSignalDeliveries = pgTable(
+  "news_signal_deliveries",
+  {
+    signalId: uuid("signal_id")
+      .notNull()
+      .references(() => newsSignals.id),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id),
+    outcome: text("outcome").notNull(),
+    reason: text("reason"),
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    epoch: bigint("epoch", { mode: "number" }).notNull(),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.signalId, t.botId] }),
+    index("news_signal_deliveries_bot_idx").on(t.botId, t.createdAt),
+    check("news_signal_deliveries_outcome_ck", sql`${t.outcome} in ('accepted', 'dropped')`),
+    check(
+      "news_signal_deliveries_reason_ck",
+      sql`(${t.outcome} = 'dropped') = (${t.reason} is not null)`,
+    ),
+  ],
+);
+
+/**
+ * Lệnh tiền thật của bot `news_signal` (#419, chỉ mainnet). Mỗi account SoDEX × market chỉ một lệnh `open` / `closing`
+ * (partial unique, kiểm cả ở engine). `seq` tăng theo bot, là `version` trong `clOrdId` của mọi lệnh SoDEX thuộc lệnh này;
+ * `tpsl_seq` là số lần sửa TP/SL (tag `tp:<n>` / `sl:<n>`). Lệnh vào IOC không khớp gì: `closed` với
+ * `close_reason = 'ENTRY_NOT_FILLED'`, `qty = 0`.
+ */
+export const newsSignalTrades = pgTable(
+  "news_signal_trades",
+  {
+    id: id(),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id),
+    sodexAccountId: uuid("sodex_account_id")
+      .notNull()
+      .references(() => sodexAccounts.id),
+    signalId: uuid("signal_id")
+      .notNull()
+      .references(() => newsSignals.id),
+    seq: integer("seq").notNull(),
+    market: text("market").notNull(),
+    /** `long` | `short`. */
+    side: text("side").notNull(),
+    /** `open` | `closing` | `closed`. */
+    status: text("status").notNull(),
+    sizeUsdc: money("size_usdc").notNull(),
+    /** Giá trần của lệnh vào limit IOC (`newsEntryLimitPrice`). */
+    entryLimitPrice: money("entry_limit_price").notNull(),
+    /** Khối lượng đã khớp của lệnh vào (= khối lượng vị thế của lệnh này). */
+    qty: money("qty").notNull().default("0"),
+    entryAvgPrice: money("entry_avg_price"),
+    /** TP / SL hiện tại (null = chưa đặt, ví dụ lệnh vào chưa khớp). */
+    tpPrice: money("tp_price"),
+    slPrice: money("sl_price"),
+    tpslSeq: integer("tpsl_seq").notNull().default(0),
+    maxHoldUntil: tstz("max_hold_until").notNull(),
+    /** Stop-Keep: từ lúc này không áp max hold nữa, chỉ còn TP/SL trên SoDEX (DEC-360 mục 5). */
+    maxHoldOffAt: tstz("max_hold_off_at"),
+    openedAt: tstz("opened_at").notNull(),
+    closedAt: tstz("closed_at"),
+    /** `tp` | `sl` | `max_hold` | `opposite` | `manual` | `stop` | `ENTRY_NOT_FILLED`…; null khi chưa đóng. */
+    closeReason: text("close_reason"),
+    exitAvgPrice: money("exit_avg_price"),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("news_signal_trades_account_market_open_uq")
+      .on(t.sodexAccountId, t.market)
+      .where(sql`${t.status} in ('open', 'closing')`),
+    uniqueIndex("news_signal_trades_bot_seq_uq").on(t.botId, t.seq),
+    uniqueIndex("news_signal_trades_bot_signal_uq").on(t.botId, t.signalId),
+    index("news_signal_trades_bot_status_idx").on(t.botId, t.status, t.openedAt),
+    check("news_signal_trades_side_ck", sql`${t.side} in ('long', 'short')`),
+    check("news_signal_trades_status_ck", sql`${t.status} in ('open', 'closing', 'closed')`),
+    check(
+      "news_signal_trades_closed_ck",
+      sql`(${t.status} = 'closed') = (${t.closedAt} is not null)`,
+    ),
+  ],
+);
+
+/**
+ * Lệnh của người dùng trên một lệnh `news_signal` (Edit TP/SL, Close now; #419). API ghi `queued`; engine chạy theo state
+ * machine `queued → applying → applied | rejected | unknown` (`unknown` phải đối soát với SoDEX trước, quy tắc 1.7).
+ * `seq` tăng theo lệnh, là tag `close:<seq>` của clOrdID.
+ */
+export const newsSignalCommands = pgTable(
+  "news_signal_commands",
+  {
+    id: id(),
+    tradeId: uuid("trade_id")
+      .notNull()
+      .references(() => newsSignalTrades.id),
+    /** `edit_tpsl` | `close`. */
+    kind: text("kind").notNull(),
+    seq: integer("seq").notNull(),
+    /** Chỉ `edit_tpsl`: TP / SL mới (null = giữ nguyên). */
+    tp: money("tp"),
+    sl: money("sl"),
+    status: text("status").notNull().default("queued"),
+    /** Kết quả engine ghi (mã lỗi SoDEX, clOrdID mới…); null khi chưa xong. */
+    result: jsonb("result").$type<Record<string, unknown>>(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("news_signal_commands_trade_seq_uq").on(t.tradeId, t.seq),
+    index("news_signal_commands_pending_idx")
+      .on(t.status, t.createdAt)
+      .where(sql`${t.status} in ('queued', 'applying', 'unknown')`),
+    check("news_signal_commands_kind_ck", sql`${t.kind} in ('edit_tpsl', 'close')`),
+    check(
+      "news_signal_commands_status_ck",
+      sql`${t.status} in ('queued', 'applying', 'applied', 'rejected', 'unknown')`,
+    ),
+    check(
+      "news_signal_commands_prices_ck",
+      sql`(${t.kind} = 'close' and ${t.tp} is null and ${t.sl} is null) or (${t.kind} = 'edit_tpsl' and (${t.tp} is not null or ${t.sl} is not null))`,
     ),
   ],
 );

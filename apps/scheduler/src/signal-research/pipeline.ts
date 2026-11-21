@@ -69,6 +69,7 @@ import {
   type NewsClassifier,
 } from "./classifier";
 import { captureSignalContext, type ContextSignal } from "./context";
+import { publishNewsSignals } from "./news-signals";
 import {
   isSosoRateLimited,
   SOSO_PAGE_SIZE,
@@ -154,6 +155,11 @@ export interface PipelineDeps {
    */
   captureContext?:
     ((db: Db, s: ContextSignal, decidedAt: number, quote: Quote | null) => Promise<void>) | null;
+  /**
+   * #419 PR 4: ghi tín hiệu dùng chung cho bot `news_signal` mainnet (`news_signals`) và phát chuông NATS. Thiếu / null =
+   * tắt (`SIGNAL_NEWS_PUBLISH_ENABLED` không bật). Chỉ ghi, không bao giờ đổi quyết định của research versions.
+   */
+  newsSignals?: { notify: (id: string) => void } | null;
 }
 
 export interface CycleReport {
@@ -173,6 +179,8 @@ export interface CycleReport {
   oppositeClosed: number;
   /** Snapshot ngữ cảnh đã chụp ở bước 4 (#329). */
   contexts: number;
+  /** Dòng `news_signals` mới của chu kỳ (#419); 0 khi tắt. */
+  newsSignals: number;
   baselines: number;
   /** `MARKETS_UNKNOWN` khi chu kỳ chỉ Collect. */
   collectOnly: string | null;
@@ -241,6 +249,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     shadows: 0,
     oppositeClosed: 0,
     contexts: 0,
+    newsSignals: 0,
     baselines: 0,
     collectOnly: null,
     skipped,
@@ -562,6 +571,31 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     const k = storyKey(s.candidate.market, s.catalyst);
     groups.set(k, [...(groups.get(k) ?? []), s]);
   }
+  // ── Tín hiệu mainnet (#419): ghi ngay sau Understand, trước Context / Filter, để độ trễ tới engine thấp nhất. Lỗi chỉ log;
+  // báo giá đọc riêng nên quyết định của research versions không đổi.
+  const publisher = deps.newsSignals ?? null;
+  if (publisher !== null && groups.size > 0) {
+    try {
+      report.newsSignals = await publishNewsSignals(
+        {
+          db,
+          now: deps.now,
+          quotes: deps.quotes,
+          typical: ctx.typical,
+          notify: publisher.notify,
+          log: deps.log,
+        },
+        now,
+        groups,
+      );
+    } catch (e) {
+      deps.log.warn(
+        { err: e instanceof Error ? { name: e.name, message: e.message } : String(e) },
+        "news signals not written",
+      );
+    }
+  }
+
   // ── 4. Context (#329): ngữ cảnh lúc quyết định của mọi tín hiệu (kể cả tín hiệu sẽ bị loại / shadow), trước Filter.
   report.contexts = await captureContexts(deps, ctx, groups);
 
