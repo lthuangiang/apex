@@ -72,6 +72,8 @@ const app = await buildApp({
   srMarkets: () => redis.get(SR_MARKETS_KEY),
   srQuotes: () => redis.get(SR_QUOTES_KEY),
   srLane: () => redis.get(SR_LANE_KEY),
+  // #420: chốt chặn bot `news_signal` mainnet (mặc định tắt).
+  newsSignalBotsEnabled: () => config.SIGNAL_NEWS_BOTS_ENABLED,
   reco: httpRecoClient(config.RECO_URL),
   // `none`: tab Liquidation map ẩn (IMP-05, DEC-92).
   liquidations: config.LIQUIDATION_PROVIDER === "hyperliquid" ? hyperliquidProvider(redis) : null,

@@ -416,6 +416,13 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 - Biến: `IDEMPOTENCY_ABANDONED_AFTER_MIN` (số phút nguyên 5–1440, mặc định **10**; chỉ `jobs` đọc). Không đặt thì dùng mặc định, nên **không bắt buộc** sửa compose trên VPS. Muốn đổi: thêm `IDEMPOTENCY_ABANDONED_AFTER_MIN=<phút>` vào `/opt/drift/.env` và cho service `jobs` trong `/opt/drift/docker-compose.yml` khối `environment` như mẫu `deploy/server/docker-compose.yml` (`<<: *env` + dòng biến), rồi `cd /opt/drift && docker compose up -d jobs`.
 - Không có migration. Kiểm tra: log `jobs` có dòng warn `idempotency key stuck in progress marked failed_unknown (ABANDONED)` (kèm `traceId`) khi có dòng bị đánh dấu; DB: `docker compose exec postgres psql -U drift -d drift -c "select count(*) from idempotency_keys where error_code = 'ABANDONED';"`.
 
+### 2.18 Bot `news_signal` mainnet: chốt chặn `SIGNAL_NEWS_BOTS_ENABLED` (#420, DEC-TBD-news-signal-api)
+- Biến: `SIGNAL_NEWS_BOTS_ENABLED`, mặc định **`false`**. **Một công tắc này điều khiển cả hai service `api` và `engine`**: api chặn tạo / Start / Resume, engine (PR engine A) không chạy bot `news_signal` khi tắt. Đặt cùng giá trị cho cả hai. Khi tắt, tạo bot mainnet (`POST /api/v1/signal-research/bots`), Start và Resume của bot `news_signal` trả **409 `FEATURE_NOT_READY`** ("Mainnet bots are not available yet.") cho mọi người, kể cả team. Không ghi DB, không có audit.
+- Pause / Stop / Close now luôn chạy được cho chủ bot, vì chỉ giảm rủi ro.
+- **Không bật** cho tới khi engine nối tín hiệu (#419 engine A/B) đã merge **và** người dùng đã tự thử một lệnh nhỏ thật trên mainnet. Người dùng tự bật: đặt `SIGNAL_NEWS_BOTS_ENABLED=true` trong `/opt/drift/.env`, thêm dòng `SIGNAL_NEWS_BOTS_ENABLED: ${SIGNAL_NEWS_BOTS_ENABLED:-false}` vào khối `environment` của `api` (như mẫu `deploy/server/docker-compose.yml`; engine thêm cùng dòng ở PR engine A), rồi `cd /opt/drift && docker compose up -d api engine`.
+- Tắt khẩn cấp: đặt lại `false`, rồi `docker compose up -d api engine`. Bot đang chạy không bị dừng; muốn dừng thì Stop từng bot hoặc dùng Emergency.
+- Không có migration (bảng của #432, migration `0059`).
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push image các app đổi (app không đổi được gắn tag mới vào image của tag trước) → PM trả tag (`docs/RELEASE.md`).

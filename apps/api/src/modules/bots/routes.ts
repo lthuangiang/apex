@@ -1,4 +1,6 @@
+import { bots } from "@drift/db";
 import {
+  Strategy,
   botActionBodySchema,
   createBotBodySchema,
   dryRunChecksBodySchema,
@@ -6,12 +8,21 @@ import {
   VOLUME_PERIODS,
   ANALYTICS_PERIODS,
 } from "@drift/shared";
+import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
 import { parseOrThrow } from "../../lib/http";
 import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
+import {
+  assertNewsBotsEnabled,
+  newsStartChecks,
+  resumeNewsBot,
+  startNewsBot,
+  type NewsBotDeps,
+} from "../news-signal-bots/service";
+import { researchViewer } from "../signal-research/routes";
 
 import { botAnalytics, tradeDetail } from "./analytics";
 import { exportBot } from "./export";
@@ -42,8 +53,17 @@ const idParams = z.object({ id: z.uuid() });
 
 // REST bot (CODING_STANDARDS C7): hành động trạng thái là POST /bots/:id/actions/<action>, trả 202 kèm
 // trạng thái chuyển tiếp; mọi request ghi bắt buộc Idempotency-Key.
-export function registerBotRoutes(app: FastifyInstance, deps: BotDeps): void {
+export function registerBotRoutes(app: FastifyInstance, deps: BotDeps & NewsBotDeps): void {
   const { db } = deps;
+  /** Bot `news_signal` của chính người gọi? (bot của người khác → false, route chung trả 404 như cũ). */
+  const isNewsBot = async (userId: string, id: string) => {
+    const [b] = await db
+      .select({ strategy: bots.strategy })
+      .from(bots)
+      .where(and(eq(bots.id, id), eq(bots.userId, userId)))
+      .limit(1);
+    return b?.strategy === Strategy.newsSignal;
+  };
   const run = (status: number, work: () => Promise<unknown>) => async () => ({
     status,
     body: await work(),
@@ -83,7 +103,13 @@ export function registerBotRoutes(app: FastifyInstance, deps: BotDeps): void {
 
   app.get("/api/v1/bots/:id/checks", async (request) => {
     const { id } = parseOrThrow(idParams, request.params);
-    return startChecks(deps, requireAuth(request).userId, id);
+    const userId = requireAuth(request).userId;
+    // #420: bot `news_signal` có bộ kiểm tra riêng (nhiều market: key, builder fee, margin cho size × Max open).
+    if (await isNewsBot(userId, id)) {
+      await researchViewer(db, userId);
+      return newsStartChecks(deps, userId, id);
+    }
+    return startChecks(deps, userId, id);
   });
 
   app.post("/api/v1/bots/:id/versions", async (request, reply) => {
@@ -110,6 +136,19 @@ export function registerBotRoutes(app: FastifyInstance, deps: BotDeps): void {
       request.params,
     );
     const body = parseOrThrow(botActionBodySchema, request.body ?? {});
+    // #420: bot `news_signal` mainnet. Start / Resume: cờ `SIGNAL_NEWS_BOTS_ENABLED` trước (409 cho mọi người khi tắt), rồi
+    // quyền Signal Research (403). Pause / Stop / Archive đi đường chung: giảm rủi ro nên chủ bot luôn làm được.
+    if ((action === "start" || action === "resume") && (await isNewsBot(auth.userId, id))) {
+      assertNewsBotsEnabled(deps);
+      await researchViewer(db, auth.userId);
+      return idempotent(db, request, reply, auth.userId, deps.now(), async () => ({
+        status: 202,
+        body:
+          action === "start"
+            ? await startNewsBot(deps, auth.userId, id, body, request.ip, auth.sessionId)
+            : await resumeNewsBot(deps, auth.userId, id),
+      }));
+    }
     const work = () => {
       switch (action) {
         case "start":

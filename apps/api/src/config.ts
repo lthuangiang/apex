@@ -41,6 +41,11 @@ const envSchema = z.object({
     .regex(/^\d+(\.\d+)?$/)
     .optional()
     .or(z.literal("").transform(() => undefined)),
+  /**
+   * #420: bot `news_signal` chạy tiền thật trên SoDEX mainnet. Tắt (mặc định) thì tạo bot / Start / Resume trả 409
+   * `FEATURE_NOT_READY` cho mọi người. Người dùng tự bật sau khi engine nối tín hiệu và đã thử lệnh nhỏ thật.
+   */
+  SIGNAL_NEWS_BOTS_ENABLED: z.stringbool().default(false),
   /** Notifications v2: kênh Telegram (DEC-170). Tắt thì mọi route `/api/v1/telegram/*` trả 404. */
   TELEGRAM_ENABLED: z.stringbool().default(false),
   /** Morning brief qua Telegram (N4): chỉ chạy khi TELEGRAM_ENABLED cũng bật. */

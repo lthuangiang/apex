@@ -28,6 +28,7 @@ import { sodexMarketSource } from "./modules/desk/market";
 import { registerDeskRoutes } from "./modules/desk/routes";
 import { startTelegramBriefs } from "./modules/desk/telegram-brief";
 import { registerMcpRoutes } from "./modules/mcp/routes";
+import { registerNewsBotRoutes } from "./modules/news-signal-bots/routes";
 import type { CimdDeps } from "./modules/oauth/cimd";
 import { registerOauthRoutes } from "./modules/oauth/routes";
 import { registerProfileRoutes } from "./modules/profile/routes";
@@ -97,6 +98,11 @@ export interface AppDeps {
   srQuotes?: () => Promise<string | null>;
   /** #394: Redis `sr:lane` (chu kỳ lane tin tức do scheduler ghi) cho Signal research; không có → null. */
   srLane?: () => Promise<string | null>;
+  /**
+   * #420: `SIGNAL_NEWS_BOTS_ENABLED`, chốt chặn bot `news_signal` mainnet (tạo / Start / Resume). Thiếu = tắt. Hàm để test
+   * đổi được giữa chừng.
+   */
+  newsSignalBotsEnabled?: () => boolean;
   rateLimiter: RateLimiter;
   /** Nhà cung cấp bản đồ thanh lý (IMP-05). Không có / null: tab Liquidation map ẩn. */
   liquidations?: LiquidationProvider | null;
@@ -166,6 +172,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       mmFee,
     };
   });
+  const newsBotsEnabled = deps.newsSignalBotsEnabled ?? (() => false);
   registerBotRoutes(app, {
     db: deps.db,
     totpKey: deps.totpKey,
@@ -176,6 +183,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     lastPrice: deps.lastPrice,
     prices: deps.prices,
     verifyApiKey: (id: string) => deps.sodex.signer.verifyApiKey(id),
+    newsBotsEnabled,
   });
   const chart = createChartService({
     rest: deps.sodex.rest,
@@ -230,6 +238,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerSodexRoutes(app, { ...deps.sodex, db: deps.db, totpKey: deps.totpKey, now });
   registerSodexDebuggerRoutes(app, { db: deps.db, now, builderId: deps.sodex.builderId });
   registerSignalAnalysisRoutes(app, { db: deps.db, now });
+  registerNewsBotRoutes(app, { ...botDeps, newsBotsEnabled });
   registerSignalResearchRoutes(app, {
     db: deps.db,
     now,

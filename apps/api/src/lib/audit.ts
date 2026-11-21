@@ -32,6 +32,9 @@ export const AuditAction = {
   telegramDisconnected: "telegram.disconnected",
   /** Team xem dữ liệu một user qua MCP nội bộ (DEC-220): target = user, metadata có tool + tokenId. */
   mcpTeamUserViewed: "mcp.team_user_viewed",
+  /** #420: Close now / Edit TP/SL trên lệnh của bot `news_signal` (target = trade, metadata có command id, seq). */
+  newsTradeClose: "news_signal.close",
+  newsTradeEditTpsl: "news_signal.edit_tpsl",
 } as const;
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 

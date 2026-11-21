@@ -33,6 +33,8 @@ export const ErrorCode = {
   /** docs/NOTIFICATIONS.md mục 9 (DEC-170). */
   telegramNotConnected: "TELEGRAM_NOT_CONNECTED",
   telegramLinkExpired: "TELEGRAM_LINK_EXPIRED",
+  /** Tính năng có code nhưng chưa bật (cờ env tắt), ví dụ bot `news_signal` mainnet (#420, `SIGNAL_NEWS_BOTS_ENABLED`). */
+  featureNotReady: "FEATURE_NOT_READY",
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
@@ -65,6 +67,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ANALYSIS_TIMEOUT: 503,
   TELEGRAM_NOT_CONNECTED: 409,
   TELEGRAM_LINK_EXPIRED: 410,
+  FEATURE_NOT_READY: 409,
 };
 
 export type ErrorDetails = Record<string, unknown>;
