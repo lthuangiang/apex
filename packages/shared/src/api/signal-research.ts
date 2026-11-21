@@ -223,7 +223,7 @@ export const researchFunnelSchema = z.object({
    */
   context: z.object({ reached: int, h1Yes: int, h2Yes: int, h3Yes: int }).nullable(),
   /**
-   * #413 (DEC-TBD-sr-history-across-versions): số bài thu trong khoảng theo từng version Rules (`v` = số version), tăng
+   * #413 (DEC-357): số bài thu trong khoảng theo từng version Rules (`v` = số version), tăng
    * dần. Có `range` thì phễu đếm mọi version (câu "{a} articles ran on Rules v3 …, {b} on Rules v4"); không có `range`
    * thì chỉ version hiện tại như trước.
    */

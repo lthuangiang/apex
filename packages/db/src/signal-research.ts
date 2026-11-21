@@ -352,7 +352,7 @@ export async function loadSignalResearchSummary(
   const today = utcDay(nowMs);
   // #291: `range` chỉ đổi phễu (`funnel`); bảng mức, cổng, Long / Short luôn tính mọi lệnh của version hiện tại.
   const since = range === undefined ? null : rangeSince(now, range);
-  // #413 (DEC-TBD-sr-history-across-versions): phễu theo khoảng gồm MỌI version Rules (đổi version chỉ reset phần đếm,
+  // #413 (DEC-357): phễu theo khoảng gồm MỌI version Rules (đổi version chỉ reset phần đếm,
   // không ẩn dữ liệu). Không có khoảng thì như trước: chỉ version hiện tại. Is it working? / cổng luôn chỉ version hiện tại.
   const allRules = since !== null;
   const funnelRule = (col: AnyColumn) => (allRules ? undefined : eq(col, v));

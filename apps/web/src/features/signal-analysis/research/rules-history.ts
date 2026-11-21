@@ -2,7 +2,7 @@ import type { ResearchArticle, ResearchFunnel, ResearchSummary } from "@drift/sh
 
 import { classifierShort } from "./version-text";
 
-// #413 (DEC-TBD-sr-history-across-versions, mockup docs/mockups/signal-research/history-across-versions.html): đổi version
+// #413 (DEC-357, mockup docs/mockups/signal-research/history-across-versions.html): đổi version
 // Rules chỉ reset phần đếm, không ẩn dữ liệu. Hàm thuần dựng dòng ngăn cách của feed và câu "{a} articles ran on Rules v3
 // (until …), {b} on Rules v4" của phễu từ số API trả về; thiếu mốc thì bỏ ngày, không đoán.
 

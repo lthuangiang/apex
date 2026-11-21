@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// #413 (DEC-TBD-sr-history-across-versions) qua API thật: đổi version Rules chỉ reset phần đếm, không ẩn dữ liệu. Feed và
+// #413 (DEC-357) qua API thật: đổi version Rules chỉ reset phần đếm, không ẩn dữ liệu. Feed và
 // phễu theo khoảng gồm bài của mọi version (gắn version), trace bài cũ đọc theo luật của chính bài, danh sách lệnh có
 // Current / All rules, còn Is it working? (dòng tổng kết, cổng) chỉ tính version hiện tại.
 

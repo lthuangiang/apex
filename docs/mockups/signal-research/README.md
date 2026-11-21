@@ -147,7 +147,7 @@ Trang research giữ lại mọi bài và mọi lệnh khi đổi Rules hoặc C
 | `history-across-versions.html` | Ba khung: From headline to trade (nút Last 24 h / 7 days / 30 days, chip "Rules v3", dòng ngăn cách, câu "all rules" dưới phễu), trace một bài cũ (banner, "counted under v3"), Paper trades (Current rules / All rules, chip version, câu tóm tắt) |
 | `history-across-versions-1440.png`, `history-across-versions-390.png` | Ảnh chụp 1440 và 390 (Playwright, cả trang) |
 
-**Quy tắc khi code (DEC-TBD-sr-history-across-versions):**
+**Quy tắc khi code (DEC-357):**
 - Đổi version chỉ reset phần đếm, không ẩn dữ liệu. Is it working? giữ nguyên (chỉ version hiện tại).
 - Mốc "started" của mỗi version lấy từ dữ liệu thật (event sớm nhất của version, reader của bài phân loại sớm nhất); thiếu thì bỏ ngày / reader, không đoán.
 - Feed: bài version hiện tại không có chip; câu dưới phễu chỉ hiện khi khoảng có từ hai version trở lên.

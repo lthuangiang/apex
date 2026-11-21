@@ -107,7 +107,7 @@ const preClaude = sql.raw(PRE_CLAUDE_REASONS.map(literal).join(", "));
 
 /**
  * Bảng tạm `st`: mỗi bài một dòng với bước dừng, kết quả, lý do API, mã nội bộ, trade, đã gửi Claude chưa. `since` null
- * = mọi bài. `allRules` (#413, DEC-TBD-sr-history-across-versions): bài của MỌI version Rules (feed, phễu theo khoảng,
+ * = mọi bài. `allRules` (#413, DEC-357): bài của MỌI version Rules (feed, phễu theo khoảng,
  * trace, bài mới); false = chỉ version hiện tại (phễu không có khoảng, như trước). Event luôn theo version Rules của chính
  * bài (`e.rule_version = a.rule_version`), nên bài cũ có bước dừng / lý do theo luật của nó.
  */
