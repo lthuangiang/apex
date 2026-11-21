@@ -129,7 +129,7 @@ function setup(opts: { publish: boolean; notify?: (id: string) => void; withBook
       SIGNAL_RESEARCH_ENABLED: "true",
       SOSO_API_KEY: "k",
       DESK_AI_API_KEY: "c",
-      NEWS_SIGNAL_PUBLISH_ENABLED: opts.publish ? "true" : "false",
+      SIGNAL_NEWS_PUBLISH_ENABLED: opts.publish ? "true" : "false",
     }),
     perps: () => [{ name: "SOL-USD", status: "TRADING", tickSize: "0.01", takerFee: "0.0004" }],
     now: () => T0,
@@ -183,7 +183,7 @@ describe("news_signals from the news cycle", () => {
     expect(await paperTrades()).toHaveLength(1);
   });
 
-  it("writes nothing when NEWS_SIGNAL_PUBLISH_ENABLED is off, and research results are the same", async () => {
+  it("writes nothing when SIGNAL_NEWS_PUBLISH_ENABLED is off, and research results are the same", async () => {
     const rung: string[] = [];
     await setup({ publish: false, notify: (id) => rung.push(id) }).runCycle();
     expect(await signals()).toHaveLength(0);

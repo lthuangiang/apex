@@ -157,7 +157,7 @@ export interface PipelineDeps {
     ((db: Db, s: ContextSignal, decidedAt: number, quote: Quote | null) => Promise<void>) | null;
   /**
    * #419 PR 4: ghi tín hiệu dùng chung cho bot `news_signal` mainnet (`news_signals`) và phát chuông NATS. Thiếu / null =
-   * tắt (`NEWS_SIGNAL_PUBLISH_ENABLED` không bật). Chỉ ghi, không bao giờ đổi quyết định của research versions.
+   * tắt (`SIGNAL_NEWS_PUBLISH_ENABLED` không bật). Chỉ ghi, không bao giờ đổi quyết định của research versions.
    */
   newsSignals?: { notify: (id: string) => void } | null;
 }

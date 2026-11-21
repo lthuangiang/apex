@@ -94,7 +94,7 @@ export const signalResearchEnvSchema = z.object({
    * #419 PR 4: ghi tín hiệu dùng chung cho bot `news_signal` mainnet (`news_signals`) và phát chuông NATS `sr.signal.new`.
    * Mặc định tắt. Chỉ có tác dụng khi lane chạy (`SIGNAL_RESEARCH_ENABLED`); không đổi gì của research versions.
    */
-  NEWS_SIGNAL_PUBLISH_ENABLED: flag,
+  SIGNAL_NEWS_PUBLISH_ENABLED: flag,
 });
 export type SignalResearchEnv = z.infer<typeof signalResearchEnvSchema>;
 
@@ -320,7 +320,7 @@ export function createSignalResearch(input: {
           onTradeOpened: () => {
             watcher.invalidate();
           },
-          newsSignals: input.env.NEWS_SIGNAL_PUBLISH_ENABLED
+          newsSignals: input.env.SIGNAL_NEWS_PUBLISH_ENABLED
             ? { notify: (id) => input.notifySignal?.(id) }
             : null,
         });
