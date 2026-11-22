@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { baselineVersionConfig } from "@drift/shared";
 import { expect, test, type Page } from "@playwright/test";
 
 import {
@@ -139,7 +140,28 @@ async function open(
         twoFactorEnabled: false,
         role: "user",
       });
-    if (p === "/api/v1/signal-research/bots") return json({ items: [BOT] });
+    if (p === "/api/v1/signal-research/bots")
+      return json({ items: [{ ...BOT, signalVersionId: VERSIONS.items[0]?.id ?? null }] });
+    // #469: Settings đọc version đang chạy của bot.
+    if (p === `/api/v1/bots/${BOT_ID}`)
+      return json({
+        bot: BOT,
+        versions: [
+          {
+            id: "44444444-4444-4444-8444-444444444444",
+            version: 2,
+            config: { ...baselineVersionConfig(), sizeUsdc: "150", leverage: 10 },
+            paramSource: "manual",
+            status: "active",
+            appliedAt: NOW,
+            createdAt: NOW,
+          },
+        ],
+        events: [],
+        openOrders: 0,
+        serverTime: NOW,
+        recentErrors: [],
+      });
     if (p.endsWith(`/bots/${BOT_ID}/trades`)) return json({ items: TRADES });
     if (p.endsWith(`/bots/${BOT_ID}/signals`)) return json({ items: SIGNALS });
     if (p.endsWith("/signal-research/trades")) return json(RESEARCH_TRADES);
@@ -233,5 +255,19 @@ for (const width of [1440, 390]) {
       await dlg.getByRole("tab", { name: "Overview" }).waitFor();
       await page.screenshot({ path: `${shots ?? "."}/${mode}-drawer-${String(width)}.png` });
     }
+  });
+}
+
+// #469: màn Settings (chỉ xem) của bot Mainnet không cuộn ngang, bảng News types cuộn trong khung của nó.
+for (const narrow of [false, true]) {
+  test(`Mainnet Settings${narrow ? " at 390" : ""}: no side scroll`, async ({ page, baseURL }) => {
+    if (narrow) await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, baseURL);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const dlg = page.getByRole("dialog", { name: BOT.name });
+    await expect(dlg.getByText("10×, isolated")).toBeVisible();
+    const overflowX = await dlg.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect.soft(overflowX, "drawer does not scroll sideways").toBeLessThanOrEqual(0);
+    expect.soft(await sideScroll(page), "page does not scroll sideways").toBeLessThanOrEqual(0);
   });
 }

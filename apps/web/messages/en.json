@@ -8009,6 +8009,27 @@
           "tradeNotFound": "Trade not found.",
           "tpslRequired": "Enter a take profit or a stop loss.",
           "botNotFound": "This bot isn’t yours or no longer exists."
+        },
+        "settings": {
+          "button": "Settings",
+          "since": "v{n} · since {time}",
+          "copied": "Copied from version “{name}”. The version keeps running on paper.",
+          "leverageValue": "{lev}×, isolated",
+          "marginPerTrade": "Margin per trade",
+          "maxDay": "Max new trades a day",
+          "noLimit": "No limit",
+          "signals": "Signals",
+          "markets": "Markets",
+          "minLevel": "Min level",
+          "tpsl": "TP / SL",
+          "tpslValue": "TP {tp}× · SL {sl}× of the typical move",
+          "maxDelay": "Max source delay",
+          "delayValue": "{n} min",
+          "stocksOnly": "Stocks only",
+          "cryptoOnly": "Crypto only",
+          "marketsCount": "{n, plural, one {# market} other {# markets}}",
+          "marketsAll": "All markets",
+          "marketsExcept": "All except {list}"
         }
       },
       "mainnetNotReady": "Mainnet bots are not available yet.",

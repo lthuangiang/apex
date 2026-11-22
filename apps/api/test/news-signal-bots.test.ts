@@ -184,6 +184,21 @@ describe("creating a bot from a version (flag on)", () => {
     expect((await plain.request("GET", base)).statusCode).toBe(403);
   });
 
+  it("lists the bot with the Signal research version it was copied from (#469)", async () => {
+    flag.enabled = true;
+    const bot = await createdBot(tester);
+    const list = await tester.request("GET", base);
+    expect(list.statusCode).toBe(200);
+    interface Listed {
+      items: { id: string; signalVersionId: string | null }[];
+    }
+    const items = list.json<Listed>().items;
+    expect(items.find((x) => x.id === bot.id)?.signalVersionId).toBe(baselineId);
+    await env.pool.query("update bots set signal_version_id = null where id = $1", [bot.id]);
+    const again = (await tester.request("GET", base)).json<Listed>().items;
+    expect(again.find((x) => x.id === bot.id)?.signalVersionId).toBeNull();
+  });
+
   it("markets can only narrow and Min level can only rise; size is capped at 200 USDC, leverage 1", async () => {
     flag.enabled = true;
     const narrow = {
