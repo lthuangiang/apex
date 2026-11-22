@@ -5,6 +5,7 @@ import {
   createBotBodySchema,
   dryRunChecksBodySchema,
   newVersionBodySchema,
+  newsBotVersionBodySchema,
   VOLUME_PERIODS,
   ANALYTICS_PERIODS,
 } from "@drift/shared";
@@ -17,6 +18,7 @@ import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 import {
   assertNewsBotsEnabled,
+  newNewsVersion,
   newsStartChecks,
   resumeNewsBot,
   startNewsBot,
@@ -115,6 +117,21 @@ export function registerBotRoutes(app: FastifyInstance, deps: BotDeps & NewsBotD
   app.post("/api/v1/bots/:id/versions", async (request, reply) => {
     const auth = requireAuth(request);
     const { id } = parseOrThrow(idParams, request.params);
+    // #469: bot `news_signal` có đường sửa riêng (cờ, quyền Signal Research, 2FA, chỉ thu hẹp version gốc, 5 field sửa được,
+    // `leverage_conflict`, không sửa khi đang Applying), cùng route và Idempotency-Key như mọi bot.
+    if (await isNewsBot(auth.userId, id)) {
+      assertNewsBotsEnabled(deps);
+      await researchViewer(db, auth.userId);
+      const news = parseOrThrow(newsBotVersionBodySchema, request.body);
+      return idempotent(
+        db,
+        request,
+        reply,
+        auth.userId,
+        deps.now(),
+        run(202, () => newNewsVersion(deps, auth.userId, id, news, request.ip, auth.sessionId)),
+      );
+    }
     const body = parseOrThrow(newVersionBodySchema, request.body);
     return idempotent(
       db,

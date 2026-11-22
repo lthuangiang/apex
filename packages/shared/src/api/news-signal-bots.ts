@@ -23,6 +23,41 @@ export const newsBotCreateBodySchema = z.object({
 });
 export type NewsBotCreateBody = z.infer<typeof newsBotCreateBodySchema>;
 
+/**
+ * Sửa bot thành version mới (#469, DEC-TBD-news-version-apply): config đầy đủ; chỉ 5 field sửa được (`NEWS_EDITABLE_FIELDS`),
+ * field khác phải giữ như version đang chạy. 2FA như Start.
+ */
+export const newsBotVersionBodySchema = z.object({
+  config: newsSignalConfigSchema,
+  twoFactorCode: z.string().min(6).max(11).optional(),
+});
+export type NewsBotVersionBody = z.infer<typeof newsBotVersionBodySchema>;
+
+/** Field của bot news sửa được ở Edit (#469, PM chốt): Leverage, Position size, Max open trades, Markets, Min level. */
+export const NEWS_EDITABLE_FIELDS = [
+  "leverage",
+  "sizeUsdc",
+  "maxOpenTrades",
+  "assets",
+  "minLevel",
+] as const;
+
+/**
+ * Kết quả lưu version: version mới (`pending` khi bot đang chạy / pause, engine áp rồi mới `active`; `active` ngay khi bot
+ * draft / stopped) và kiểm margin isolated theo config mới (size × Max open ÷ đòn bẩy). Thiếu margin chỉ cảnh báo, không
+ * chặn lưu. `available` null = không đọc được.
+ */
+export const newsBotVersionResultSchema = z.object({
+  version: z.number().int().positive(),
+  status: z.enum(["pending", "active"]),
+  balance: z.object({
+    ok: z.boolean(),
+    available: decimalStringSchema.nullable(),
+    needed: decimalStringSchema,
+  }),
+});
+export type NewsBotVersionResult = z.infer<typeof newsBotVersionResultSchema>;
+
 export const newsBotParamsSchema = z.object({ id: z.uuid() });
 export const newsTradeParamsSchema = z.object({ id: z.uuid(), tradeId: z.uuid() });
 
