@@ -200,6 +200,8 @@ try {
       "",
       "Live cost uses the Volume Builder tab formula of the team Signal Analysis page. Read only the direction of Δ and its interval; the fill model closer to live is more trustworthy.",
       "",
+      "Many comparisons, no correction: the report compares many variants, groups and fill models at once and the intervals are not corrected for that, so a few clear directions are expected by chance alone. Trust a direction only when it repeats across markets and both fill models. The backtest sees only 1-minute candles and no order book, which is the most likely source of its gap to live.",
+      "",
       ...calibration,
     ].join("\n"),
   );

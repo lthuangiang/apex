@@ -552,6 +552,8 @@ export function pauseMarkdown(
     "",
     "**Read only the direction of Δ and its 95% interval, not the size.** The default fill model is pessimistic (see the calibration line of each market).",
     "",
+    '**Many comparisons, no correction:** each run compares many cells at once (9 grid cells × markets × fill models in part 1, 4 differences × markets × fill models in part 2). The 95% intervals are not corrected for that, so a few "lower" or "higher" cells are expected by chance alone. Trust a direction only when it repeats across markets and both fill models.',
+    "",
   ];
   const markets = [...new Set(reports.map((r) => r.market))];
   for (const mk of markets) {
