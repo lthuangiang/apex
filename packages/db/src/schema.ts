@@ -2372,6 +2372,11 @@ export const newsSignalTrades = pgTable(
     /** `open` | `closing` | `closed`. */
     status: text("status").notNull(),
     sizeUsdc: money("size_usdc").notNull(),
+    /**
+     * Đòn bẩy isolated SoDEX đã xác nhận lúc vào lệnh (#458): mức `L` của khoá `market:L:isolated`, không suy từ config.
+     * null với lệnh ghi trước cột này.
+     */
+    leverage: smallint("leverage"),
     /** Giá trần của lệnh vào limit IOC (`newsEntryLimitPrice`). */
     entryLimitPrice: money("entry_limit_price").notNull(),
     /** Khối lượng đã khớp của lệnh vào (= khối lượng vị thế của lệnh này). */

@@ -314,6 +314,13 @@ describe("Close now and Edit TP/SL", () => {
     );
     expect(trades.items[0]?.pendingCommand?.seq).toBe(2);
     expect(trades.items[0]).toMatchObject({ tpPrice: "104.7", slPrice: "97.95", status: "open" });
+    // Lệnh ghi trước cột `leverage` (#458): null, không đoán từ config.
+    expect(trades.items[0]?.leverage).toBeNull();
+    await env.pool.query("update news_signal_trades set leverage = 20 where id = $1", [tradeId]);
+    const after = newsTradesSchema.parse(
+      (await tester.request("GET", `${base}/${bot.id}/trades`)).json(),
+    );
+    expect(after.items[0]?.leverage).toBe(20);
   });
 
   it("rejects wrong prices and trades that are not open", async () => {

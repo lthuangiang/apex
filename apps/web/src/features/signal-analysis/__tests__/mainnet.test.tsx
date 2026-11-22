@@ -149,6 +149,7 @@ function trade(over: Partial<NewsTrade> = {}): NewsTrade {
     side: "short",
     status: "open",
     sizeUsdc: "100",
+    leverage: null,
     qty: "0.47",
     entryAvgPrice: "212.4",
     tpPrice: "205.1",
