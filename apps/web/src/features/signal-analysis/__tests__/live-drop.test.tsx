@@ -206,8 +206,9 @@ const page = (since: string, items: ResearchArticle[] = []): ResearchNewArticles
 
 describe("live queue (pure)", () => {
   it("keeps at most 3 waiting, counts the rest, and puts an interrupted article back in front", () => {
+    // #474: mọi bài đều vào hàng đợi; đầy thì signal (ETH, SOL, MERGED) giữ chỗ trước bài bị loại (HYPE, KNTQ).
     let s = enqueue(EMPTY_QUEUE, [ETH, HYPE, SOL, KNTQ, MERGED]);
-    expect(s.queue.map((a) => a.id)).toEqual([ETH.id, HYPE.id, SOL.id]);
+    expect(s.queue.map((a) => a.id)).toEqual([ETH.id, SOL.id, MERGED.id]);
     expect(s.extra).toBe(2);
     s = advance(s);
     expect(s.current?.id).toBe(ETH.id);
@@ -216,13 +217,34 @@ describe("live queue (pure)", () => {
     expect(advance(s)).toBe(s);
     s = interrupt(s);
     expect(s.current).toBeNull();
-    expect(s.queue.map((a) => a.id)).toEqual([ETH.id, HYPE.id, SOL.id]);
-    // Quay lại sau khi lỡ 5 bài: giữ 3 bài mới nhất, 2 bài cũ chỉ đếm.
+    expect(s.queue.map((a) => a.id)).toEqual([ETH.id, SOL.id, MERGED.id]);
+    // Quay lại sau khi lỡ 5 bài: giữ 3 bài mới nhất, signal trước; phần còn lại chỉ đếm.
     const back = enqueueNewest(EMPTY_QUEUE, [ETH, HYPE, SOL, KNTQ, MERGED]);
-    expect(back.queue.map((a) => a.id)).toEqual([SOL.id, KNTQ.id, MERGED.id]);
+    expect(back.queue.map((a) => a.id)).toEqual([ETH.id, SOL.id, MERGED.id]);
     expect(back.extra).toBe(2);
     // Hết bài: xoá "+N more".
     expect(advance({ current: null, queue: [], extra: 4 }).extra).toBe(0);
+  });
+
+  it("#474: articles dropped before Score queue too; when full, signals keep their place", () => {
+    const d = (id: string): ResearchArticle => ({ ...HYPE, id });
+    // Không có signal: 3 bài sớm nhất rơi, còn lại đếm.
+    const plain = enqueue(EMPTY_QUEUE, [HYPE, KNTQ, d("d3"), d("d4")]);
+    expect(plain.queue.map((a) => a.id)).toEqual([HYPE.id, KNTQ.id, "d3"]);
+    expect(plain.extra).toBe(1);
+    // Đầy: signal tới sau vẫn giữ chỗ, bài bị loại muộn nhất nhường chỗ; thứ tự cũ → mới giữ nguyên.
+    const full = enqueue(EMPTY_QUEUE, [HYPE, KNTQ, d("d3"), ETH]);
+    expect(full.queue.map((a) => a.id)).toEqual([HYPE.id, KNTQ.id, ETH.id]);
+    expect(full.extra).toBe(1);
+    // Bài đang chờ cũng nhường chỗ cho signal mới.
+    const later = enqueue(plain, [SOL]);
+    expect(later.queue.map((a) => a.id)).toEqual([HYPE.id, KNTQ.id, SOL.id]);
+    expect(later.extra).toBe(2);
+    // Quay lại tab: bài mới nhất, signal trước.
+    const back = enqueueNewest(EMPTY_QUEUE, [ETH, HYPE, KNTQ, d("d3"), d("d4")]);
+    expect(back.queue.map((a) => a.id)).toEqual([ETH.id, "d3", "d4"]);
+    const plainBack = enqueueNewest(EMPTY_QUEUE, [HYPE, KNTQ, d("d3"), d("d4")]);
+    expect(plainBack.queue.map((a) => a.id)).toEqual([KNTQ.id, "d3", "d4"]);
   });
 });
 
@@ -269,8 +291,9 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     // Hỏi bù với trang lớn để lấy được bài mới nhất của khoảng lỡ.
     expect(newCalls()[1]).toContain("since=c1");
     expect(newCalls()[1]).toContain("limit=50");
+    // #474: 3 bài giữ chỗ là 3 signal mới nhất (SOL, MERGED, ETH); 4 bài còn lại chỉ đếm.
     expect(verdict()).toHaveTextContent(
-      "New article · step 1 · Collect… · 2 waiting · +2 more counted",
+      "New article · step 1 · Collect… · 2 waiting · +4 more counted",
     );
     // Bài rơi trước là signal cũ nhất trong 3 signal mới nhất (SOL), không phải bài cũ nhất của đợt.
     expect(state.paths.some((x) => x.includes(`/articles/${SOL.id}/trace`))).toBe(true);
@@ -351,32 +374,36 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     expect(batchLine()).toHaveTextContent("1 new article · 1 signal · 0 dropped");
   });
 
-  it("articles dropped before Score do not drop: only the NEW badge and the counts", async () => {
+  it("#474: articles dropped before Score drop too, run to their step, and keep the NEW badge", async () => {
     state.next = [page("c1"), page("c2", [HYPE, KNTQ])];
     await ready();
     const before = summaryCalls();
     await poll();
-    expect(verdict()).toHaveTextContent("Pick an article on the left");
-    expect(state.paths.some((x) => x.includes("/trace"))).toBe(false);
-    expect(token()).toBeNull();
-    expect(summaryCalls()).toBeGreaterThan(before);
+    expect(verdict()).toHaveTextContent("New article · step 1 · Collect… · 1 waiting");
     expect(batchLine()).toHaveTextContent("2 new articles · 0 signals · 2 dropped");
+    await untilIdle();
+    expect(state.paths.filter((x) => x.includes("/trace"))).toEqual([
+      expect.stringContaining(`/articles/${HYPE.id}/trace`),
+      expect.stringContaining(`/articles/${KNTQ.id}/trace`),
+    ]);
+    expect(summaryCalls()).toBeGreaterThan(before);
     for (const title of [/Hyperliquid: six whales/, /Bithumb will list/]) {
       const card = within(funnel()).getByRole("button", { name: title });
       expect(within(card).getByText("NEW")).toBeInTheDocument();
     }
   });
 
-  it("a mixed batch: only the signal drops; the summary counts all three", async () => {
+  it("#474: a mixed batch: all three drop in order; the summary counts all three", async () => {
     state.next = [page("c1"), page("c2", [HYPE, SOL, KNTQ])];
     await ready();
     await poll();
-    expect(verdict()).toHaveTextContent("New article · step 1 · Collect…");
-    expect(verdict()).not.toHaveTextContent("waiting");
+    expect(verdict()).toHaveTextContent("New article · step 1 · Collect… · 2 waiting");
     expect(batchLine()).toHaveTextContent("3 new articles · 1 signal · 2 dropped");
     await untilIdle();
     expect(state.paths.filter((x) => x.includes("/trace"))).toEqual([
+      expect.stringContaining(`/articles/${HYPE.id}/trace`),
       expect.stringContaining(`/articles/${SOL.id}/trace`),
+      expect.stringContaining(`/articles/${KNTQ.id}/trace`),
     ]);
   });
 
@@ -459,7 +486,7 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     expect(traces()).toHaveLength(n);
   });
 
-  it("queues at most 3 signals and counts the rest as +N more", async () => {
+  it("#474: a full queue keeps 3 articles, signals first, and counts the rest as +N more", async () => {
     state.next = [
       page("c1"),
       page("c2", [ETH, HYPE, SOL, KNTQ, MERGED, sig("art-s1"), sig("art-s2")]),
@@ -467,8 +494,15 @@ describe("Signal research · live new article", { timeout: 30_000 }, () => {
     await ready();
     await poll();
     expect(verdict()).toHaveTextContent(
-      "New article · step 1 · Collect… · 2 waiting · +2 more counted",
+      "New article · step 1 · Collect… · 2 waiting · +4 more counted",
     );
+    await untilIdle();
+    // Bài bị loại (HYPE, KNTQ) nhường chỗ cho signal: chỉ ETH, SOL, MERGED rơi.
+    expect(state.paths.filter((x) => x.includes("/trace"))).toEqual([
+      expect.stringContaining(`/articles/${ETH.id}/trace`),
+      expect.stringContaining(`/articles/${SOL.id}/trace`),
+      expect.stringContaining(`/articles/${MERGED.id}/trace`),
+    ]);
   });
 
   it("never interrupts a trace: new articles wait in “N new articles · play”", async () => {
