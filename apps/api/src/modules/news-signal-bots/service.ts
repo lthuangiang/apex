@@ -416,7 +416,7 @@ export async function newNewsVersion(
   const saved = await saveVersion(
     deps,
     botId,
-    config as unknown as Record<string, unknown>,
+    config,
     { paramSource: "manual" },
     async (tx, row) => {
       // Dưới khoá dòng bot: trạng thái đọc lại, và version đang chờ áp (Applying) thì không sửa tiếp.
@@ -444,7 +444,7 @@ export async function newNewsVersion(
       : await newsMarginCheck(
           deps,
           getAddress(a.address),
-          config as unknown as Record<string, unknown>,
+          config,
         );
   return {
     version: saved.version,

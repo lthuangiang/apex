@@ -606,7 +606,13 @@ describe("Edit: save as a new version (#469)", () => {
     const bad = async (over: Record<string, unknown>, field: string) => {
       const res = await edit(tester, bot.id, { config: { ...base, ...over } });
       expect(res.statusCode, field).toBe(400);
-      expect(Object.keys(errOf(res).details?.fieldErrors ?? {}), field).toContain(field);
+      const details = errOf(res).details as { fieldErrors?: Record<string, string[]> };
+      expect(details.fieldErrors?.[field], field).toEqual([expect.any(String)]);
+      return details.fieldErrors?.[field];
+    };
+    // Field khoá: `fieldErrors.{field}` = ["locked"] (400 VALIDATION_FAILED, C6).
+    const locked = async (over: Record<string, unknown>, field: string) => {
+      expect(await bad(over, field), field).toEqual(["locked"]);
     };
     await bad(
       { assets: { ...narrow.assets, markets: ["SOL-USD", "ETH-USD", "BTC-USD"] } },
@@ -615,13 +621,13 @@ describe("Edit: save as a new version (#469)", () => {
     await bad({ minLevel: "low" }, "minLevel");
     await bad({ sizeUsdc: "200.01" }, "config.sizeUsdc");
     await bad({ leverage: 3 }, "config.leverage");
-    await bad({ tpMultiple: "9" }, "tpMultiple");
-    await bad({ slMultiple: "0.1" }, "slMultiple");
-    await bad({ onOppositeNews: "close" }, "onOppositeNews");
-    await bad({ maxNewTradesPerDay: 3 }, "maxNewTradesPerDay");
-    await bad({ maxSourceDelayMinutes: 5 }, "maxSourceDelayMinutes");
-    await bad({ minTpCostMultiple: "5" }, "minTpCostMultiple");
-    await bad({ news: {} }, "news");
+    await locked({ tpMultiple: "9" }, "tpMultiple");
+    await locked({ slMultiple: "0.1" }, "slMultiple");
+    await locked({ onOppositeNews: "close" }, "onOppositeNews");
+    await locked({ maxNewTradesPerDay: 3 }, "maxNewTradesPerDay");
+    await locked({ maxSourceDelayMinutes: 5 }, "maxSourceDelayMinutes");
+    await locked({ minTpCostMultiple: "5" }, "minTpCostMultiple");
+    await locked({ news: {} }, "news");
     expect(await versions(bot.id)).toEqual([[1, "active"]]);
     const ok = await edit(tester, bot.id, {
       config: {
