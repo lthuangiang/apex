@@ -722,11 +722,41 @@ describe("unknown slots and deterministic ids", () => {
     );
   });
 
-  it("does not apply a new version while a trade is open", () => {
-    const o = opened();
-    expect(newsSignal.applyVersion?.(cfg(), o.state, ctx)).toBeNull();
+  it("applies a new version while a trade is open and keeps the state as is (#469)", () => {
+    const o = opened(cfg({ leverage: 10 }));
+    expect(newsSignal.applyVersion?.(cfg({ leverage: 5 }), o.state, ctx)).toBe(o.state);
     const empty = initialNewsSignalState();
     expect(newsSignal.applyVersion?.(cfg(), empty, ctx)).toBe(empty);
+  });
+
+  it("keeps the open trade's TP, SL, max hold and leverage; later signals use the new config (#469)", () => {
+    const v1 = cfg({ leverage: 10, sizeUsdc: "200" });
+    const v2 = cfg({ leverage: 5, sizeUsdc: "100", tpMultiple: "3", slMultiple: "0.5" });
+    const o = opened(v1);
+    expect(o.trade.leverage).toBe(10);
+    const applied = newsSignal.applyVersion?.(v2, o.state, ctx);
+    if (applied === null || applied === undefined) throw new Error("not applied");
+    const kept = trade(applied, o.signal.id);
+    expect(kept).toEqual(o.trade);
+    // Ack TP / SL dưới v2: không gửi lại, không huỷ gì.
+    const tpId = o.trade.tp?.id ?? "";
+    const slId = o.trade.sl?.id ?? "";
+    const acked = run(v2, applied, [ack(tpId), ack(slId)]);
+    expect(places(acked.actions)).toEqual([]);
+    expect(cancels(acked.actions)).toEqual([]);
+    // Max hold vẫn theo lúc vào, đóng cả khối lượng của lệnh cũ (không theo size mới).
+    const hold = run(v2, acked.state, [{ type: "timer", at: o.trade.maxHoldUntil }]);
+    const close = places(hold.actions).find((p) => p.reduceOnly && p.type === "market");
+    expect(close?.quantity).toBe("1.99");
+    // Tín hiệu sau ở market khác: size, đòn bẩy, TP / SL của v2.
+    const eth = sig({ market: "ETH-USD", storyKey: "ETH-USD|listing" });
+    const next = run(v2, acked.state, [{ ...signalEv(eth), book: { bid: "100", ask: "100.1" } }]);
+    const fresh = trade(next.state, eth.id);
+    expect(fresh.leverage).toBe(5);
+    expect(fresh.sizeUsdc).toBe("100");
+    expect(fresh.tpPct).toBe("9");
+    expect(fresh.slPct).toBe("1.5");
+    expect(trade(next.state, o.signal.id)).toEqual(o.trade);
   });
 });
 

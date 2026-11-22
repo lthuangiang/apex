@@ -107,6 +107,8 @@ export interface NewsTrade {
   /** `entering`: lệnh vào đang chạy; `open`; `closing`: lệnh đóng đang chạy; `closed`. */
   status: "entering" | "open" | "closing" | "closed";
   sizeUsdc: string;
+  /** Đòn bẩy của version lúc vào lệnh (#469): lệnh giữ mức này kể cả khi bot áp version mới. State cũ không có. */
+  leverage?: number;
   entryId: string;
   entryAttempt: number;
   entryLimit: string;
@@ -454,6 +456,7 @@ function onSignal(
     side: sig.side,
     status: "entering",
     sizeUsdc: size.toString(),
+    leverage: c.leverage,
     entryId,
     entryAttempt: 0,
     entryLimit: limit.toString(),
@@ -1199,11 +1202,10 @@ export const newsTrades = (s: NewsSignalState): NewsTrade[] => Object.values(s.t
 export const newsSignal: StrategyModule<NewsSignalConfig, NewsSignalState> = {
   initialState: () => initialNewsSignalState(),
   step: stepNewsSignal,
-  // Sửa bot (Markets / Min level / size…) chỉ áp khi không còn lệnh nào: lệnh đang mở giữ TP/SL của version cũ.
-  applyVersion: (_c, s) =>
-    Object.values(s.trades).some((t) => t.status !== "closed") || Object.keys(s.orders).length > 0
-      ? null
-      : s,
+  // Sửa bot (#469, DEC-TBD-news-version-apply): áp ngay, kể cả khi còn lệnh mở. State mang nguyên (trades, orders,
+  // ledgers…): lệnh đang mở giữ TP / SL, max hold và đòn bẩy lúc vào (đều lưu theo từng trade); config mới chỉ đọc ở
+  // `onSignal`, nên chỉ áp cho tín hiệu đến sau. Engine không huỷ lệnh nào của bot news khi áp.
+  applyVersion: (_c, s) => s,
   awaitsEnd: (s, id) => s.orders[id] !== undefined,
   keepOnStop: (s) =>
     Object.values(s.trades).flatMap((t) =>
