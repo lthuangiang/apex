@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mainnet Bot Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+/* Mockup: bot news_signal Mainnet có nút Settings (xem cấu hình) và Edit (lưu thành version mới). Token theo packages/ui. */
+:root{
+  --bg:#eef1fa; --surface:#fff; --surface-2:#f5f7fd; --ink:#141a33; --ink-2:#3b4262; --muted:#5f6684; --border:#e3e7f5; --input:#d5dbef;
+  --accent:#2e62e8; --accent-ink:#1d47b8; --accent-tint:#e6ecfe;
+  --pos:#0f7a43; --pos-bg:#ddf4e7; --pos-border:#a9dcbf; --neg:#c2312f; --neg-soft:#fff4f2; --neg-border:#f6d3cd;
+  --warn:#7a3e00; --warn-bg:#fdebd3; --warn-border:#f0c27e; --note:#5a2ca0; --note-bg:#f0e6ff;
+  --f:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif; color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--f)}
+.wrap{max-width:1200px;margin:0 auto;padding:28px 16px 64px;display:grid;gap:20px}
+h1{margin:0;font-size:24px;font-weight:800}
+.lede{margin:4px 0 0;color:var(--ink-2);max-width:100ch}
+.note{border:2px dashed var(--note);background:var(--note-bg);color:var(--note);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600}
+.cap{font-size:12px;font-weight:800;color:var(--accent-ink);text-transform:uppercase;letter-spacing:.05em}
+.fr{display:grid;gap:8px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:18px 20px}
+.strip{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;border:1px solid var(--border);border-left:4px solid var(--neg);border-radius:14px;padding:10px 14px;background:var(--surface-2)}
+.strip b{font-size:16px}
+.chip{font-size:12.5px;font-weight:800;padding:3px 10px;border-radius:99px;white-space:nowrap}
+.chip.main{background:var(--neg-soft);color:var(--neg)} .chip.run{background:var(--pos-bg);color:var(--pos)} .chip.pend{background:var(--warn-bg);color:var(--warn)}
+.btn{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:14px;padding:9px 16px;border-radius:12px;border:1px solid var(--border);background:#fff;white-space:nowrap}
+.btn.stop{border-color:var(--neg);color:var(--neg)} .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff} .btn.ghost{border-color:var(--accent);color:var(--accent-ink)}
+.new{outline:3px solid #7f9ff0;outline-offset:3px;border-radius:12px}
+.tag{font-size:11px;font-weight:800;padding:1px 8px;border-radius:99px;background:var(--accent);color:#fff;margin-left:6px;vertical-align:2px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,540px),1fr));gap:16px;align-items:start}
+.sheet h2{margin:0;font-size:21px;font-weight:800;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sheet .sub{color:var(--ink-2);margin:2px 0 14px;font-size:13.5px}
+fieldset{border:1px solid var(--border);border-radius:14px;padding:12px 14px 14px;margin:0 0 12px}
+legend{font-weight:800;font-size:15px;padding:0 6px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 18px}
+.kv .k{font-size:12.5px;color:var(--muted);font-weight:700}
+.kv .v{font-weight:800}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:8px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.inp{border:1px solid var(--input);border-radius:10px;padding:7px 10px;background:#fff;display:inline-flex;justify-content:space-between;gap:10px;min-width:84px}
+.inp.ch{border:2px solid var(--accent)}
+.box{width:18px;height:18px;border-radius:5px;display:inline-block;vertical-align:middle;border:2px solid var(--input)}
+.box.on{background:var(--accent);border-color:var(--accent)}
+.box.dis{opacity:.45}
+.seg{display:inline-flex;gap:4px;padding:4px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border)}
+.seg span{padding:6px 12px;border-radius:9px;font-weight:700;color:var(--ink-2)} .seg .on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(20,26,51,.12)}
+.help{font-size:12.5px;color:var(--muted);margin-top:4px}
+.warnb{border-radius:12px;background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn);padding:10px 14px;font-size:13.5px;margin-bottom:12px}
+.diff{border-radius:12px;background:var(--accent-tint);padding:10px 14px;font-size:13.5px;margin-bottom:12px}
+.diff ul{margin:6px 0 0;padding-left:18px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end}
+.tw{overflow-x:auto}
+.dec td:first-child{white-space:nowrap;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Bot Mainnet · Settings (xem) và Edit (sửa)</h1>
+    <p class="lede">Thêm nút <b>Settings</b> trên thanh bot ở chế độ Mainnet: mở bảng xem toàn bộ cấu hình. Trong bảng có <b>Edit</b>: sửa xong lưu thành version mới của bot (v2, v3…), áp cho tín hiệu sau. Lệnh đang mở giữ nguyên TP / SL, đòn bẩy và max hold lúc vào; muốn đổi lệnh đang mở thì dùng Edit TP/SL trên Mainnet trades như hiện nay.</p>
+  </header>
+  <div class="note">Phần mới đánh khung xanh. Câu chữ trên app vẫn tiếng Anh. Quy tắc giới hạn giống lúc tạo bot: Markets chỉ thu hẹp từ version gốc, Min level chỉ nâng, size ≤ 200 USDC, đòn bẩy 1 / 5 / 10 / 20×.</div>
+
+  <section class="fr">
+    <span class="cap">Khung 1 · Thanh bot: thêm nút Settings</span>
+    <div class="card">
+      <div class="strip">
+        <b>Stock Monitor</b><span class="chip main">Mainnet</span><span class="chip run">● Running</span>
+        <span class="mono">••1622</span><span>Result after fees <span style="color:var(--muted)">Not available</span></span><span>0 open</span>
+        <span style="flex:1"></span>
+        <span class="btn ghost new">Settings</span><span class="btn">Pause</span><span class="btn stop">Stop…</span>
+      </div>
+      <p class="help" style="margin-top:10px">Dòng tóm tắt "Size 50 USDC · leverage 10× · max 2 open · no daily limit" giữ nguyên bên dưới.</p>
+    </div>
+  </section>
+
+  <div class="two">
+    <section class="fr">
+      <span class="cap">Khung 2 · Settings (chỉ xem)</span>
+      <div class="card sheet">
+        <h2>Stock Monitor <span class="chip main">Mainnet</span> <span class="chip" style="background:var(--surface-2);color:var(--ink-2)">v1 · since Nov 22, 20:41</span></h2>
+        <p class="sub">Copied from version “Majors only (v5)”. The version keeps running on paper.</p>
+        <fieldset><legend>Bot</legend>
+          <div class="kv">
+            <div><div class="k">SoDEX account</div><div class="v mono">••1622</div></div>
+            <div><div class="k">Leverage</div><div class="v">10×, isolated</div></div>
+            <div><div class="k">Position size per trade</div><div class="v">50 USDC</div></div>
+            <div><div class="k">Margin per trade</div><div class="v">5 USDC</div></div>
+            <div><div class="k">Max open trades</div><div class="v">2</div></div>
+            <div><div class="k">Max new trades a day</div><div class="v">No limit</div></div>
+          </div>
+        </fieldset>
+        <fieldset><legend>Signals</legend>
+          <div class="kv">
+            <div><div class="k">Markets</div><div class="v">Stocks only · 12 markets</div></div>
+            <div><div class="k">Min level</div><div class="v">Medium</div></div>
+            <div><div class="k">TP / SL</div><div class="v">TP 1.5× · SL 1.0× of the typical move</div></div>
+            <div><div class="k">Max source delay</div><div class="v">10 min</div></div>
+          </div>
+        </fieldset>
+        <fieldset><legend>News types</legend>
+          <div class="tw"><table>
+            <thead><tr><th>Trade it</th><th>News type</th><th>Direction</th><th>Max hold</th></tr></thead>
+            <tbody>
+              <tr><td><span class="box on"></span></td><td>Earnings beat</td><td>Long</td><td>1 d</td></tr>
+              <tr><td><span class="box on"></span></td><td>Listing</td><td>Long</td><td>1 d</td></tr>
+              <tr><td><span class="box"></span></td><td>Hack</td><td>Short</td><td>1 d</td></tr>
+            </tbody>
+          </table></div>
+        </fieldset>
+        <div class="row"><span class="btn">Close</span><span class="btn pri new">Edit</span></div>
+      </div>
+    </section>
+
+    <section class="fr">
+      <span class="cap">Khung 3 · Edit (lưu thành v2)</span>
+      <div class="card sheet">
+        <h2>Edit Stock Monitor <span class="chip main">Mainnet</span></h2>
+        <p class="sub">Saved as v2. New signals use v2; open trades keep the settings they opened with.</p>
+        <div class="warnb">1 trade is open on AAPL-USD at 10×. It keeps its TP, SL, max hold and leverage. Change them with <b>Edit TP/SL</b> in Mainnet trades.</div>
+        <fieldset><legend>Bot</legend>
+          <div class="kv">
+            <div><div class="k">Leverage</div><div class="seg"><span>1×</span><span class="on">5×</span><span>10×</span><span>20×</span></div></div>
+            <div><div class="k">Position size per trade</div><span class="inp ch">40 <span style="color:var(--muted)">USDC</span></span><div class="help">Up to 200 USDC, whatever the leverage.</div></div>
+            <div><div class="k">Max open trades</div><span class="inp">2 ⌄</span></div>
+          </div>
+        </fieldset>
+        <fieldset><legend>Signals</legend>
+          <div class="kv">
+            <div><div class="k">Markets</div><span class="inp">Stocks only · 12 ⌄</span><div class="help">Can only narrow the version’s markets.</div></div>
+            <div><div class="k">Min level</div><span class="inp ch">High ⌄</span><div class="help">Can only be raised from the version.</div></div>
+          </div>
+        </fieldset>
+        <div class="diff"><b>Changes in v2</b><ul><li>Leverage 10× → 5×</li><li>Position size 50 → 40 USDC</li><li>Min level Medium → High</li></ul></div>
+        <div class="row"><span class="btn">Cancel</span><span class="btn pri">Save as v2</span></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="fr">
+    <span class="cap">Khung 4 · Sau khi lưu (trạng thái lấy từ backend)</span>
+    <div class="card">
+      <div class="strip" style="margin-bottom:12px">
+        <b>Stock Monitor</b><span class="chip main">Mainnet</span><span class="chip run">● Running</span><span class="chip pend">Applying v2…</span>
+        <span style="flex:1"></span><span class="btn ghost">Settings</span><span class="btn">Pause</span><span class="btn stop">Stop…</span>
+      </div>
+      <div class="tw"><table class="dec">
+        <thead><tr><th>Time</th><th>Decision</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>21:05:12</td><td><b>Applied v2</b></td><td>New signals use v2. 1 open trade keeps the settings it opened with.</td></tr>
+        </tbody>
+      </table></div>
+      <p class="help">Settings mở lại sẽ hiện "v2 · since 21:05". Lịch sử version (v1, v2…) xem được trong Settings › Versions.</p>
+    </div>
+  </section>
+
+  <section class="fr">
+    <span class="cap">Khung 5 · Quy tắc (để duyệt)</span>
+    <div class="card tw">
+      <table>
+        <thead><tr><th>Điểm</th><th>Quy tắc</th></tr></thead>
+        <tbody>
+          <tr><td>Khi nào sửa được</td><td>Mọi trạng thái trừ đang chuyển (Starting / Pausing / Stopping / Applying). Bot đang chạy áp ngay ở tín hiệu kế tiếp; bot pause / stopped áp khi Resume / Start.</td></tr>
+          <tr><td>Lệnh đang mở</td><td>Giữ TP / SL, max hold, đòn bẩy lúc vào (đòn bẩy đã lưu theo từng lệnh, #465). Không tự đổi.</td></tr>
+          <tr><td>Đổi đòn bẩy khi market đang có lệnh mở</td><td>Lệnh mới ở market đó chỉ mở sau khi lệnh cũ đóng (một lệnh mỗi account × market), lúc đó engine đặt mức mới. Không đổi đòn bẩy trên vị thế đang mở (DEC-58).</td></tr>
+          <tr><td>Giới hạn</td><td>Như lúc tạo: Markets chỉ thu hẹp từ version gốc, Min level chỉ nâng, size ≤ 200, đòn bẩy 1 / 5 / 10 / 20×. Đổi version gốc thì không được (tạo bot mới).</td></tr>
+          <tr><td>Xác nhận</td><td>2FA như Start; Idempotency-Key; trạng thái "Applying v2…" tới khi engine xác nhận.</td></tr>
+          <tr><td>Start check</td><td>Lưu xong, margin cần (size × Max open ÷ đòn bẩy) kiểm lại; thiếu thì vẫn lưu nhưng hiện cảnh báo như hộp Start.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="note">Câu chữ mới (chờ duyệt cùng mockup): "Settings" · "v{n} · since {time}" · "Copied from version “{name}”. The version keeps running on paper." · "Edit {name}" · "Saved as v{n}. New signals use v{n}; open trades keep the settings they opened with." · "{n} trade is open on {market} at {lev}×. It keeps its TP, SL, max hold and leverage. Change them with Edit TP/SL in Mainnet trades." · "Changes in v{n}" · "Save as v{n}" · "Applying v{n}…" · Decisions "Applied v{n}" · "New signals use v{n}. {k} open trade keeps the settings it opened with."</p>
+</div>
+</body>
+</html>
