@@ -11,6 +11,7 @@ import { z } from "zod";
 import { guardIdleKill, IDLE_KILL_MESSAGE, isIdleKill } from "../replay/abort";
 import { checkRange, loadStudy, MAX_RANGE_DAYS, StudyLimitError } from "../vb-counter-trend/load";
 
+import { liveTrades, loadLiveVbFills, type LiveVbFill } from "./live";
 import { MEDIAN_WINDOW, pauseMarkdown, runPauseStudy } from "./study";
 
 // CLI nghiên cứu "tạm dừng khi biến động vọt lên" của Volume Builder (#363, việc 1). Chỉ đọc, cùng mức an toàn với công cụ
@@ -18,6 +19,8 @@ import { MEDIAN_WINDOW, pauseMarkdown, runPauseStudy } from "./study";
 // gọi SoDEX, không đặt lệnh, không ghi DB; mô phỏng chạy sau khi transaction đóng. Markdown ra stdout. Ví dụ:
 //   pnpm --filter @drift/backtest exec tsx src/vb-vol-pause/cli.ts --from 2026-11-07 --to 2026-11-21 > vb-vol-pause.md
 // Tuỳ chọn: --markets SOL-USD (thêm market), --config bots|default (mặc định bots).
+// Báo cáo có thêm dòng hiệu chỉnh: baseline backtest so với cost thật của bot Volume Builder tiền thật cùng market, cùng kỳ
+// (đọc `fills` / `orders`, công thức tab Volume Builder của Signal Analysis; xem `live.ts`).
 
 const QUERY_TIMEOUT_MS = 30_000;
 const IDLE_TIMEOUT_MS = 120_000;
@@ -87,8 +90,22 @@ try {
       idleTimeoutMs: IDLE_TIMEOUT_MS,
       deadlineMs: DEADLINE_MS,
     },
-    (q, checkDeadline) =>
-      loadStudy(q, { from, to, now: startedAt, extra, configFrom, checkDeadline }),
+    async (q, checkDeadline) => {
+      const study = await loadStudy(q, {
+        from,
+        to,
+        now: startedAt,
+        extra,
+        configFrom,
+        checkDeadline,
+      });
+      const live = new Map<string, LiveVbFill[]>();
+      for (const m of study.markets) {
+        checkDeadline();
+        live.set(m.market, await loadLiveVbFills(q, { market: m.market, from, to }));
+      }
+      return { ...study, live };
+    },
   ).catch((error: unknown) => {
     if (error instanceof StudyLimitError || error instanceof DeadlineExceededError)
       fail(error.message);
@@ -106,11 +123,12 @@ try {
     builder: feeRateToFraction(builderFeeRateFor(Strategy.volumeFarm)).toString(),
   };
   const range = { from: from.getTime(), to: to.getTime() };
-  const reports = loaded.markets.map((m) =>
-    runPauseStudy(m, fees, range, (what) => {
+  const reports = loaded.markets.map((m) => ({
+    ...runPauseStudy(m, fees, range, (what) => {
       process.stderr.write(`vb-vol-pause: ${what}\n`);
     }),
-  );
+    live: liveTrades(loaded.live.get(m.market) ?? []),
+  }));
   process.stdout.write(
     pauseMarkdown(reports, {
       source: "stored candles_1m (read-only)",
@@ -124,6 +142,8 @@ try {
         "Cost / $1M = −Σ result after fees ÷ Σ volume (both legs) × 1M, as on the team page: positive = cost, negative = profit. Volume / day and result / day divide by the days with ≥ 90% of minutes; trades on other days are left out.",
         "95% intervals: paired block bootstrap by UTC day (2,000 resamples, fixed seed); Δ = cell − baseline on the same resampled days. With few days the intervals are narrower than the truth.",
         `Fees: SoDEX perps base maker ${SODEX_BASE_FEE_PCT.perps.maker}% / taker ${SODEX_BASE_FEE_PCT.perps.taker}% + builder ${dec(fees.builder).mul(100).toFixed()}% per side; market-order slippage 0.05%; no funding. Candle-only signal (no historical order book).`,
+        "Calibration: live cost uses the Volume Builder tab formula of the team Signal Analysis page (closed trades of live volume_farm bots on the market, both-leg volume, result = price P&L − all fill fees, real fees from fills). Fees / $1M + price part / $1M = cost / $1M. The backtest decides on candles and its fill model is pessimistic, so when the gap is large only Δ cost vs baseline should be read.",
+        "Possible causes of a gap (defaults are NOT changed by this tool): (1) assumed 0.05% slippage on every market order (stop loss and taker legs), i.e. 500 USDC / $1M on that leg; (2) maker / taker mix: a backtest limit order only fills when price trades through it, so it fills maker less often than live, which falls back to taker; (3) fills on 1-minute candles: no queue, no intra-minute path, exits at candle prices; (4) fee rate: base SoDEX rates here vs the real rate on each fill; (5) live bots may have run on fewer days, other sizes or other configs than the backtest config. Compare the fees and price-part columns: a fee gap points at (2) or (4), a price-part gap at (1) or (3). An easy step closer to live would be to set the slippage to the live taker slippage and the fee rate to the live average, but that is a separate decision.",
         `Range limit ${String(MAX_RANGE_DAYS)} days per run.`,
       ],
     }),

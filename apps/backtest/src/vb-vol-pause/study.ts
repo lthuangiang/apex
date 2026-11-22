@@ -2,6 +2,7 @@ import { Decimal } from "@drift/shared";
 import {
   runBacktest,
   volumeFarm,
+  type BacktestFill,
   type Candle,
   type FeeSchedule,
   type StepResult,
@@ -14,9 +15,10 @@ import {
   bookTrade,
   gapsOf,
   STUDY_SLIPPAGE,
-  type SimFill,
   type StudyMarketInput,
 } from "../vb-counter-trend/study";
+
+import { costSplit, largeGap, type CostSplit, type CostTrade } from "./live";
 
 // Nghiên cứu quy tắc "tạm dừng khi biến động vọt lên" của Volume Builder (#363, việc 1). Hàm thuần, chỉ đọc dữ liệu đã nạp:
 // chạy ĐÚNG code chiến lược `volumeFarm` qua engine backtest (`runBacktest`, như #282) trên nến 1 phút đã lưu. Quy tắc KHÔNG
@@ -77,6 +79,10 @@ export interface PauseTrade {
   volume: Decimal;
   net: Decimal;
   netBp: Decimal;
+  /** Phí (SoDEX + builder) của lượt; kết quả giá trước phí = net + fees. Dùng cho dòng hiệu chỉnh với bot thật. */
+  fees: Decimal;
+  /** Phần volume (USDC) khớp maker: lệnh vào maker + lần đóng đầu nếu maker. */
+  makerVolume: Decimal;
   stopLoss: boolean;
 }
 
@@ -128,7 +134,7 @@ export function simulatePause(
     snapshotCandles: 120,
   });
   const gaps = gapsOf(m.candles);
-  const byCycle = new Map<number, SimFill[]>();
+  const byCycle = new Map<number, BacktestFill[]>();
   for (const f of out.fills) {
     const x = TAG.exec(f.tag);
     if (x === null) continue;
@@ -157,6 +163,11 @@ export function simulatePause(
       volume: b.entryNotional.add(b.exitNotional),
       net,
       netBp: net.div(b.entryNotional).mul(10_000),
+      fees: b.fees,
+      makerVolume: fills
+        .filter((f) => TAG.exec(f.tag)?.[2] === "in" && f.maker)
+        .reduce((s, f) => s.add(new Decimal(f.price).mul(f.quantity)), new Decimal(0))
+        .add(firstExit?.maker === true ? b.exitNotional : 0),
       stopLoss: kind === "sl" || kind === "xsl",
     });
   }
@@ -321,6 +332,10 @@ export interface MarketPauseReport {
   configSource: string;
   days: number[];
   rows: CellRow[];
+  /** Lượt baseline trong ngày đủ dữ liệu (cho dòng hiệu chỉnh). */
+  baseTrades: PauseTrade[];
+  /** Lượt đã đóng của bot Volume Builder tiền thật cùng market, cùng kỳ; null = không đọc. */
+  live: CostTrade[] | null;
 }
 
 /** Baseline (không quy tắc) + lưới k × m, chỉ tính lượt vào trong ngày đủ dữ liệu. */
@@ -361,13 +376,55 @@ export function runPauseStudy(
         ),
       );
     }
-  return { market: m.market, configSource: m.configSource, days, rows };
+  return { market: m.market, configSource: m.configSource, days, rows, baseTrades, live: null };
 }
 
 const f0 = (v: number | null) => (v === null ? "n/a" : Math.round(v).toLocaleString("en-US"));
 const f2 = (v: number | null) => (v === null ? "n/a" : v.toFixed(2));
 const ci0 = (c: Ci) => `${f0(c.v)} [${f0(c.lo)}, ${f0(c.hi)}]`;
 const ci2 = (c: Ci) => `${f2(c.v)} [${f2(c.lo)}, ${f2(c.hi)}]`;
+
+const fm = (v: Decimal | null) => (v === null ? "Not available" : f0(v.toNumber()));
+
+/**
+ * Dòng hiệu chỉnh: baseline backtest so với bot thật cùng kỳ (cả kỳ, và chỉ những ngày bot thật có lượt đóng), tách phí /
+ * phần giá / tỷ lệ maker. Không có lượt thật → "Not available".
+ */
+export function calibrationLines(r: MarketPauseReport): string[] {
+  const live = r.live === null ? null : costSplit(r.live);
+  const liveDays = new Set((r.live ?? []).map((t) => dayKey(t.at)));
+  const sameDays = r.baseTrades.filter((t) => liveDays.has(dayKey(t.at)));
+  const row = (label: string, c: CostSplit | null) =>
+    `| ${label} | ${c === null ? "Not available" : String(c.trades)} | ${fm(c?.costPerM ?? null)} | ${fm(c?.feesPerM ?? null)} | ${fm(c?.pricePerM ?? null)} | ${c?.makerPct == null ? "Not available" : `${c.makerPct.toFixed(0)}%`} |`;
+  const bt = costSplit(r.baseTrades);
+  const btSame = liveDays.size === 0 ? null : costSplit(sameDays);
+  const out = [
+    `### Calibration vs live Volume Builder bots (${r.market})`,
+    "",
+    "| Source | Trades | Cost / $1M | Fees / $1M | Price part / $1M | Maker share of volume |",
+    "|---|---:|---:|---:|---:|---:|",
+    row("Backtest baseline, all covered days", bt),
+    row(
+      `Backtest baseline, days with live trades (${String(liveDays.size)})`,
+      btSame !== null && btSame.trades > 0 ? btSame : null,
+    ),
+    row(
+      "Live bots (fills, Signal Analysis formula)",
+      live !== null && live.trades > 0 ? live : null,
+    ),
+    "",
+  ];
+  const ref = btSame !== null && btSame.trades > 0 ? btSame.costPerM : bt.costPerM;
+  if (live === null || live.trades === 0)
+    out.push("Live cost: Not available (no closed live trades in this range).");
+  else if (largeGap(ref, live.costPerM))
+    out.push(
+      `**Large gap:** backtest ${fm(ref)} vs live ${fm(live.costPerM)} USDC / $1M. Absolute backtest costs are not reliable here; read Δ cost vs baseline (same model on both sides) instead.`,
+    );
+  else
+    out.push(`Backtest ${fm(ref)} vs live ${fm(live.costPerM)} USDC / $1M: within the gap limit.`);
+  return out;
+}
 
 export function pauseMarkdown(
   reports: readonly MarketPauseReport[],
@@ -393,7 +450,7 @@ export function pauseMarkdown(
       lines.push(
         `| ${x.label} | ${String(x.trades)} | ${ci0(x.stats.volPerDay)} | ${x.k === null ? "—" : ci0(x.stats.dVolPerDay)} | ${ci2(x.stats.netPerDay)} | ${ci0(x.stats.costPerM)} | ${x.k === null ? "—" : ci0(x.stats.dCostPerM)} | ${String(x.blocked)} | ${String(x.stopLosses)} |`,
       );
-    lines.push("");
+    lines.push("", ...calibrationLines(r), "");
   }
   lines.push("## Notes", "", ...meta.notes.map((n) => `- ${n}`), "");
   return lines.join("\n");
