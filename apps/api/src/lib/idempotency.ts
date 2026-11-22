@@ -83,6 +83,8 @@ export const PRE_SIDE_EFFECT_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>(
   ErrorCode.telegramLinkExpired,
   // #305: danh sách market của Signal research (Redis `sr:markets`) chưa có; ném ra lúc kiểm tài sản, trước khi lưu.
   ErrorCode.marketListUnavailable,
+  // #420: cờ `SIGNAL_NEWS_BOTS_ENABLED` tắt; kiểm trước mọi thao tác ghi.
+  ErrorCode.featureNotReady,
 ]);
 
 interface SideEffectScope {

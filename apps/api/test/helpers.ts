@@ -67,6 +67,8 @@ export async function startTestEnv(
     telegram?: AppDeps["telegram"];
     deskLlm?: DeskLlm | null;
     oauth?: AppDeps["oauth"];
+    /** #420: `SIGNAL_NEWS_BOTS_ENABLED`, đổi được giữa các test. Thiếu = tắt. */
+    newsBots?: { enabled: boolean };
   } = {},
 ): Promise<TestEnv> {
   const container = await new PostgreSqlContainer(POSTGRES_IMAGE).start();
@@ -100,6 +102,7 @@ export async function startTestEnv(
     srMarkets: () => Promise.resolve(srMarkets.value),
     srQuotes: () => Promise.resolve(srQuotes.value),
     srLane: () => Promise.resolve(srLane.value),
+    newsSignalBotsEnabled: () => options.newsBots?.enabled === true,
     rateLimiter: memoryRateLimiter(),
     rateLimits: { perIp: 1_000_000, perUser: 1_000_000, windowMs: 60_000 },
     prices: (markets) =>

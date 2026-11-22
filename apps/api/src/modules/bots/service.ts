@@ -1428,7 +1428,7 @@ async function checksFor(
   return { checks, allOk: checks.every((c) => c.ok) };
 }
 
-async function command(
+export async function command(
   deps: BotDeps,
   userId: string,
   botId: string,

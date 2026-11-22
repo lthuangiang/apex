@@ -28,3 +28,4 @@ Not financial advice. Past results are not a forecast.
 
 **Biến môi trường mới:** `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, tuỳ chọn, mặc định 10; DEPLOY mục 2.17); `SIGNAL_NEWS_PUBLISH_ENABLED` (scheduler, mặc định `false`; ghi `news_signals` và phát NATS `sr.signal.new` cho bot `news_signal` mainnet, #419 PR 4, **chưa merge**; DEPLOY mục 2.16).
 **Biến môi trường mới:** `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, tuỳ chọn, mặc định 10; DEPLOY mục 2.17); `ENGINE_CLOCK_CONCURRENCY` (engine, tuỳ chọn, 1–8, mặc định 4; DEPLOY mục 2.18).
+**Biến môi trường mới:** `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, tuỳ chọn, mặc định 10; DEPLOY mục 2.17); `SIGNAL_NEWS_BOTS_ENABLED` (api, mặc định `false`; chốt chặn bot `news_signal` mainnet: tắt thì tạo / Start / Resume trả 409 `FEATURE_NOT_READY`; #420, **chưa merge**; DEPLOY mục 2.19).

@@ -114,6 +114,8 @@ services:
       # MCP (DEC-167, DEPLOY 2.9): gốc URL của apps/mcp và secret introspect nội bộ; secret trống = MCP tắt.
       MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
       MCP_INTROSPECT_SECRET: ${MCP_INTROSPECT_SECRET:-}
+      # #420: chốt chặn bot news_signal mainnet; tắt = tạo / Start / Resume trả 409 (docs/DEPLOY.md mục 2.19).
+      SIGNAL_NEWS_BOTS_ENABLED: ${SIGNAL_NEWS_BOTS_ENABLED:-false}
     depends_on:
       <<: *app-deps
       signer: { condition: service_healthy }
