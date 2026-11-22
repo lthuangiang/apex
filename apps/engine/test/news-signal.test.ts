@@ -155,6 +155,7 @@ describe("news rows", () => {
       isUniqueViolation({ code: "23505", constraint: "other" }, NEWS_ACCOUNT_MARKET_UNIQUE),
     ).toBe(false);
     expect(isUniqueViolation(new Error("x"), NEWS_ACCOUNT_MARKET_UNIQUE)).toBe(false);
-    expect(newsLeverageKey("SOL-USD")).toBe("SOL-USD:1:isolated");
+    expect(newsLeverageKey("SOL-USD", 1)).toBe("SOL-USD:1:isolated");
+    expect(newsLeverageKey("SOL-USD", 20)).toBe("SOL-USD:20:isolated");
   });
 });

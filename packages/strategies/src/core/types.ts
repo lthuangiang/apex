@@ -19,6 +19,15 @@ export interface MarketRules {
   /** Phí maker / taker SoDEX của market (tỷ lệ thô) từ `/symbols`; không có thì dùng mức cơ bản (DEC-112). */
   makerFee?: string;
   takerFee?: string;
+  /** Perps: đòn bẩy tối đa của market (`/perps/markets/symbols`). */
+  maxLeverage?: number;
+  /** Perps: bậc ký quỹ duy trì theo notional (DEC-172), để ước tính khoảng thanh lý isolated (#458). */
+  marginTiers?: readonly {
+    maxNotionalValue: string;
+    maintenanceMarginRate: string;
+    maxLeverage: number;
+    maintenanceDeduction: string;
+  }[];
 }
 
 export interface OrderIntent {

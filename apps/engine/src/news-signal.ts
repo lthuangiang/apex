@@ -1,5 +1,10 @@
 import type { NewsSignalRow, newsSignalTrades } from "@drift/db";
-import { dec, NEWS_SIGNAL_LIVE_MAX_USDC, NewsEntryBlock } from "@drift/shared";
+import {
+  dec,
+  NEWS_SIGNAL_LEVERAGES,
+  NEWS_SIGNAL_LIVE_MAX_USDC,
+  NewsEntryBlock,
+} from "@drift/shared";
 import type { NewsSignalInput, NewsSignalState, NewsTrade, OrderIntent } from "@drift/strategies";
 
 // Phần thuần của engine cho bot `news_signal` mainnet (#419 engine A, DEC-360). Không I/O: engine.ts gọi các hàm này
@@ -7,12 +12,18 @@ import type { NewsSignalInput, NewsSignalState, NewsTrade, OrderIntent } from "@
 
 /** Sổ lệnh dùng để tính giá trần lệnh vào chỉ được cũ tối đa ngần này (PM review #435 điểm 8: đọc book mới nhất). */
 export const NEWS_BOOK_MAX_AGE_MS = 1_000;
-/** Đòn bẩy và margin mode cố định của bot mainnet (DEC-360 mục 6; isolated theo PM chốt). */
-export const NEWS_LEVERAGE = { leverage: 1, marginMode: "isolated" } as const;
+/** Margin mode cố định của bot mainnet (DEC-360 mục 6; isolated theo PM chốt). */
+export const NEWS_MARGIN_MODE = "isolated" as const;
 
-/** Khoá trong `Runner.leverageDone` của một market đã được SoDEX xác nhận 1× isolated. */
-export const newsLeverageKey = (market: string): string =>
-  `${market}:${String(NEWS_LEVERAGE.leverage)}:${NEWS_LEVERAGE.marginMode}`;
+/** Đòn bẩy của bot news theo config (#458: 1 / 5 / 10 / 20); bot cũ không có trường (hoặc giá trị lạ) là 1. */
+export function newsLeverageOf(config: unknown): number {
+  const l = (config as { leverage?: unknown } | null)?.leverage;
+  return typeof l === "number" && (NEWS_SIGNAL_LEVERAGES as readonly number[]).includes(l) ? l : 1;
+}
+
+/** Khoá trong `Runner.leverageDone` của một market đã được SoDEX xác nhận ở `leverage`× isolated. */
+export const newsLeverageKey = (market: string, leverage: number): string =>
+  `${market}:${String(leverage)}:${NEWS_MARGIN_MODE}`;
 
 /** Một dòng `news_signals` → tín hiệu cho chiến lược (thời gian ms, giá chuỗi; báo giá thiếu = null, không bao giờ 0). */
 export function newsSignalInput(row: NewsSignalRow): NewsSignalInput {

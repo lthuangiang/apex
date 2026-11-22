@@ -36,6 +36,8 @@ import {
   type NewsTpslBody,
   type NewsTrade,
   type StartChecks,
+  NEWS_SIGNAL_LEVERAGE,
+  NEWS_SIGNAL_LEVERAGES,
 } from "@drift/shared";
 import { readDriftApproval } from "@drift/sodex";
 import { and, desc, eq, gte, inArray, isNull, max } from "drizzle-orm";
@@ -304,7 +306,13 @@ export async function newsStartChecks(
   }
   const size = typeof config.sizeUsdc === "string" ? config.sizeUsdc : "0";
   const maxOpen = typeof config.maxOpenTrades === "number" ? config.maxOpenTrades : 1;
-  const needed = dec(size).mul(maxOpen).toString();
+  // Margin isolated cần = giá trị vị thế mỗi lệnh × số lệnh mở tối đa ÷ đòn bẩy (#458; bot cũ không có trường là 1×).
+  const leverageX =
+    typeof config.leverage === "number" &&
+    (NEWS_SIGNAL_LEVERAGES as readonly number[]).includes(config.leverage)
+      ? config.leverage
+      : NEWS_SIGNAL_LEVERAGE;
+  const needed = dec(size).mul(maxOpen).div(leverageX).toString();
   let available: string | null = null;
   try {
     available = (await deps.rest.getPerpsAccountState(address)).ami;

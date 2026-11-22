@@ -147,6 +147,8 @@ export const SignalReason = {
    * bỏ; lệnh đang mở vẫn được quản lý (#419 engine B1).
    */
   accessOff: "ACCESS_OFF",
+  /** Ở đòn bẩy của bot, SL nằm quá gần / sau giá thanh lý ước tính (< 1.5 × khoảng SL, #458): không vào lệnh. */
+  slBeyondLiquidation: "SL_BEYOND_LIQUIDATION",
 } as const;
 export type SignalReason = (typeof SignalReason)[keyof typeof SignalReason];
 

@@ -129,6 +129,9 @@ export async function marketInfo(
       minQuantity: p.minQuantity,
       minNotional: p.minNotional,
       ...fees(p),
+      // Đòn bẩy tối đa và bậc ký quỹ duy trì (chốt đòn bẩy / thanh lý của bot `news_signal`, #458).
+      maxLeverage: p.maxLeverage,
+      ...(p.marginTiers === undefined ? {} : { marginTiers: p.marginTiers }),
     };
   return undefined;
 }
