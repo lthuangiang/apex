@@ -5,6 +5,7 @@ import {
   NORMAL_REJECT_CODES,
   ReasonCode,
   RoundMode,
+  VOLUME_BUILDER_STOPPED,
 } from "@drift/shared";
 
 import { clOrdId, fnv1a64 } from "../core/ids";
@@ -501,7 +502,8 @@ function halt(s: VolumeFarmState, reason: ReasonCode, why: string): StepResult<V
   return {
     actions: [
       ...cancels,
-      { type: "log", decision: "Volume Farm stopped", why },
+      // Tên sản phẩm (#463, trước đây "Volume Farm stopped").
+      { type: "log", decision: VOLUME_BUILDER_STOPPED, why },
       // Engine đóng vị thế còn lại bằng lệnh reduce-only theo sổ cái.
       { type: "stop", reason, close: true },
     ],

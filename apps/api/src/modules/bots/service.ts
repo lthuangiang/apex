@@ -49,6 +49,8 @@ import {
   type CreateBotBody,
   type OrderView,
   type StartChecks,
+  MARKET_MAKING_STOPPED_ALL,
+  decisionDisplayName,
 } from "@drift/shared";
 import { readDriftApproval, type SodexRestClient } from "@drift/sodex";
 import {
@@ -73,7 +75,6 @@ import {
   STRATEGIES,
   waitingOf,
   volumeFarm,
-  VOLUME_MAKER_STOPPED,
   volumeMakerStopCause,
   type MarketRules,
   type VolumeFarmState,
@@ -600,9 +601,9 @@ function waitingView(strategy: string, config: unknown, state: unknown): BotSumm
 
 /**
  * Lý do cụ thể của Market Making dừng với MAX_CYCLES (DEC-262), lấy từ nhật ký chiến lược ghi lúc dừng
- * ("Volume Maker stopped" · "Volume target … reached." / "Run time ended."), không suy từ config: sửa bot đã dừng
- * sẽ kích hoạt version mới ngay, nên config hiện tại có thể khác lúc dừng. Một query cho cả danh sách: với mỗi bot,
- * sự kiện mới nhất trong {Volume Maker stopped, state Running}; nếu mới nhất là Running (đã chạy lại sau lần dừng đó)
+ * ("Market Making stopped", trước #463 là "Volume Maker stopped" · "Volume target … reached." / "Run time ended."),
+ * không suy từ config: sửa bot đã dừng sẽ kích hoạt version mới ngay, nên config hiện tại có thể khác lúc dừng. Một query
+ * cho cả danh sách: với mỗi bot, sự kiện mới nhất trong {Market Making stopped (cả câu cũ), state Running}; nếu mới nhất là Running (đã chạy lại sau lần dừng đó)
  * hoặc không có thì null.
  */
 export async function stopDetailsOf(
@@ -625,14 +626,15 @@ export async function stopDetailsOf(
       and(
         inArray(botEvents.botId, ids),
         or(
-          eq(botEvents.decision, VOLUME_MAKER_STOPPED),
+          // Câu mới và câu cũ trước #463 ("Volume Maker stopped"): dòng cũ giữ nguyên text.
+          inArray(botEvents.decision, [...MARKET_MAKING_STOPPED_ALL]),
           and(eq(botEvents.type, "state"), eq(botEvents.decision, "Running")),
         ),
       ),
     )
     .orderBy(botEvents.botId, desc(botEvents.occurredAt), desc(botEvents.createdAt));
   for (const r of rows) {
-    if (r.decision !== VOLUME_MAKER_STOPPED) continue;
+    if (r.decision === null || !MARKET_MAKING_STOPPED_ALL.includes(r.decision)) continue;
     const cause = volumeMakerStopCause(r.why);
     if (cause !== null) out.set(r.botId, cause);
   }
@@ -1085,7 +1087,7 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
     events: events.map((e) => ({
       id: e.id,
       type: e.type,
-      decision: e.decision,
+      decision: decisionDisplayName(e.decision),
       why: e.why,
       result: e.result,
       ...outcomeOf(e.payload),

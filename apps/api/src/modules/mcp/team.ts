@@ -22,6 +22,7 @@ import {
   type TeamUnknownOrders,
   type TeamUser,
   type TeamUserBots,
+  decisionDisplayName,
 } from "@drift/shared";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from "drizzle-orm";
 
@@ -448,7 +449,7 @@ export async function botTimeline(
         kind: "event" as const,
         at: at(e.occurredAt),
         type: e.type,
-        decision: e.decision,
+        decision: decisionDisplayName(e.decision),
         why: e.why,
         result: e.result,
       },

@@ -1,4 +1,11 @@
-import { dec, Decimal, NORMAL_REJECT_CODES, ReasonCode, RoundMode } from "@drift/shared";
+import {
+  dec,
+  Decimal,
+  MARKET_MAKING_STOPPED,
+  NORMAL_REJECT_CODES,
+  ReasonCode,
+  RoundMode,
+} from "@drift/shared";
 
 import { clOrdId } from "../core/ids";
 import { applyFill, emptyLedger, type Ledger } from "../core/ledger";
@@ -734,8 +741,8 @@ function quote(
   return { actions, state: next };
 }
 
-/** Quyết định ghi vào Decisions khi Volume Maker tự dừng (`halt`). */
-export const VOLUME_MAKER_STOPPED = "Volume Maker stopped";
+/** Quyết định ghi vào Decisions khi Market Making tự dừng (`halt`); tên sản phẩm (#463, trước đây "Volume Maker stopped"). */
+export const VOLUME_MAKER_STOPPED = MARKET_MAKING_STOPPED;
 const RUN_TIME_ENDED = "Run time ended.";
 const volumeTargetReached = (target: string) => `Volume target ${target} reached.`;
 

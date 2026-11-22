@@ -239,10 +239,35 @@ export const rejectSplitSchema = z.object({
 });
 export type RejectSplit = z.infer<typeof rejectSplitSchema>;
 
+/**
+ * Câu Decisions khi chiến lược tự dừng, theo tên sản phẩm (#463, người dùng yêu cầu 2026-11-22, PM duyệt). Dòng cũ trong
+ * `bot_events` giữ nguyên text (không migration dữ liệu): mọi chỗ dò theo text nhận cả câu cũ lẫn câu mới, và chỗ hiển thị
+ * đổi câu cũ sang câu mới (`decisionDisplayName`).
+ */
+export const VOLUME_BUILDER_STOPPED = "Volume Builder stopped";
+export const MARKET_MAKING_STOPPED = "Market Making stopped";
+/** Câu cũ (trước #463) → câu mới. */
+export const LEGACY_STOP_DECISIONS: Readonly<Record<string, string>> = {
+  "Volume Farm stopped": VOLUME_BUILDER_STOPPED,
+  "Volume Maker stopped": MARKET_MAKING_STOPPED,
+};
+/** Mọi câu (cũ và mới) của một lần Market Making tự dừng, để tìm theo text trong `bot_events`. */
+export const MARKET_MAKING_STOPPED_ALL: readonly string[] = [
+  MARKET_MAKING_STOPPED,
+  "Volume Maker stopped",
+];
+
+/** Tên Decisions để hiển thị / trả ra ngoài: câu cũ đổi sang tên sản phẩm (#463), câu khác giữ nguyên. */
+export function decisionDisplayName<T extends string | null>(decision: T): T {
+  if (decision === null) return decision;
+  return (LEGACY_STOP_DECISIONS[decision] ?? decision) as T;
+}
+
 export const botEventSchema = z.object({
   id: uuidSchema,
   type: z.string(),
-  decision: z.string().nullable(),
+  /** Câu cũ (trước #463) được đổi sang tên sản phẩm ngay khi đọc. */
+  decision: z.string().nullable().transform(decisionDisplayName),
   why: z.string().nullable(),
   result: z.string().nullable(),
   /** Kết quả theo lệnh thật (BD-02); null khi quyết định không đặt lệnh hoặc event cũ chưa gắn lệnh. */
