@@ -160,7 +160,7 @@ describe("stopDetail on the bot list", () => {
     expect(res.statusCode).toBe(200);
     expect(botDetailSchema.parse(res.json()).bot.stopDetail).toBe("volume_target");
     // Dòng cũ trả ra bằng tên sản phẩm (#463), kể cả khi đọc JSON thô (không qua schema của web).
-    const raw = res.json() as { events: { decision: string | null }[] };
+    const raw = res.json<{ events: { decision: string | null }[] }>();
     expect(raw.events.map((e) => e.decision)).toContain("Market Making stopped");
     expect(raw.events.map((e) => e.decision)).not.toContain("Volume Maker stopped");
   });
