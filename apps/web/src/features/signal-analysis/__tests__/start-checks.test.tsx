@@ -306,7 +306,9 @@ describe("Start dialog checks (#459)", () => {
     state.config = { ...baselineVersionConfig(), sizeUsdc: "150", leverage: 5, maxOpenTrades: 2 };
     const dialog = await openStart();
     await waitFor(() => {
-      expect(within(row(dialog, "balance")).getByTestId("margin-formula")).toBeInTheDocument();
+      expect(within(row(dialog, "balance")).getByTestId("margin-formula")).toHaveTextContent(
+        "150 USDC × 2 trades ÷ 5×",
+      );
     });
     cleanup();
     state.config = null;

@@ -2891,9 +2891,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "signalAnalysis.research.mainnet.signals.reasons.SL_BEYOND_LIQUIDATION",
-    "signalAnalysis.research.mainnet.dialogs.start.checks.formula"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",

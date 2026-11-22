@@ -680,5 +680,6 @@ describe("leverage 1 / 5 / 10 / 20 (#458)", () => {
     wrap(<Signals24h botId={BOT_ID} tz="UTC" />);
     const list = await screen.findByRole("list");
     expect(list).not.toHaveTextContent("SL_BEYOND_LIQUIDATION");
+    expect(list).toHaveTextContent("Skipped: Stop loss beyond liquidation");
   });
 });
