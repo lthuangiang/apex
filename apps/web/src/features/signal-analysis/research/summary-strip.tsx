@@ -78,7 +78,7 @@ export function labelState(c: ResearchVersions["classifier"] | null): LabelState
 }
 
 /** Câu một nguồn ("SoSoValue news · Live · 1 min ago"); `statusShown` = trạng thái đã có trong câu. */
-function useSourceLine() {
+export function useSourceLine() {
   const t = useTranslations("signalAnalysis.research.sources");
   return (s: ResearchSource, now: string, tz: string): { text: string; statusShown: boolean } => {
     const name = t(`names.${s.key}`);
@@ -104,7 +104,7 @@ function useSourceLine() {
 }
 
 /** Chấm nguồn: Live xanh dương (trạng thái trung tính, không dùng xanh lá), Delayed hổ phách, Down đỏ. */
-const DOT: Record<ResearchSource["status"], string> = {
+export const DOT: Record<ResearchSource["status"], string> = {
   live: "bg-accent",
   delayed: "bg-warn-bar",
   down: "bg-neg",
@@ -344,6 +344,7 @@ export function SummaryStrip({
   onHow,
   onLabel,
   onManage,
+  modeSwitch,
 }: {
   /** null khi tổng kết chưa tải. */
   sources: { items: readonly ResearchSource[]; now: string } | null;
@@ -362,6 +363,8 @@ export function SummaryStrip({
   onHow: (tab: HowTab) => void;
   onLabel: () => void;
   onManage: () => void;
+  /** #421: công tắc "Bots: Paper / Mainnet" bên trái ô Version (mockup mainnet-team-test, khung 1). */
+  modeSwitch?: ReactNode;
 }) {
   const t = useTranslations("signalAnalysis.research.page");
   const ts = useTranslations("signalAnalysis.research.strip");
@@ -459,16 +462,19 @@ export function SummaryStrip({
     >
       <Banner sources={sources} tz={tz} />
       <div className="flex flex-col gap-2.5 p-3 md:grid md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-start md:gap-x-5 md:gap-y-3 md:px-[18px] md:py-3.5">
-        <div className="flex items-end gap-2 md:contents">
-          <div className="flex min-w-0 flex-1 flex-col gap-1 md:col-start-1 md:row-start-1 md:flex-none">
-            {versions === undefined ? (
-              <span className="text-xs font-extrabold">{t("version")}</span>
-            ) : (
-              <label htmlFor="sr-version" className="text-xs font-extrabold">
-                {t("version")}
-              </label>
-            )}
-            {picker}
+        <div className="flex flex-wrap items-end gap-2 md:contents">
+          <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3 md:col-start-1 md:row-start-1 md:flex-none">
+            {modeSwitch}
+            <div className="flex min-w-0 flex-1 flex-col gap-1 md:flex-none">
+              {versions === undefined ? (
+                <span className="text-xs font-extrabold">{t("version")}</span>
+              ) : (
+                <label htmlFor="sr-version" className="text-xs font-extrabold">
+                  {t("version")}
+                </label>
+              )}
+              {picker}
+            </div>
           </div>
           <div className="flex-none md:col-start-3 md:row-start-1 md:pt-[18px]">{how}</div>
         </div>

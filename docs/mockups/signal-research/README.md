@@ -172,3 +172,23 @@ Mục Signal Research có nhãn BETA trên sidebar, chỉ team và tài khoản 
 - Tắt cờ thì version đang chạy của người đó tự pause (audit `signal_research_disabled`); bật lại không tự resume.
 - Công tắc ở Users dùng đúng kiểu nút "Turn on / Turn off" của cột AI Desk hiện có (ảnh vẽ switch).
 - Nhãn của người dùng test hiện riêng dưới cột "Labelled" của bảng Claude reader ("Test users: n labels, not counted · agree with the team on a of b (p%)", PM đã duyệt); chỉ so với nhãn random của team.
+
+## Mainnet cho team test (#418 / #421)
+
+`mainnet-team-test.html` (bản 3, người dùng duyệt 2026-11-22; online: https://claude.ai/artifact/78mjJu1uaiZgjQnGTScB7q). Code khác ảnh theo các chốt sau:
+- **Nhóm bot:** "My paper bots" là **My versions** (#423). Ở Mainnet, ô Bot chỉ có nhóm "My mainnet bots" (bot của chính người xem).
+- **"Start bot from a version"** dùng lại version editor có sẵn, không làm hộp thoại riêng như ảnh. Editor thêm các ô:
+  - Version;
+  - Run on (chỉ Mainnet);
+  - SoDEX account;
+  - Leverage 1×;
+  - Size per trade (≤ 200);
+  - Max open trades, Max new trades a day;
+  - Opposite news (mặc định Keep).
+
+  Markets chỉ thu hẹp, Min level chỉ nâng. Lỗi size: "Above the 200 USDC limit for team tests. Use 200 or less."
+- **Close now:** hộp thoại cùng kiểu Stop (ảnh không có). Trạng thái Draft hiện như mọi bot.
+- **Số chưa có dữ liệu** (#443): "Result after fees" và kết quả từng lệnh hiện "Not available". Khung cổng bỏ câu đếm "4 of 100", chỉ giữ "Signal checks not passed yet" + "Paper results are not a forecast.".
+- **Mark của Edit TP/SL** lấy từ giá gần nhất của market; không có giá thì "Mark Not available".
+- **Phễu / feed / Context ở Mainnet** dùng tín hiệu chung. Thêm khối "Signals in the last 24 h" (kết quả từng tín hiệu trên bot, lý do theo nhãn của phễu). Phễu theo bot: #444.
+- **Cờ `SIGNAL_NEWS_BOTS_ENABLED` tắt:** tạo / Start / Resume hiện "Mainnet bots are not available yet." ngay trong editor hoặc hộp thoại, không giấu nút.

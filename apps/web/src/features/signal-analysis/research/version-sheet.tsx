@@ -9,12 +9,20 @@ import {
   diffVersionConfig,
   ErrorCode,
   HYPOTHESIS_MAX,
+  AssetKind,
+  narrowsVersion,
   NEWS_RULES,
+  NEWS_SIGNAL_LIVE_MAX_USDC,
+  NEWS_SIGNAL_LEVERAGE,
+  newsSignalConfigSchema,
+  STOCK_MARKET_SET,
   OppositeNewsPolicy,
   SIGNAL_CATALYSTS,
   VERSION_START_BALANCE,
   type BotVersionConfig,
+  type NewsSignalConfig,
   type ResearchVersion,
+  type StartChecks,
   type ResearchVersionCreateBody,
   type SignalCatalyst,
 } from "@drift/shared";
@@ -22,6 +30,7 @@ import { BottomSheet, Button, SegmentedControl } from "@drift/ui";
 import { useTranslations } from "next-intl";
 import { useId, useRef, useState, type ReactNode } from "react";
 
+import { CheckList } from "@/features/bots/components/start-checks";
 import { ApiError } from "@/lib/api";
 import { uncertainOutcome } from "@/lib/financial-action";
 import { BELOW_LG, useMediaQuery } from "@/lib/use-media";
@@ -103,12 +112,16 @@ export type FieldKey =
   | "maxOpen"
   | "perDay"
   | "markets"
-  | "kinds";
+  | "kinds"
+  | "assets"
+  | "minLevel";
 
 export type FieldError =
   | { key: "required" | "number" | "whole" | "positive" | "atLeastOne" | "aboveBalance" }
   | { key: "range"; min: number; max: number }
-  | { key: "pickAsset" | "pickKind" };
+  | { key: "pickAsset" | "pickKind" }
+  /** Chỉ ở chế độ bot mainnet (#421). */
+  | { key: "sizeCap" | "narrowMarkets" | "raiseLevel" };
 
 const DECIMAL = /^\d+(\.\d+)?$/;
 const WHOLE = /^\d+$/;
@@ -161,6 +174,41 @@ export function validate(d: Draft): Partial<Record<FieldKey, FieldError>> {
   if (d.mode === AssetMode.only && d.markets.length === 0) e.markets = { key: "pickAsset" };
   if (d.mode !== AssetMode.only && !d.crypto && !d.stocks) e.kinds = { key: "pickKind" };
   return e;
+}
+
+/** Loại tài sản của market SoDEX (như API #443): danh sách cổ phiếu là nguồn duy nhất, còn lại là crypto. */
+const kindOf = (m: string) => (STOCK_MARKET_SET.has(m) ? AssetKind.stock : AssetKind.crypto);
+
+/**
+ * Lỗi từng ô ở chế độ bot `news_signal` mainnet (#421), khớp `newsSignalConfigSchema` + `narrowsVersion` của API:
+ * không có giả thuyết; size ≤ 200 USDC; Markets chỉ thu hẹp, Min level chỉ nâng so với version gốc.
+ */
+export function validateBot(
+  d: Draft,
+  source: BotVersionConfig | null,
+): Partial<Record<FieldKey, FieldError>> {
+  const e = validate({ ...d, hypothesis: "-" });
+  delete e.hypothesis;
+  if (e.size === undefined && Number(d.size) > Number(NEWS_SIGNAL_LIVE_MAX_USDC))
+    e.size = { key: "sizeCap" };
+  if (e.size?.key === "aboveBalance") e.size = { key: "sizeCap" };
+  const cfg = configOf({ ...d, hypothesis: "-" });
+  if (cfg !== null && source !== null) {
+    if (!narrowsVersion(source, { ...cfg, minLevel: source.minLevel }, kindOf))
+      e.assets = { key: "narrowMarkets" };
+    if (!narrowsVersion(source, { ...cfg, assets: source.assets }, kindOf))
+      e.minLevel = { key: "raiseLevel" };
+  }
+  return e;
+}
+
+/** Config của bot gửi API (`POST /signal-research/bots`); null khi còn lỗi. */
+export function botConfigOf(d: Draft, source: BotVersionConfig | null): NewsSignalConfig | null {
+  if (Object.keys(validateBot(d, source)).some((k) => k !== "name")) return null;
+  const cfg = configOf({ ...d, hypothesis: "-" });
+  if (cfg === null) return null;
+  const parsed = newsSignalConfigSchema.safeParse({ ...cfg, leverage: NEWS_SIGNAL_LEVERAGE });
+  return parsed.success ? parsed.data : null;
 }
 
 /** Config gửi API; null khi còn lỗi ở một ô của config (tên và giả thuyết không thuộc config). */
@@ -218,7 +266,24 @@ export function baselineThings(
 const HOLDS = [6, 12, 24, 48, 72, 120, 168] as const;
 
 export type SheetMode =
-  { kind: "new"; from: ResearchVersion | null } | { kind: "rules"; of: ResearchVersion };
+  | { kind: "new"; from: ResearchVersion | null }
+  | { kind: "rules"; of: ResearchVersion }
+  /** #421: "Start bot from a version" — cùng editor, thêm các ô của bot mainnet. */
+  | { kind: "bot"; from: ResearchVersion };
+
+/** Phần riêng của chế độ bot mainnet (#421). */
+export interface BotSheet {
+  /** Version chọn làm gốc được (team + My versions); đổi version thì điền lại form từ config của version đó. */
+  versions: readonly ResearchVersion[];
+  /** Account đã kết nối ("••4f2a"); null = chưa kết nối (hiện nút Connect). */
+  account: string | null;
+  /** Kết quả kiểm tra trước Start của bot vừa tạo (khi Start bị từ chối); null = chưa có. */
+  checks: StartChecks | null;
+  /** Ô 2FA khi đã bật mà phiên chưa được tin; null = không hỏi. */
+  twoFactor: { value: string; onChange: (v: string) => void } | null;
+  onVersion: (v: ResearchVersion) => void;
+  onStart: (input: { versionId: string; name: string; config: NewsSignalConfig }) => void;
+}
 
 export function VersionSheet({
   mode,
@@ -232,6 +297,7 @@ export function VersionSheet({
   onClose,
   onSave,
   baseline = null,
+  bot = null,
 }: {
   mode: SheetMode;
   /** Số của version sẽ được tạo (max + 1, như DB). */
@@ -247,9 +313,15 @@ export function VersionSheet({
   onSave: (body: ResearchVersionCreateBody, anyway: boolean) => void;
   /** #377: Baseline (đối chứng cố định) để cảnh báo khi đổi hơn một thứ; null khi chưa có. */
   baseline?: ResearchVersion | null;
+  /** #421: chỉ ở `mode.kind === "bot"`. */
+  bot?: BotSheet | null;
 }) {
   const t = useTranslations("signalAnalysis.research.versions");
   const tn = useTranslations("signalAnalysis.research");
+  const tb = useTranslations("signalAnalysis.research.mainnet.editor");
+  const td = useTranslations("signalAnalysis.research.mainnet.dialogs");
+  const isBot = mode.kind === "bot" && bot !== null;
+  const [ack, setAck] = useState(false);
   const tc = useTranslations("common.errors");
   const mobile = useMediaQuery(BELOW_LG);
   const view = mode.kind === "rules";
@@ -257,7 +329,13 @@ export function VersionSheet({
   const [d, setD] = useState<Draft>(() =>
     mode.kind === "rules"
       ? draftOf(mode.of.config ?? baselineVersionConfig(), mode.of.name, mode.of.hypothesis ?? "")
-      : draftOf(source?.config ?? baselineVersionConfig(), ""),
+      : mode.kind === "bot"
+        ? // Bot: tin ngược chiều mặc định Keep (PM chốt), không bao giờ đảo vị thế.
+          {
+            ...draftOf(source?.config ?? baselineVersionConfig(), ""),
+            opposite: OppositeNewsPolicy.keep,
+          }
+        : draftOf(source?.config ?? baselineVersionConfig(), ""),
   );
   // #377: cảnh báo "Not a clean test" đang mở (đổi ≥ 2 thứ so với Baseline); sửa gì trong form thì đóng lại.
   const [warn, setWarn] = useState(false);
@@ -266,7 +344,7 @@ export function VersionSheet({
   const pickerOpen = useRef(false);
   const id = useId();
 
-  const errors = view ? {} : validate(d);
+  const errors = view ? {} : isBot ? validateBot(d, source?.config ?? null) : validate(d);
   const shown = (k: FieldKey) => (tried || touched.has(k) ? errors[k] : undefined);
   const set = (p: Partial<Draft>, k?: FieldKey) => {
     setD((x) => ({ ...x, ...p }));
@@ -276,6 +354,8 @@ export function VersionSheet({
   const errText = (e: FieldError | undefined): string | undefined => {
     if (e === undefined) return undefined;
     if (e.key === "range") return t("sheet.errors.range", { min: e.min, max: e.max });
+    if (e.key === "sizeCap" || e.key === "narrowMarkets" || e.key === "raiseLevel")
+      return tb(e.key);
     return t(`sheet.errors.${e.key}`);
   };
 
@@ -292,14 +372,16 @@ export function VersionSheet({
       ? new Set(d.markets).size
       : null;
 
-  const title =
-    mode.kind === "rules"
+  const title = isBot
+    ? tb("title")
+    : mode.kind === "rules"
       ? t("sheet.rulesTitle", { n: mode.of.number, name: mode.of.name })
       : source === null
         ? t("sheet.titleNew")
         : t("sheet.titleFrom", { n: source.number });
-  const description =
-    mode.kind === "rules"
+  const description = isBot
+    ? tb("desc")
+    : mode.kind === "rules"
       ? t("sheet.rulesDesc")
       : source === null
         ? t("sheet.descNew", { next })
@@ -311,6 +393,12 @@ export function VersionSheet({
   const things = vsBaseline === null ? 0 : changedThings(vsBaseline).length;
   const save = (anyway = false) => {
     setTried(true);
+    if (isBot) {
+      const cfg = botConfigOf(d, source?.config ?? null);
+      if (cfg === null || errors.name !== undefined || source === null || !ack || pending) return;
+      bot.onStart({ versionId: source.id, name: d.name.trim(), config: cfg });
+      return;
+    }
     const body = bodyOf(d, source);
     if (body === null || full || pending) return;
     if (things >= 2 && !anyway) {
@@ -336,7 +424,65 @@ export function VersionSheet({
         if (pickerOpen.current || pending) e.preventDefault();
       }}
       footer={
-        view ? (
+        isBot ? (
+          <div className="flex w-full flex-col gap-2.5">
+            <p className="m-0 rounded-tile border border-warn-border bg-warn-bg px-3 py-2.5 text-sm text-warn">
+              {td("start.warn")}
+            </p>
+            <p className="m-0 rounded-tile bg-neg-bg px-3 py-2 text-sm text-neg-ink">
+              {td("start.never")}
+            </p>
+            <label
+              htmlFor={`${id}-ack`}
+              className="flex cursor-pointer items-start gap-2.5 text-sm text-ink"
+            >
+              <input
+                id={`${id}-ack`}
+                type="checkbox"
+                checked={ack}
+                disabled={pending}
+                onChange={(e) => {
+                  setAck(e.target.checked);
+                }}
+                className="mt-0.5 size-5 flex-none accent-accent"
+              />
+              {td("start.ack")}
+            </label>
+            {bot.twoFactor === null ? null : (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor={`${id}-2fa`} className={lbl}>
+                  {td("start.twoFactor")}
+                </label>
+                <input
+                  id={`${id}-2fa`}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={bot.twoFactor.value}
+                  disabled={pending}
+                  onChange={(e) => {
+                    bot.twoFactor?.onChange(e.target.value);
+                  }}
+                  className={`${input} max-w-[10rem]`}
+                />
+              </div>
+            )}
+            <div className="flex flex-col gap-2 md:flex-row md:justify-end">
+              <Button variant="secondary" disabled={pending} onClick={onClose}>
+                {t("sheet.cancel")}
+              </Button>
+              <Button
+                pending={pending}
+                disabled={!ack || bot.account === null}
+                onClick={() => {
+                  save();
+                }}
+              >
+                {pending ? tb("starting") : tb("start")}
+              </Button>
+            </div>
+          </div>
+        ) : view ? (
           <Button variant="secondary" onClick={onClose}>
             {t("sheet.close")}
           </Button>
@@ -425,25 +571,85 @@ export function VersionSheet({
         <Err id={`${id}-name-e`} text={errText(shown("name"))} />
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor={`${id}-hyp`} className="text-sm font-semibold text-ink">
-          {t("sheet.hypothesis")}
-        </label>
-        <input
-          id={`${id}-hyp`}
-          type="text"
-          value={d.hypothesis}
-          disabled={view}
-          maxLength={HYPOTHESIS_MAX}
-          aria-invalid={shown("hypothesis") === undefined ? undefined : true}
-          aria-describedby={shown("hypothesis") === undefined ? undefined : `${id}-hyp-e`}
-          onChange={(e) => {
-            set({ hypothesis: e.target.value }, "hypothesis");
-          }}
-          className={input}
-        />
-        <Err id={`${id}-hyp-e`} text={errText(shown("hypothesis"))} />
-      </div>
+      {isBot ? (
+        <Group legend={tb("botBlock")} grid>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`${id}-ver`} className={lbl}>
+              {tb("version")}
+            </label>
+            <select
+              id={`${id}-ver`}
+              value={source?.id ?? ""}
+              disabled={pending}
+              onChange={(e) => {
+                const v = bot.versions.find((x) => x.id === e.target.value);
+                if (v === undefined) return;
+                bot.onVersion(v);
+                setD({
+                  ...draftOf(v.config ?? baselineVersionConfig(), d.name),
+                  opposite: OppositeNewsPolicy.keep,
+                });
+              }}
+              className={input}
+            >
+              {bot.versions.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.isBaseline
+                    ? `${v.name} (v${String(v.number)})`
+                    : `v${String(v.number)} · ${v.name}`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className={lbl}>{tb("runOn")}</span>
+            <span className="flex min-h-tap items-center text-sm font-extrabold text-ink">
+              {tb("mainnet")}
+            </span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className={lbl}>{tb("account")}</span>
+            {bot.account === null ? (
+              <a
+                href="/onboarding/connect"
+                className="inline-flex min-h-tap items-center self-start rounded-control bg-accent px-4 text-sm font-bold text-white no-underline"
+              >
+                {tb("connect")}
+              </a>
+            ) : (
+              <span className="flex min-h-tap items-center text-sm font-semibold text-ink tabular-nums">
+                {bot.account}
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className={lbl}>{tb("leverage")}</span>
+            <span className="flex min-h-tap items-center text-sm font-semibold text-ink">
+              {tb("leverageValue")}
+            </span>
+          </div>
+        </Group>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`${id}-hyp`} className="text-sm font-semibold text-ink">
+            {t("sheet.hypothesis")}
+          </label>
+          <input
+            id={`${id}-hyp`}
+            type="text"
+            value={d.hypothesis}
+            disabled={view}
+            maxLength={HYPOTHESIS_MAX}
+            aria-invalid={shown("hypothesis") === undefined ? undefined : true}
+            aria-describedby={shown("hypothesis") === undefined ? undefined : `${id}-hyp-e`}
+            onChange={(e) => {
+              set({ hypothesis: e.target.value }, "hypothesis");
+            }}
+            className={input}
+          />
+          <Err id={`${id}-hyp-e`} text={errText(shown("hypothesis"))} />
+        </div>
+      )}
 
       <Group legend={t("sheet.newsTypes")}>
         <div className="overflow-x-auto">
@@ -538,6 +744,7 @@ export function VersionSheet({
               </option>
             ))}
           </select>
+          <Err id={`${id}-lvl-e`} text={errText(errors.minLevel)} />
         </div>
         <Num
           label={t("sheet.maxDelay")}
@@ -554,7 +761,8 @@ export function VersionSheet({
 
       <Group legend={t("sheet.orders")} grid>
         <Num
-          label={t("sheet.size")}
+          label={isBot ? tb("size") : t("sheet.size")}
+          {...(isBot ? { hint: tb("sizeHint") } : {})}
           value={d.size}
           disabled={view}
           wide
@@ -666,9 +874,11 @@ export function VersionSheet({
           />
           <span className="text-xs leading-normal text-muted">{t("sheet.oppositeHint")}</span>
         </div>
-        <p className="m-0 rounded-tile bg-surface-2 p-3 text-xs leading-normal text-ink-2 md:col-span-2">
-          {t("sheet.shadowNote", { n: maxOpenN ?? d.maxOpen })}
-        </p>
+        {isBot ? null : (
+          <p className="m-0 rounded-tile bg-surface-2 p-3 text-xs leading-normal text-ink-2 md:col-span-2">
+            {t("sheet.shadowNote", { n: maxOpenN ?? d.maxOpen })}
+          </p>
+        )}
       </Group>
 
       <Group legend={t("sheet.assets")}>
@@ -719,6 +929,7 @@ export function VersionSheet({
             }}
           />
           <span className="text-xs text-muted">{t("sheet.whichHint")}</span>
+          <Err id={`${id}-as-e`} text={errText(errors.assets)} />
         </div>
         {d.mode === AssetMode.all ? null : (
           <div className="flex flex-col gap-1">
@@ -742,7 +953,13 @@ export function VersionSheet({
         )}
       </Group>
 
-      {view ? null : (
+      {isBot && bot.checks !== null ? (
+        <div className="flex flex-col gap-2">
+          <h3 className="m-0 text-sm font-extrabold text-ink">{tb("checks")}</h3>
+          <CheckList checks={bot.checks} engine="perps" />
+        </div>
+      ) : null}
+      {view || isBot ? null : (
         <div className="rounded-tile bg-accent-tint p-3.5 text-sm leading-normal text-accent-ink">
           {source === null ? null : changes === null ? null : changes.length === 0 ? (
             <span className="block">{t("sheet.noChanges", { n: source.number })}</span>
