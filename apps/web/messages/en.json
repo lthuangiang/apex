@@ -7852,8 +7852,8 @@
         "count": {
           "pill": "Signal checks not passed yet",
           "notForecast": "Paper results are not a forecast.",
-          "config": "Size {size} USDC · leverage 1× · max {open} open · max {day} new trades a day",
-          "configNoDay": "Size {size} USDC · leverage 1× · max {open} open · no daily limit",
+          "config": "Size {size} USDC · leverage {lev}× · max {open} open · max {day} new trades a day",
+          "configNoDay": "Size {size} USDC · leverage {lev}× · max {open} open · no daily limit",
           "start": "Start bot from a version"
         },
         "trades": {
@@ -7892,9 +7892,15 @@
             "NEWS_CAP_EXCEEDED": "Entry blocked by a safety check",
             "NEWS_ACCESS_OFF": "Signal Research access is off",
             "BOT_NOT_RUNNING": "Bot was not running",
-            "LEVERAGE_NOT_SET": "Leverage couldn’t be set to 1×",
+            "LEVERAGE_NOT_SET": "Leverage couldn’t be set",
             "other": "Closed"
-          }
+          },
+          "reasonsLev": {
+            "LEVERAGE_NOT_SET": "Leverage couldn’t be set to {lev}×",
+            "SL_BEYOND_LIQUIDATION": "Stop loss beyond liquidation at {lev}×"
+          },
+          "size": "{size} USDC · {lev}×",
+          "sizeOnly": "{size} USDC"
         },
         "signals": {
           "title": "Signals in the last 24 h",
@@ -7913,11 +7919,16 @@
             "ACCOUNT_MARKET_BUSY": "Another bot uses this market",
             "NEWS_CAP_EXCEEDED": "Above the 200 USDC limit",
             "ENTRY_NOT_FILLED": "Entry not filled",
-            "LEVERAGE_NOT_SET": "Leverage couldn’t be set to 1×",
+            "LEVERAGE_NOT_SET": "Leverage couldn’t be set",
             "ACCESS_OFF": "Signal Research access is off",
             "BELOW_MIN_ORDER_SIZE": "Below SoDEX minimum size",
             "SAME_STORY": "Already traded this story",
-            "STORY_TOO_OLD": "Story too old to retry"
+            "STORY_TOO_OLD": "Story too old to retry",
+            "SL_BEYOND_LIQUIDATION": "Stop loss beyond liquidation"
+          },
+          "reasonsLev": {
+            "LEVERAGE_NOT_SET": "Leverage couldn’t be set to {lev}×",
+            "SL_BEYOND_LIQUIDATION": "Stop loss beyond liquidation at {lev}×"
           }
         },
         "dialogs": {
@@ -7960,7 +7971,9 @@
             "checks": {
               "apiKey": "SoDEX API key isn't ready. Reconnect SoDEX in Settings.",
               "balance": "Isolated margin: {available} USDC available, {needed} USDC needed.",
-              "leverageBot": "{market} is used by your bot “{botName}”. Remove {market} from Markets or stop that bot."
+              "leverageBot": "{market} is used by your bot “{botName}”. Remove {market} from Markets or stop that bot.",
+              "balanceNa": "Isolated margin: {needed} USDC needed. Available: Not available.",
+              "formula": "{size} USDC × {n} trades ÷ {lev}×"
             }
           }
         },
@@ -7973,11 +7986,16 @@
           "mainnet": "Mainnet",
           "account": "SoDEX account",
           "connect": "Connect SoDEX",
-          "size": "Size per trade",
-          "sizeHint": "max 200",
+          "size": "Position size per trade",
+          "sizeHint": "Up to 200 USDC, whatever the leverage.",
           "sizeCap": "Above the 200 USDC limit for team tests. Use 200 or less.",
           "leverage": "Leverage",
-          "leverageValue": "1×",
+          "leverageOpt": "{lev}×",
+          "leverageHelp": "Isolated. Higher leverage needs less margin, but price can reach liquidation faster.",
+          "marginPerTrade": "Margin per trade ({size} ÷ {lev}×)",
+          "marginNeeded": "Margin needed for {n} open trades",
+          "usdc": "{v} USDC",
+          "liqWarn": "At {lev}×, a trade is skipped if its stop loss would sit beyond the liquidation price.",
           "narrowMarkets": "Can only narrow the version’s markets.",
           "raiseLevel": "Can only be raised from the version.",
           "start": "Start bot",
@@ -9403,7 +9421,7 @@
                 "bot": {
                   "title": "Your mainnet bot",
                   "l1": "version rules,",
-                  "l2": "≤ {usdc} USDC · {lev}× isolated"
+                  "l2": "≤ {usdc} USDC · up to {max}×, isolated"
                 },
                 "sodex": {
                   "order": "order",
@@ -9440,7 +9458,7 @@
                 "decide": {
                   "name": "6 · Decide",
                   "sub": "send a real order to SoDEX",
-                  "body": "DeskLabs sets the coin to {lev}× isolated on your SoDEX account, then sends a limit IOC order priced to fill now. If nothing fills, the signal is skipped. Builder fee {fee} applies to each fill."
+                  "body": "DeskLabs sets the coin to your leverage, isolated on your SoDEX account, then sends a limit IOC order priced to fill now. If nothing fills, the signal is skipped. Builder fee {fee} applies to each fill."
                 },
                 "sodex": {
                   "name": "On SoDEX: TP, SL and max hold",

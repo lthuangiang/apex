@@ -2,7 +2,7 @@
 
 import {
   builderFeeRateFor,
-  NEWS_SIGNAL_LEVERAGE,
+  NEWS_SIGNAL_LEVERAGES,
   NEWS_SIGNAL_LIVE_MAX_USDC,
   Strategy,
 } from "@drift/shared";
@@ -17,7 +17,7 @@ import { STEP_KEYS, type StepKey } from "./overview-flow";
 // Tab Overview của drawer How it works khi trang đang ở chế độ Mainnet (#454, mockup
 // docs/mockups/signal-research/mainnet-mode-colors.html khung 4–5): lệnh thật gửi xuống SoDEX từ tài khoản của người dùng,
 // TP / SL là lệnh trên SoDEX. Bước 1–4 dùng chung với Paper nên chỉ một mục "same as Paper"; bước 5, 6, phần trên SoDEX và
-// Mainnet trades có nhãn "mainnet". Số lấy từ hằng của @drift/shared (trần 200 USDC, 1×) và builder fee của News bot (có
+// Mainnet trades có nhãn "mainnet". Số lấy từ hằng của @drift/shared (trần 200 USDC, đòn bẩy tối đa (#458: bot chọn 1 / 5 / 10 / 20×, nên sơ đồ ghi "up to 20×")) và builder fee của News bot (có
 // override riêng của người dùng thì theo override); chu kỳ lấy từ API như bản Paper, không có thì "Not available".
 
 const b = (c: ReactNode) => <b className="text-ink">{c}</b>;
@@ -43,7 +43,6 @@ export function MainnetOverviewPanel({ cycleMinutes = null }: { cycleMinutes?: n
   const features = useFeatures();
   const nums = {
     usdc: NEWS_SIGNAL_LIVE_MAX_USDC,
-    lev: NEWS_SIGNAL_LEVERAGE,
     fee: feeLabels(builderFeeRateFor(Strategy.newsSignal, features.data?.builderFees)).pct,
   };
   const items = ["filter", "decide", "sodex", "trades"] as const;
@@ -63,7 +62,7 @@ export function MainnetOverviewPanel({ cycleMinutes = null }: { cycleMinutes?: n
         className="shrink-0 overflow-x-auto rounded-tile border border-border px-2 py-3"
       >
         <div className="min-w-[580px]">
-          <MainnetDiagram cycleMinutes={cycleMinutes} usdc={nums.usdc} lev={nums.lev} />
+          <MainnetDiagram cycleMinutes={cycleMinutes} usdc={nums.usdc} />
         </div>
       </div>
 
@@ -90,15 +89,7 @@ export function MainnetOverviewPanel({ cycleMinutes = null }: { cycleMinutes?: n
   );
 }
 
-function MainnetDiagram({
-  cycleMinutes,
-  usdc,
-  lev,
-}: {
-  cycleMinutes: number | null;
-  usdc: string;
-  lev: number;
-}) {
+function MainnetDiagram({ cycleMinutes, usdc }: { cycleMinutes: number | null; usdc: string }) {
   const t = useTranslations("signalAnalysis.research.page.drawer.overview");
   const tm = useTranslations("signalAnalysis.research.page.drawer.overview.mainnet.diagram");
   const id = useId().replace(/:/g, "");
@@ -246,7 +237,7 @@ function MainnetDiagram({
         {tm("bot.l1")}
       </text>
       <text x={436} y={383} fontSize={10.5} className="fill-ink-2">
-        {tm("bot.l2", { usdc, lev })}
+        {tm("bot.l2", { usdc, max: NEWS_SIGNAL_LEVERAGES[NEWS_SIGNAL_LEVERAGES.length - 1] ?? 1 })}
       </text>
       <path
         d="M424 363 H404"
