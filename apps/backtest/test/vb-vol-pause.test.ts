@@ -2,6 +2,7 @@ import { Decimal } from "@drift/shared";
 import type { Candle } from "@drift/strategies";
 import { describe, expect, it } from "vitest";
 
+import { balanceSplit, groupOf, marketState } from "../src/vb-vol-pause/balance";
 import { costSplit, largeGap, liveTrades, type LiveVbFill } from "../src/vb-vol-pause/live";
 import { MEDIAN_WINDOW, pausedAfter, rangeBp, spikes } from "../src/vb-vol-pause/study";
 
@@ -123,5 +124,42 @@ describe("live calibration", () => {
     expect(largeGap(new Decimal(430), new Decimal(130))).toBe(true);
     expect(largeGap(new Decimal(160), new Decimal(130))).toBe(false);
     expect(largeGap(new Decimal(430), null)).toBe(false);
+  });
+});
+
+describe("part 2 market state", () => {
+  /** Giá đi lên 1 điểm mỗi phút (biến động đều), nến `jump` nhảy 50 điểm. */
+  const walk = (n: number, jump: number): Candle[] => {
+    let p = 1000;
+    return Array.from({ length: n }, (_, i) => {
+      p += i === jump ? 50 : i % 2 === 0 ? 1 : -1;
+      const c = String(p);
+      return { t: T0 + i * MIN, o: c, h: c, l: c, c };
+    });
+  };
+
+  it("marks a strong move only from the jump on, using closed candles only", () => {
+    const cs = walk(120, 90);
+    const st = marketState(cs);
+    expect(st.get(cs[89]?.t ?? 0)).toBe(false);
+    expect(st.get(cs[90]?.t ?? 0)).toBe(true);
+    expect(st.has(cs[10]?.t ?? 0)).toBe(false);
+    const longer = marketState(walk(200, 90));
+    for (let i = 0; i < 120; i++) expect(longer.get(cs[i]?.t ?? 0)).toBe(st.get(cs[i]?.t ?? 0));
+  });
+
+  it("groups trades and leaves unknown decision times unclassified", () => {
+    const st = new Map([
+      [T0, true],
+      [T0 + MIN, false],
+    ]);
+    const t = { at: T0, netBp: 1, net: 1, volume: 100 };
+    expect(groupOf({ ...t, balanced: true, decidedT: T0 }, st)).toBe("balance · strong");
+    expect(groupOf({ ...t, balanced: false, decidedT: T0 + MIN }, st)).toBe("signal · calm");
+    expect(groupOf({ ...t, balanced: false, decidedT: null }, st)).toBeNull();
+    const r = balanceSplit([{ ...t, balanced: false, decidedT: null }], st, [
+      Math.floor(T0 / 86_400_000),
+    ]);
+    expect(r.unclassified).toBe(1);
   });
 });
