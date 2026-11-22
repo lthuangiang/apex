@@ -164,6 +164,22 @@ afterEach(() => {
 });
 
 describe("Trading Agent bot selector (1440)", () => {
+  it("#470: a Signal Research (news_signal) bot shows its strategy name, never a raw i18n key", async () => {
+    const news = bot({
+      id: uuid(50),
+      name: "Stock Monitor",
+      strategy: "news_signal",
+      market: "",
+      summary: null,
+    });
+    show([news, current], news);
+    expect(trigger()).toHaveTextContent("Signal Research");
+    expect(document.body).not.toHaveTextContent("createBot.strategies");
+    openPanel();
+    expect(document.body).not.toHaveTextContent("createBot.strategies");
+    expect((await axe.run(document.body, AXE)).violations.map((v) => v.id)).toEqual([]);
+  });
+
   it("summary bar shows the bot being viewed with short id, summary and Switch bot", () => {
     show();
     const t = trigger();

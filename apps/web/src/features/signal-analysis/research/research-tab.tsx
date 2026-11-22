@@ -22,7 +22,15 @@ import { BotsLabelsProvider } from "./bots-labels-context";
 import { HowItWorksDrawer, HowItWorksProvider, type HowTab } from "./how-it-works";
 import { IsItWorking } from "./is-it-working";
 import { LABELS_ID } from "./labels";
-import { BOT_KEY, loadMode, MODE_KEY, pickBot, readStored, writeStored } from "./mode-memory";
+import {
+  BOT_KEY,
+  linkTarget,
+  loadMode,
+  MODE_KEY,
+  pickBot,
+  readStored,
+  writeStored,
+} from "./mode-memory";
 import { NewsTrace, type TraceRequest } from "./news-trace";
 import { SummaryStrip } from "./summary-strip";
 import { ResearchTrades } from "./trades";
@@ -89,7 +97,13 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
   const mainnet = mode === "mainnet";
   const newsBots = useNewsBots(mainnet);
   // #457: bot Mainnet đã chọn lần trước (localStorage `sr:mainnetBot`); không còn trong danh sách thì bot đầu tiên.
-  const [botId, setBotIdState] = useState<string | null>(() => readStored(BOT_KEY));
+  // #470: link từ Trading Agent (`?bot=…&settings=1`) thắng bot đã nhớ, và mở Settings của bot đó một lần.
+  const [link] = useState(() =>
+    typeof window === "undefined"
+      ? { bot: null, settings: false }
+      : linkTarget(window.location.search),
+  );
+  const [botId, setBotIdState] = useState<string | null>(() => link.bot ?? readStored(BOT_KEY));
   const setBotId = useCallback((id: string) => {
     setBotIdState(id);
     writeStored(BOT_KEY, id);
@@ -237,6 +251,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
       <BotsLabelsProvider value={actions}>
         {mainnet ? (
           <MainnetPanel
+            openSettings={link.settings && link.bot !== null && selectedBot?.id === link.bot}
             sources={v === undefined ? null : { items: v.sources, now: v.computedAt }}
             tz={ctx.tz}
             modeSwitch={<ModeSwitch mode={mode} onMode={setMode} />}

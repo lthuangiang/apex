@@ -67,17 +67,14 @@ export function BotSettingsSheet({
   onClose: () => void;
 }) {
   const t = useTranslations("signalAnalysis.research.mainnet.settings");
-  const te = useTranslations("signalAnalysis.research.mainnet.editor");
   const tm = useTranslations("signalAnalysis.research.mainnet");
   const tv = useTranslations("signalAnalysis.research.versions");
-  const tn = useTranslations("signalAnalysis.research");
   const a = useActiveBotVersion(botId);
   const versions = useResearchVersions();
   const source =
     signalVersionId === null
       ? null
       : (versions.data?.items.find((v) => v.id === signalVersionId) ?? null);
-  const cfg = a.config;
   const since =
     a.version === null || a.since === null
       ? null
@@ -107,105 +104,120 @@ export function BotSettingsSheet({
       closeLabel={tv("sheet.close")}
       side
     >
-      {a.query.isPending ? (
-        <p role="status" className="m-0 text-sm text-muted">
-          {tm("loading")}
-        </p>
-      ) : (
-        <>
-          <Group legend={te("botBlock")}>
-            <Kv label={te("account")} mono>
-              {account ?? <Na />}
-            </Kv>
-            <Kv label={te("leverage")}>
-              {cfg === null ? <Na /> : t("leverageValue", { lev: cfg.leverage })}
-            </Kv>
-            <Kv label={te("size")}>{cfg === null ? <Na /> : te("usdc", { v: cfg.sizeUsdc })}</Kv>
-            <Kv label={t("marginPerTrade")}>
-              {cfg === null ? (
-                <Na />
-              ) : (
-                te("usdc", { v: marginText(dec(cfg.sizeUsdc).div(cfg.leverage)) })
-              )}
-            </Kv>
-            <Kv label={tv("sheet.maxOpen")}>{cfg === null ? <Na /> : String(cfg.maxOpenTrades)}</Kv>
-            <Kv label={t("maxDay")}>
-              {cfg === null ? (
-                <Na />
-              ) : cfg.maxNewTradesPerDay === null ? (
-                t("noLimit")
-              ) : (
-                String(cfg.maxNewTradesPerDay)
-              )}
-            </Kv>
-          </Group>
-          <Group legend={t("signals")}>
-            <Kv label={t("markets")}>{cfg === null ? <Na /> : <Markets cfg={cfg} />}</Kv>
-            <Kv label={t("minLevel")}>{cfg === null ? <Na /> : tn(`levels.${cfg.minLevel}`)}</Kv>
-            <Kv label={t("tpsl")}>
-              {cfg === null ? <Na /> : t("tpslValue", { tp: cfg.tpMultiple, sl: cfg.slMultiple })}
-            </Kv>
-            <Kv label={t("maxDelay")}>
-              {cfg === null ? <Na /> : t("delayValue", { n: cfg.maxSourceDelayMinutes })}
-            </Kv>
-          </Group>
-          <fieldset className="m-0 min-w-0 rounded-tile border border-border px-3.5 pt-2 pb-3.5">
-            <legend className="px-1.5 text-[15px] font-extrabold text-ink">
-              {tv("sheet.newsTypes")}
-            </legend>
-            {cfg === null ? (
-              <Na />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-[13.5px]">
-                  <caption className="sr-only">{tv("sheet.newsTable")}</caption>
-                  <thead>
-                    <tr>
-                      {(["colTrade", "colType", "colDir", "colHold"] as const).map((k) => (
-                        <th
-                          key={k}
-                          scope="col"
-                          className="border-b border-border px-2 py-2 text-left text-xs font-bold text-muted"
-                        >
-                          {tv(`sheet.${k}`)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {SIGNAL_CATALYSTS.map((c) => {
-                      const x = cfg.news[c];
-                      const type = catalystName(c, tn);
-                      return (
-                        <tr key={c}>
-                          <td className="border-b border-border px-2 py-2">
-                            <input
-                              type="checkbox"
-                              checked={x?.enabled === true}
-                              disabled
-                              readOnly
-                              aria-label={tv("sheet.tradeType", { type })}
-                              className="size-4 accent-accent"
-                            />
-                          </td>
-                          <td className="border-b border-border px-2 py-2 text-ink">{type}</td>
-                          <td className="border-b border-border px-2 py-2 text-ink-2">
-                            {tn(`sides.${catalystSide(c)}`)}
-                          </td>
-                          <td className="border-b border-border px-2 py-2 text-ink-2 tabular-nums">
-                            {hold(x?.maxHoldHours ?? NEWS_RULES.catalysts[c].maxHoldHours)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </fieldset>
-        </>
-      )}
+      <BotSettingsBody botId={botId} account={account} />
     </BottomSheet>
+  );
+}
+
+/**
+ * Nội dung chỉ xem của Settings (nhóm Bot / Signals / News types), dùng chung cho sheet Settings của Signal Research và
+ * khối Configuration của Trading Agent (#470). Đọc version `active` của bot; thiếu dữ liệu thì "Not available".
+ */
+export function BotSettingsBody({ botId, account }: { botId: string; account: string | null }) {
+  const t = useTranslations("signalAnalysis.research.mainnet.settings");
+  const te = useTranslations("signalAnalysis.research.mainnet.editor");
+  const tm = useTranslations("signalAnalysis.research.mainnet");
+  const tv = useTranslations("signalAnalysis.research.versions");
+  const tn = useTranslations("signalAnalysis.research");
+  const a = useActiveBotVersion(botId);
+  const cfg = a.config;
+  return a.query.isPending ? (
+    <p role="status" className="m-0 text-sm text-muted">
+      {tm("loading")}
+    </p>
+  ) : (
+    <>
+      <Group legend={te("botBlock")}>
+        <Kv label={te("account")} mono={account !== null}>
+          {account ?? <Na />}
+        </Kv>
+        <Kv label={te("leverage")}>
+          {cfg === null ? <Na /> : t("leverageValue", { lev: cfg.leverage })}
+        </Kv>
+        <Kv label={te("size")}>{cfg === null ? <Na /> : te("usdc", { v: cfg.sizeUsdc })}</Kv>
+        <Kv label={t("marginPerTrade")}>
+          {cfg === null ? (
+            <Na />
+          ) : (
+            te("usdc", { v: marginText(dec(cfg.sizeUsdc).div(cfg.leverage)) })
+          )}
+        </Kv>
+        <Kv label={tv("sheet.maxOpen")}>{cfg === null ? <Na /> : String(cfg.maxOpenTrades)}</Kv>
+        <Kv label={t("maxDay")}>
+          {cfg === null ? (
+            <Na />
+          ) : cfg.maxNewTradesPerDay === null ? (
+            t("noLimit")
+          ) : (
+            String(cfg.maxNewTradesPerDay)
+          )}
+        </Kv>
+      </Group>
+      <Group legend={t("signals")}>
+        <Kv label={t("markets")}>{cfg === null ? <Na /> : <Markets cfg={cfg} />}</Kv>
+        <Kv label={t("minLevel")}>{cfg === null ? <Na /> : tn(`levels.${cfg.minLevel}`)}</Kv>
+        <Kv label={t("tpsl")}>
+          {cfg === null ? <Na /> : t("tpslValue", { tp: cfg.tpMultiple, sl: cfg.slMultiple })}
+        </Kv>
+        <Kv label={t("maxDelay")}>
+          {cfg === null ? <Na /> : t("delayValue", { n: cfg.maxSourceDelayMinutes })}
+        </Kv>
+      </Group>
+      <fieldset className="m-0 min-w-0 rounded-tile border border-border px-3.5 pt-2 pb-3.5">
+        <legend className="px-1.5 text-[15px] font-extrabold text-ink">
+          {tv("sheet.newsTypes")}
+        </legend>
+        {cfg === null ? (
+          <Na />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[13.5px]">
+              <caption className="sr-only">{tv("sheet.newsTable")}</caption>
+              <thead>
+                <tr>
+                  {(["colTrade", "colType", "colDir", "colHold"] as const).map((k) => (
+                    <th
+                      key={k}
+                      scope="col"
+                      className="border-b border-border px-2 py-2 text-left text-xs font-bold text-muted"
+                    >
+                      {tv(`sheet.${k}`)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {SIGNAL_CATALYSTS.map((c) => {
+                  const x = cfg.news[c];
+                  const type = catalystName(c, tn);
+                  return (
+                    <tr key={c}>
+                      <td className="border-b border-border px-2 py-2">
+                        <input
+                          type="checkbox"
+                          checked={x?.enabled === true}
+                          disabled
+                          readOnly
+                          aria-label={tv("sheet.tradeType", { type })}
+                          className="size-4 accent-accent"
+                        />
+                      </td>
+                      <td className="border-b border-border px-2 py-2 text-ink">{type}</td>
+                      <td className="border-b border-border px-2 py-2 text-ink-2">
+                        {tn(`sides.${catalystSide(c)}`)}
+                      </td>
+                      <td className="border-b border-border px-2 py-2 text-ink-2 tabular-nums">
+                        {hold(x?.maxHoldHours ?? NEWS_RULES.catalysts[c].maxHoldHours)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </fieldset>
+    </>
   );
 }
 

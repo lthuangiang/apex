@@ -45,6 +45,22 @@ export function loadMode(): ResearchMode {
   return initialMode(window.location.search, readStored(MODE_KEY));
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * #470: link "Open in Signal Research" từ Trading Agent: `?bots=mainnet&bot=<id>&settings=1`. Trả bot cần chọn (uuid hợp
+ * lệ, không thì null) và có mở Settings không. Bot không còn trong danh sách thì trang chọn bot đầu tiên như thường.
+ */
+export function linkTarget(search: string): { bot: string | null; settings: boolean } {
+  const q = new URLSearchParams(search);
+  const bot = q.get("bot");
+  return { bot: bot !== null && UUID.test(bot) ? bot : null, settings: q.get("settings") === "1" };
+}
+
+/** Link tới bot Mainnet trong Signal Research, mở sẵn Settings (#470). */
+export const signalResearchBotHref = (botId: string): string =>
+  `/signal-research?bots=mainnet&bot=${botId}&settings=1`;
+
 /** Bot sẽ hiện: bot đã chọn / đã nhớ nếu còn trong danh sách, không thì bot đầu tiên, danh sách rỗng thì null. */
 export function pickBot<T extends { id: string }>(
   bots: readonly T[],
