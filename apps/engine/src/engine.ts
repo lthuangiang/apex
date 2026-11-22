@@ -1852,7 +1852,16 @@ export class Engine {
         );
     for (const t of after) {
       if (before.get(t.signalId) === t) continue;
-      const row = newsTradeRow(r.botId, r.account.id, t, event.at);
+      // Đòn bẩy đã được SoDEX xác nhận cho market này (khoá `market:L:isolated`, đặt trước lệnh vào): lưu theo lệnh lúc tạo
+      // dòng (#458), lần cập nhật sau không đổi.
+      const leverage = newsLeverageOf(r.config);
+      const row = newsTradeRow(
+        r.botId,
+        r.account.id,
+        t,
+        event.at,
+        r.leverageDone.has(newsLeverageKey(t.market, leverage)) ? leverage : null,
+      );
       try {
         await tx
           .insert(newsSignalTrades)
