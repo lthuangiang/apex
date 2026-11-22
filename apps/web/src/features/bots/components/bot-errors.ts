@@ -22,6 +22,9 @@ export function useBotErrorText() {
   const tc = useTranslations("common.errors");
   return (e: unknown) => {
     if (!(e instanceof ApiError)) return tc("generic");
+    // #471: archive bot news còn lệnh mở (API 409 `open_trades`): câu riêng, không phải lỗi chung.
+    if (e.code === "STATE_CONFLICT" && (e.details as { reason?: unknown }).reason === "open_trades")
+      return t("archiveOpenTrades");
     const messages: Partial<Record<ApiError["code"], string>> = {
       TWO_FACTOR_INVALID: t("twoFactor"),
       TWO_FACTOR_REQUIRED: t("twoFactor"),
