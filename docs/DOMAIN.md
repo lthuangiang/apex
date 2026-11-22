@@ -32,7 +32,7 @@ Các trạng thái: `draft → starting → running ⇄ (pausing → paused → 
 | paused | Resume | resuming → running | không; chỉ khi lý do pause đã hết |
 | running / paused | Stop… | stopping → stopped | dialog liệt kê lệnh sẽ huỷ, không hỏi 2FA (DEC-115) |
 | running | Apply edit vN | running (vN) | dialog diff |
-| stopped | Archive | archived | không |
+| stopped | Archive | archived | không; bot `news_signal` còn lệnh news `open` / `closing` hoặc lệnh SoDEX `open` / `partially_filled` / `unknown` → 409 `STATE_CONFLICT` `{reason: "open_trades"}` (DEC-TBD-news-archive-guard) |
 | draft | Delete | — | có (chỉ xoá được draft) |
 
 ### 7.2 Reason code (lưu trên bot, hiển thị trên UI)

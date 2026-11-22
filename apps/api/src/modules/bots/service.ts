@@ -9,6 +9,7 @@ import {
   copiedLeaders,
   fills,
   latestTypicalHold,
+  newsSignalTrades,
   orders,
   outbox,
   riskAlerts,
@@ -1630,11 +1631,47 @@ export async function archiveBot(
   botId: string,
 ): Promise<BotSummary> {
   // Bot đã dừng không còn quản lý vị thế: không giữ cảnh báo lệch vị thế (DEC-306).
-  const b = await command(deps, userId, botId, BotCommand.archive, {
-    archivedAt: deps.now(),
-    positionMismatch: null,
-  });
+  const b = await command(
+    deps,
+    userId,
+    botId,
+    BotCommand.archive,
+    { archivedAt: deps.now(), positionMismatch: null },
+    // Bot `news_signal` dừng bằng Keep open trades vẫn quản lý lệnh đang mở (OCO, max hold, Close now; DEC-369): còn lệnh
+    // thì không archive (#471, DEC-TBD-news-archive-guard). Kiểm dưới khoá dòng bot.
+    async (tx, locked) => {
+      if (locked.strategy === Strategy.newsSignal && (await newsBotHasOpen(tx, botId)))
+        throw new AppError(
+          ErrorCode.stateConflict,
+          "This bot still has open trades. Close them first, then archive.",
+          { reason: "open_trades" },
+        );
+    },
+  );
   return summary(b, null, null);
+}
+
+/**
+ * Bot `news_signal` còn lệnh news `open` / `closing`, hoặc lệnh SoDEX `open` / `partially_filled` / `unknown` (đúng điều
+ * kiện engine nạp runner ở chế độ quản lý).
+ */
+async function newsBotHasOpen(tx: DbTx, botId: string): Promise<boolean> {
+  const [trade] = await tx
+    .select({ id: newsSignalTrades.id })
+    .from(newsSignalTrades)
+    .where(
+      and(eq(newsSignalTrades.botId, botId), inArray(newsSignalTrades.status, ["open", "closing"])),
+    )
+    .limit(1);
+  if (trade !== undefined) return true;
+  const [order] = await tx
+    .select({ id: orders.id })
+    .from(orders)
+    .where(
+      and(eq(orders.botId, botId), inArray(orders.status, ["open", "partially_filled", "unknown"])),
+    )
+    .limit(1);
+  return order !== undefined;
 }
 
 /**

@@ -12045,4 +12045,46 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     ).toHaveLength(1);
     await e.stop();
   });
+
+  // ---------- #471: bot news archived còn lệnh mở (phòng thủ, DEC-TBD-news-archive-guard) ----------
+  it("#471: an archived news bot with open trades keeps its runner, also after a restart: OCO runs, Close now works, no new trade", async () => {
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b471-archived");
+    const sol = await openTrade(e, gw, b);
+    const eth = await openTrade(e, gw, b, { market: "ETH-USD" });
+    await setState(b.botId, "stopping", false);
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("stopped");
+    // Bot lỡ archive khi còn lệnh (trước bản sửa API): engine vẫn quản lý.
+    await setState(b.botId, "archived");
+    await ticks(e, 1);
+    await e.stop();
+    const e2 = newsEngine(gw, "b471-archived-2");
+    await ticks(e2, 1);
+    expect(gw.cancelled).toEqual([]);
+    // Không mở lệnh mới.
+    const later = await signal({ market: "BTC-USD" });
+    await ticks(e2, 1);
+    expect(gw.received.filter((o) => o.tag === `ns:${later}:entry`)).toEqual([]);
+    // OCO: SL khớp thì TP bị huỷ, lệnh đóng.
+    await e2.onFill(b.accountId, sol.sl.clOrdID, sol.sl.quantity, "95", "0.1", clock);
+    await e2.onOrderClosed(b.accountId, sol.sl.clOrdID, "filled", clock);
+    expect(gw.cancelled).toEqual([sol.tp.clOrdID]);
+    expect((await tradeOf(b.botId, sol.id))?.status).toBe("closed");
+    // Close now trên lệnh còn lại.
+    const id = await addCommand(b, eth.id, "close", 1);
+    await ticks(e2, 1);
+    const close = gw.received.find((o) => o.tag === `ns:${eth.id}:close:1`);
+    expect(close).toMatchObject({ type: "market", reduceOnly: true });
+    await e2.onFill(b.accountId, close?.clOrdID ?? "", close?.quantity ?? "0", "101", "0.1", clock);
+    await e2.onOrderClosed(b.accountId, close?.clOrdID ?? "", "filled", clock);
+    expect((await commandRow(id))?.status).toBe("applied");
+    expect((await tradeOf(b.botId, eth.id))?.status).toBe("closed");
+    expect(gw.cancelled).toEqual(
+      expect.arrayContaining([sol.tp.clOrdID, eth.tp.clOrdID, eth.sl.clOrdID]),
+    );
+    expect((await botState(b.botId))?.state).toBe("archived");
+    await e2.stop();
+  });
 });
