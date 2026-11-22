@@ -1048,6 +1048,21 @@ export class Engine {
   readonly #openChecks = new Map<string, number>();
   /** Lần thử lại gần nhất cho lệnh đã bỏ cuộc mà chiến lược chưa được báo kết thúc (`TickSnapshot.gaveUp`). */
   readonly #gaveUpRetryAt = new Map<string, number>();
+
+  /** Số lệnh đã bỏ cuộc đang có nhịp thử lại trong bộ nhớ (để kiểm map không phình ra, #437). */
+  get gaveUpRetryCount(): number {
+    return this.#gaveUpRetryAt.size;
+  }
+
+  /**
+   * Bỏ nhịp thử lại của lệnh không còn trong danh sách đã bỏ cuộc của vòng (`snap.gaveUp`): đã được báo kết thúc
+   * (`done_fed_at`), đã có kết quả, bot đã dừng hẳn, hoặc shard không còn là của mình (#437).
+   */
+  #pruneGaveUpRetry(snap: TickSnapshot): void {
+    if (this.#gaveUpRetryAt.size === 0) return;
+    const live = new Set(snap.gaveUp.map((o) => o.id));
+    for (const id of this.#gaveUpRetryAt.keys()) if (!live.has(id)) this.#gaveUpRetryAt.delete(id);
+  }
   /** Lần cuối user stream của account có thể đã mất tin (đứt kết nối, engine vừa nạp bot). */
   readonly #streamGaps = new Map<string, number>();
   /** Account + engine vừa có khoảng trống user stream (STREAM_GAP_MS). */
@@ -1215,6 +1230,7 @@ export class Engine {
       manageShards: managed - started,
       snapshot: this.#clockMono() - managed,
     };
+    this.#pruneGaveUpRetry(snap);
     // Dữ liệu tín hiệu news đọc một lần mỗi vòng, lúc shard đầu tiên cần (sau `syncBots`, nên có cả bot vừa nạp).
     let news: Promise<NewsSnapshot | null> | null = null;
     const steps: Record<ShardPhase, (shard: number) => Promise<void>> = {
@@ -2439,7 +2455,7 @@ export class Engine {
     // Bot `news_signal` (#419 B2): không ghi thẳng vào lệnh / sổ cái đã lưu (chiến lược không thấy fill thì OCO, đóng lệnh
     // news hỏng). Để runner (bot news còn lệnh luôn có runner ở chế độ quản lý) đối soát lại lệnh và đưa fill qua chiến lược.
     if (b.strategy === Strategy.newsSignal) {
-      this.#d.log.info(
+      this.#d.log.warn(
         { botId: o.botId, clOrdID: o.clOrdId },
         "news_signal fill without a runner left for reconciliation",
       );
@@ -2873,7 +2889,15 @@ export class Engine {
             eq(orders.status, "unknown"),
             isNotNull(orders.unknownGaveUpAt),
             isNull(orders.doneFedAt),
+            // Chỉ lệnh đã được xác nhận không còn trên SoDEX (`#farmGaveUp` cần mốc này, thiếu thì không làm gì; #437).
+            isNotNull(orders.missingConfirmedAt),
             ne(bots.strategy, Strategy.volumeFarm),
+            // Chỉ bot còn runner: đang chạy / chuyển trạng thái / pause, và bot `news_signal` đã dừng còn lệnh (chế độ quản
+            // lý, #419 B1). Bot đã dừng hẳn không còn ai chờ `orderDone` (#437).
+            or(
+              inArray(bots.state, [...ENGINE_ACTIVE_STATES, BotState.paused]),
+              and(eq(bots.strategy, Strategy.newsSignal), eq(bots.state, BotState.stopped)),
+            ),
           ),
         )
     )
@@ -5770,7 +5794,12 @@ export class Engine {
     // Lệnh đã bỏ cuộc mà chiến lược chưa được báo kết thúc (đọc trade lỗi lúc bỏ cuộc): thử lại, có nhịp chờ.
     for (const o of snap.gaveUp) {
       const r = this.#runners.get(o.botId);
-      if (r?.shard !== shard) continue;
+      if (r === undefined) {
+        // Bot không còn runner: không ai thử lại lệnh này ở engine này (#437).
+        this.#gaveUpRetryAt.delete(o.id);
+        continue;
+      }
+      if (r.shard !== shard) continue;
       if (now - (this.#gaveUpRetryAt.get(o.id) ?? Number.NEGATIVE_INFINITY) < GAVE_UP_RETRY_MS)
         continue;
       this.#gaveUpRetryAt.set(o.id, now);

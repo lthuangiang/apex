@@ -9454,6 +9454,64 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
     await finish(e, botId);
   });
 
+  /** Cổng mà lần đọc lịch sử khớp lỗi (lệnh đã bỏ cuộc không được báo kết thúc, còn trong `snap.gaveUp`). */
+  const failingTrades = () => {
+    const gw = new (class extends PosGateway {
+      failTrades = true;
+      override recentTrades(a: AccountRef): Promise<(OrderTrade & { clOrdID: string })[]> {
+        return this.failTrades ? Promise.reject(new Error("SoDEX down")) : super.recentTrades(a);
+      }
+    })();
+    return gw;
+  };
+
+  it("does not pick a given-up order without missing_confirmed_at, and prunes the retry map once the order is done (#437)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = failingTrades();
+    const { botId } = await seedBot("running", grid);
+    const { e, count } = gaveUpEngine(gw, "pos-gaveup-437a");
+    const { init, row } = await lostInit(e, gw, botId, 83n);
+    for (let i = 0; i < 4 && (await row())?.unknownGaveUpAt == null; i += 1) await step(e, 60_000);
+    // Thử lại một lần (lỗi): lệnh có nhịp thử lại trong bộ nhớ.
+    await step(e, 1_000);
+    expect(count(GAVE_UP_READ_FAILED)).toBe(2);
+    expect(e.gaveUpRetryCount).toBe(1);
+    // Mốc "đã xác nhận không còn trên SoDEX" mất (dòng bất thường): không còn được chọn, nhịp thử lại bị bỏ.
+    await db.update(orders).set({ missingConfirmedAt: null }).where(eq(orders.clOrdId, init));
+    await step(e, GAVE_UP_RETRY_MS);
+    expect(e.gaveUpRetryCount).toBe(0);
+    expect(count(GAVE_UP_READ_FAILED)).toBe(2);
+    // Mốc có lại, đọc được: báo kết thúc một lần, rồi map trống.
+    await db
+      .update(orders)
+      .set({ missingConfirmedAt: new Date(clock - 11 * 60_000) })
+      .where(eq(orders.clOrdId, init));
+    gw.failTrades = false;
+    await step(e, GAVE_UP_RETRY_MS);
+    expect((await row())?.doneFedAt).not.toBeNull();
+    await step(e, 1_000);
+    expect(e.gaveUpRetryCount).toBe(0);
+    await finish(e, botId);
+  });
+
+  it("does not retry a given-up order of a bot that is stopped, and drops its retry entry (#437)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = failingTrades();
+    const { botId } = await seedBot("running", grid);
+    const { e, count } = gaveUpEngine(gw, "pos-gaveup-437b");
+    const { row } = await lostInit(e, gw, botId, 84n);
+    for (let i = 0; i < 4 && (await row())?.unknownGaveUpAt == null; i += 1) await step(e, 60_000);
+    await step(e, 1_000);
+    expect(count(GAVE_UP_READ_FAILED)).toBe(2);
+    expect(e.gaveUpRetryCount).toBe(1);
+    // Bot đã dừng hẳn (runner trong bộ nhớ chưa bị bỏ): không thử lại nữa.
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+    for (let i = 0; i < 3; i += 1) await step(e, GAVE_UP_RETRY_MS);
+    expect(count(GAVE_UP_READ_FAILED)).toBe(2);
+    expect(e.gaveUpRetryCount).toBe(0);
+    await e.stop();
+  });
+
   const dca = {
     strategy: "futures_dca",
     market: "BTC-USD",
@@ -11685,5 +11743,45 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     expect((await tradeOf(b.botId, t.id))?.status).toBe("closed");
     expect(gw.cancelled).toContain(t.sl.clOrdID);
     await e2.stop();
+  });
+
+  it("#437: a given-up order of a news bot in managed mode (stopped with Keep) is still retried", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new (class extends FakeGateway {
+      failTrades = false;
+      override recentTrades(a: AccountRef): Promise<(OrderTrade & { clOrdID: string })[]> {
+        return this.failTrades ? Promise.reject(new Error("SoDEX down")) : super.recentTrades(a);
+      }
+    })();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b437-managed");
+    const t = await openTrade(e, gw, b);
+    await setState(b.botId, "stopping", false);
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("stopped");
+    // TP của lệnh news thành `unknown` đã bỏ cuộc mà chưa báo kết thúc (đọc trade lỗi).
+    gw.failTrades = true;
+    await db
+      .update(orders)
+      .set({
+        status: "unknown",
+        sodexOrderId: 437n,
+        missingConfirmedAt: new Date(clock - 11 * 60_000),
+        unknownGaveUpAt: new Date(clock - 60_000),
+        doneFedAt: null,
+      })
+      .where(eq(orders.clOrdId, t.tp.clOrdID));
+    warned.length = 0;
+    for (let i = 0; i < 3; i += 1) {
+      clock += 61_000;
+      await e.tick();
+    }
+    expect(
+      warned.filter(
+        (m) => m === "could not read trades for a given-up order; the bot keeps waiting",
+      ).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(e.gaveUpRetryCount).toBe(1);
+    await e.stop();
   });
 });

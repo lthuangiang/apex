@@ -737,8 +737,11 @@ export function closeTitle(reason: string): string {
       return "Closed: bot stopped";
     case "SL_REJECTED":
       return "Closed: stop loss rejected";
-    default:
+    case "MANUAL":
       return "Closed by you";
+    default:
+      // Lý do chưa có câu riêng: không đoán là người dùng đóng (PM review #448).
+      return "Closed";
   }
 }
 
