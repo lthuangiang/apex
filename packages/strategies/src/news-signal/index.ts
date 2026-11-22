@@ -1161,8 +1161,10 @@ export function stepNewsSignal(
     case "paused":
       return none({ ...s, paused: true });
     case "resumed":
-      // Resume không vào bù tín hiệu đã lỡ: chỉ nhận tín hiệu quyết định từ lúc này.
-      return none({ ...s, paused: false, acceptAfter: e.at });
+      // Resume không vào bù tín hiệu đã lỡ: chỉ nhận tín hiệu quyết định từ lúc này. Engine cũng gửi khi Start lại bot đã
+      // dừng (#469): bỏ dấu Stop của lần chạy trước, không thì mọi tín hiệu bị bỏ với BOT_PAUSED. Lệnh giữ lại khi
+      // Stop-Keep vẫn tắt max hold (cờ theo từng lệnh).
+      return none({ ...s, paused: false, stopping: null, acceptAfter: e.at });
     case "fill":
       return onFill(s, ctx, e);
     case "orderAck":

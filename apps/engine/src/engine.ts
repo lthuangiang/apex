@@ -141,6 +141,7 @@ import {
   newsOpenMarkets,
   newsLeverageKey,
   newsLeverageOf,
+  newsVersionAppliedWhy,
   newsOpenBlocked,
   newsSignalInput,
   newsTradeRow,
@@ -1013,6 +1014,20 @@ export function versionAppliedWhy(cancelled: number, kept: boolean): string {
     : `Cancelled ${String(cancelled)} orders; new orders follow on the next price.`;
 }
 
+/**
+ * Version bot `news_signal` cần áp: version `pending`, hoặc version active mới hơn version của runner (sửa lúc bot đã dừng
+ * thành active ngay, DEC-131, trong khi runner còn quản lý lệnh mở; Start sau đó phải chạy với version đã sửa, #469).
+ */
+function newsVersionTarget(
+  r: Pick<Runner, "botId" | "versionId" | "version">,
+  snap: Pick<TickSnapshot, "pending">,
+  active: VersionRow,
+): VersionRow | undefined {
+  const pending = snap.pending.get(r.botId);
+  if (pending !== undefined) return pending;
+  return active.id !== r.versionId && active.version > r.version ? active : undefined;
+}
+
 /** Version trong clOrdID tất định (`d{bot}-{version}-{hash}-{attempt}`, `clOrdId`); không đọc được → vô cực. */
 export function versionOfClOrdId(id: string): number {
   const v = Number(id.split("-")[1]);
@@ -1853,8 +1868,8 @@ export class Engine {
     for (const t of after) {
       if (before.get(t.signalId) === t) continue;
       // Đòn bẩy đã được SoDEX xác nhận cho market này (khoá `market:L:isolated`, đặt trước lệnh vào): lưu theo lệnh lúc tạo
-      // dòng (#458), lần cập nhật sau không đổi.
-      const leverage = newsLeverageOf(r.config);
+      // dòng (#458), lần cập nhật sau không đổi. Mức của chính lệnh (lưu lúc vào, #469); state cũ không có thì mức của version.
+      const leverage = t.leverage ?? newsLeverageOf(r.config);
       const row = newsTradeRow(
         r.botId,
         r.account.id,
@@ -3115,11 +3130,23 @@ export class Engine {
           if (!newsHasOpen(r.state)) this.#runners.delete(r.botId);
           continue;
         }
-        if (bot.state === BotState.paused) continue;
+        // Bot news đang pause áp version ngay (#469, lệch có chủ ý so với "áp khi Resume"): áp không huỷ lệnh nào, không có
+        // tín hiệu nào lúc pause, nên kết quả với người dùng như nhau, và "Applying v{n}…" không treo suốt lúc pause.
+        if (bot.state === BotState.paused) {
+          if (r.repairPending === null)
+            await this.#applyPendingVersion(r, newsVersionTarget(r, snap, version), bot.state);
+          continue;
+        }
       }
       // Chưa kiểm tra xong sổ cái: không áp version mới (review #253 minor 2), vòng sau áp.
       if (r.repairPending === null)
-        await this.#applyPendingVersion(r, snap.pending.get(r.botId), bot.state);
+        await this.#applyPendingVersion(
+          r,
+          r.strategy === Strategy.newsSignal
+            ? newsVersionTarget(r, snap, version)
+            : snap.pending.get(r.botId),
+          bot.state,
+        );
       if (bot.state === BotState.pausing) {
         await this.#transition(r, EngineEvent.confirmedPaused, null);
         // Bot `news_signal`: runner chạy tiếp ở chế độ quản lý (`MANAGED_WHILE_PAUSED`); chiến lược thôi mở lệnh mới.
@@ -3136,6 +3163,9 @@ export class Engine {
         if (!(await this.#leaseConfirmed(shard))) continue;
         r.awaitingFirstAck = false;
         await this.#transition(r, EngineEvent.confirmedRunning, null);
+        // Start lại bot đã dừng (DEC-86, runner hoặc state đã lưu còn dấu Stop / Pause của lần trước): chiến lược nhận
+        // tín hiệu từ lúc này (#469).
+        await this.#feed(r, { type: "resumed", at: this.#d.now(), prices: {} });
       } else if (
         bot.state === BotState.resuming &&
         r.engines.every((x) => this.#streamReady(r, x))
@@ -3237,8 +3267,16 @@ export class Engine {
     const markets = this.#marketsOf(bot.market, config);
     // Bot `news_signal` nạp lại (restart, đổi shard): rules của market các lệnh còn mở, để TP / SL / lệnh đóng làm tròn
     // đúng; market khác nạp lúc giao tín hiệu.
-    if (bot.strategy === Strategy.newsSignal && saved?.versionId === version.id)
-      for (const t of newsTrades(saved.state as NewsSignalState))
+    // Bot `news_signal`: state không phụ thuộc version (#469, DEC-TBD-news-version-apply: áp version mang nguyên state), nên
+    // state đã lưu luôn được dùng lại, kể cả khi version active đổi lúc bot dừng (sửa bot đã dừng còn lệnh mở, DEC-131):
+    // không bao giờ quên lệnh đang mở.
+    const savedState =
+      saved !== undefined &&
+      (saved.versionId === version.id || bot.strategy === Strategy.newsSignal)
+        ? saved.state
+        : undefined;
+    if (bot.strategy === Strategy.newsSignal && savedState !== undefined)
+      for (const t of newsTrades(savedState as NewsSignalState))
         if (t.status !== "closed" && !markets.includes(t.market)) markets.push(t.market);
     const rules: Record<string, MarketRules> = {};
     for (const m of markets) {
@@ -3264,7 +3302,7 @@ export class Engine {
       builderRate,
       market: bot.market,
       config,
-      state: saved?.versionId === version.id ? saved.state : entry.module.initialState(config),
+      state: savedState ?? entry.module.initialState(config),
       module: entry.module,
       ctx: {
         botId: bot.id,
@@ -3398,16 +3436,24 @@ export class Engine {
       }
       return;
     }
-    const open = await this.#d.db
-      .select({ clOrdId: orders.clOrdId })
-      .from(orders)
-      .where(and(eq(orders.botId, r.botId), inArray(orders.status, ["open", "partially_filled"])));
-    await this.#cancel(
-      r,
-      open.map((o) => o.clOrdId),
-      undefined,
-      true,
-    );
+    // Bot `news_signal` (#469, DEC-TBD-news-version-apply): không huỷ lệnh nào khi áp version. TP / SL / lệnh đóng của
+    // lệnh đang mở thuộc từng trade, giữ nguyên; config mới chỉ áp cho tín hiệu sau.
+    const news = r.strategy === Strategy.newsSignal;
+    const open = news
+      ? []
+      : await this.#d.db
+          .select({ clOrdId: orders.clOrdId })
+          .from(orders)
+          .where(
+            and(eq(orders.botId, r.botId), inArray(orders.status, ["open", "partially_filled"])),
+          );
+    if (!news)
+      await this.#cancel(
+        r,
+        open.map((o) => o.clOrdId),
+        undefined,
+        true,
+      );
     // Fill tới trong lúc huỷ mở lại vị thế: chưa áp, vòng sau thử lại (lệnh vừa huỷ là lệnh của lúc bot còn phẳng).
     const fresh = apply();
     if (fresh === null) return;
@@ -3480,7 +3526,9 @@ export class Engine {
     r.leverageKnown = new Set();
     // Lệnh version cũ mà fill tới trong lúc áp sinh ra (bước của version cũ chạy giữa lần đọc lệnh mở và lúc ghi, #223 M1):
     // huỷ ngay. Chiến lược đã nhớ chúng là lệnh cũ chờ kết thúc và huỷ lại tới khi SoDEX xác nhận.
-    if (entry.module.applyVersion !== undefined && r.strategy !== Strategy.volumeFarm) {
+    // Bot news: clOrdID mang số thứ tự trade ở chỗ của version (`t.seq`), nên "version cũ hơn" ở đây là TP / SL của lệnh
+    // đang mở. Không bao giờ huỷ chúng khi áp version (#469).
+    if (entry.module.applyVersion !== undefined && r.strategy !== Strategy.volumeFarm && !news) {
       const cancelled = new Set(open.map((o) => o.clOrdId));
       const late = (
         await this.#d.db
@@ -3507,6 +3555,22 @@ export class Engine {
           .where(and(eq(orders.sodexAccountId, r.account.id), inArray(orders.clOrdId, ids)));
         await this.#reportFarmEnded(r, ids, rows, [], this.#d.now());
       }
+    }
+    if (news) {
+      // Version mới có thể mở rộng version gốc chỉ khi dòng bị sửa ngoài API: khi đó chỉ quản lý lệnh đang mở, như lúc nạp.
+      const bot = await this.#botRow(r.botId);
+      if (bot !== undefined) r.newsNarrow = (await this.#newsNarrowBlock(bot, config)) === null;
+      await this.#event(
+        r,
+        "version",
+        `Applied v${String(pending.version)}`,
+        newsVersionAppliedWhy(
+          pending.version,
+          newsTrades(r.state as NewsSignalState).filter((t) => t.status !== "closed").length,
+        ),
+        this.#d.now(),
+      );
+      return;
     }
     await this.#event(
       r,

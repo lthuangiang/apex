@@ -10,6 +10,7 @@ import {
   newsOpenBlocked,
   newsSignalInput,
   newsTradeRow,
+  newsVersionAppliedWhy,
 } from "../src/news-signal";
 
 // Phần thuần của engine A cho bot `news_signal` (#419): chốt lệnh mở (lớp engine của trần 200 USDC), dòng
@@ -157,5 +158,17 @@ describe("news rows", () => {
     expect(isUniqueViolation(new Error("x"), NEWS_ACCOUNT_MARKET_UNIQUE)).toBe(false);
     expect(newsLeverageKey("SOL-USD", 1)).toBe("SOL-USD:1:isolated");
     expect(newsLeverageKey("SOL-USD", 20)).toBe("SOL-USD:20:isolated");
+  });
+});
+
+describe("newsVersionAppliedWhy (#469, PM approved)", () => {
+  it("names the open trades that keep their settings, singular and plural; none = first sentence only", () => {
+    expect(newsVersionAppliedWhy(2, 0)).toBe("New signals use v2.");
+    expect(newsVersionAppliedWhy(4, 1)).toBe(
+      "New signals use v4. 1 open trade keeps the settings it opened with.",
+    );
+    expect(newsVersionAppliedWhy(4, 3)).toBe(
+      "New signals use v4. 3 open trades keep the settings they opened with.",
+    );
   });
 });

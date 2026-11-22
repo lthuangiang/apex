@@ -722,6 +722,23 @@ describe("unknown slots and deterministic ids", () => {
     );
   });
 
+  it("Start again after Stop (engine sends resumed) clears the stop mark, so later signals trade; kept trades keep max hold off (#469)", () => {
+    const o = opened();
+    const stopped = run(cfg(), o.state, [{ type: "newsStop", at: T0 + HOUR, close: false }]);
+    expect(stopped.state.stopping).toBe("keep");
+    const blocked = run(cfg(), stopped.state, [
+      signalEv(sig({ market: "ETH-USD" }), T0 + HOUR + 1),
+    ]);
+    expect(outcome(blocked.actions)).toMatchObject({ outcome: "dropped" });
+    const at = T0 + 2 * HOUR;
+    const started = run(cfg(), stopped.state, [{ type: "resumed", at, prices: {} }]);
+    expect(started.state.stopping).toBeNull();
+    expect(trade(started.state, o.signal.id).maxHoldOff).toBe(true);
+    const later = sig({ market: "ETH-USD", decidedAt: at + 1_000, expiresAt: at + 120_000 });
+    const next = run(cfg(), started.state, [signalEv(later)]);
+    expect(places(next.actions).map((p) => p.tag)).toEqual([newsTag.entry(later.id)]);
+  });
+
   it("applies a new version while a trade is open and keeps the state as is (#469)", () => {
     const o = opened(cfg({ leverage: 10 }));
     expect(newsSignal.applyVersion?.(cfg({ leverage: 5 }), o.state, ctx)).toBe(o.state);
@@ -750,7 +767,7 @@ describe("unknown slots and deterministic ids", () => {
     expect(close?.quantity).toBe("1.99");
     // Tín hiệu sau ở market khác: size, đòn bẩy, TP / SL của v2.
     const eth = sig({ market: "ETH-USD", storyKey: "ETH-USD|listing" });
-    const next = run(v2, acked.state, [{ ...signalEv(eth), book: { bid: "100", ask: "100.1" } }]);
+    const next = run(v2, acked.state, [signalEv(eth)]);
     const fresh = trade(next.state, eth.id);
     expect(fresh.leverage).toBe(5);
     expect(fresh.sizeUsdc).toBe("100");
