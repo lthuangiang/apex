@@ -425,9 +425,14 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 ### 2.19 Bot `news_signal` mainnet: chốt chặn `SIGNAL_NEWS_BOTS_ENABLED` (#420, DEC-367)
 - Biến: `SIGNAL_NEWS_BOTS_ENABLED`, mặc định **`false`**. **Một công tắc này điều khiển cả hai service `api` và `engine`**: api chặn tạo / Start / Resume, engine (PR engine A) không chạy bot `news_signal` khi tắt. Đặt cùng giá trị cho cả hai. Khi tắt, tạo bot mainnet (`POST /api/v1/signal-research/bots`), Start và Resume của bot `news_signal` trả **409 `FEATURE_NOT_READY`** ("Mainnet bots are not available yet.") cho mọi người, kể cả team. Không ghi DB, không có audit.
 - Pause / Stop / Close now luôn chạy được cho chủ bot, vì chỉ giảm rủi ro.
-- **Không bật** cho tới khi engine nối tín hiệu (#419 engine A/B) đã merge **và** người dùng đã tự thử một lệnh nhỏ thật trên mainnet. Người dùng tự bật: đặt `SIGNAL_NEWS_BOTS_ENABLED=true` trong `/opt/drift/.env`, thêm dòng `SIGNAL_NEWS_BOTS_ENABLED: ${SIGNAL_NEWS_BOTS_ENABLED:-false}` vào khối `environment` của `api` (như mẫu `deploy/server/docker-compose.yml`; engine thêm cùng dòng ở PR engine A), rồi `cd /opt/drift && docker compose up -d api engine`.
+- **Không bật** cho tới khi engine nối tín hiệu (#419 engine A/B) đã merge **và** người dùng đã tự thử một lệnh nhỏ thật trên mainnet. Người dùng tự bật: đặt `SIGNAL_NEWS_BOTS_ENABLED=true` trong `/opt/drift/.env`, thêm dòng `SIGNAL_NEWS_BOTS_ENABLED: ${SIGNAL_NEWS_BOTS_ENABLED:-false}` vào khối `environment` của `api` và của `engine` (như mẫu `deploy/server/docker-compose.yml`), rồi `cd /opt/drift && docker compose up -d api engine`.
 - Tắt khẩn cấp: đặt lại `false`, rồi `docker compose up -d api engine`. Bot đang chạy không bị dừng; muốn dừng thì Stop từng bot hoặc dùng Emergency.
 - Không có migration (bảng của #432, migration `0059`).
+- **Engine (#419 engine A, DEC-368):** cùng biến, đọc ở service `engine` (mẫu `deploy/server/docker-compose.yml` đã có dòng `SIGNAL_NEWS_BOTS_ENABLED: ${SIGNAL_NEWS_BOTS_ENABLED:-false}` trong khối `environment` của `engine`).
+  - Tắt: engine không nạp bot `news_signal` nào (ở mọi trạng thái), không đọc `news_signals`, không subscribe NATS `sr.signal.new`. Log warn `news_signal bot not loaded` (kèm `reason`) cho mỗi bot bị bỏ.
+  - Bật: engine chỉ nạp bot mainnet của chủ có role team hoặc `users.signal_research`, khi bot vẫn chỉ thu hẹp version gốc. Engine giao tín hiệu mỗi vòng (ngay sau khi nạp bot) và ngay khi nhận chuông NATS `sr.signal.new` của scheduler (`SIGNAL_NEWS_PUBLISH_ENABLED`). Lệnh vào: limit IOC theo sổ lệnh đọc lúc giao (cũ tối đa 1 s), sau khi SoDEX xác nhận 1× isolated cho đúng market; giá × khối lượng ≤ 200 USDC; bot phải `running`; builder fee 10.
+  - **Engine B (Stop / Pause / lệnh của người dùng / max hold) chưa có ở bản này: giữ `false`.**
+  - Kiểm tra sau khi bật: `select outcome, reason, count(*) from news_signal_deliveries where created_at > now() - interval '1 hour' group by 1, 2;` và log `news signal opening order not sent` (phải không có trong vận hành bình thường).
 
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.

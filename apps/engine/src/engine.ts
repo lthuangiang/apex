@@ -15,6 +15,12 @@ import {
   sodexAccounts,
   builderFeeOverridesOf,
   users,
+  signalBotVersions,
+  newsSignalDeliveries,
+  newsSignalTrades,
+  insertNewsSignalDelivery,
+  unexpiredNewsSignals,
+  type NewsSignalRow,
   type Db,
 } from "@drift/db";
 import { Lease, LeaseSet, type LeaseLoss, type LeaseRedis } from "@drift/runtime";
@@ -54,6 +60,13 @@ import {
   exceedsPerTrade,
   PLANNED_STOP_REASONS,
   STOPPED_BY_USER,
+  AssetKind,
+  botVersionConfigSchema,
+  narrowsVersion,
+  type NewsSignalConfig,
+  SignalReason,
+  STOCK_MARKET_SET,
+  UserRole,
 } from "@drift/shared";
 import {
   mmOrderContextSchema,
@@ -83,6 +96,8 @@ import {
   type StrategyEvent,
   type StrategyModule,
   type OrderIntent,
+  newsTrades,
+  type NewsSignalState,
 } from "@drift/strategies";
 import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
@@ -98,6 +113,17 @@ import {
   type NotSentCode,
   type OrderTrade,
 } from "./gateway";
+import {
+  isUniqueViolation,
+  NEWS_ACCOUNT_MARKET_UNIQUE,
+  NEWS_BOOK_MAX_AGE_MS,
+  NEWS_LEVERAGE,
+  newsLeverageKey,
+  newsOpenBlocked,
+  newsSignalInput,
+  newsTradeRow,
+  NewsWriteConflict,
+} from "./news-signal";
 import type { PaperGateway } from "./paper-gateway";
 import { TEAM_PAUSE_REASONS, teamIncidentRow } from "./team-incidents";
 
@@ -377,6 +403,21 @@ interface TickSnapshot {
   urgent: Set<string>;
 }
 
+/** Dữ liệu một lần giao tín hiệu news (#419): đọc một lần cho mọi shard, cập nhật trong bộ nhớ khi bot nhận lệnh. */
+interface NewsSnapshot {
+  at: number;
+  /** Account đã đọc lệnh news đang mở / market của bot khác; bot của account khác chờ lần giao sau. */
+  accounts: Set<string>;
+  /** Tín hiệu còn hạn (`expires_at` ≥ lúc đọc), cũ trước. */
+  signals: NewsSignalRow[];
+  /** `signalId:botId` đã có delivery. */
+  delivered: Set<string>;
+  /** `accountId:market` → bot có lệnh news `open` / `closing`. */
+  openTrades: Map<string, string>;
+  /** Account → market Perps của các bot thật khác (live / paused, không phải news). */
+  otherMarkets: Map<string, Set<string>>;
+}
+
 const pushTo = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
   const list = map.get(key);
   if (list === undefined) map.set(key, [value]);
@@ -517,6 +558,8 @@ export class LeaseExpiredError extends FencedError {
 /** Các bước của một shard trong một vòng `tick`, theo thứ tự (tên dùng trong log `tick slow`). */
 const SHARD_PHASES = [
   "syncBots",
+  // Tín hiệu bot `news_signal` (#419) ngay sau khi nạp bot: độ trễ thấp nhất (mục tiêu p95 ≤ 2 s).
+  "newsSignals",
   "reconcile",
   "reconcileOpen",
   "retryCancels",
@@ -580,6 +623,11 @@ export interface EngineDeps {
    */
   clockConcurrency?: number;
   /**
+   * `SIGNAL_NEWS_BOTS_ENABLED` (#419, DEC-367): công tắc chung của api và engine cho bot `news_signal` mainnet. Tắt (mặc
+   * định) thì engine không nạp bot `news_signal` nào và không đọc tín hiệu.
+   */
+  newsSignalBots?: boolean;
+  /**
    * User stream SoDEX của các account (main.ts). Engine mở stream cho account ngay khi nạp bot thật. Lệnh mở / tăng vị
    * thế chỉ được gửi khi stream của engine (Spot / Perps) của lệnh đã được SoDEX nhận subscribe: SoDEX không gửi lại tin
    * khớp đã qua. Lệnh giảm vị thế, stop loss, lệnh đóng và Stop của người dùng luôn đi. Không truyền (test) thì coi như
@@ -608,7 +656,8 @@ function engineOfBot(strategy: string, config: unknown): "spot" | "perps" {
     strategy.startsWith("futures") ||
     VOLUME.has(strategy) ||
     strategy === Strategy.adaptiveDca ||
-    strategy === Strategy.copyTrade
+    strategy === Strategy.copyTrade ||
+    strategy === Strategy.newsSignal
   )
     return "perps";
   if (strategy === Strategy.twap)
@@ -1036,6 +1085,12 @@ export class Engine {
   readonly #shardLimit = new Limiter(SHARD_CONCURRENCY);
   /** Giới hạn bot cùng chạy bước `clock` của cả worker (#224); tạo trong constructor theo `clockConcurrency`. */
   readonly #clockLimit: Limiter;
+  /** Lần giao tín hiệu news đang chạy theo shard (#419): vòng `tick` và chuông NATS không bao giờ giao chồng. */
+  readonly #newsRuns = new Map<number, Promise<void>>();
+  /** Lần đọc sổ lệnh cho tín hiệu news theo market (dùng chung lần đọc đang chạy, cũ tối đa NEWS_BOOK_MAX_AGE_MS). */
+  readonly #newsBooks = new Map<string, { at: number; p: Promise<BookTop | null> }>();
+  /** Lần chuông NATS đang chạy (một lần mỗi engine). */
+  #newsBell: Promise<void> | null = null;
   /** Lần gia hạn lease do một làn shard gọi, dùng chung cho các làn khác cần cùng lúc. */
   #renewing: Promise<void> | null = null;
 
@@ -1049,6 +1104,7 @@ export class Engine {
       tickWaitMs: Number.POSITIVE_INFINITY,
       lookupBudget: Number.POSITIVE_INFINITY,
       clockConcurrency: 1,
+      newsSignalBots: false,
       health: () => undefined,
       ...deps,
       builderExempt: deps.builderExempt ?? true,
@@ -1119,7 +1175,16 @@ export class Engine {
       manageShards: managed - started,
       snapshot: this.#clockMono() - managed,
     };
+    // Dữ liệu tín hiệu news đọc một lần mỗi vòng, lúc shard đầu tiên cần (sau `syncBots`, nên có cả bot vừa nạp).
+    let news: Promise<NewsSnapshot | null> | null = null;
     const steps: Record<ShardPhase, (shard: number) => Promise<void>> = {
+      newsSignals: async (n) => {
+        if (!this.#hasNewsRunners(n)) return;
+        // Mọi account của các shard đang giữ (không chỉ account có runner lúc này: runner của shard khác có thể vừa nạp).
+        news ??= this.#newsSnapshot([...snap.accounts.values()].flat().map((a) => a.id));
+        const ns = await news;
+        if (ns !== null) await this.#newsShard(n, ns);
+      },
       // Mở user stream ngay sau khi nạp bot, trong cùng bước (DEC-303).
       syncBots: async (n) => {
         await this.#syncBots(n, snap);
@@ -1312,6 +1377,379 @@ export class Engine {
     );
     this.#d.health("shard_lost");
     this.#dropShard(shard);
+  }
+
+  // ---------- news_signal: đường tín hiệu (#419 engine A, DEC-360) ----------
+
+  #hasNewsRunners(shard: number): boolean {
+    if (!this.#d.newsSignalBots) return false;
+    for (const r of this.#runners.values())
+      if (r.shard === shard && r.strategy === Strategy.newsSignal && !r.paper) return true;
+    return false;
+  }
+
+  /**
+   * Một lần đọc cho mọi shard: tín hiệu còn hạn, delivery đã có của các tín hiệu đó, lệnh news đang mở (account × market →
+   * bot) và market của các bot thật khác (live / paused) theo account, để tính `accountMarketBusy` (PM chốt engine A điểm 1).
+   * Không có tín hiệu thì không đọc gì thêm.
+   */
+  async #newsSnapshot(accounts: readonly string[]): Promise<NewsSnapshot | null> {
+    const db = this.#d.db;
+    const at = this.#d.now();
+    const accountIds = [...new Set(accounts)];
+    if (accountIds.length === 0) return null;
+    const signals = await unexpiredNewsSignals(db, new Date(at));
+    if (signals.length === 0) return null;
+    const [delivered, open, others] = await Promise.all([
+      db
+        .select({ signalId: newsSignalDeliveries.signalId, botId: newsSignalDeliveries.botId })
+        .from(newsSignalDeliveries)
+        .where(
+          inArray(
+            newsSignalDeliveries.signalId,
+            signals.map((x) => x.id),
+          ),
+        ),
+      db
+        .select({
+          botId: newsSignalTrades.botId,
+          accountId: newsSignalTrades.sodexAccountId,
+          market: newsSignalTrades.market,
+        })
+        .from(newsSignalTrades)
+        .where(
+          and(
+            inArray(newsSignalTrades.sodexAccountId, accountIds),
+            inArray(newsSignalTrades.status, ["open", "closing"]),
+          ),
+        ),
+      db
+        .select({
+          accountId: bots.sodexAccountId,
+          strategy: bots.strategy,
+          market: bots.market,
+          engine: bots.engine,
+          config: botVersions.config,
+        })
+        .from(bots)
+        .leftJoin(botVersions, eq(botVersions.id, bots.activeVersionId))
+        .where(
+          and(
+            inArray(bots.sodexAccountId, accountIds),
+            eq(bots.mode, "live"),
+            ne(bots.strategy, Strategy.newsSignal),
+            inArray(bots.state, [...ENGINE_ACTIVE_STATES, BotState.paused]),
+          ),
+        ),
+    ]);
+    const otherMarkets = new Map<string, Set<string>>();
+    for (const b of others)
+      for (const m of this.#perpMarketsOf(b.strategy, b.market, b.engine, b.config)) {
+        const set = otherMarkets.get(b.accountId) ?? new Set<string>();
+        set.add(m);
+        otherMarkets.set(b.accountId, set);
+      }
+    return {
+      at,
+      accounts: new Set(accountIds),
+      signals,
+      delivered: new Set(delivered.map((x) => `${x.signalId}:${x.botId}`)),
+      openTrades: new Map(open.map((x) => [`${x.accountId}:${x.market}`, x.botId])),
+      otherMarkets,
+    };
+  }
+
+  /** Chuông NATS `sr.signal.new` (scheduler vừa ghi tín hiệu): giao ngay, không chờ vòng `tick` sau. */
+  async onNewsSignalBell(): Promise<void> {
+    if (!this.#d.newsSignalBots || this.#stopped) return;
+    if (this.#newsBell !== null) return this.#newsBell;
+    const run = (async () => {
+      const shards = this.ownedShards.filter((n) => this.#hasNewsRunners(n));
+      if (shards.length === 0) return;
+      const ns = await this.#newsSnapshot(
+        [...this.#runners.values()]
+          .filter((r) => r.strategy === Strategy.newsSignal && shards.includes(r.shard))
+          .map((r) => r.account.id),
+      );
+      if (ns === null) return;
+      await Promise.all(
+        shards.map(async (n) => {
+          if (!(await this.#leaseConfirmed(n))) return;
+          try {
+            await this.#newsShard(n, ns);
+          } catch (error) {
+            if (error instanceof FencedError) {
+              this.#d.log.warn(
+                { shard: n, reason: "fenced", worker: this.#d.workerId },
+                "shard lost",
+              );
+              this.#d.health("shard_lost");
+              this.#dropShard(n);
+            } else
+              this.#d.log.warn({ err: error, shard: n }, "news signal bell failed for a shard");
+          }
+        }),
+      );
+    })();
+    this.#newsBell = run;
+    try {
+      await run;
+    } finally {
+      this.#newsBell = null;
+    }
+  }
+
+  /** Giao tín hiệu cho các bot news của shard, theo account (tuần tự trong account); không chạy chồng lần giao khác. */
+  async #newsShard(shard: number, ns: NewsSnapshot): Promise<void> {
+    const prev = this.#newsRuns.get(shard) ?? Promise.resolve();
+    const run = prev.catch(() => undefined).then(() => this.#newsShardRun(shard, ns));
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#newsRuns.set(shard, tail);
+    try {
+      await run;
+    } finally {
+      if (this.#newsRuns.get(shard) === tail) this.#newsRuns.delete(shard);
+    }
+  }
+
+  async #newsShardRun(shard: number, ns: NewsSnapshot): Promise<void> {
+    const runners = [...this.#runners.values()].filter(
+      (r) => r.shard === shard && r.strategy === Strategy.newsSignal && !r.paper,
+    );
+    const groups = new Map<string, Runner[]>();
+    for (const r of runners) pushTo(groups, r.account.id, r);
+    let fenced = false;
+    await eachLimited([...groups.values()], Number.POSITIVE_INFINITY, async (list) => {
+      for (const r of list)
+        for (const sig of ns.signals) {
+          if (fenced || this.#runners.get(r.botId) !== r) return;
+          await this.#clockLimit.run(async () => {
+            if (fenced) return;
+            // Lỗi của một bot chỉ bỏ tín hiệu đó của bot đó (vòng sau thử lại nếu còn hạn); fencing bỏ shard.
+            try {
+              await this.#deliverNews(r, sig, ns);
+            } catch (error) {
+              if (error instanceof FencedError) {
+                fenced = true;
+                throw error;
+              }
+              this.#d.log.warn(
+                { err: error, botId: r.botId, signalId: sig.id },
+                "news signal delivery failed for one bot; retrying next tick",
+              );
+            }
+          });
+        }
+    });
+  }
+
+  /**
+   * Một tín hiệu cho một bot. Đã giao (delivery trong DB, hoặc state của chiến lược đã thấy) thì thôi. Bot không `running`
+   * → `BOT_PAUSED`, chiến lược không được hỏi. Còn lại: nạp rules của market, đọc sổ lệnh mới nhất, tính
+   * `accountMarketBusy`; bước chiến lược sẽ đặt lệnh vào thì SoDEX phải xác nhận 1× isolated cho market đó trước
+   * (`LEVERAGE_NOT_SET` nếu không), rồi mới đưa tín hiệu cho chiến lược qua `#feed`.
+   */
+  async #deliverNews(r: Runner, sig: NewsSignalRow, ns: NewsSnapshot): Promise<void> {
+    // Account chưa có trong lần đọc (lệnh mở / bot khác chưa biết): không đoán là rảnh, chờ lần giao sau.
+    if (!ns.accounts.has(r.account.id)) return;
+    if (ns.delivered.has(`${sig.id}:${r.botId}`)) return;
+    const st = r.state as Partial<NewsSignalState>;
+    if (st.seen?.[sig.id] !== undefined || st.trades?.[sig.id] !== undefined) return;
+    const at = this.#d.now();
+    if ((await this.#currentState(r.botId)) !== BotState.running) {
+      await this.#newsDrop(r, sig.id, SignalReason.botPaused);
+      return;
+    }
+    if (r.ctx.rules[sig.market] === undefined) {
+      const rules = await this.#d.rules(sig.market);
+      if (rules !== undefined) r.ctx.rules[sig.market] = rules;
+    }
+    // Phí taker theo market của tín hiệu (kiểm tra chi phí của chiến lược), như lúc nạp bot theo `bots.market`.
+    if (this.#d.feeRate === undefined)
+      r.ctx.takerFeeRate = botTakerFeeRate(
+        r.strategy,
+        r.config,
+        r.ctx.rules[sig.market],
+        this.#d.builderId !== undefined &&
+          isBuilderAccount(r.account.sodexAccountId, this.#d.builderId, this.#d.builderExempt),
+        r.builderRate,
+      );
+    const busy = ns.openTrades.get(`${r.account.id}:${sig.market}`);
+    const event: StrategyEvent = {
+      type: "newsSignal",
+      at,
+      signal: newsSignalInput(sig),
+      book: await this.#newsBook(sig.market, at),
+      accountMarketBusy:
+        (busy !== undefined && busy !== r.botId) ||
+        (ns.otherMarkets.get(r.account.id)?.has(sig.market) ?? false),
+    };
+    // Bước thử (thuần) để biết chiến lược có mở lệnh không: chỉ đặt đòn bẩy cho market sẽ thật sự giao dịch.
+    const entry = r.module
+      .step(r.config, r.state, event, r.ctx)
+      .actions.find((a) => a.type === "place" && !a.order.reduceOnly);
+    if (entry?.type === "place") {
+      const lev = await this.#ensureNewsLeverage(r, entry.order.market, at);
+      if (lev !== "ok") {
+        await this.#newsDrop(r, sig.id, SignalReason.leverageNotSet, { leverage: lev });
+        return;
+      }
+    }
+    await this.#feed(r, event);
+    // Bot cùng account giao sau trong lần này thấy market đã bận.
+    const t = (r.state as Partial<NewsSignalState>).trades?.[sig.id];
+    if (t !== undefined && t.status !== "closed")
+      ns.openTrades.set(`${r.account.id}:${t.market}`, r.botId);
+    ns.delivered.add(`${sig.id}:${r.botId}`);
+  }
+
+  /** Ghi delivery `dropped` khi chiến lược không được hỏi (bot không running, đòn bẩy chưa xác nhận…). */
+  async #newsDrop(
+    r: Runner,
+    signalId: string,
+    reason: string,
+    detail?: Record<string, string>,
+  ): Promise<void> {
+    await this.#fenced(r, (tx) =>
+      insertNewsSignalDelivery(tx, {
+        signalId,
+        botId: r.botId,
+        outcome: "dropped",
+        reason,
+        detail: detail ?? null,
+        epoch: r.epoch,
+      }),
+    );
+  }
+
+  /**
+   * Ghi phần news của một bước, trong transaction ghi state: mỗi `signalOutcome` → delivery (PK tín hiệu × bot, ON CONFLICT
+   * DO NOTHING); mọi lệnh news đổi so với state trước → upsert `news_signal_trades` theo (bot, tín hiệu). Delivery của chính
+   * tín hiệu đang giao đã có → `NewsWriteConflict("delivered")`; account × market đã có lệnh news đang mở (partial unique) →
+   * `NewsWriteConflict("market")`. Cả hai làm transaction hoàn tác, nên không có lệnh nào được gửi.
+   */
+  async #persistNews(
+    tx: Db,
+    r: Runner,
+    prev: unknown,
+    next: unknown,
+    actions: readonly StrategyAction[],
+    event: StrategyEvent,
+  ): Promise<void> {
+    for (const a of actions) {
+      if (a.type !== "signalOutcome") continue;
+      const fresh = await insertNewsSignalDelivery(tx, {
+        signalId: a.signalId,
+        botId: r.botId,
+        outcome: a.outcome,
+        reason: a.outcome === "dropped" ? (a.reason ?? "DROPPED") : null,
+        detail: a.detail ?? null,
+        epoch: r.epoch,
+      });
+      if (!fresh && event.type === "newsSignal" && a.signalId === event.signal.id)
+        throw new NewsWriteConflict("delivered");
+    }
+    if (prev === next) return;
+    const before = new Map(newsTrades(prev as NewsSignalState).map((t) => [t.signalId, t]));
+    const after = newsTrades(next as NewsSignalState);
+    // Phòng thủ: lệnh chưa đóng mà biến khỏi state (chiến lược chỉ bỏ lệnh đã đóng quá `closedKeepMs`) thì dòng DB không
+    // được giữ chỗ account × market mãi: đóng dòng, lý do để trống (không đoán).
+    const gone = [...before.values()].filter(
+      (t) => t.status !== "closed" && !after.some((x) => x.signalId === t.signalId),
+    );
+    for (const t of gone)
+      await tx
+        .update(newsSignalTrades)
+        .set({ status: "closed", closedAt: new Date(event.at), updatedAt: new Date() })
+        .where(
+          and(
+            eq(newsSignalTrades.botId, r.botId),
+            eq(newsSignalTrades.signalId, t.signalId),
+            ne(newsSignalTrades.status, "closed"),
+          ),
+        );
+    for (const t of after) {
+      if (before.get(t.signalId) === t) continue;
+      const row = newsTradeRow(r.botId, r.account.id, t, event.at);
+      try {
+        await tx
+          .insert(newsSignalTrades)
+          .values(row)
+          .onConflictDoUpdate({
+            target: [newsSignalTrades.botId, newsSignalTrades.signalId],
+            set: {
+              status: row.status,
+              qty: row.qty,
+              entryAvgPrice: row.entryAvgPrice,
+              tpPrice: row.tpPrice,
+              slPrice: row.slPrice,
+              tpslSeq: row.tpslSeq,
+              // Lần đầu Stop-Keep tắt max hold thì ghi giờ; đã có thì giữ.
+              maxHoldOffAt: sql`coalesce(${newsSignalTrades.maxHoldOffAt}, excluded.max_hold_off_at)`,
+              closedAt: row.closedAt,
+              closeReason: row.closeReason,
+              updatedAt: new Date(),
+            },
+          });
+      } catch (error) {
+        if (isUniqueViolation(error, NEWS_ACCOUNT_MARKET_UNIQUE))
+          throw new NewsWriteConflict("market");
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Đỉnh sổ lệnh Perps mới nhất của market cho tín hiệu news: giá WS (`md.<market>.book`) nếu cũ không quá
+   * NEWS_BOOK_MAX_AGE_MS, không thì đọc REST (dùng chung lần đọc đang chạy). Đọc lỗi → null (`NO_BOOK_DATA`).
+   */
+  async #newsBook(market: string, at: number): Promise<{ bid: string; ask: string } | null> {
+    const live = this.#farmBooks.get(market);
+    if (live !== undefined && at - live.at <= NEWS_BOOK_MAX_AGE_MS)
+      return { bid: live.bid, ask: live.ask };
+    const hit = this.#newsBooks.get(market);
+    if (hit !== undefined && at - hit.at <= NEWS_BOOK_MAX_AGE_MS) {
+      const b = await hit.p;
+      return b === null ? null : { bid: b.bid, ask: b.ask };
+    }
+    const p = this.#d.orderbook(market, "perps").catch(() => null);
+    this.#newsBooks.set(market, { at, p });
+    const b = await p;
+    if (b === null && this.#newsBooks.get(market)?.p === p) this.#newsBooks.delete(market);
+    return b === null ? null : { bid: b.bid, ask: b.ask };
+  }
+
+  /**
+   * 1× isolated cho `market` trên account của bot news (DEC-360 mục 6). Đã xác nhận cho runner này thì không gửi gì. Cùng
+   * cách đọc trước / không retry mù như mọi bot (`#ensureLeverageOne`, DEC-58: vị thế sẵn có với thiết lập khác → không đổi).
+   */
+  async #ensureNewsLeverage(
+    r: Runner,
+    market: string,
+    at: number,
+  ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
+    const key = newsLeverageKey(market);
+    if (r.leverageDone.has(key)) return "ok";
+    const read = { matched: false };
+    const res = await this.#ensureLeverageOne(r, { market, ...NEWS_LEVERAGE }, at, read);
+    if (res !== "ok") return res;
+    r.leverageDone.add(key);
+    if (!(read.matched && r.leverageKnown.has(key)))
+      await this.#event(
+        r,
+        "decision",
+        "Leverage set",
+        leverageWhy(
+          r.paper,
+          `${String(NEWS_LEVERAGE.leverage)}× ${NEWS_LEVERAGE.marginMode} on ${market}`,
+        ),
+        at,
+      );
+    await this.#saveLeverageDone(r, r.versionId, r.leverageDone);
+    return "ok";
   }
 
   /**
@@ -1512,8 +1950,11 @@ export class Engine {
         for (const f of await paper.onPrice(market, price, at, ids))
           await this.onFill(f.accountId, f.clOrdID, f.totalFilled, f.avgPrice, f.fee, at);
     }
+    // Bot `news_signal` không dùng giá từng tick (giá vào lấy từ sổ lệnh lúc giao tín hiệu): không đưa tick, khỏi ghi state
+    // mỗi tick cho mọi market bot từng nạp rules.
     for (const r of [...this.#runners.values()].filter(
-      (x) => x.market === market || this.#watches(x, market),
+      (x) =>
+        x.strategy !== Strategy.newsSignal && (x.market === market || this.#watches(x, market)),
     )) {
       await this.#feed(r, { type: "tick", at, market, price });
     }
@@ -2508,6 +2949,11 @@ export class Engine {
       return undefined;
     }
     const config = entry.schema.parse(version.config);
+    if (
+      bot.strategy === Strategy.newsSignal &&
+      !(await this.#newsLoadable(bot, config, wantsToRun))
+    )
+      return undefined;
     // Engine vừa nạp bot (khởi động lại, chuyển shard): tin khớp lúc không có stream đã mất.
     if (bot.strategy === Strategy.volumeFarm) this.onStreamGap(account.id, "perps");
     const [saved] = await this.#d.db
@@ -2517,6 +2963,11 @@ export class Engine {
       .limit(1);
     const builderRate = builderFeeRateFor(bot.strategy, await this.#builderFees(bot.userId));
     const markets = this.#marketsOf(bot.market, config);
+    // Bot `news_signal` nạp lại (restart, đổi shard): rules của market các lệnh còn mở, để TP / SL / lệnh đóng làm tròn
+    // đúng; market khác nạp lúc giao tín hiệu.
+    if (bot.strategy === Strategy.newsSignal && saved?.versionId === version.id)
+      for (const t of newsTrades(saved.state as NewsSignalState))
+        if (t.status !== "closed" && !markets.includes(t.market)) markets.push(t.market);
     const rules: Record<string, MarketRules> = {};
     for (const m of markets) {
       const rr = await this.#d.rules(m);
@@ -2806,19 +3257,64 @@ export class Engine {
     const c = config as {
       spotMarket?: string;
       perpMarket?: string;
-      assets?: { market?: string }[];
+      /** Rebalancing: mảng `{ market }`; `news_signal`: phạm vi Markets (object, bỏ qua). */
+      assets?: unknown;
     };
-    const out = new Set<string>([market]);
+    // Bot `news_signal` (#419) không có market cố định (`bots.market = ""`, `assets` là phạm vi Markets dạng object): rules
+    // của market nạp lúc giao tín hiệu.
+    const out = new Set<string>(market === "" ? [] : [market]);
     // Copy Trade nhiều market (DEC-163).
     for (const m of copyMarkets(config as Record<string, unknown>)) out.add(m);
     if (c.spotMarket !== undefined) out.add(c.spotMarket);
     if (c.perpMarket !== undefined) out.add(c.perpMarket);
-    for (const a of c.assets ?? []) if (a.market !== undefined) out.add(a.market);
+    for (const a of Array.isArray(c.assets) ? (c.assets as { market?: string }[]) : [])
+      if (a.market !== undefined) out.add(a.market);
     return [...out];
   }
 
   #watches(r: Runner, market: string): boolean {
     return Object.prototype.hasOwnProperty.call(r.ctx.rules, market);
+  }
+
+  /**
+   * Bot `news_signal` mainnet (#419 engine A, DEC-367) chỉ được nạp khi: công tắc `SIGNAL_NEWS_BOTS_ENABLED` bật (tắt thì
+   * không nạp ở bất kỳ trạng thái nào); bot là mainnet (bot paper cá nhân là My versions, không chạy ở engine); bot muốn
+   * chạy thì chủ bot là team hoặc có `users.signal_research`; bot vẫn chỉ thu hẹp version gốc (`narrowsVersion`, kiểm lại
+   * như API, phòng dòng bot bị sửa ngoài API).
+   */
+  async #newsLoadable(
+    bot: typeof bots.$inferSelect,
+    config: unknown,
+    wantsToRun: boolean,
+  ): Promise<boolean> {
+    const skip = (reason: string) => {
+      this.#d.log.warn({ botId: bot.id, reason }, "news_signal bot not loaded");
+      return false;
+    };
+    if (!this.#d.newsSignalBots) return skip("SIGNAL_NEWS_BOTS_ENABLED is off");
+    if (bot.mode !== "live") return skip("not a mainnet bot");
+    if (wantsToRun) {
+      const [u] = await this.#d.db
+        .select({ role: users.role, on: users.signalResearch })
+        .from(users)
+        .where(eq(users.id, bot.userId))
+        .limit(1);
+      if (u === undefined || (u.role !== UserRole.team && !u.on))
+        return skip("owner has no Signal Research access");
+    }
+    if (bot.signalVersionId === null) return skip("no source version");
+    const [v] = await this.#d.db
+      .select({ config: signalBotVersions.config })
+      .from(signalBotVersions)
+      .where(eq(signalBotVersions.id, bot.signalVersionId))
+      .limit(1);
+    const source = botVersionConfigSchema.safeParse(v?.config);
+    if (!source.success) return skip("source version unreadable");
+    const kindOf = (market: string) =>
+      STOCK_MARKET_SET.has(market) ? AssetKind.stock : AssetKind.crypto;
+    if (!narrowsVersion(source.data, config as NewsSignalConfig, kindOf))
+      return skip("bot widens its source version");
+    return true;
   }
 
   async #flagOn(userId: string, flag: "aiDesk" | "adaptiveDca"): Promise<boolean> {
@@ -3000,7 +3496,7 @@ export class Engine {
     const opened = this.#copyAlerts(r, () =>
       openedAlerts(r.botId, r.config, prev, result.state, event),
     );
-    await this.#fenced(r, async (tx) => {
+    const persist = this.#fenced(r, async (tx) => {
       for (const data of opened)
         await tx.insert(outbox).values({
           topic: "jobs.notify",
@@ -3028,7 +3524,24 @@ export class Engine {
             updatedAt: new Date(),
           },
         });
+      // Bot `news_signal` (#419): delivery và `news_signal_trades` cùng transaction với state, TRƯỚC khi gửi lệnh.
+      if (r.strategy === Strategy.newsSignal)
+        await this.#persistNews(tx, r, prev, result.state, actions, event);
     });
+    try {
+      await persist;
+    } catch (error) {
+      if (!(error instanceof NewsWriteConflict) || event.type !== "newsSignal") throw error;
+      // Transaction đã hoàn tác: DB còn state cũ. Không có lệnh nào được gửi.
+      if (r.state === result.state) r.state = prev;
+      this.#d.log.info(
+        { botId: r.botId, signalId: event.signal.id, conflict: error.kind },
+        "news signal not applied: write conflict",
+      );
+      if (error.kind === "market")
+        await this.#newsDrop(r, event.signal.id, SignalReason.accountMarketBusy);
+      return;
+    }
     // Bot đang start mà tick đầu không đặt lệnh nào (ví dụ chờ trigger): không có gì để SoDEX ack.
     if (r.awaitingFirstAck && event.type === "tick" && !actions.some((x) => x.type === "place")) {
       await this.#ack(r, event.at);
@@ -3082,7 +3595,9 @@ export class Engine {
     // không được đánh dấu xong cho version mới; nhịp sau đặt lại theo cấu hình mới.
     const versionId = r.versionId;
     const done = r.leverageDone;
-    const specs = leverageSpecsOf(r.strategy, r.market, r.config);
+    // Bot `news_signal` đặt 1× isolated theo từng market lúc giao tín hiệu (#ensureNewsLeverage), không theo `bots.market`.
+    const specs =
+      r.strategy === Strategy.newsSignal ? [] : leverageSpecsOf(r.strategy, r.market, r.config);
     const confirmed: LeverageSpec[] = [];
     const log = async () => {
       const first = confirmed[0];
@@ -3332,6 +3847,35 @@ export class Engine {
         return;
       }
     }
+    // Bot `news_signal` mainnet (#419 engine A, lớp engine của DEC-360 mục 6): lệnh mở chỉ đi khi là limit IOC Perps có giá
+    // và giá × khối lượng ≤ 200 USDC, bot đang `running` (không chỉ "chưa dừng"), và SoDEX đã xác nhận 1× isolated cho đúng
+    // market đó. Sai một điều thì lệnh không được ghi, không được gửi; chiến lược nhận `orderReject`.
+    if (r.strategy === Strategy.newsSignal && places.some((o) => !o.reduceOnly)) {
+      const st = await this.#currentState(r.botId);
+      const refused = new Map<string, string>();
+      for (const o of places) {
+        if (o.reduceOnly) continue;
+        const code =
+          newsOpenBlocked(o) ??
+          (st !== BotState.running
+            ? "BOT_NOT_RUNNING"
+            : !r.leverageDone.has(newsLeverageKey(o.market))
+              ? SignalReason.leverageNotSet
+              : null);
+        if (code !== null) refused.set(o.clOrdID, code);
+      }
+      if (refused.size > 0) {
+        places = places.filter((o) => !refused.has(o.clOrdID));
+        this.#d.log.warn(
+          { botId: r.botId, state: st, refused: Object.fromEntries(refused) },
+          "news signal opening order not sent",
+        );
+        const echo = source?.event.type === "orderReject" && refused.has(source.event.clOrdID);
+        if (!echo)
+          for (const [clOrdID, code] of refused)
+            await this.#feed(r, { type: "orderReject", at, clOrdID, code });
+      }
+    }
     // Bot vừa được yêu cầu dừng trong lúc bước chiến lược này chạy (DEC-255): đọc lại trạng thái ngay trước khi gửi, không
     // gửi lệnh mở vị thế của chiến lược. Trước đây chỉ kiểm tra ở đầu sự kiện: một sự kiện giá bắt đầu trước lúc Stop vẫn
     // đặt được lệnh mua sau lúc Stop, khớp khi bot đã dừng và vị thế nằm lại không ai đóng. Chỉ áp cho bước chiến lược
@@ -3456,6 +4000,24 @@ export class Engine {
                   eq(orders.status, "unknown"),
                 ),
               );
+            // Bot `news_signal` (PM chốt engine A điểm 5): bước được hoàn tác thì delivery và lệnh news của tín hiệu đó cũng
+            // bỏ, để vòng sau giao lại được trong hạn của tín hiệu (không có delivery "accepted" mà không có lệnh).
+            if (r.strategy === Strategy.newsSignal && source?.event.type === "newsSignal") {
+              const signalId = source.event.signal.id;
+              await tx
+                .delete(newsSignalTrades)
+                .where(
+                  and(eq(newsSignalTrades.botId, r.botId), eq(newsSignalTrades.signalId, signalId)),
+                );
+              await tx
+                .delete(newsSignalDeliveries)
+                .where(
+                  and(
+                    eq(newsSignalDeliveries.botId, r.botId),
+                    eq(newsSignalDeliveries.signalId, signalId),
+                  ),
+                );
+            }
             await tx
               .update(botRuntime)
               .set({ state: r.state, updatedAt: new Date() })
@@ -6040,6 +6602,9 @@ export class Engine {
   /** Market Perps bot giữ vị thế (Funding Arb: chân Perps; Copy Trade: mọi market của bot). Bot chỉ Spot: không có. */
   #perpMarketsOf(strategy: string, market: string, engine: string, config: unknown): string[] {
     if (engine === "spot") return [];
+    // Bot `news_signal`: market của lệnh đang mở tính riêng từ `news_signal_trades` (#checkPositions); so vị thế của chính bot
+    // news làm ở engine B.
+    if (strategy === Strategy.newsSignal) return [];
     const c = (config ?? {}) as Record<string, unknown>;
     if (typeof c.perpMarket === "string") return [c.perpMarket];
     if (strategy === Strategy.copyTrade) return [...new Set([market, ...copyMarkets(c)])];
@@ -6090,6 +6655,24 @@ export class Engine {
         const key = `${b.accountId}:${m}`;
         holders.set(key, (holders.get(key) ?? 0) + 1);
       }
+    // Lệnh `news_signal` đang mở (#419 engine A) cũng giữ vị thế trên market đó: market có thêm lệnh news thì không còn
+    // biết vị thế nào là của bot nào, không so cho bot khác (không cảnh báo / sửa sổ cái nhầm). Đọc cả khi bot news đã dừng
+    // (Stop-Keep giữ lệnh mở).
+    {
+      const open = await this.#d.db
+        .select({ accountId: newsSignalTrades.sodexAccountId, market: newsSignalTrades.market })
+        .from(newsSignalTrades)
+        .where(
+          and(
+            inArray(newsSignalTrades.sodexAccountId, due),
+            inArray(newsSignalTrades.status, ["open", "closing"]),
+          ),
+        );
+      for (const t of open) {
+        const key = `${t.accountId}:${t.market}`;
+        holders.set(key, (holders.get(key) ?? 0) + 1);
+      }
+    }
     for (const b of rows) {
       const shared = Object.keys(b.mismatch ?? {}).filter(
         (m) => (holders.get(`${b.accountId}:${m}`) ?? 0) > 1,

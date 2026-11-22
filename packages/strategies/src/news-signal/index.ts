@@ -52,6 +52,12 @@ export const NEWS_SIGNAL = {
   maxCloseAttempts: 3,
   /** Giữ id tín hiệu đã thấy thêm ngần này sau `expires_at` (chống giao trùng). */
   seenKeepMs: 60 * 60_000,
+  /**
+   * Lệnh đã đóng (không còn lệnh SoDEX nào đang chờ) ở lại state ngần này sau `closedAt` rồi mới bỏ (#419 engine A): engine
+   * ghi `news_signal_trades` theo `newsTrades()`, nên phải thấy được trạng thái `closed` (kèm lý do) ít nhất một lần, kể cả
+   * khi lệnh đóng và hết lệnh chờ trong cùng một bước (lệnh vào IOC không khớp gì).
+   */
+  closedKeepMs: 24 * 60 * 60_000,
 } as const;
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -207,10 +213,18 @@ function untrack(s: NewsSignalState, id: string): NewsSignalState {
 }
 
 /** Trade đã đóng và không còn lệnh nào chờ kết thúc thì bỏ khỏi state (lịch sử nằm ở `news_signal_trades`). */
-function prune(s: NewsSignalState): NewsSignalState {
+/**
+ * Bỏ lệnh đã đóng, không còn lệnh SoDEX nào chờ và đã đóng quá `NEWS_SIGNAL.closedKeepMs` (`at` = giờ của bước; không có
+ * thì chỉ giữ nguyên). Lệnh vừa đóng luôn còn trong state ở bước đóng nó, để engine ghi được trạng thái cuối.
+ */
+function prune(s: NewsSignalState, at?: number): NewsSignalState {
+  if (at === undefined) return s;
   const live = new Set(Object.values(s.orders).map((o) => o.signalId));
   const trades = Object.fromEntries(
-    Object.entries(s.trades).filter(([id, t]) => t.status !== "closed" || live.has(id)),
+    Object.entries(s.trades).filter(
+      ([id, t]) =>
+        t.status !== "closed" || live.has(id) || at - (t.closedAt ?? at) < NEWS_SIGNAL.closedKeepMs,
+    ),
   );
   return Object.keys(trades).length === Object.keys(s.trades).length ? s : { ...s, trades };
 }
@@ -299,7 +313,7 @@ function pruneMemory(s: NewsSignalState, at: number): NewsSignalState {
     // Story chưa vào lệnh vẫn giữ (để trả STORY_TOO_OLD thay vì coi như story mới) tới hết cửa sổ 7 ngày.
     Object.entries(s.stories).filter(([, st]) => at - (st.enteredAt ?? st.start) < STORY_LOCK_MS),
   );
-  return { ...s, seen, stories };
+  return prune({ ...s, seen, stories }, at);
 }
 
 function onSignal(

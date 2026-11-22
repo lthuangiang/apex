@@ -21,9 +21,13 @@ import {
   sodexAccounts,
   userBuilderFees,
   users,
+  insertNewsSignal,
+  newsSignalDeliveries,
+  newsSignalTrades,
+  signalBotVersions,
   type Db,
 } from "@drift/db";
-import { AppError, dec, ErrorCode, ReasonCode } from "@drift/shared";
+import { AppError, baselineVersionConfig, dec, ErrorCode, ReasonCode } from "@drift/shared";
 import type { MmOrderContext } from "@drift/shared/mm-quote";
 import type { SignedWriteClient, SodexRestClient } from "@drift/sodex";
 import {
@@ -10470,5 +10474,625 @@ describe("clock runs accounts in parallel, bounded (#224)", { timeout: 120_000 }
         `clock bench (24 bots, submit 40 ms, tx 10 ms): 1 at a time ${String(Math.round(one))} ms, 4 at once ${String(Math.round(four))} ms\n`,
       );
     expect(four).toBeLessThan(one * 0.6);
+  });
+});
+
+// ---------- #419 engine A: đường tín hiệu của bot news_signal mainnet ----------
+describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () => {
+  useCleanDb("news_engine_a");
+  const SOL = "SOL-USD";
+  const newsRules = { tickSize: "0.01", stepSize: "0.01", minQuantity: "0.01", minNotional: "5" };
+  let book: { bid: string; ask: string } | null = { bid: "100", ask: "100.1" };
+  let bookReads = 0;
+  const warned: string[] = [];
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  beforeEach(async () => {
+    // Tín hiệu của test trước hết hạn (TTL 120 s); bot của test trước dừng hẳn.
+    clock += 600_000;
+    book = { bid: "100", ask: "100.1" };
+    bookReads = 0;
+    warned.length = 0;
+    const { ne } = await import("drizzle-orm");
+    await db.update(bots).set({ state: "stopped" }).where(ne(bots.state, "stopped"));
+  });
+
+  const newsEngine = (gw: Gateway, workerId: string, enabled = true) =>
+    new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId,
+      log: {
+        ...log,
+        warn: (...args: unknown[]) => {
+          if (typeof args[1] === "string") warned.push(args[1]);
+        },
+      },
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(newsRules),
+      feeCheckMs: 0,
+      newsSignalBots: enabled,
+      orderbook: () => {
+        bookReads += 1;
+        return Promise.resolve(
+          book === null ? null : { ...book, bidNotional: "50000", askNotional: "50000" },
+        );
+      },
+    });
+
+  let versionNo = 1_000 + Math.floor(Math.random() * 1e6);
+  /** Bot `news_signal` mainnet tạo từ một version Signal research (như API #420). */
+  async function seedNews(
+    opts: {
+      role?: "team" | "user";
+      flag?: boolean;
+      state?: "starting" | "running" | "stopped";
+      mode?: "live" | "paper";
+      bot?: Record<string, unknown>;
+      version?: Record<string, unknown>;
+      /** Bot thêm trên account đã có. */
+      on?: { accountId: string; userId: string };
+    } = {},
+  ) {
+    const { eq } = await import("drizzle-orm");
+    let userId = opts.on?.userId ?? "";
+    let accountId = opts.on?.accountId ?? "";
+    if (opts.on === undefined) {
+      const seeded = await seedBot("running", undefined, db);
+      accountId = seeded.accountId;
+      const [b] = await db.select().from(bots).where(eq(bots.id, seeded.botId));
+      userId = b?.userId ?? "";
+      await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, seeded.botId));
+      await db
+        .update(users)
+        .set({ role: opts.role ?? "team", signalResearch: opts.flag ?? false })
+        .where(eq(users.id, userId));
+    }
+    versionNo += 1;
+    const [v] = await db
+      .insert(signalBotVersions)
+      .values({
+        number: versionNo,
+        name: `v${String(versionNo)}`,
+        config: { ...baselineVersionConfig(), ...opts.version },
+        // Tối đa 3 version chạy cùng lúc (trigger của #423); bot tạo được từ version đã dừng.
+        status: "stopped",
+      })
+      .returning();
+    const [bot] = await db
+      .insert(bots)
+      .values({
+        userId,
+        sodexAccountId: accountId,
+        strategy: "news_signal",
+        market: "",
+        engine: "perps",
+        name: "News",
+        state: opts.state ?? "running",
+        mode: opts.mode ?? "live",
+        signalVersionId: v?.id ?? null,
+      })
+      .returning();
+    const [bv] = await db
+      .insert(botVersions)
+      .values({
+        botId: bot?.id ?? "",
+        version: 1,
+        paramSource: "manual",
+        status: "active",
+        config: { ...baselineVersionConfig(), sizeUsdc: "200", leverage: 1, ...opts.bot },
+      })
+      .returning();
+    await db
+      .update(bots)
+      .set({ activeVersionId: bv?.id ?? "" })
+      .where(eq(bots.id, bot?.id ?? ""));
+    return { botId: bot?.id ?? "", accountId, userId };
+  }
+
+  /** Một tín hiệu dùng chung (scheduler #441 ghi), quyết định ngay lúc này. */
+  async function signal(over: Record<string, unknown> = {}) {
+    const { signal: row } = await insertNewsSignal(db, {
+      storyKey: `story-${String(Math.random())}`,
+      cycleAt: new Date(clock),
+      articleId: `a-${String(Math.random())}`,
+      market: SOL,
+      kind: "crypto",
+      catalyst: "listing",
+      side: "long",
+      level: "high",
+      firstPublishedAt: new Date(clock - 60_000),
+      collectedAt: new Date(clock - 30_000),
+      decidedAt: new Date(clock),
+      expiresAt: new Date(clock + 120_000),
+      quoteBid: "100",
+      quoteAsk: "100.1",
+      quoteMid: "100.05",
+      quoteAt: new Date(clock),
+      typicalByHoldHours: { "24": "3", "48": "4", "72": "5" },
+      classifierVersion: "c1",
+      assetMapVersion: "m1",
+      ruleVersion: "r1",
+      ...over,
+    });
+    return row.id;
+  }
+  const deliveries = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    return db.select().from(newsSignalDeliveries).where(eq(newsSignalDeliveries.botId, botId));
+  };
+  const trades = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    return db.select().from(newsSignalTrades).where(eq(newsSignalTrades.botId, botId));
+  };
+  const entries = (gw: FakeGateway) => gw.received.filter((o) => o.tag.endsWith(":entry"));
+  async function ticks(e: RealEngine, n = 2) {
+    for (let i = 0; i < n; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+  }
+
+  it("delivers a signal: 1× isolated first, one limit IOC entry at the cap from the latest book, builder fee 10, then TP / SL", async () => {
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedNews();
+    const e = newsEngine(gw, "ns-main");
+    await ticks(e, 1);
+    expect(bookReads).toBe(0);
+    // Sổ lệnh đổi sau lần nạp: giá trần theo sổ đọc lúc giao tín hiệu.
+    book = { bid: "100", ask: "100.1" };
+    const id = await signal();
+    await ticks(e, 1);
+    expect(bookReads).toBe(1);
+    const [entry] = entries(gw);
+    expect(entries(gw)).toHaveLength(1);
+    expect(entry).toMatchObject({
+      market: SOL,
+      side: "buy",
+      type: "limit",
+      timeInForce: "IOC",
+      reduceOnly: false,
+      price: "100.3",
+      quantity: "1.99",
+      tag: `ns:${id}:entry`,
+    });
+    expect(
+      dec(entry?.price ?? "0")
+        .mul(entry?.quantity ?? "0")
+        .lte(200),
+    ).toBe(true);
+    // Đòn bẩy 1× isolated của đúng market được đặt TRƯỚC lệnh vào.
+    expect(gw.leverage).toEqual([{ market: SOL, leverage: 1, marginMode: "isolated", before: 0 }]);
+    expect(gw.builderRates.at(-1)).toBe(10);
+    expect((await deliveries(botId)).map((d) => [d.signalId, d.outcome, d.reason])).toEqual([
+      [id, "accepted", null],
+    ]);
+    expect(await trades(botId)).toMatchObject([
+      { signalId: id, market: SOL, side: "long", status: "open" },
+    ]);
+    expect(dec((await trades(botId))[0]?.qty ?? "1").toString()).toBe("0");
+    expect(dec((await trades(botId))[0]?.entryLimitPrice ?? "0").toString()).toBe("100.3");
+    // Khớp đủ: TP (limit reduce-only) và SL (stop gốc reduce-only) được đặt; dòng lệnh news cập nhật.
+    await e.onFill(accountId, entry?.clOrdID ?? "", "1.99", "100.2", "0.1", clock);
+    await e.onOrderClosed(accountId, entry?.clOrdID ?? "", "filled", clock);
+    const tp = gw.received.find((o) => o.tag.endsWith(":tp"));
+    const sl = gw.received.find((o) => o.tag.endsWith(":sl"));
+    expect(tp).toMatchObject({ reduceOnly: true, type: "limit", side: "sell" });
+    expect(sl).toMatchObject({ reduceOnly: true, type: "market", side: "sell" });
+    const [row] = await trades(botId);
+    expect(dec(row?.qty ?? "0").toString()).toBe("1.99");
+    expect(dec(row?.entryAvgPrice ?? "0").toString()).toBe("100.2");
+    expect(row?.tpPrice).not.toBeNull();
+    expect(row?.slPrice).not.toBeNull();
+    await e.stop();
+  });
+
+  it("drops with NO_BOOK_DATA when the book cannot be read, and sends nothing", async () => {
+    const gw = new FakeGateway();
+    const { botId } = await seedNews();
+    const e = newsEngine(gw, "ns-nobook");
+    book = null;
+    const id = await signal();
+    await ticks(e);
+    expect((await deliveries(botId)).map((d) => [d.signalId, d.outcome, d.reason])).toEqual([
+      [id, "dropped", "NO_BOOK_DATA"],
+    ]);
+    expect(gw.received).toEqual([]);
+    expect(gw.leverage).toEqual([]);
+    await e.stop();
+  });
+
+  it("never loads a news bot when SIGNAL_NEWS_BOTS_ENABLED is off, for a paper bot, without Signal Research access, or when the bot widens its version", async () => {
+    const gw = new FakeGateway();
+    const off = await seedNews();
+    const e0 = newsEngine(gw, "ns-off", false);
+    await signal();
+    await ticks(e0);
+    await e0.stop();
+    expect(await deliveries(off.botId)).toEqual([]);
+    expect(warned).toContain("news_signal bot not loaded");
+    await stopNews();
+
+    const cases = [
+      await seedNews({ mode: "paper" }),
+      await seedNews({ role: "user", flag: false }),
+      await seedNews({
+        version: { assets: { mode: "only", markets: ["ETH-USD"], crypto: true, stocks: false } },
+      }),
+    ];
+    const e = newsEngine(gw, "ns-gates");
+    await signal();
+    await ticks(e);
+    for (const c of cases) expect(await deliveries(c.botId)).toEqual([]);
+    expect(gw.received).toEqual([]);
+    expect(gw.leverage).toEqual([]);
+    await e.stop();
+    await stopNews();
+    // Người dùng có cờ Signal Research (không phải team) thì được nạp.
+    const tester = await seedNews({ role: "user", flag: true });
+    const e2 = newsEngine(gw, "ns-tester");
+    const id = await signal();
+    await ticks(e2);
+    expect((await deliveries(tester.botId)).map((d) => [d.signalId, d.outcome])).toEqual([
+      [id, "accepted"],
+    ]);
+    await e2.stop();
+  });
+  async function stopNews() {
+    const { ne } = await import("drizzle-orm");
+    await db.update(bots).set({ state: "stopped" }).where(ne(bots.state, "stopped"));
+    clock += 600_000;
+  }
+
+  it("a bot that is not running gets BOT_PAUSED and its strategy is never asked", async () => {
+    const gw = new FakeGateway();
+    const { botId } = await seedNews({ state: "starting" });
+    const e = newsEngine(gw, "ns-starting");
+    const id = await signal();
+    await ticks(e);
+    expect((await deliveries(botId)).map((d) => [d.signalId, d.outcome, d.reason])).toEqual([
+      [id, "dropped", "BOT_PAUSED"],
+    ]);
+    expect(gw.received).toEqual([]);
+    expect(gw.leverage).toEqual([]);
+    expect(await trades(botId)).toEqual([]);
+    await e.stop();
+  });
+
+  it("does not send the entry when the bot leaves running between the strategy step and the send (BOT_NOT_RUNNING)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedNews();
+    const e = newsEngine(gw, "ns-race");
+    await ticks(e, 1);
+    let release: () => void = () => undefined;
+    gw.holdLeverage = new Promise<void>((r) => {
+      release = r;
+    });
+    const id = await signal();
+    clock += 1_000;
+    const tick = e.tick();
+    for (let i = 0; i < 200 && gw.leverage.length === 0; i += 1) await sleep(10);
+    expect(gw.leverage).toHaveLength(1);
+    // Người dùng bấm Pause trong lúc đang đặt đòn bẩy cho lệnh vào.
+    await db.update(bots).set({ state: "pausing" }).where(eq(bots.id, botId));
+    release();
+    await tick;
+    expect(entries(gw)).toEqual([]);
+    expect(warned).toContain("news signal opening order not sent");
+    expect(await trades(botId)).toMatchObject([
+      { signalId: id, status: "closed", closeReason: "ENTRY_NOT_FILLED" },
+    ]);
+    const { orders: o } = { orders };
+    expect(await db.select().from(o).where(eq(o.botId, botId))).toEqual([]);
+    await e.stop();
+  });
+
+  it("drops with LEVERAGE_NOT_SET, without pausing, when SoDEX rejects 1× isolated or a position holds other settings", async () => {
+    const gw = new FakeGateway();
+    const { botId } = await seedNews();
+    const e = newsEngine(gw, "ns-lev");
+    gw.leverageOutcome = { outcome: "rejected", code: "INVALID_LEVERAGE" };
+    const id = await signal();
+    await ticks(e);
+    expect((await deliveries(botId)).map((d) => [d.signalId, d.outcome, d.reason])).toEqual([
+      [id, "dropped", "LEVERAGE_NOT_SET"],
+    ]);
+    expect(entries(gw)).toEqual([]);
+    expect((await botState(botId))?.state).toBe("running");
+    expect(await trades(botId)).toEqual([]);
+    // Vị thế sẵn có trên market với thiết lập khác (DEC-58): không đổi thiết lập, không vào lệnh.
+    gw.leverageOutcome = { outcome: "ok" };
+    gw.positions.set(SOL, { leverage: 5, marginMode: "cross" });
+    gw.settings.set(SOL, { leverage: 5, marginMode: "cross" });
+    const before = gw.leverage.length;
+    const id2 = await signal();
+    await ticks(e);
+    expect((await deliveries(botId)).find((d) => d.signalId === id2)).toMatchObject({
+      outcome: "dropped",
+      reason: "LEVERAGE_NOT_SET",
+    });
+    expect(gw.leverage).toHaveLength(before);
+    expect(entries(gw)).toEqual([]);
+    await e.stop();
+  });
+
+  it("gives one effect per signal and bot: bell and tick together, a restart, and a delivery already in the DB", async () => {
+    const gw = new FakeGateway();
+    const a = await seedNews();
+    const e = newsEngine(gw, "ns-dup");
+    await ticks(e, 1);
+    const id = await signal();
+    clock += 1_000;
+    await Promise.all([e.tick(), e.onNewsSignalBell(), e.onNewsSignalBell()]);
+    await ticks(e);
+    expect(entries(gw)).toHaveLength(1);
+    await e.stop();
+    // Engine khác nhận shard (restart / đổi shard): không giao lại.
+    const e2 = newsEngine(gw, "ns-dup-2");
+    await ticks(e2, 3);
+    expect(entries(gw)).toHaveLength(1);
+    expect((await deliveries(a.botId)).map((d) => d.signalId)).toEqual([id]);
+    await e2.stop();
+    // Delivery đã có từ trước (ví dụ engine cũ ghi rồi chết trước khi lưu state): chiến lược không được hỏi lại.
+    await stopNews();
+    const b = await seedNews();
+    const id2 = await signal({ market: "ETH-USD", storyKey: `eth-${String(Math.random())}` });
+    await db.insert(newsSignalDeliveries).values({
+      signalId: id2,
+      botId: b.botId,
+      outcome: "dropped",
+      reason: "BOT_PAUSED",
+      epoch: 1,
+    });
+    const e3 = newsEngine(gw, "ns-dup-3");
+    await ticks(e3);
+    const { eq } = await import("drizzle-orm");
+    expect(await db.select().from(orders).where(eq(orders.botId, b.botId))).toEqual([]);
+    expect((await deliveries(b.botId)).map((d) => [d.signalId, d.reason])).toEqual([
+      [id2, "BOT_PAUSED"],
+    ]);
+    await e3.stop();
+  });
+
+  it("ACCOUNT_MARKET_BUSY: a second news bot of the account, another live bot of the account on that market, and a racing open trade", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const first = await seedNews();
+    const second = await seedNews({ on: first });
+    const e = newsEngine(gw, "ns-busy");
+    const id = await signal();
+    await ticks(e);
+    expect(entries(gw)).toHaveLength(1);
+    const outcomes = [...(await deliveries(first.botId)), ...(await deliveries(second.botId))]
+      .map((d) => [d.outcome, d.reason])
+      .sort();
+    expect(outcomes).toEqual([
+      ["accepted", null],
+      ["dropped", "ACCOUNT_MARKET_BUSY"],
+    ]);
+    await e.stop();
+    await stopNews();
+
+    // Bot thật khác (paused) của cùng account dùng market đó: busy, không vào lệnh.
+    const news = await seedNews();
+    const [grid] = await db
+      .insert(bots)
+      .values({
+        userId: news.userId,
+        sodexAccountId: news.accountId,
+        strategy: "futures_grid",
+        market: "ETH-USD",
+        engine: "perps",
+        name: "Grid",
+        state: "paused",
+      })
+      .returning();
+    const e2 = newsEngine(gw, "ns-busy-2");
+    const sent = gw.received.length;
+    const id2 = await signal({ market: "ETH-USD" });
+    await ticks(e2);
+    expect(gw.received.slice(sent)).toEqual([]);
+    expect((await deliveries(news.botId)).find((d) => d.signalId === id2)?.reason).toBe(
+      "ACCOUNT_MARKET_BUSY",
+    );
+    await db
+      .update(bots)
+      .set({ state: "stopped" })
+      .where(eq(bots.id, grid?.id ?? ""));
+
+    await e2.stop();
+    // Lệnh news của bot khác được ghi đúng lúc này (race với kiểm tra busy): partial unique chặn, không gửi gì. Cổng mới để
+    // SOL-USD chưa có 1× isolated: giữ lần đặt đòn bẩy, chèn dòng lệnh trong lúc đó (sau khi đã tính busy).
+    const gw3 = new FakeGateway();
+    const e3 = newsEngine(gw3, "ns-busy-3");
+    let release: () => void = () => undefined;
+    gw3.holdLeverage = new Promise<void>((r) => {
+      release = r;
+    });
+    const other = await seedNews({ on: news, state: "stopped" });
+    const otherSignal = await signal({ storyKey: `other-${String(Math.random())}` });
+    const id3 = await signal({ storyKey: `race-${String(Math.random())}` });
+    clock += 1_000;
+    const tick = e3.tick();
+    for (let i = 0; i < 200 && !gw3.leverage.some((l) => l.market === SOL); i += 1) await sleep(10);
+    await db.insert(newsSignalTrades).values({
+      botId: other.botId,
+      sodexAccountId: news.accountId,
+      signalId: otherSignal,
+      seq: 1,
+      market: SOL,
+      side: "long",
+      status: "open",
+      sizeUsdc: "100",
+      entryLimitPrice: "100",
+      maxHoldUntil: new Date(clock + 3_600_000),
+      openedAt: new Date(clock),
+    });
+    release();
+    await tick;
+    expect(gw3.received).toEqual([]);
+    // Không phải lỗi của bot: không có warn "delivery failed".
+    expect(warned).not.toContain("news signal delivery failed for one bot; retrying next tick");
+    expect((await deliveries(news.botId)).find((d) => d.signalId === id3)?.reason).toBe(
+      "ACCOUNT_MARKET_BUSY",
+    );
+    expect((await trades(news.botId)).filter((t) => t.signalId === id3)).toEqual([]);
+    expect(id).not.toBe(id3);
+    await e3.stop();
+  });
+
+  it("signer down: the step is undone with its delivery and trade, then the same entry goes once it recovers", async () => {
+    const gw = new FakeGateway();
+    const { botId } = await seedNews();
+    const e = newsEngine(gw, "ns-notsent");
+    gw.notSent = "signer_unavailable";
+    const id = await signal();
+    await ticks(e, 1);
+    expect(gw.received).toEqual([]);
+    expect(await deliveries(botId)).toEqual([]);
+    expect(await trades(botId)).toEqual([]);
+    gw.notSent = null;
+    await ticks(e, 3);
+    expect(entries(gw)).toHaveLength(1);
+    expect(entries(gw)[0]?.tag).toBe(`ns:${id}:entry`);
+    expect((await deliveries(botId)).map((d) => [d.signalId, d.outcome])).toEqual([
+      [id, "accepted"],
+    ]);
+    expect(await trades(botId)).toHaveLength(1);
+    await e.stop();
+  });
+
+  it("an entry with an unknown result keeps its slot and is never resent", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedNews();
+    const e = newsEngine(gw, "ns-unknown");
+    gw.timeoutNext = "lost";
+    const id = await signal();
+    await ticks(e, 1);
+    await ticks(e, 4);
+    const rows = await db.select().from(orders).where(eq(orders.botId, botId));
+    expect(rows.map((o) => [o.tag, o.status])).toEqual([[`ns:${id}:entry`, "unknown"]]);
+    expect(gw.received.filter((o) => o.tag === `ns:${id}:entry`)).toEqual([]);
+    expect(await trades(botId)).toMatchObject([{ signalId: id, status: "open" }]);
+    await e.stop();
+  });
+
+  it("an error of one bot only skips that bot's delivery; another account still trades", async () => {
+    const gw = new (class extends FakeGateway {
+      failAccount = "";
+      override submit(
+        a: AccountRef,
+        list: readonly OrderIntent[],
+        fence: Fence,
+        rate?: number,
+      ): Promise<SubmitResult[]> {
+        if (a.id === this.failAccount) return Promise.reject(new Error("socket hang up"));
+        return super.submit(a, list, fence, rate);
+      }
+    })();
+    const bad = await seedNews();
+    const good = await seedNews();
+    gw.failAccount = bad.accountId;
+    const e = newsEngine(gw, "ns-isolated");
+    await signal();
+    await ticks(e, 1);
+    expect(warned).toContain("news signal delivery failed for one bot; retrying next tick");
+    expect((await deliveries(good.botId)).map((d) => d.outcome)).toEqual(["accepted"]);
+    expect(entries(gw)).toHaveLength(1);
+    await e.stop();
+  });
+
+  it("an open news trade makes its market shared: the position check does not alert another bot of the account on that market", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const news = await seedNews();
+    // Bot futures grid đang chạy trên SOL-USD cùng account, sổ cái 0.
+    const [grid] = await db
+      .insert(bots)
+      .values({
+        userId: news.userId,
+        sodexAccountId: news.accountId,
+        strategy: "futures_grid",
+        market: SOL,
+        engine: "perps",
+        name: "Grid",
+        state: "running",
+      })
+      .returning();
+    const [gv] = await db
+      .insert(botVersions)
+      .values({
+        botId: grid?.id ?? "",
+        version: 1,
+        paramSource: "manual",
+        status: "active",
+        config: {
+          market: SOL,
+          leverage: 1,
+          marginMode: "isolated",
+          direction: "long",
+          lowerPrice: "90",
+          upperPrice: "110",
+          gridLevels: 4,
+          spacing: "arithmetic",
+          margin: "200",
+          stopBelow: "80",
+          maxLoss: "2",
+          onStop: "close_at_market",
+        },
+      })
+      .returning();
+    await db
+      .update(bots)
+      .set({ activeVersionId: gv?.id ?? "" })
+      .where(eq(bots.id, grid?.id ?? ""));
+    const otherSignal = await signal({ storyKey: `held-${String(Math.random())}` });
+    // Lệnh news đang mở trên SOL-USD của account; SoDEX có vị thế 1.99 (của lệnh news, không phải của grid).
+    await db.insert(newsSignalTrades).values({
+      botId: news.botId,
+      sodexAccountId: news.accountId,
+      signalId: otherSignal,
+      seq: 99,
+      market: SOL,
+      side: "long",
+      status: "open",
+      sizeUsdc: "200",
+      entryLimitPrice: "100.3",
+      qty: "1.99",
+      maxHoldUntil: new Date(clock + 3_600_000),
+      openedAt: new Date(clock),
+    });
+    gw.perpsPositions.set(SOL, { size: "1.99", entryPrice: "100.2" });
+    const e = newsEngine(gw, "ns-holders");
+    await e.tick();
+    await e.onPrice(SOL, "100", clock);
+    for (let i = 0; i < 6; i += 1) {
+      clock += 31_000;
+      await e.tick();
+    }
+    // Grid đã chạy. Market SOL-USD có hai bên giữ vị thế (grid + lệnh news) nên không được so: không đọc, không cảnh báo.
+    // Bỏ phần đếm lệnh news trong #checkPositions thì grid bị cảnh báo lệch (sổ cái 0, SoDEX 1.99).
+    expect(gw.received.some((o) => o.tag.startsWith("grid:"))).toBe(true);
+    expect(gw.readsBy.filter((a) => a === news.accountId)).toEqual([]);
+    const alerts = (
+      await db
+        .select()
+        .from(botEvents)
+        .where(eq(botEvents.botId, grid?.id ?? ""))
+    )
+      .map((x) => x.decision)
+      .filter((d) => d === "Position doesn't match" || d === "Position not tracked");
+    expect(alerts).toEqual([]);
+    expect((await botState(grid?.id ?? ""))?.positionMismatch ?? null).toBeNull();
+    await e.stop();
+    await db
+      .update(bots)
+      .set({ state: "stopped" })
+      .where(eq(bots.id, grid?.id ?? ""));
   });
 });

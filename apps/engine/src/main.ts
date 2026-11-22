@@ -56,6 +56,11 @@ const env = z
     ENGINE_LOOKUP_BUDGET: z.coerce.number().int().positive().default(LOOKUP_BUDGET.weight),
     /** Số bot cùng chạy bước `clock` trong worker (#224); giữ dưới pool DB (10 kết nối). */
     ENGINE_CLOCK_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(4),
+    /**
+     * Bot `news_signal` mainnet (#419, DEC-367): công tắc chung với api. Tắt (mặc định) thì engine không nạp bot
+     * `news_signal` và không đọc tín hiệu.
+     */
+    SIGNAL_NEWS_BOTS_ENABLED: z.stringbool().default(false),
   })
   .parse(process.env);
 const log = pino({
@@ -256,6 +261,7 @@ const engine = new Engine({
   tickWaitMs: env.ENGINE_TICK_WAIT_MS,
   lookupBudget: env.ENGINE_LOOKUP_BUDGET,
   clockConcurrency: env.ENGINE_CLOCK_CONCURRENCY,
+  newsSignalBots: env.SIGNAL_NEWS_BOTS_ENABLED,
   loopDelay: loopDelayMs,
   health,
   rules: (market) => marketInfo(rest, market),
@@ -336,6 +342,20 @@ void (async () => {
     }
   }
 })();
+// Chuông tín hiệu bot `news_signal` (#419, scheduler publish `{ id }` sau khi ghi `news_signals`): giao ngay. Mất chuông thì
+// vòng tick vẫn đọc bảng.
+if (env.SIGNAL_NEWS_BOTS_ENABLED)
+  nc.subscribe("sr.signal.new", {
+    callback: (err) => {
+      if (err !== null) {
+        log.warn({ err }, "news signal bell subscription failed");
+        return;
+      }
+      engine.onNewsSignalBell().catch((error: unknown) => {
+        log.warn({ err: error }, "news signal bell handling failed");
+      });
+    },
+  });
 const fundingSub = nc.subscribe("md.*.funding");
 void (async () => {
   for await (const m of fundingSub) {
