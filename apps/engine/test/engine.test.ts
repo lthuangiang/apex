@@ -11784,4 +11784,107 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     expect(e.gaveUpRetryCount).toBe(1);
     await e.stop();
   });
+
+  it("#449: a TP fill lost from the stream is found by reconciling (at most once a minute), the SL is cancelled and nothing extra is sent", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b449");
+    const t = await openTrade(e, gw, b);
+    // SL vẫn nằm sổ trên SoDEX; TP đã khớp đủ nhưng tin khớp không tới qua user stream.
+    gw.book.set(t.sl.clOrdID, { status: "open", filledQty: "0", avgPrice: null, orderId: 449n });
+    const lookupsOf = (id: string) => gw.lookups.filter((x) => x.clOrdID === id).length;
+    // Trước khi TP khớp: TP được tra tối đa một lần mỗi phút.
+    for (let i = 0; i < 8; i += 1) {
+      clock += 16_000;
+      await e.tick();
+    }
+    const tpChecks = lookupsOf(t.tp.clOrdID);
+    expect(tpChecks).toBeGreaterThanOrEqual(1);
+    expect(tpChecks).toBeLessThanOrEqual(3);
+    gw.book.set(t.tp.clOrdID, {
+      status: "filled",
+      filledQty: t.tp.quantity,
+      avgPrice: t.tp.price ?? "104",
+      orderId: 450n,
+    });
+    const sent = gw.received.length;
+    for (let i = 0; i < 5 && (await tradeOf(b.botId, t.id))?.status !== "closed"; i += 1) {
+      clock += 61_000;
+      await e.tick();
+    }
+    expect(await tradeOf(b.botId, t.id)).toMatchObject({
+      status: "closed",
+      closeReason: "TAKE_PROFIT",
+    });
+    expect(gw.cancelled).toContain(t.sl.clOrdID);
+    // Không có lệnh thừa (không đóng lại, không đặt TP / SL mới).
+    expect(gw.received.slice(sent)).toEqual([]);
+    const tpRow = (await db.select().from(orders).where(eq(orders.clOrdId, t.tp.clOrdID)))[0];
+    expect(tpRow?.status).toBe("filled");
+    await e.stop();
+  });
+
+  it("#449: resting limit orders of other strategies are still left to the user stream (not looked up)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const news = await seedNews();
+    const [grid] = await db
+      .insert(bots)
+      .values({
+        userId: news.userId,
+        sodexAccountId: news.accountId,
+        strategy: "futures_grid",
+        market: "ETH-USD",
+        engine: "perps",
+        name: "Grid",
+        state: "running",
+      })
+      .returning();
+    const [gv] = await db
+      .insert(botVersions)
+      .values({
+        botId: grid?.id ?? "",
+        version: 1,
+        paramSource: "manual",
+        status: "active",
+        config: {
+          market: "ETH-USD",
+          leverage: 1,
+          marginMode: "isolated",
+          direction: "long",
+          lowerPrice: "90",
+          upperPrice: "110",
+          gridLevels: 4,
+          spacing: "arithmetic",
+          margin: "200",
+          stopBelow: "80",
+          maxLoss: "2",
+          onStop: "close_at_market",
+        },
+      })
+      .returning();
+    await db
+      .update(bots)
+      .set({ activeVersionId: gv?.id ?? "" })
+      .where(eq(bots.id, grid?.id ?? ""));
+    const e = newsEngine(gw, "b449-other");
+    await e.tick();
+    await e.onPrice("ETH-USD", "100", clock);
+    // Lệnh limit đang nằm sổ của grid (lệnh market như `grid:init` vẫn được tra như trước).
+    const gridOrders = gw.received
+      .filter((o) => o.tag.startsWith("grid:") && o.type === "limit")
+      .map((o) => o.clOrdID);
+    expect(gridOrders.length).toBeGreaterThan(0);
+    for (let i = 0; i < 6; i += 1) {
+      clock += 61_000;
+      await e.tick();
+    }
+    expect(gw.lookups.filter((x) => gridOrders.includes(x.clOrdID))).toEqual([]);
+    await e.stop();
+    await db
+      .update(bots)
+      .set({ state: "stopped" })
+      .where(eq(bots.id, grid?.id ?? ""));
+  });
 });
