@@ -138,6 +138,14 @@ export async function draftBotChange(
 ): Promise<McpDraftResult> {
   const b = await ownBotOr404(deps.bots.db, caller.userId, input.botId);
   if (b.archivedAt !== null) throw new AppError(ErrorCode.botNotFound, "Bot not found.");
+  // #472: bot Signal Research (`news_signal`) chỉ sửa trong Signal Research (Settings); Strategy Lab không có form, nên
+  // không tạo bản nháp trỏ vào `/bots/:id/edit`.
+  if (b.strategy === Strategy.newsSignal)
+    throw new AppError(
+      ErrorCode.validationFailed,
+      "Signal Research bots are changed in DeskLabs › Signal Research.",
+      { reason: "not_supported" },
+    );
   const merged = { ...(await activeConfig(deps.bots.db, b)), ...input.changes };
   const config = await checkVersionConfig(deps.bots, caller.userId, b, merged);
   const d = await insertDraft(deps, caller, {

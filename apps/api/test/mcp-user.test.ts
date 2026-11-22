@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import {
+  baselineVersionConfig,
   botListSchema,
   mcpBotDecisionsSchema,
   mcpFindTradersSchema,
@@ -187,5 +188,87 @@ describe("MCP user tools", () => {
     const off = mcpFindTradersSchema.parse((await get("/api/v1/mcp/me/traders", e.token)).json());
     expect(off).toMatchObject({ traders: null, reason: "copy_trading_not_enabled" });
     expect((await get("/api/v1/mcp/me/traders?tab=nope", e.token)).statusCode).toBe(400);
+  });
+});
+
+describe("MCP user tools · Signal Research news bots (#472)", () => {
+  async function newsBot(userId: string, config: Record<string, unknown>) {
+    const acc = (
+      await env.pool.query<{ id: string }>(
+        "insert into sodex_accounts (id, user_id, address, sodex_account_id, network, status) values (gen_random_uuid(), $1, $2, $3, 'mainnet', 'disconnected') returning id",
+        [userId, `0x${randomBytes(20).toString("hex")}`, Math.floor(Math.random() * 1e9)],
+      )
+    ).rows[0]?.id;
+    const bot =
+      (
+        await env.pool.query<{ id: string }>(
+          "insert into bots (id, user_id, sodex_account_id, strategy, market, engine, name, state, mode) values (gen_random_uuid(), $1, $2, 'news_signal', '', 'perps', 'Stock Monitor', 'running', 'live') returning id",
+          [userId, acc],
+        )
+      ).rows[0]?.id ?? "";
+    const ver = (
+      await env.pool.query<{ id: string }>(
+        "insert into bot_versions (id, bot_id, version, config, param_source, status, applied_at) values (gen_random_uuid(), $1, 1, $2, 'manual', 'active', now()) returning id",
+        [bot, JSON.stringify(config)],
+      )
+    ).rows[0]?.id;
+    await env.pool.query("update bots set active_version_id = $2 where id = $1", [bot, ver]);
+    for (const status of ["open", "closed"]) {
+      const { rows: s } = await env.pool.query<{ id: string }>(
+        `insert into news_signals (id, story_key, cycle_at, article_id, market, kind, catalyst, side, level, first_published_at,
+           collected_at, decided_at, expires_at, typical_by_hold_hours, classifier_version, asset_map_version, rule_version)
+         values (gen_random_uuid(), $1, now(), 'a1', 'SOL-USD', 'crypto', 'listing', 'long', 'high', now(), now(), now(),
+           now() + interval '2 minutes', '{"24":"3"}', 'c', 'a', 'news-v4') returning id`,
+        [`SOL-USD|${randomUUID()}`],
+      );
+      await env.pool.query(
+        `insert into news_signal_trades (id, bot_id, sodex_account_id, signal_id, seq, market, side, status, size_usdc,
+           entry_limit_price, qty, entry_avg_price, tp_price, sl_price, max_hold_until, opened_at, closed_at, created_at,
+           updated_at)
+         values (gen_random_uuid(), $1, $2, $3, (select coalesce(max(seq), 0) + 1 from news_signal_trades where bot_id = $1),
+           'SOL-USD', 'long', $4, 100, 100.3, 0.99, 100.2, 104.7, 97.95, now() + interval '1 day', now(),
+           case when $4 = 'closed' then now() end, now(), now())`,
+        [bot, acc, s[0]?.id, status],
+      );
+    }
+    return bot;
+  }
+
+  it("list_bots says Multi-market and get_bot shows markets, leverage, size and open trades", async () => {
+    const u = await person("mcp-news@example.test");
+    const config = {
+      ...baselineVersionConfig(),
+      sizeUsdc: "50",
+      leverage: 10,
+      maxOpenTrades: 2,
+      assets: { mode: "only", markets: ["AAPL-USD", "TSLA-USD"], crypto: false, stocks: true },
+    };
+    const bot = await newsBot(u.userId, config);
+    const list = mcpListBotsSchema.parse((await get("/api/v1/mcp/me/bots", u.token)).json());
+    const row = list.bots.find((b) => b.id === bot);
+    expect(row).toMatchObject({ strategy: "news_signal", market: "", marketLabel: "Multi-market" });
+    const res = await get(`/api/v1/mcp/me/bots/${bot}`, u.token);
+    expect(res.statusCode).toBe(200);
+    const d = mcpGetBotSchema.parse(res.json());
+    expect(d.newsSignal).toEqual({
+      markets: { mode: "only", markets: ["AAPL-USD", "TSLA-USD"], crypto: false, stocks: true },
+      leverage: 10,
+      marginMode: "isolated",
+      sizeUsdc: "50",
+      maxOpenTrades: 2,
+      openTrades: 1,
+    });
+    expect(JSON.stringify(res.json())).not.toMatch(SECRET_LIKE);
+  });
+
+  it("an old news bot without the leverage field reads 1×; other strategies have no news block", async () => {
+    const u = await person("mcp-news-old@example.test");
+    const old: Record<string, unknown> = { ...baselineVersionConfig(), sizeUsdc: "100" };
+    const bot = await newsBot(u.userId, old);
+    const d = mcpGetBotSchema.parse((await get(`/api/v1/mcp/me/bots/${bot}`, u.token)).json());
+    expect(d.newsSignal?.leverage).toBe(1);
+    const grid = await seedBot(u.userId, "Grid");
+    const g = mcpGetBotSchema.parse((await get(`/api/v1/mcp/me/bots/${grid}`, u.token)).json());
+    expect(g.newsSignal).toBeNull();
   });
 });

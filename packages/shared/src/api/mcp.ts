@@ -320,6 +320,26 @@ export const mcpGetBotSchema = z.object({
   volumeMaker: botDetailSchema.shape.volumeMaker,
   volumeFarm: botDetailSchema.shape.volumeFarm,
   adaptiveDca: botDetailSchema.shape.adaptiveDca,
+  /**
+   * #472: bot Signal Research (`news_signal`, nhiều market): Markets, đòn bẩy, size mỗi lệnh và số lệnh news đang mở
+   * (`open` / `closing`). Null với chiến lược khác hoặc khi config không đọc được.
+   */
+  newsSignal: z
+    .object({
+      markets: z.object({
+        mode: z.enum(["all", "only", "except"]),
+        markets: z.array(z.string()),
+        crypto: z.boolean(),
+        stocks: z.boolean(),
+      }),
+      leverage: z.number().int(),
+      marginMode: z.literal("isolated"),
+      sizeUsdc: decimalStringSchema,
+      maxOpenTrades: z.number().int(),
+      openTrades: z.number().int(),
+    })
+    .nullable()
+    .default(null),
 });
 export type McpGetBot = z.infer<typeof mcpGetBotSchema>;
 
