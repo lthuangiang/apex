@@ -2,6 +2,7 @@ import { createDb, DeadlineExceededError, readOnlyTx } from "@drift/db";
 import {
   builderFeeRateFor,
   dec,
+  Decimal,
   feeRateToFraction,
   SODEX_BASE_FEE_PCT,
   Strategy,
@@ -9,6 +10,12 @@ import {
 import { z } from "zod";
 
 import { guardIdleKill, IDLE_KILL_MESSAGE, isIdleKill } from "../replay/abort";
+import {
+  calibrationTable,
+  liveTrades,
+  loadLiveVbFills,
+  type LiveVbFill,
+} from "../vb-vol-pause/live";
 
 import { checkRange, loadStudy, MAX_RANGE_DAYS, StudyLimitError } from "./load";
 import { DEFAULT_SEEDS, runStudy, toMarkdown } from "./study";
@@ -21,7 +28,8 @@ import { DEFAULT_SEEDS, runStudy, toMarkdown } from "./study";
 //     --from 2026-11-05 --to 2026-11-19 > vb-counter-trend.md
 // Tuỳ chọn: --markets SOL-USD,XRP-USD (thêm market)  --config bots|default (mặc định bots)  --seeds 1–10 (mặc định 5,
 // số đồng xu của mỗi baseline ngẫu nhiên). Mỗi market ≈ 10 biến thể × (1 + seeds) + seeds lần mô phỏng, khoảng 4 s / lần
-// cho 14 ngày: 5 seed ≈ 4–5 phút / market.
+// cho 14 ngày: 5 seed ≈ 4–5 phút / market. --fill-models through,touch (mặc định through) chạy lại cả nghiên cứu với mô
+// hình khớp "chạm là khớp" (#363) để so chiều của Δ; cuối báo cáo có bảng hiệu chỉnh baseline A so với bot thật cùng kỳ.
 
 const QUERY_TIMEOUT_MS = 30_000;
 const IDLE_TIMEOUT_MS = 120_000;
@@ -55,6 +63,7 @@ let to: Date;
 let extra: string[];
 let configFrom: "bots" | "default";
 let seeds: number;
+let fills: ("through" | "touch")[];
 try {
   from = date(arg("from"), "from");
   to = date(arg("to"), "to");
@@ -78,6 +87,10 @@ try {
     .safeParse(arg("seeds") ?? DEFAULT_SEEDS);
   if (!sd.success) throw new StudyLimitError("--seeds must be a whole number from 1 to 10");
   seeds = sd.data;
+  const fm = (arg("fill-models") ?? "through").split(",").map((x) => x.trim());
+  fills = (["through", "touch"] as const).filter((x) => fm.includes(x));
+  if (fills.length === 0 || fills.length !== fm.length)
+    throw new StudyLimitError("--fill-models takes through, touch or through,touch");
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
@@ -103,8 +116,22 @@ try {
       idleTimeoutMs: IDLE_TIMEOUT_MS,
       deadlineMs: DEADLINE_MS,
     },
-    (q, checkDeadline) =>
-      loadStudy(q, { from, to, now: startedAt, extra, configFrom, checkDeadline }),
+    async (q, checkDeadline) => {
+      const study = await loadStudy(q, {
+        from,
+        to,
+        now: startedAt,
+        extra,
+        configFrom,
+        checkDeadline,
+      });
+      const live = new Map<string, LiveVbFill[]>();
+      for (const m of study.markets) {
+        checkDeadline();
+        live.set(m.market, await loadLiveVbFills(q, { market: m.market, from, to }));
+      }
+      return { ...study, live };
+    },
   ).catch((error: unknown) => {
     if (error instanceof StudyLimitError || error instanceof DeadlineExceededError)
       fail(error.message);
@@ -124,12 +151,36 @@ try {
     builder: feeRateToFraction(builderFeeRateFor(Strategy.volumeFarm)).toString(),
   };
   const range = { from: from.getTime(), to: to.getTime() };
-  const reports = loaded.markets.map((m) => {
-    process.stderr.write(`vb-counter-trend: simulating ${m.market}…\n`);
-    return runStudy(m, fees, range, seeds, (what) => {
-      process.stderr.write(`vb-counter-trend:   ${what}\n`);
-    });
-  });
+  const reports = loaded.markets.flatMap((m) =>
+    fills.map((fill) => {
+      process.stderr.write(`vb-counter-trend: simulating ${m.market} (${fill})…\n`);
+      return runStudy(
+        m,
+        fees,
+        range,
+        seeds,
+        (what) => {
+          process.stderr.write(`vb-counter-trend:   ${what}\n`);
+        },
+        fill,
+      );
+    }),
+  );
+  const calibration = loaded.markets.flatMap((m) =>
+    calibrationTable(
+      m.market,
+      reports
+        .filter((r) => r.market === m.market)
+        .map((r) => ({
+          label: `Backtest A, Reverse ${m.config.reverseSignal ? "on" : "off"} (${r.fill})`,
+          trades: (
+            r.rows.find((x) => x.key === "A" && x.reverse === m.config.reverseSignal)?.sim.trades ??
+            []
+          ).map((t) => ({ ...t, makerVolume: new Decimal(0) })),
+        })),
+      liveTrades(loaded.live.get(m.market) ?? []),
+    ).concat([""]),
+  );
   process.stdout.write(
     toMarkdown(reports, {
       source: "stored candles_1m (read-only)",
@@ -141,6 +192,16 @@ try {
         `Range limit ${String(MAX_RANGE_DAYS)} days. Candle-only signal (no historical order book, so the book component is neutral, as in the Backtest tab).`,
       ],
     }),
+  );
+  process.stdout.write(
+    [
+      "",
+      "## Calibration vs live bots",
+      "",
+      "Live cost uses the Volume Builder tab formula of the team Signal Analysis page. Read only the direction of Δ and its interval; the fill model closer to live is more trustworthy.",
+      "",
+      ...calibration,
+    ].join("\n"),
   );
 } finally {
   await pool.end().catch(() => undefined);
