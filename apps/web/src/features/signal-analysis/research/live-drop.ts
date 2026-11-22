@@ -23,15 +23,16 @@ import { CONTEXT_BAND } from "./trace-player";
 // - lần hỏi đầu sau khi dừng (tab ẩn, đang trace, Live tắt): lấy hết bài đã lỡ, thả tối đa 3 bài MỚI NHẤT, phần còn lại
 //   cộng vào "+N more" (sửa lỗi người dùng báo: SoSoValue nạp theo đợt 5 phút, quay lại tab thì cả đợt chỉ cộng số);
 // - không bao giờ cắt ngang trace người dùng đang xem: bài chờ ở chip "N new articles · play".
-// - chỉ SIGNAL (bài đã qua Score: dừng ở Filter / Decide) mới rơi và chạy các bước; bài bị loại ở Collect / Normalize /
-//   Score chỉ có badge NEW và vào số đếm. Mỗi đợt có một dòng tóm tắt "{n} new articles · {s} signals · {d} dropped".
+// - MỌI bài mới đều rơi và chạy qua các bước tới đúng bước nó dừng (#474; trước đây chỉ signal rơi, từ Rules v4 mỗi ngày
+//   chỉ 0–1 signal nên gần như không thấy bài rơi). Hàng đợi đầy thì SIGNAL được ưu tiên giữ chỗ, bài bị loại nhường chỗ
+//   và vào "+N more". Mỗi đợt có một dòng tóm tắt "{n} new articles · {s} signals · {d} dropped".
 // Số đếm và feed luôn lấy lại từ API (làm mới query), không tự cộng.
 
 /** Nhịp hỏi bài mới (PM chốt). */
 export const LIVE_POLL_MS = 15_000;
 /** Số bài tối đa chờ rơi; thêm nữa thì chỉ đếm. */
 export const LIVE_QUEUE_MAX = 3;
-/** Mỗi bước của bài rơi (ngắn hơn mockup 380 ms: chỉ signal rơi, nhiều bài chạy lần lượt). */
+/** Mỗi bước của bài rơi (ngắn hơn mockup 380 ms: nhiều bài chạy lần lượt). */
 export const LIVE_STEP_MS = 260;
 /** Bước 4 khi bài có snapshot: đủ cho hiệu ứng H1 / H2 / H3 (≤ 1.2 s). */
 export const LIVE_CONTEXT_MS = 1300;
@@ -41,7 +42,7 @@ export const LIVE_CATCH_UP_PAGES = 5;
 /** Giữ khung cuối trước khi sang bài sau. */
 export const LIVE_HOLD_MS = 600;
 
-/** Signal = bài đã qua Score (bước dừng là Filter hoặc Decide). Chỉ signal mới rơi xuống phễu. */
+/** Signal = bài đã qua Score (bước dừng là Filter hoặc Decide). Hàng đợi đầy thì signal được giữ chỗ trước (#474). */
 export const isSignal = (a: ResearchArticle): boolean =>
   a.stage === "filter" || a.stage === "decide";
 
@@ -76,23 +77,35 @@ export interface LiveQueue {
 
 export const EMPTY_QUEUE: LiveQueue = { current: null, queue: [], extra: 0 };
 
-/** Thêm bài mới (đã bỏ trùng) vào hàng đợi; quá LIVE_QUEUE_MAX thì cộng `extra`. */
+/**
+ * Chọn tối đa LIVE_QUEUE_MAX bài từ `all` (cũ trước mới), signal giữ chỗ trước (#474), rồi tới bài bị loại; trong mỗi loại
+ * lấy bài sớm nhất (`newest` = false) hoặc mới nhất (`newest` = true). Bài được chọn giữ đúng thứ tự cũ → mới.
+ */
+function pick(all: readonly ResearchArticle[], newest: boolean): ResearchArticle[] {
+  if (all.length <= LIVE_QUEUE_MAX) return [...all];
+  const idx = all.map((a, i) => ({ a, i }));
+  const order = newest ? [...idx].reverse() : idx;
+  const chosen = [
+    ...order.filter((x) => isSignal(x.a)),
+    ...order.filter((x) => !isSignal(x.a)),
+  ].slice(0, LIVE_QUEUE_MAX);
+  return chosen.sort((x, y) => x.i - y.i).map((x) => x.a);
+}
+
+/** Thêm bài mới (đã bỏ trùng) vào hàng đợi; quá LIVE_QUEUE_MAX thì signal giữ chỗ trước, phần còn lại cộng `extra`. */
 export function enqueue(s: LiveQueue, items: readonly ResearchArticle[]): LiveQueue {
   const all = [...s.queue, ...items];
-  return {
-    ...s,
-    queue: all.slice(0, LIVE_QUEUE_MAX),
-    extra: s.extra + Math.max(0, all.length - LIVE_QUEUE_MAX),
-  };
+  const queue = pick(all, false);
+  return { ...s, queue, extra: s.extra + all.length - queue.length };
 }
 
 /**
- * Bài đã lỡ khi quay lại (tab ẩn, trace, Live tắt): giữ LIVE_QUEUE_MAX bài mới nhất (cả bài đang chờ sẵn), cũ trước mới;
- * phần còn lại cộng `extra`.
+ * Bài đã lỡ khi quay lại (tab ẩn, trace, Live tắt): giữ LIVE_QUEUE_MAX bài mới nhất (cả bài đang chờ sẵn), signal giữ chỗ
+ * trước (#474), cũ trước mới; phần còn lại cộng `extra`.
  */
 export function enqueueNewest(s: LiveQueue, items: readonly ResearchArticle[]): LiveQueue {
   const all = [...s.queue, ...items];
-  const queue = all.slice(-LIVE_QUEUE_MAX);
+  const queue = pick(all, true);
   return { ...s, queue, extra: s.extra + all.length - queue.length };
 }
 
@@ -259,13 +272,11 @@ export function useLiveArticles({
         if (items.length > 0) {
           setFresh((f) => new Set([...f, ...items.map((a) => a.id)]));
           if (!opening) setBatch(batchOf(items));
-          // Chỉ signal rơi; bài bị loại trước Score chỉ vào số đếm (làm mới ngay).
-          const signals = items.filter(isSignal);
-          if (opening || !inViewRef.current || signals.length === 0) refresh();
+          // Mọi bài mới đều rơi (#474); hàng đợi đầy thì signal giữ chỗ trước, bài không rơi được vào "+N more".
+          if (opening || !inViewRef.current) refresh();
           else {
-            setState((s) => (bulk ? enqueueNewest(s, signals) : enqueue(s, signals)));
-            if (signals.length < items.length || (bulk && signals.length > LIVE_QUEUE_MAX))
-              refresh();
+            setState((s) => (bulk ? enqueueNewest(s, items) : enqueue(s, items)));
+            if (items.length > LIVE_QUEUE_MAX) refresh();
           }
         }
         catchUp = false;

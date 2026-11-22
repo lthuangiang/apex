@@ -516,6 +516,11 @@ export function NewsTrace({
   let verdict: string;
   let verdictTone = "text-ink-2";
   if (!tracing && liveOn) verdict = liveVerdict(liveView, liveModel, livePlayer.step, feed, t);
+  else if (!tracing && (feed.current !== null || feed.queue.length > 0))
+    // #474: giữa hai bài rơi (bài kế chưa có trace) không hiện câu "Pick an article…" thoáng qua: phễu vẫn đang bận.
+    verdict = `${t("trace.verdict.arriving")}${
+      feed.queue.length > 0 ? t("live.waiting", { n: feed.queue.length }) : ""
+    }${feed.extra > 0 ? t("live.more", { n: feed.extra }) : ""}`;
   else if (!tracing) verdict = t("trace.verdict.idle");
   else if (view === null)
     verdict = trace.isError ? t("trace.verdict.error") : t("trace.verdict.arriving");
