@@ -497,7 +497,8 @@ describe("leverage_conflict start-check (DEC-58)", () => {
 describe("Edit: save as a new version (#469)", () => {
   const edit = (c: TestClient, id: string, body: Record<string, unknown>, key?: string) =>
     c.request("POST", `/api/v1/bots/${id}/versions`, {
-      body,
+      // `paramSource` như form Edit chung: bot của người khác đi đường chung và nhận 404.
+      body: { paramSource: "manual", ...body },
       ...(key === undefined ? {} : { idempotencyKey: key }),
     });
   const versions = async (id: string) =>

@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import {
   apiKeys,
   bots,
@@ -387,12 +389,15 @@ export async function newNewsVersion(
   if (!current.success) throw new AppError(ErrorCode.botStateConflict, "Bot can't be edited.");
   const editable = new Set<string>(NEWS_EDITABLE_FIELDS);
   const locked: Record<string, string[]> = {};
-  const norm = (x: unknown) => JSON.stringify(x ?? null);
+  // So như sau khi lưu jsonb (thứ tự khoá không tính, field `undefined` bị bỏ).
+  const norm = (x: unknown): unknown => (x === undefined ? null : JSON.parse(JSON.stringify(x)));
   for (const key of new Set([...Object.keys(current.data), ...Object.keys(config)]))
     if (
       !editable.has(key) &&
-      norm((current.data as Record<string, unknown>)[key]) !==
-        norm((config as Record<string, unknown>)[key])
+      !isDeepStrictEqual(
+        norm((current.data as Record<string, unknown>)[key]),
+        norm((config as Record<string, unknown>)[key]),
+      )
     )
       locked[key] = ["locked"];
   if (Object.keys(locked).length > 0) throw invalid(locked);
