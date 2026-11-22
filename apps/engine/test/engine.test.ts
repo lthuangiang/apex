@@ -12046,7 +12046,7 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     await e.stop();
   });
 
-  // ---------- #469: sửa bot news thành version mới (DEC-TBD-news-version-apply) ----------
+  // ---------- #469: sửa bot news thành version mới (DEC-377) ----------
   /** Version mới của bot: `pending` (sửa khi đang chạy / pause) hoặc `active` ngay (sửa khi đã dừng, DEC-131). */
   async function saveNewsVersion(
     botId: string,

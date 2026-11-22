@@ -1204,7 +1204,7 @@ export const newsTrades = (s: NewsSignalState): NewsTrade[] => Object.values(s.t
 export const newsSignal: StrategyModule<NewsSignalConfig, NewsSignalState> = {
   initialState: () => initialNewsSignalState(),
   step: stepNewsSignal,
-  // Sửa bot (#469, DEC-TBD-news-version-apply): áp ngay, kể cả khi còn lệnh mở. State mang nguyên (trades, orders,
+  // Sửa bot (#469, DEC-377): áp ngay, kể cả khi còn lệnh mở. State mang nguyên (trades, orders,
   // ledgers…): lệnh đang mở giữ TP / SL, max hold và đòn bẩy lúc vào (đều lưu theo từng trade); config mới chỉ đọc ở
   // `onSignal`, nên chỉ áp cho tín hiệu đến sau. Engine không huỷ lệnh nào của bot news khi áp.
   applyVersion: (_c, s) => s,
