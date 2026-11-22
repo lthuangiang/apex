@@ -11,7 +11,7 @@ Not financial advice. Past results are not a forecast.
 ## Kỹ thuật
 
 Chưa có thay đổi.
-- Bot `news_signal` mainnet chọn đòn bẩy 1 / 5 / 10 / 20× isolated (trần 200 USDC giá trị vị thế giữ nguyên); engine đặt đúng mức, bỏ tín hiệu `LEVERAGE_NOT_SET` khi market không cho mức đó hoặc SoDEX từ chối, và `SL_BEYOND_LIQUIDATION` khi SL nằm quá gần giá thanh lý ước tính (< 1.5 ×); start check margin = size × Max open trades ÷ đòn bẩy (#458, DEC-TBD-news-signal-leverage). Phần web ở PR riêng. **Chưa merge.**
+- Bot `news_signal` mainnet chọn đòn bẩy 1 / 5 / 10 / 20× isolated (trần 200 USDC giá trị vị thế giữ nguyên); engine đặt đúng mức, bỏ tín hiệu `LEVERAGE_NOT_SET` khi market không cho mức đó hoặc SoDEX từ chối, và `SL_BEYOND_LIQUIDATION` khi SL nằm quá gần giá thanh lý ước tính (< 1.5 ×); start check margin = size × Max open trades ÷ đòn bẩy (#458, DEC-373). Phần web ở PR riêng. **Chưa merge.**
 
 **Migration (chạy khi deploy):** không có.
 
