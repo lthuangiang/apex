@@ -18,6 +18,7 @@ import {
   type StudyMarketInput,
 } from "../vb-counter-trend/study";
 
+import { balanceSplit, marketState, type SplitReport } from "./balance";
 import { costSplit, largeGap, type CostSplit, type CostTrade } from "./live";
 
 // Nghiên cứu quy tắc "tạm dừng khi biến động vọt lên" của Volume Builder (#363, việc 1). Hàm thuần, chỉ đọc dữ liệu đã nạp:
@@ -84,7 +85,15 @@ export interface PauseTrade {
   /** Phần volume (USDC) khớp maker: lệnh vào maker + lần đóng đầu nếu maker. */
   makerVolume: Decimal;
   stopLoss: boolean;
+  /** Lượt vào để cân khối lượng long / short (snapshot `balanced`), không theo tín hiệu. */
+  balanced: boolean;
+  /** Giờ mở của nến đã đóng ngay trước lúc đặt lệnh vào (nhịp quyết định); null = không rõ. */
+  decidedT: number | null;
 }
+
+/** Mô hình khớp limit của backtest: "through" (mặc định, giá phải đi xuyên) hoặc "touch" (chạm là khớp). */
+export type LimitFill = "through" | "touch";
+export const FILL_MODELS: readonly LimitFill[] = ["through", "touch"];
 
 export interface PauseRun {
   trades: PauseTrade[];
@@ -93,10 +102,20 @@ export interface PauseRun {
   gapExcluded: number;
 }
 
-/** Lớp bọc: đang dừng và bước `timer` sẽ đặt lệnh vào mới → bỏ bước (state cũ, không hành động). */
+/** Lệnh vào đã đặt: nhịp quyết định (giờ mở nến vừa đóng) và cờ cân long / short của snapshot. */
+export interface EntryMeta {
+  decidedT: number;
+  balanced: boolean;
+}
+
+/**
+ * Lớp bọc: đang dừng và bước `timer` sẽ đặt lệnh vào mới → bỏ bước (state cũ, không hành động). Lệnh vào được đặt thì ghi
+ * `entries[clOrdID]` (chỉ đọc kết quả của bước, không đổi gì).
+ */
 export function pausable(
   paused: ReadonlySet<number>,
   counter: { blocked: number },
+  entries = new Map<string, EntryMeta>(),
 ): StrategyModule<VolumeFarmConfig, VolumeFarmState> {
   return {
     ...volumeFarm,
@@ -105,11 +124,19 @@ export function pausable(
       if (e.type !== "timer") return r;
       // Timer của backtest nằm 1 ms trước giờ đóng nến; nến vừa đóng mở lúc floor((at + 1) / 1 phút) − 1 phút.
       const closedT = Math.floor((e.at + 1) / MIN) * MIN - MIN;
-      if (!paused.has(closedT)) return r;
       const opens = r.actions.some((a) => a.type === "place" && ENTRY.test(a.order.tag));
       if (!opens) return r;
-      counter.blocked += 1;
-      return { actions: [], state: s };
+      if (paused.has(closedT)) {
+        counter.blocked += 1;
+        return { actions: [], state: s };
+      }
+      const balanced = r.actions.some(
+        (a) => a.type === "log" && a.payload?.signal?.balanced === true,
+      );
+      for (const a of r.actions)
+        if (a.type === "place" && ENTRY.test(a.order.tag))
+          entries.set(a.order.clOrdID, { decidedT: closedT, balanced });
+      return r;
     },
   };
 }
@@ -119,10 +146,12 @@ export function simulatePause(
   fees: FeeSchedule,
   range: { from: number; to: number },
   paused: ReadonlySet<number>,
+  limitFill: LimitFill = "through",
 ): PauseRun {
   const counter = { blocked: 0 };
+  const entries = new Map<string, EntryMeta>();
   const out = runBacktest({
-    module: pausable(paused, counter),
+    module: pausable(paused, counter, entries),
     config: m.config,
     markets: { [m.market]: { engine: "perps", candles: m.candles, rules: m.rules } },
     funding: {},
@@ -132,6 +161,8 @@ export function simulatePause(
     capital: "1000000",
     equityPoints: 2,
     snapshotCandles: 120,
+    decisionPayload: true,
+    limitFill,
   });
   const gaps = gapsOf(m.candles);
   const byCycle = new Map<number, BacktestFill[]>();
@@ -158,6 +189,7 @@ export function simulatePause(
       .filter((f) => TAG.exec(f.tag)?.[2] !== "in")
       .sort((a, b2) => a.at - b2.at)[0];
     const kind = firstExit === undefined ? null : TAG.exec(firstExit.tag)?.[2];
+    const meta = entries.get(first.clOrdID);
     trades.push({
       at: b.at,
       volume: b.entryNotional.add(b.exitNotional),
@@ -169,6 +201,8 @@ export function simulatePause(
         .reduce((s, f) => s.add(new Decimal(f.price).mul(f.quantity)), new Decimal(0))
         .add(firstExit?.maker === true ? b.exitNotional : 0),
       stopLoss: kind === "sl" || kind === "xsl",
+      balanced: meta?.balanced ?? false,
+      decidedT: meta?.decidedT ?? null,
     });
   }
   trades.sort((a, b) => a.at - b.at);
@@ -327,8 +361,12 @@ export interface CellRow {
   stats: ReturnType<typeof pairedDayStats>;
 }
 
+/** Quy tắc phần 1 dùng cho phần 2 ("sau khi áp quy tắc"): ô có Δ cost tốt nhất trên ETH ở lượt chạy đầu (local). */
+export const PART2_RULE = { k: 2.5, m: 3 } as const;
+
 export interface MarketPauseReport {
   market: string;
+  fill: LimitFill;
   configSource: string;
   days: number[];
   rows: CellRow[];
@@ -336,19 +374,32 @@ export interface MarketPauseReport {
   baseTrades: PauseTrade[];
   /** Lượt đã đóng của bot Volume Builder tiền thật cùng market, cùng kỳ; null = không đọc. */
   live: CostTrade[] | null;
+  /** Phần 2: lượt cân vs lượt tín hiệu theo trạng thái thị trường, baseline và sau quy tắc `PART2_RULE`. */
+  split: { baseline: SplitReport; withRule: SplitReport };
 }
 
-/** Baseline (không quy tắc) + lưới k × m, chỉ tính lượt vào trong ngày đủ dữ liệu. */
+const splitInput = (ts: readonly PauseTrade[]) =>
+  ts.map((t) => ({
+    at: t.at,
+    netBp: t.netBp.toNumber(),
+    net: t.net.toNumber(),
+    volume: t.volume.toNumber(),
+    balanced: t.balanced,
+    decidedT: t.decidedT,
+  }));
+
+/** Baseline (không quy tắc) + lưới k × m với một mô hình khớp, chỉ tính lượt vào trong ngày đủ dữ liệu. */
 export function runPauseStudy(
   m: StudyMarketInput,
   fees: FeeSchedule,
   range: { from: number; to: number },
   progress: (what: string) => void = () => undefined,
+  fill: LimitFill = "through",
 ): MarketPauseReport {
   const days = coveredDays(m.candles, range);
   const inDays = (ts: PauseTrade[]) => ts.filter((t) => days.includes(dayKey(t.at)));
-  progress(`${m.market}: baseline`);
-  const base = simulatePause(m, fees, range, new Set());
+  progress(`${m.market} (${fill}): baseline`);
+  const base = simulatePause(m, fees, range, new Set(), fill);
   const baseTrades = inDays(base.trades);
   const row = (label: string, k: number | null, mm: number | null, r: PauseRun): CellRow => {
     const ts = inDays(r.trades);
@@ -364,66 +415,129 @@ export function runPauseStudy(
     };
   };
   const rows: CellRow[] = [row("baseline (no rule)", null, null, base)];
+  let ruleTrades: PauseTrade[] = [];
   for (const k of K_VALUES)
     for (const mm of M_VALUES) {
-      progress(`${m.market}: k=${String(k)} m=${String(mm)}`);
-      rows.push(
-        row(
-          `k ${String(k)} · m ${String(mm)}`,
-          k,
-          mm,
-          simulatePause(m, fees, range, pausedAfter(m.candles, k, mm)),
-        ),
-      );
+      progress(`${m.market} (${fill}): k=${String(k)} m=${String(mm)}`);
+      const r = simulatePause(m, fees, range, pausedAfter(m.candles, k, mm), fill);
+      if (k === PART2_RULE.k && mm === PART2_RULE.m) ruleTrades = inDays(r.trades);
+      rows.push(row(`k ${String(k)} · m ${String(mm)}`, k, mm, r));
     }
-  return { market: m.market, configSource: m.configSource, days, rows, baseTrades, live: null };
+  const state = marketState(m.candles);
+  return {
+    market: m.market,
+    fill,
+    configSource: m.configSource,
+    days,
+    rows,
+    baseTrades,
+    live: null,
+    split: {
+      baseline: balanceSplit(splitInput(baseTrades), state, days),
+      withRule: balanceSplit(splitInput(ruleTrades), state, days),
+    },
+  };
 }
 
 const f0 = (v: number | null) => (v === null ? "n/a" : Math.round(v).toLocaleString("en-US"));
+const f1 = (v: number | null) => (v === null ? "n/a" : v.toFixed(1));
 const f2 = (v: number | null) => (v === null ? "n/a" : v.toFixed(2));
 const ci0 = (c: Ci) => `${f0(c.v)} [${f0(c.lo)}, ${f0(c.hi)}]`;
+const ci1 = (c: Ci) => `${f1(c.v)} [${f1(c.lo)}, ${f1(c.hi)}]`;
 const ci2 = (c: Ci) => `${f2(c.v)} [${f2(c.lo)}, ${f2(c.hi)}]`;
-
 const fm = (v: Decimal | null) => (v === null ? "Not available" : f0(v.toNumber()));
+/** Chiều của Δ theo khoảng 95%: chỉ dùng chiều, không dùng độ lớn. */
+const dir = (c: Ci) =>
+  c.lo === null || c.hi === null ? "n/a" : c.hi < 0 ? "lower" : c.lo > 0 ? "higher" : "unclear";
+
+const FILL_LABEL: Record<LimitFill, string> = {
+  through: "through (default: price must trade through the limit)",
+  touch: "touch (limit fills when price touches it)",
+};
 
 /**
- * Dòng hiệu chỉnh: baseline backtest so với bot thật cùng kỳ (cả kỳ, và chỉ những ngày bot thật có lượt đóng), tách phí /
- * phần giá / tỷ lệ maker. Không có lượt thật → "Not available".
+ * Hiệu chỉnh: baseline backtest của từng mô hình khớp so với bot thật cùng kỳ (cả kỳ, và chỉ những ngày bot thật có lượt
+ * đóng), tách phí / phần giá / tỷ lệ maker. Không có lượt thật → "Not available". Mô hình gần thật hơn đáng tin hơn.
  */
-export function calibrationLines(r: MarketPauseReport): string[] {
-  const live = r.live === null ? null : costSplit(r.live);
-  const liveDays = new Set((r.live ?? []).map((t) => dayKey(t.at)));
-  const sameDays = r.baseTrades.filter((t) => liveDays.has(dayKey(t.at)));
+export function calibrationLines(rs: readonly MarketPauseReport[]): string[] {
+  const first = rs[0];
+  if (first === undefined) return [];
+  const live = first.live === null ? null : costSplit(first.live);
+  const liveDays = new Set((first.live ?? []).map((t) => dayKey(t.at)));
   const row = (label: string, c: CostSplit | null) =>
     `| ${label} | ${c === null ? "Not available" : String(c.trades)} | ${fm(c?.costPerM ?? null)} | ${fm(c?.feesPerM ?? null)} | ${fm(c?.pricePerM ?? null)} | ${c?.makerPct == null ? "Not available" : `${c.makerPct.toFixed(0)}%`} |`;
-  const bt = costSplit(r.baseTrades);
-  const btSame = liveDays.size === 0 ? null : costSplit(sameDays);
   const out = [
-    `### Calibration vs live Volume Builder bots (${r.market})`,
+    `### Calibration vs live Volume Builder bots (${first.market})`,
     "",
     "| Source | Trades | Cost / $1M | Fees / $1M | Price part / $1M | Maker share of volume |",
     "|---|---:|---:|---:|---:|---:|",
-    row("Backtest baseline, all covered days", bt),
-    row(
-      `Backtest baseline, days with live trades (${String(liveDays.size)})`,
-      btSame !== null && btSame.trades > 0 ? btSame : null,
-    ),
+  ];
+  const refs: { fill: LimitFill; cost: Decimal | null }[] = [];
+  for (const r of rs) {
+    const bt = costSplit(r.baseTrades);
+    const same = costSplit(r.baseTrades.filter((t) => liveDays.has(dayKey(t.at))));
+    const sameOk = liveDays.size > 0 && same.trades > 0;
+    out.push(
+      row(`Backtest baseline (${r.fill}), all covered days`, bt),
+      row(
+        `Backtest baseline (${r.fill}), days with live trades (${String(liveDays.size)})`,
+        sameOk ? same : null,
+      ),
+    );
+    refs.push({ fill: r.fill, cost: sameOk ? same.costPerM : bt.costPerM });
+  }
+  out.push(
     row(
       "Live bots (fills, Signal Analysis formula)",
       live !== null && live.trades > 0 ? live : null,
     ),
     "",
-  ];
-  const ref = btSame !== null && btSame.trades > 0 ? btSame.costPerM : bt.costPerM;
-  if (live === null || live.trades === 0)
+  );
+  if (live === null || live.trades === 0) {
     out.push("Live cost: Not available (no closed live trades in this range).");
-  else if (largeGap(ref, live.costPerM))
+    return out;
+  }
+  for (const x of refs)
     out.push(
-      `**Large gap:** backtest ${fm(ref)} vs live ${fm(live.costPerM)} USDC / $1M. Absolute backtest costs are not reliable here; read Δ cost vs baseline (same model on both sides) instead.`,
+      largeGap(x.cost, live.costPerM)
+        ? `- **Large gap (${x.fill}):** backtest ${fm(x.cost)} vs live ${fm(live.costPerM)} USDC / $1M. Absolute backtest costs are not reliable; read only the direction of Δ vs baseline.`
+        : `- ${x.fill}: backtest ${fm(x.cost)} vs live ${fm(live.costPerM)} USDC / $1M, within the gap limit.`,
     );
-  else
-    out.push(`Backtest ${fm(ref)} vs live ${fm(live.costPerM)} USDC / $1M: within the gap limit.`);
+  const known = refs.filter((x) => x.cost !== null);
+  const closest = known.sort(
+    (a, b) =>
+      (a.cost
+        ?.sub(live.costPerM ?? 0)
+        .abs()
+        .toNumber() ?? Infinity) -
+      (b.cost
+        ?.sub(live.costPerM ?? 0)
+        .abs()
+        .toNumber() ?? Infinity),
+  )[0];
+  if (closest !== undefined && rs.length > 1)
+    out.push(`- Closest to live: **${closest.fill}**; weigh its Δ more.`);
   return out;
+}
+
+function splitLines(r: MarketPauseReport): string[] {
+  const table = (title: string, x: SplitReport) => [
+    `${title} (unclassified trades: ${String(x.unclassified)})`,
+    "",
+    "| Group | Trades | Mean result after fees (bp) [95%] | Win rate | Cost / $1M |",
+    "|---|---:|---:|---:|---:|",
+    ...x.rows.map(
+      (g) =>
+        `| ${g.group} | ${String(g.n)} | ${ci1(g.meanBp)} | ${g.winPct === null ? "n/a" : `${g.winPct.toFixed(0)}%`} | ${f0(g.costPerM)} |`,
+    ),
+    "",
+    `Balance − signal, calm: ${ci1(x.diffCalm)} bp (${dir(x.diffCalm)}). Balance − signal, strong move: ${ci1(x.diffStrong)} bp (${dir(x.diffStrong)}).`,
+    "",
+  ];
+  return [
+    ...table("Baseline", r.split.baseline),
+    ...table(`With rule k ${String(PART2_RULE.k)} · m ${String(PART2_RULE.m)}`, r.split.withRule),
+  ];
 }
 
 export function pauseMarkdown(
@@ -432,25 +546,60 @@ export function pauseMarkdown(
 ): string {
   const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
   const lines: string[] = [
-    "# Volume Builder: pause on volatility spikes (#363, part 1)",
+    "# Volume Builder: pause on volatility spikes (#363)",
     "",
     `Source: ${meta.source}. Range ${iso(meta.range.from)} → ${iso(meta.range.to)} (UTC). Past simulation, not a forecast.`,
     "",
+    "**Read only the direction of Δ and its 95% interval, not the size.** The default fill model is pessimistic (see the calibration line of each market).",
+    "",
   ];
-  for (const r of reports) {
+  const markets = [...new Set(reports.map((r) => r.market))];
+  for (const mk of markets) {
+    const rs = reports.filter((r) => r.market === mk);
+    const r0 = rs[0];
+    if (r0 === undefined) continue;
     lines.push(
-      `## ${r.market}`,
+      `## ${mk}`,
       "",
-      `Config: ${r.configSource}. Days with ≥ 90% of minutes: **${String(r.days.length)}** (${r.days.map((d) => iso(d * DAY)).join(", ")}).`,
+      `Config: ${r0.configSource}. Days with ≥ 90% of minutes: **${String(r0.days.length)}** (${r0.days.map((d) => iso(d * DAY)).join(", ")}).`,
       "",
-      "| Cell | Trades | Volume / day (USDC) | Δ volume / day | Result after fees / day (USDC) | Cost / $1M (USDC) | Δ cost / $1M vs baseline | Entries blocked | Stop-loss hits |",
-      "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+      ...calibrationLines(rs),
+      "",
     );
-    for (const x of r.rows)
+    if (rs.length > 1) {
       lines.push(
-        `| ${x.label} | ${String(x.trades)} | ${ci0(x.stats.volPerDay)} | ${x.k === null ? "—" : ci0(x.stats.dVolPerDay)} | ${ci2(x.stats.netPerDay)} | ${ci0(x.stats.costPerM)} | ${x.k === null ? "—" : ci0(x.stats.dCostPerM)} | ${String(x.blocked)} | ${String(x.stopLosses)} |`,
+        "### Part 1: Δ vs baseline, fill models side by side",
+        "",
+        `| Cell | ${rs.map((r) => `Δ cost / $1M (${r.fill})`).join(" | ")} | ${rs.map((r) => `Δ volume / day (${r.fill})`).join(" | ")} |`,
+        `|---|${rs.map(() => "---:").join("|")}|${rs.map(() => "---:").join("|")}|`,
       );
-    lines.push("", ...calibrationLines(r), "");
+      r0.rows.forEach((x, i) => {
+        if (x.k === null) return;
+        const cells = rs.map((r) => r.rows[i]?.stats);
+        lines.push(
+          `| ${x.label} | ${cells.map((s) => (s === undefined ? "n/a" : `${ci0(s.dCostPerM)} ${dir(s.dCostPerM)}`)).join(" | ")} | ${cells.map((s) => (s === undefined ? "n/a" : `${ci0(s.dVolPerDay)} ${dir(s.dVolPerDay)}`)).join(" | ")} |`,
+        );
+      });
+      lines.push("");
+    }
+    for (const r of rs) {
+      lines.push(
+        `### Part 1, fill model: ${FILL_LABEL[r.fill]}`,
+        "",
+        "| Cell | Trades | Volume / day (USDC) | Δ volume / day | Result after fees / day (USDC) | Cost / $1M (USDC) | Δ cost / $1M vs baseline | Entries blocked | Stop-loss hits |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+      );
+      for (const x of r.rows)
+        lines.push(
+          `| ${x.label} | ${String(x.trades)} | ${ci0(x.stats.volPerDay)} | ${x.k === null ? "—" : ci0(x.stats.dVolPerDay)} | ${ci2(x.stats.netPerDay)} | ${ci0(x.stats.costPerM)} | ${x.k === null ? "—" : ci0(x.stats.dCostPerM)} | ${String(x.blocked)} | ${String(x.stopLosses)} |`,
+        );
+      lines.push(
+        "",
+        `### Part 2, fill model: ${r.fill}: balancing vs signal entries by market state`,
+        "",
+        ...splitLines(r),
+      );
+    }
   }
   lines.push("## Notes", "", ...meta.notes.map((n) => `- ${n}`), "");
   return lines.join("\n");

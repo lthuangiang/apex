@@ -12,7 +12,8 @@ import type {
 
 // Backtest (BACKTEST.md mục 11.2): chạy đúng `step` của chiến lược trên nến quá khứ, thay sàn bằng mô hình
 // khớp lệnh bảo thủ:
-// - limit chỉ khớp khi giá đi XUYÊN qua mức đặt (low < giá mua, high > giá bán), khớp ở giá đặt, phí maker;
+// - limit chỉ khớp khi giá đi XUYÊN qua mức đặt (low < giá mua, high > giá bán), khớp ở giá đặt, phí maker; công cụ
+//   nghiên cứu có thể chọn `limitFill: "touch"` (chạm mức đặt là khớp: low ≤ giá mua, high ≥ giá bán) để so độ nhạy;
 // - lệnh đặt trong một nến không được khớp trong chính nến đó (không có vòng mua-bán trong một nến);
 // - market khớp ở giá open của nến kế tiếp ± trượt giá, phí taker; IOC chỉ khớp ngay nếu giá hiện tại cho phép;
 // - đường giá trong nến: nến tăng O→L→H→C, nến giảm O→H→L→C (giá chạm phía bất lợi trước);
@@ -68,6 +69,11 @@ export interface BacktestInput<C, S> {
   decisionPayload?: boolean;
   /** Biến thể nghiên cứu của Volume Farm (#282); backtest của người dùng không bao giờ đặt. */
   vbResearch?: VbResearchOptions;
+  /**
+   * Mô hình khớp lệnh limit: "through" (mặc định, bảo thủ) chỉ khớp khi giá đi xuyên qua mức đặt; "touch" khớp ngay khi
+   * giá chạm mức đặt. Chỉ công cụ nghiên cứu đặt "touch" (#363) để đo độ nhạy của kết quả với mô hình khớp.
+   */
+  limitFill?: "through" | "touch";
 }
 
 export interface BacktestFill {
@@ -173,6 +179,7 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
   let fundingTotal = new Decimal(0);
   let state = mod.initialState(config);
   const run: { halted: BacktestOutput<S>["halted"] } = { halted: null };
+  const touch = input.limitFill === "touch";
   // Đọc qua hàm để TypeScript không thu hẹp `run.halted` qua các lời gọi `feed`.
   const running = () => run.halted === null;
 
@@ -385,7 +392,14 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
           const crossed: Open[] = [];
           for (const x of open.values()) {
             if (x.order.market !== m || x.placedAt >= t) continue;
-            if (x.order.side === "buy" ? lo < x.px : hi > x.px) crossed.push(x);
+            const reached = touch
+              ? x.order.side === "buy"
+                ? lo <= x.px
+                : hi >= x.px
+              : x.order.side === "buy"
+                ? lo < x.px
+                : hi > x.px;
+            if (reached) crossed.push(x);
           }
           // Đi xuống: mua cao trước; đi lên: bán thấp trước.
           if (crossed.length > 1) crossed.sort((x, y) => (b < a ? y.px - x.px : x.px - y.px));
