@@ -304,7 +304,7 @@ describe("entry", () => {
   });
 
   it("caps the size at 200 USDC even if the config says more", () => {
-    const raw = { ...cfg(), sizeUsdc: "500" } as NewsSignalConfig;
+    const raw = { ...cfg(), sizeUsdc: "500" };
     const [o] = places(
       newsSignal.step(raw, initialNewsSignalState(), signalEv(sig()), ctx).actions,
     );

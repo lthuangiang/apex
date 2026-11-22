@@ -1,9 +1,8 @@
 import { z } from "zod";
 
+import { liquidationDistance, type MarginTier } from "../desk/needs-you";
 import { dec, Decimal, roundToStep, RoundMode, type DecimalInput } from "../money";
 import { decimalStringSchema } from "../schemas";
-
-import { liquidationDistance, type MarginTier } from "../desk/needs-you";
 
 import { AssetKind, TradeDirection } from "./rules";
 import { AssetMode, botVersionConfigSchema, levelAtLeast, type BotVersionConfig } from "./versions";
@@ -44,12 +43,14 @@ const sizeSchema = decimalStringSchema
 export const newsSignalConfigSchema = botVersionConfigSchema.extend({
   sizeUsdc: sizeSchema,
   leverage: z
-    .union(NEWS_SIGNAL_LEVERAGES.map((l) => z.literal(l)) as [
-      z.ZodLiteral<1>,
-      z.ZodLiteral<5>,
-      z.ZodLiteral<10>,
-      z.ZodLiteral<20>,
-    ])
+    .union(
+      NEWS_SIGNAL_LEVERAGES.map((l) => z.literal(l)) as [
+        z.ZodLiteral<1>,
+        z.ZodLiteral<5>,
+        z.ZodLiteral<10>,
+        z.ZodLiteral<20>,
+      ],
+    )
     .default(NEWS_SIGNAL_LEVERAGE),
 });
 export type NewsSignalConfig = z.infer<typeof newsSignalConfigSchema>;

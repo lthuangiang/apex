@@ -372,7 +372,7 @@ describe("leverage 1 / 5 / 10 / 20 (#458)", () => {
     flag.enabled = true;
     const u = await user(`nsb-levx-${randomUUID()}@drift.test`, { flag: true });
     const needed = async (over: Record<string, unknown>) => {
-      const r = await create(u.client, { config: config({ assets: only("XRP-USD"), ...over }) });
+      const r = await create(u.client, { config: config(over) });
       expect(r.statusCode).toBe(201);
       const bot = botSummarySchema.parse(r.json());
       const res = await u.client.request("GET", `/api/v1/bots/${bot.id}/checks`);
