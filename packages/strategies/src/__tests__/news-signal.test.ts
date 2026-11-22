@@ -311,6 +311,30 @@ describe("entry", () => {
     expect(o?.quantity).toBe("1.99");
   });
 
+  it("an entry the engine blocked before sending records the block code, not ENTRY_NOT_FILLED, and never says SoDEX rejected it (#419 B1)", () => {
+    for (const code of [
+      "NEWS_ORDER_INVALID",
+      "NEWS_CAP_EXCEEDED",
+      "NEWS_ACCESS_OFF",
+      "BOT_NOT_RUNNING",
+      "LEVERAGE_NOT_SET",
+    ]) {
+      const s = sig();
+      const a = run(cfg(), initialNewsSignalState(), [signalEv(s)]);
+      const entry = places(a.actions)[0]?.clOrdID ?? "";
+      const b = run(cfg(), a.state, [reject(entry, code)]);
+      expect(b.state.trades[s.id]).toMatchObject({ status: "closed", closeReason: code });
+      const why = b.actions.find((x) => x.type === "log");
+      expect(why).toMatchObject({ decision: "Entry rejected" });
+      expect(JSON.stringify(why)).toContain("DeskLabs did not send the entry");
+    }
+    // Từ chối thật của SoDEX vẫn là ENTRY_NOT_FILLED.
+    const s = sig();
+    const a = run(cfg(), initialNewsSignalState(), [signalEv(s)]);
+    const b = run(cfg(), a.state, [reject(places(a.actions)[0]?.clOrdID ?? "", "-1")]);
+    expect(b.state.trades[s.id]?.closeReason).toBe(SignalReason.entryNotFilled);
+  });
+
   it("records ENTRY_NOT_FILLED when the IOC fills nothing, and the story is not locked", () => {
     const s = sig();
     const a = run(cfg(), initialNewsSignalState(), [signalEv(s)]);

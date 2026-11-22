@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { Strategy } from "../enums";
 import { builderFeeRateFor, builderFeeRateOf, DRIFT_BUILDER_FEE_RATE } from "../fees";
 import {
+  isNewsEntryBlock,
+  NewsEntryBlock,
   narrowsVersion,
   NEWS_SIGNAL_ENTRY_SLIPPAGE_PCT,
   NEWS_SIGNAL_LEVERAGE,
@@ -49,6 +51,7 @@ describe("news_signal constants", () => {
       SignalReason.newsCapExceeded,
       SignalReason.entryNotFilled,
       SignalReason.leverageNotSet,
+      SignalReason.accessOff,
     ]).toEqual([
       "ASSET_NOT_IN_BOT",
       "SIGNAL_STALE",
@@ -58,10 +61,22 @@ describe("news_signal constants", () => {
       "NEWS_CAP_EXCEEDED",
       "ENTRY_NOT_FILLED",
       "LEVERAGE_NOT_SET",
+      "ACCESS_OFF",
     ]);
     // Không trùng mã cũ.
     const all = Object.values(SignalReason);
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+describe("NewsEntryBlock (#419 engine B1)", () => {
+  it("has a separate code for a wrong order type and for the 200 USDC cap", () => {
+    expect(NewsEntryBlock.orderInvalid).toBe("NEWS_ORDER_INVALID");
+    expect(NewsEntryBlock.capExceeded).toBe("NEWS_CAP_EXCEEDED");
+    expect(NewsEntryBlock.accessOff).toBe("NEWS_ACCESS_OFF");
+    expect(isNewsEntryBlock("NEWS_ORDER_INVALID")).toBe(true);
+    expect(isNewsEntryBlock("BOT_NOT_RUNNING")).toBe(true);
+    expect(isNewsEntryBlock("-1")).toBe(false);
   });
 });
 

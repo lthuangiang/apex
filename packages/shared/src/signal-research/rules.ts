@@ -142,6 +142,11 @@ export const SignalReason = {
    * lập khác, DEC-58): engine không gửi lệnh vào, chỉ bỏ tín hiệu, không pause (#419 engine A).
    */
   leverageNotSet: "LEVERAGE_NOT_SET",
+  /**
+   * Bot không được mở lệnh mới (chủ bot không còn quyền Signal Research, hoặc `SIGNAL_NEWS_BOTS_ENABLED` tắt): tín hiệu bị
+   * bỏ; lệnh đang mở vẫn được quản lý (#419 engine B1).
+   */
+  accessOff: "ACCESS_OFF",
 } as const;
 export type SignalReason = (typeof SignalReason)[keyof typeof SignalReason];
 

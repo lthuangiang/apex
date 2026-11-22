@@ -67,6 +67,7 @@ import {
   SignalReason,
   STOCK_MARKET_SET,
   UserRole,
+  NewsEntryBlock,
 } from "@drift/shared";
 import {
   mmOrderContextSchema,
@@ -118,6 +119,7 @@ import {
   NEWS_ACCOUNT_MARKET_UNIQUE,
   NEWS_BOOK_MAX_AGE_MS,
   NEWS_LEVERAGE,
+  newsHasOpen,
   newsLeverageKey,
   newsOpenBlocked,
   newsSignalInput,
@@ -396,6 +398,8 @@ interface TickSnapshot {
    * các account (DEC-310). Lệnh không có ở đây chờ vòng sau. null = không giới hạn (tra mọi lệnh tới hạn).
    */
   lookups: Set<string> | null;
+  /** Chủ bot `news_signal` trong `bots` → được mở lệnh mới (team hoặc `users.signal_research`, #419 engine B1). */
+  newsAccess: Map<string, boolean>;
   /**
    * Phần của `lookups` là lệnh đã gửi huỷ chưa được xác nhận, tra bằng URGENT_LOOKUP_BUDGET và client đọc mức thường
    * (DEC-317).
@@ -725,6 +729,16 @@ interface Runner {
   ctx: StepContext;
   /** Lệnh đầu tiên đã được ack (để xác nhận Running). */
   awaitingFirstAck: boolean;
+  /** Chủ bot (`bots.user_id`). */
+  userId: string;
+  /**
+   * Bot `news_signal` được mở lệnh mới (#419 engine B1): công tắc bật, chủ bot là team hoặc có `users.signal_research`, bot
+   * vẫn thu hẹp version gốc. false = chế độ quản lý: không bao giờ mở lệnh mới, nhưng vẫn giữ OCO, max hold, đóng lệnh,
+   * Stop cho lệnh đang mở. Quyền của chủ bot đọc lại mỗi vòng (`#syncBots`). Chiến lược khác: luôn false, không dùng.
+   */
+  newsEntries: boolean;
+  /** Bot `news_signal` vẫn chỉ thu hẹp version gốc (kiểm lúc nạp; đổi version thì nạp lại). */
+  newsNarrow: boolean;
   /** Đòn bẩy + margin mode của version đang chạy đã được SoDEX xác nhận (bot Perps). */
   leverageSet: boolean;
   /** Lần `updateLeverage` trước không rõ kết quả: phải đọc lại SoDEX trước khi gửi lại (quy tắc 1.7). */
@@ -891,6 +905,8 @@ const CLOCKED: ReadonlySet<string> = new Set([
   Strategy.adaptiveDca,
   // Copy Trade: đặt lại lệnh giảm vị thế còn thiếu ở nhịp đồng hồ (DEC-161).
   Strategy.copyTrade,
+  // Bot `news_signal`: max hold (#419 engine B1), chạy cả khi bot pause / dừng còn lệnh mở (chế độ quản lý).
+  Strategy.newsSignal,
 ]);
 
 /**
@@ -1559,6 +1575,12 @@ export class Engine {
     const st = r.state as Partial<NewsSignalState>;
     if (st.seen?.[sig.id] !== undefined || st.trades?.[sig.id] !== undefined) return;
     const at = this.#d.now();
+    // Chủ bot mất quyền Signal Research (hoặc bot không còn thu hẹp version): chỉ quản lý lệnh đang mở (PM chốt engine B
+    // điểm 3).
+    if (!r.newsEntries) {
+      await this.#newsDrop(r, sig.id, SignalReason.accessOff);
+      return;
+    }
     if ((await this.#currentState(r.botId)) !== BotState.running) {
       await this.#newsDrop(r, sig.id, SignalReason.botPaused);
       return;
@@ -2619,6 +2641,7 @@ export class Engine {
       backfill: new Map(),
       lookups: null,
       urgent: new Set(),
+      newsAccess: new Map(),
     };
     if (owned.size === 0) return snap;
     const accountRows = await db
@@ -2653,6 +2676,36 @@ export class Engine {
             inArray(bots.state, [...ENGINE_ACTIVE_STATES]),
           ),
         );
+      // Bot `news_signal` đã pause / dừng (Stop-Keep) mà còn lệnh news đang mở hoặc lệnh SoDEX chưa xong: vẫn có runner ở
+      // chế độ quản lý (#419 engine B1), để OCO / max hold / đóng lệnh không bị bỏ rơi, kể cả sau khi engine khởi động lại.
+      const managed = await db
+        .select({ bot: bots, version: botVersions })
+        .from(bots)
+        .innerJoin(botVersions, eq(botVersions.id, bots.activeVersionId))
+        .where(
+          and(
+            inArray(bots.sodexAccountId, [...shardOfAccount.keys()]),
+            eq(bots.strategy, Strategy.newsSignal),
+            eq(bots.mode, "live"),
+            inArray(bots.state, [BotState.paused, BotState.stopped]),
+            or(
+              sql`exists (select 1 from ${newsSignalTrades} t where t.bot_id = ${bots.id} and t.status in ('open', 'closing'))`,
+              sql`exists (select 1 from ${orders} o where o.bot_id = ${bots.id} and o.status in ('open', 'partially_filled', 'unknown'))`,
+            ),
+          ),
+        );
+      list.push(...managed);
+      const newsOwners = [
+        ...new Set(
+          list.filter((x) => x.bot.strategy === Strategy.newsSignal).map((x) => x.bot.userId),
+        ),
+      ];
+      if (newsOwners.length > 0)
+        for (const u of await db
+          .select({ id: users.id, role: users.role, on: users.signalResearch })
+          .from(users)
+          .where(inArray(users.id, newsOwners)))
+          snap.newsAccess.set(u.id, u.role === UserRole.team || u.on);
       for (const x of list) {
         const shard = shardOfAccount.get(x.bot.sodexAccountId);
         if (shard !== undefined) pushTo(snap.bots, shard, x);
@@ -2802,7 +2855,12 @@ export class Engine {
     for (const { bot: snapped, version } of list) {
       // Trạng thái chuyển tiếp (pausing / resuming / stopping) có thể đã đổi từ lúc chụp: đọc lại dòng bot đó.
       const bot = TRANSITIONAL.has(snapped.state) ? await this.#botRow(snapped.id) : snapped;
-      if (bot === undefined || !ENGINE_ACTIVE_STATES.includes(bot.state)) continue;
+      if (bot === undefined) continue;
+      // Bot `news_signal` ở chế độ quản lý (paused / stopped còn lệnh mở, #419 engine B1) cũng có runner.
+      const newsManaged =
+        bot.strategy === Strategy.newsSignal &&
+        (bot.state === BotState.paused || bot.state === BotState.stopped);
+      if (!ENGINE_ACTIVE_STATES.includes(bot.state) && !newsManaged) continue;
       const account = accounts.find((a) => a.id === bot.sodexAccountId);
       if (account === undefined) continue;
       let r = this.#runners.get(bot.id);
@@ -2862,12 +2920,40 @@ export class Engine {
         this.#cancelRetryAt.delete(r.botId);
       }
       r.account = r.paper ? { ...account, paper: true } : account;
+      if (r.strategy === Strategy.newsSignal) {
+        // Quyền của chủ bot đọc lại mỗi vòng: mất quyền / công tắc tắt thì chỉ còn quản lý lệnh đang mở (#419 engine B1).
+        r.newsEntries =
+          this.#d.newsSignalBots && (snap.newsAccess.get(bot.userId) ?? false) && r.newsNarrow;
+        // Chế độ quản lý của bot đã dừng: hết lệnh news đang mở và lệnh SoDEX chờ thì bỏ runner.
+        if (bot.state === BotState.stopped) {
+          if (!newsHasOpen(r.state)) this.#runners.delete(r.botId);
+          continue;
+        }
+        if (bot.state === BotState.paused) continue;
+      }
       // Chưa kiểm tra xong sổ cái: không áp version mới (review #253 minor 2), vòng sau áp.
       if (r.repairPending === null)
         await this.#applyPendingVersion(r, snap.pending.get(r.botId), bot.state);
-      if (bot.state === BotState.pausing)
+      if (bot.state === BotState.pausing) {
         await this.#transition(r, EngineEvent.confirmedPaused, null);
-      else if (bot.state === BotState.resuming && r.engines.every((x) => this.#streamReady(r, x))) {
+        // Bot `news_signal`: runner chạy tiếp ở chế độ quản lý (`MANAGED_WHILE_PAUSED`); chiến lược thôi mở lệnh mới.
+        if (r.strategy === Strategy.newsSignal)
+          await this.#feed(r, { type: "paused", at: this.#d.now() });
+      } else if (
+        bot.state === BotState.starting &&
+        r.strategy === Strategy.newsSignal &&
+        r.newsEntries &&
+        r.engines.every((x) => this.#streamReady(r, x))
+      ) {
+        // Bot `news_signal` không có lệnh đầu tiên để SoDEX ack: Running ngay khi stream Perps sẵn sàng (PM chốt engine B
+        // điểm 4: event "Running", why null). Đòn bẩy đặt theo từng tín hiệu.
+        if (!(await this.#leaseConfirmed(shard))) continue;
+        r.awaitingFirstAck = false;
+        await this.#transition(r, EngineEvent.confirmedRunning, null);
+      } else if (
+        bot.state === BotState.resuming &&
+        r.engines.every((x) => this.#streamReady(r, x))
+      ) {
         // Resume chờ user stream của các engine bot giao dịch (bot có thể là bot duy nhất của account, stream vừa mở): bot
         // dựng lại lệnh ngay khi chạy lại.
         // Lease chưa xác nhận: chưa xác nhận Running (bot giữ `resuming`, vòng sau thử lại), để `resumed` không bị bỏ sau
@@ -2949,11 +3035,11 @@ export class Engine {
       return undefined;
     }
     const config = entry.schema.parse(version.config);
-    if (
-      bot.strategy === Strategy.newsSignal &&
-      !(await this.#newsLoadable(bot, config, wantsToRun))
-    )
-      return undefined;
+    const news =
+      bot.strategy === Strategy.newsSignal
+        ? await this.#newsLoadable(bot, config, wantsToRun)
+        : { entries: false, narrow: false };
+    if (news === null) return undefined;
     // Engine vừa nạp bot (khởi động lại, chuyển shard): tin khớp lúc không có stream đã mất.
     if (bot.strategy === Strategy.volumeFarm) this.onStreamGap(account.id, "perps");
     const [saved] = await this.#d.db
@@ -3006,6 +3092,9 @@ export class Engine {
           : {}),
       },
       awaitingFirstAck: bot.state === BotState.starting,
+      userId: bot.userId,
+      newsEntries: news.entries,
+      newsNarrow: news.narrow,
       leverageSet: false,
       leverageUnknown: false,
       leverageDone: new Set(),
@@ -3286,35 +3375,88 @@ export class Engine {
     bot: typeof bots.$inferSelect,
     config: unknown,
     wantsToRun: boolean,
-  ): Promise<boolean> {
+  ): Promise<{ entries: boolean; narrow: boolean } | null> {
     const skip = (reason: string) => {
       this.#d.log.warn({ botId: bot.id, reason }, "news_signal bot not loaded");
-      return false;
+      return null;
     };
-    if (!this.#d.newsSignalBots) return skip("SIGNAL_NEWS_BOTS_ENABLED is off");
     if (bot.mode !== "live") return skip("not a mainnet bot");
-    if (wantsToRun) {
-      const [u] = await this.#d.db
-        .select({ role: users.role, on: users.signalResearch })
-        .from(users)
-        .where(eq(users.id, bot.userId))
-        .limit(1);
-      if (u === undefined || (u.role !== UserRole.team && !u.on))
-        return skip("owner has no Signal Research access");
+    const narrow = (await this.#newsNarrowBlock(bot, config)) === null;
+    const blocked = await this.#newsEntryBlock(bot, config);
+    if (blocked === null) return { entries: true, narrow };
+    // Không được mở lệnh mới (PM chốt engine B điểm 1–2): vẫn nạp ở chế độ quản lý khi bot còn lệnh / vị thế news đang mở,
+    // hoặc đang hoàn tất Pause / Stop; không thì không nạp.
+    if (!wantsToRun || (await this.#newsHasOpen(bot.id))) {
+      this.#d.log.warn(
+        { botId: bot.id, reason: blocked },
+        "news_signal bot managed only: no new trades",
+      );
+      return { entries: false, narrow };
     }
-    if (bot.signalVersionId === null) return skip("no source version");
+    return skip(blocked);
+  }
+
+  /**
+   * Vì sao bot `news_signal` không được mở lệnh mới; null = được. Công tắc `SIGNAL_NEWS_BOTS_ENABLED`, quyền của chủ bot
+   * (team hoặc `users.signal_research`), và bot vẫn chỉ thu hẹp version gốc (`narrowsVersion`, kiểm lại như API).
+   */
+  async #newsEntryBlock(bot: typeof bots.$inferSelect, config: unknown): Promise<string | null> {
+    if (!this.#d.newsSignalBots) return "SIGNAL_NEWS_BOTS_ENABLED is off";
+    if (!(await this.#newsAccess(bot.userId))) return "owner has no Signal Research access";
+    return this.#newsNarrowBlock(bot, config);
+  }
+
+  /** Bot vẫn chỉ thu hẹp version gốc (null), hoặc lý do không. */
+  async #newsNarrowBlock(bot: typeof bots.$inferSelect, config: unknown): Promise<string | null> {
+    if (bot.signalVersionId === null) return "no source version";
     const [v] = await this.#d.db
       .select({ config: signalBotVersions.config })
       .from(signalBotVersions)
       .where(eq(signalBotVersions.id, bot.signalVersionId))
       .limit(1);
     const source = botVersionConfigSchema.safeParse(v?.config);
-    if (!source.success) return skip("source version unreadable");
+    if (!source.success) return "source version unreadable";
     const kindOf = (market: string) =>
       STOCK_MARKET_SET.has(market) ? AssetKind.stock : AssetKind.crypto;
     if (!narrowsVersion(source.data, config as NewsSignalConfig, kindOf))
-      return skip("bot widens its source version");
-    return true;
+      return "bot widens its source version";
+    return null;
+  }
+
+  /** Chủ bot là team hoặc có `users.signal_research` (như `researchViewer` của API). */
+  async #newsAccess(userId: string): Promise<boolean> {
+    const [u] = await this.#d.db
+      .select({ role: users.role, on: users.signalResearch })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return u !== undefined && (u.role === UserRole.team || u.on);
+  }
+
+  /** Bot `news_signal` còn lệnh news `open` / `closing`, hoặc lệnh SoDEX đang mở / chưa rõ kết quả. */
+  async #newsHasOpen(botId: string): Promise<boolean> {
+    const [t] = await this.#d.db
+      .select({ id: newsSignalTrades.id })
+      .from(newsSignalTrades)
+      .where(
+        and(
+          eq(newsSignalTrades.botId, botId),
+          inArray(newsSignalTrades.status, ["open", "closing"]),
+        ),
+      )
+      .limit(1);
+    if (t !== undefined) return true;
+    const [o] = await this.#d.db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.botId, botId),
+          inArray(orders.status, ["open", "partially_filled", "unknown"]),
+        ),
+      )
+      .limit(1);
+    return o !== undefined;
   }
 
   async #flagOn(userId: string, flag: "aiDesk" | "adaptiveDca"): Promise<boolean> {
@@ -3379,7 +3521,8 @@ export class Engine {
     if (
       !live &&
       (event.type === "tick" ||
-        event.type === "timer" ||
+        // Bot `news_signal` ở chế độ quản lý (pause / dừng còn lệnh mở): nhịp đồng hồ vẫn chạy để áp max hold (#419 B1).
+        (event.type === "timer" && r.strategy !== Strategy.newsSignal) ||
         event.type === "leaderFill" ||
         event.type === "leaderPosition" ||
         // Giá Binance cũng vậy: bot đang pause giữ nguyên lệnh đang mở (DOMAIN 7.2).
@@ -3857,11 +4000,13 @@ export class Engine {
         if (o.reduceOnly) continue;
         const code =
           newsOpenBlocked(o) ??
-          (st !== BotState.running
-            ? "BOT_NOT_RUNNING"
-            : !r.leverageDone.has(newsLeverageKey(o.market))
-              ? SignalReason.leverageNotSet
-              : null);
+          (!r.newsEntries
+            ? NewsEntryBlock.accessOff
+            : st !== BotState.running
+              ? NewsEntryBlock.botNotRunning
+              : !r.leverageDone.has(newsLeverageKey(o.market))
+                ? NewsEntryBlock.leverageNotSet
+                : null);
         if (code !== null) refused.set(o.clOrdID, code);
       }
       if (refused.size > 0) {
@@ -4770,6 +4915,23 @@ export class Engine {
     });
   }
 
+  /**
+   * Bước Stop của bot `news_signal` (#419 engine B1, DEC-115): đưa `newsStop` cho chiến lược một lần cho mỗi lựa chọn.
+   * Keep: TP / SL ở lại SoDEX, thôi áp max hold, Stop kết thúc ngay (runner ở lại quản lý lệnh). Close all: chiến lược đóng
+   * từng lệnh bằng market reduce-only, vị thế về 0 mới huỷ TP / SL; bot giữ `stopping` tới khi mọi lệnh đã đóng. Lệnh đóng
+   * bị từ chối quá 3 lần thì chiến lược thôi gửi và bật Needs attention, bot vẫn `stopping` (PM chốt engine B điểm 7: không
+   * bao giờ ghi `stopped` khi còn vị thế). Trả true khi Stop được làm nốt phần chung (huỷ lệnh còn lại, ghi `stopped`).
+   */
+  async #newsStopReady(r: Runner, close: boolean): Promise<boolean> {
+    const want = close ? "close" : "keep";
+    const cur = (r.state as Partial<NewsSignalState>).stopping ?? null;
+    // Close all đã bắt đầu thì không quay về Keep; Keep rồi chọn Close all thì đóng.
+    if (cur !== want && cur !== "close")
+      await this.#feed(r, { type: "newsStop", at: this.#d.now(), close });
+    if (!close && cur !== "close") return true;
+    return newsTrades(r.state as NewsSignalState).every((t) => t.status === "closed");
+  }
+
   /** pause giữ lệnh đang mở (DOMAIN.md mục 7.2). */
   async #pauseBot(r: Runner, reason: Reason, cause?: string): Promise<void> {
     const changed = await this.#fenced(r, async (tx) => {
@@ -4808,6 +4970,9 @@ export class Engine {
     // Chỉ ghi "Paused" khi state thật sự đổi: bot đang stopping / stopped / paused nhận thêm lệnh pause (ví dụ lệnh
     // reduce-only bị từ chối lúc Stop) thì `applyReason` trả null và không có gì xảy ra (DEC-256).
     if (changed) await this.#event(r, "state", "Paused", reason, this.#d.now());
+    // Bot `news_signal` (ví dụ SL bị từ chối): runner chạy tiếp ở chế độ quản lý, chiến lược thôi mở lệnh mới.
+    if (changed && r.strategy === Strategy.newsSignal)
+      await this.#feed(r, { type: "paused", at: this.#d.now() });
   }
 
   /** stop huỷ lệnh của bot rồi (nếu cấu hình) đóng vị thế bằng lệnh reduce-only (DOMAIN.md mục 7.2). */
@@ -4823,13 +4988,19 @@ export class Engine {
         .where(eq(bots.id, r.botId));
       close = b?.state === BotState.stopping && b.closeOnStop;
     }
+    // Bot `news_signal` (#419 engine B1): Stop đi qua chiến lược (Keep / Close all), không huỷ / đóng theo sổ cái chung.
+    if (r.strategy === Strategy.newsSignal && !(await this.#newsStopReady(r, close))) return;
     const open = await this.#d.db
       .select({ clOrdId: orders.clOrdId })
       .from(orders)
       .where(and(eq(orders.botId, r.botId), inArray(orders.status, ["open", "partially_filled"])));
+    // Stop-Keep của bot news: TP / SL đang nằm trên SoDEX ở lại (`keepOnStop`), chỉ huỷ phần còn lại.
+    const keep = new Set(
+      r.strategy === Strategy.newsSignal ? (r.module.keepOnStop?.(r.state) ?? []) : [],
+    );
     await this.#cancel(
       r,
-      open.map((o) => o.clOrdId),
+      open.map((o) => o.clOrdId).filter((id) => !keep.has(id)),
     );
     // Lệnh có kết quả `unknown` (timeout) có thể đã nằm trên SoDEX (quy tắc 1.7). Trước đây Stop bỏ qua chúng rồi bỏ
     // runner, nên không ai đối soát / huỷ: lệnh mồ côi nằm lại (harness tranh chấp). Stop của người dùng giữ bot ở
@@ -5052,6 +5223,8 @@ export class Engine {
     // Bot dừng hẳn: lệnh huỷ không còn ai huỷ lại; #reconcileOpen vẫn đối soát lệnh còn mở (gửi huỷ cuối trước khi ghi).
     for (const id of this.#cancelGone.get(r.botId) ?? []) this.#goneCancelAt.delete(id);
     this.#cancelGone.delete(r.botId);
+    // Bot `news_signal` dừng với "Keep open trades" mà còn lệnh: runner ở lại (chế độ quản lý) cho tới khi hết lệnh.
+    if (r.strategy === Strategy.newsSignal && newsHasOpen(r.state)) return;
     // Lệnh đóng vừa gửi (IOC) khớp qua user stream: không để stream đóng ngay khi runner cuối của account bị bỏ.
     if (!r.paper) {
       const held = this.#streamHolds.get(r.account.id);

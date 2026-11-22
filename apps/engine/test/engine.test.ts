@@ -10529,7 +10529,7 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     opts: {
       role?: "team" | "user";
       flag?: boolean;
-      state?: "starting" | "running" | "stopped";
+      state?: "starting" | "running" | "pausing" | "stopped";
       mode?: "live" | "paper";
       bot?: Record<string, unknown>;
       version?: Record<string, unknown>;
@@ -10749,8 +10749,8 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
 
   it("a bot that is not running gets BOT_PAUSED and its strategy is never asked", async () => {
     const gw = new FakeGateway();
-    const { botId } = await seedNews({ state: "starting" });
-    const e = newsEngine(gw, "ns-starting");
+    const { botId } = await seedNews({ state: "pausing" });
+    const e = newsEngine(gw, "ns-pausing");
     const id = await signal();
     await ticks(e);
     expect((await deliveries(botId)).map((d) => [d.signalId, d.outcome, d.reason])).toEqual([
@@ -10784,7 +10784,7 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     expect(entries(gw)).toEqual([]);
     expect(warned).toContain("news signal opening order not sent");
     expect(await trades(botId)).toMatchObject([
-      { signalId: id, status: "closed", closeReason: "ENTRY_NOT_FILLED" },
+      { signalId: id, status: "closed", closeReason: "BOT_NOT_RUNNING" },
     ]);
     const { orders: o } = { orders };
     expect(await db.select().from(o).where(eq(o.botId, botId))).toEqual([]);
@@ -11094,5 +11094,297 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
       .update(bots)
       .set({ state: "stopped" })
       .where(eq(bots.id, grid?.id ?? ""));
+  });
+
+  // ---------- #419 engine B1: vòng đời của bot news (chế độ quản lý, Start, Pause / Resume, Stop, max hold) ----------
+
+  /** Một lệnh news đã vào và đã có TP / SL trên SoDEX. */
+  async function openTrade(
+    e: RealEngine,
+    gw: FakeGateway,
+    b: { botId: string; accountId: string },
+    over: Record<string, unknown> = {},
+  ) {
+    const id = await signal(over);
+    await ticks(e, 1);
+    const entry = gw.received.find((o) => o.tag === `ns:${id}:entry`);
+    if (entry === undefined) throw new Error("no entry");
+    await e.onFill(b.accountId, entry.clOrdID, entry.quantity, "100.2", "0.1", clock);
+    await e.onOrderClosed(b.accountId, entry.clOrdID, "filled", clock);
+    const tp = gw.received.find((o) => o.tag.startsWith(`ns:${id}:`) && o.tag.endsWith(":tp"));
+    const sl = gw.received.find((o) => o.tag.startsWith(`ns:${id}:`) && o.tag.endsWith(":sl"));
+    if (tp === undefined || sl === undefined) throw new Error("no TP / SL");
+    return { id, entry, tp, sl };
+  }
+  const setState = async (botId: string, state: string, closeOnStop = false) => {
+    const { eq } = await import("drizzle-orm");
+    await db
+      .update(bots)
+      .set({ state: state as "running", closeOnStop })
+      .where(eq(bots.id, botId));
+  };
+  const tradeOf = async (botId: string, signalId: string) =>
+    (await trades(botId)).find((t) => t.signalId === signalId);
+
+  it("B1: a starting news bot goes Running without sending anything, then takes signals", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedNews({ state: "starting" });
+    const e = newsEngine(gw, "b1-start");
+    await ticks(e, 1);
+    expect((await botState(botId))?.state).toBe("running");
+    const running = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.decision === "Running",
+    );
+    expect(running.map((x) => x.why)).toEqual([null]);
+    expect(gw.received).toEqual([]);
+    const id = await signal();
+    await ticks(e, 1);
+    expect(entries(gw).map((o) => o.tag)).toEqual([`ns:${id}:entry`]);
+    await e.stop();
+  });
+
+  it("B1: paused keeps managing: no new trade (BOT_PAUSED), OCO still cancels the SL when the TP fills", async () => {
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b1-pause");
+    const t = await openTrade(e, gw, b);
+    await setState(b.botId, "pausing");
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("paused");
+    // TP / SL không bị huỷ khi pause.
+    expect(gw.cancelled).not.toContain(t.tp.clOrdID);
+    expect(gw.cancelled).not.toContain(t.sl.clOrdID);
+    const later = await signal({ market: "ETH-USD" });
+    await ticks(e, 1);
+    expect((await deliveries(b.botId)).find((d) => d.signalId === later)?.reason).toBe(
+      "BOT_PAUSED",
+    );
+    await e.onFill(b.accountId, t.tp.clOrdID, t.tp.quantity, t.tp.price ?? "104", "0.1", clock);
+    await e.onOrderClosed(b.accountId, t.tp.clOrdID, "filled", clock);
+    expect(gw.cancelled).toContain(t.sl.clOrdID);
+    expect((await tradeOf(b.botId, t.id))?.status).toBe("closed");
+    await e.stop();
+  });
+
+  it("B1: max hold still closes while paused: market reduce-only first, TP / SL cancelled only after it fills", async () => {
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b1-hold");
+    const t = await openTrade(e, gw, b);
+    await setState(b.botId, "pausing");
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("paused");
+    clock += 80 * 3_600_000;
+    await ticks(e, 1);
+    const close = gw.received.find((o) => o.tag === `ns:${t.id}:hold`);
+    expect(close).toMatchObject({ type: "market", reduceOnly: true, side: "sell" });
+    expect(gw.cancelled).not.toContain(t.sl.clOrdID);
+    await e.onFill(b.accountId, close?.clOrdID ?? "", close?.quantity ?? "0", "101", "0.1", clock);
+    await e.onOrderClosed(b.accountId, close?.clOrdID ?? "", "filled", clock);
+    expect(gw.cancelled).toEqual(expect.arrayContaining([t.tp.clOrdID, t.sl.clOrdID]));
+    expect(await tradeOf(b.botId, t.id)).toMatchObject({
+      status: "closed",
+      closeReason: "MAX_HOLD",
+    });
+    await e.stop();
+  });
+
+  it("B1: after a restart a paused bot with an open trade is loaded again and still runs OCO", async () => {
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b1-restart");
+    const t = await openTrade(e, gw, b);
+    await setState(b.botId, "pausing");
+    await ticks(e, 1);
+    await e.stop();
+    const e2 = newsEngine(gw, "b1-restart-2");
+    await ticks(e2, 1);
+    await e2.onFill(b.accountId, t.sl.clOrdID, t.sl.quantity, "95", "0.1", clock);
+    await e2.onOrderClosed(b.accountId, t.sl.clOrdID, "filled", clock);
+    expect(gw.cancelled).toContain(t.tp.clOrdID);
+    expect(await tradeOf(b.botId, t.id)).toMatchObject({
+      status: "closed",
+      closeReason: "STOP_LOSS",
+    });
+    await e2.stop();
+  });
+
+  it("B1: Resume does not take a signal decided while paused (MISSED_WHILE_PAUSED), only later ones", async () => {
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b1-resume");
+    await ticks(e, 1);
+    await setState(b.botId, "pausing");
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("paused");
+    await setState(b.botId, "resuming");
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("running");
+    const missed = await signal({ decidedAt: new Date(clock - 5_000) });
+    await ticks(e, 1);
+    expect((await deliveries(b.botId)).find((d) => d.signalId === missed)?.reason).toBe(
+      "MISSED_WHILE_PAUSED",
+    );
+    const fresh = await signal({ market: "ETH-USD" });
+    await ticks(e, 1);
+    expect(entries(gw).map((o) => o.tag)).toEqual([`ns:${fresh}:entry`]);
+    await e.stop();
+  });
+
+  it("B1: Stop with Keep leaves TP / SL on SoDEX, turns max hold off, and still runs OCO after Stopped", async () => {
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b1-keep");
+    const t = await openTrade(e, gw, b);
+    await setState(b.botId, "stopping", false);
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("stopped");
+    expect(gw.cancelled).not.toContain(t.tp.clOrdID);
+    expect(gw.cancelled).not.toContain(t.sl.clOrdID);
+    expect((await tradeOf(b.botId, t.id))?.maxHoldOffAt).not.toBeNull();
+    // Max hold không áp sau Stop-Keep.
+    const sent = gw.received.length;
+    clock += 80 * 3_600_000;
+    await ticks(e, 1);
+    expect(gw.received.slice(sent)).toEqual([]);
+    // SL khớp sau khi bot đã dừng: TP bị huỷ, lệnh đóng.
+    await e.onFill(b.accountId, t.sl.clOrdID, t.sl.quantity, "95", "0.1", clock);
+    await e.onOrderClosed(b.accountId, t.sl.clOrdID, "filled", clock);
+    expect(gw.cancelled).toContain(t.tp.clOrdID);
+    expect((await tradeOf(b.botId, t.id))?.status).toBe("closed");
+    await e.stop();
+  });
+
+  it("B1: Stop with Close all closes each trade at market, cancels TP / SL only after the fill, and stays stopping until then", async () => {
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b1-closeall");
+    const t = await openTrade(e, gw, b);
+    await setState(b.botId, "stopping", true);
+    await ticks(e, 2);
+    const close = gw.received.find((o) => o.tag === `ns:${t.id}:stop`);
+    expect(close).toMatchObject({ type: "market", reduceOnly: true, timeInForce: "IOC" });
+    expect(gw.cancelled).not.toContain(t.sl.clOrdID);
+    expect((await botState(b.botId))?.state).toBe("stopping");
+    await e.onFill(b.accountId, close?.clOrdID ?? "", close?.quantity ?? "0", "101", "0.1", clock);
+    await e.onOrderClosed(b.accountId, close?.clOrdID ?? "", "filled", clock);
+    expect(gw.cancelled).toEqual(expect.arrayContaining([t.tp.clOrdID, t.sl.clOrdID]));
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("stopped");
+    expect(await tradeOf(b.botId, t.id)).toMatchObject({ status: "closed", closeReason: "STOP" });
+    await e.stop();
+  });
+
+  it("B1: Close all rejected 3 times stays stopping with Needs attention, never Stopped with a position", async () => {
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b1-closefail");
+    const t = await openTrade(e, gw, b);
+    gw.reject = { code: "-1", message: "order rejected" };
+    await setState(b.botId, "stopping", true);
+    await ticks(e, 4);
+    const closes = gw.received.filter((o) => o.tag.startsWith(`ns:${t.id}:stop`));
+    expect(closes.length).toBeLessThanOrEqual(3);
+    expect((await botState(b.botId))?.state).toBe("stopping");
+    expect((await botState(b.botId))?.needsAttention).toBe(true);
+    expect(gw.cancelled).not.toContain(t.sl.clOrdID);
+    expect((await tradeOf(b.botId, t.id))?.status).not.toBe("closed");
+    gw.reject = null;
+    await e.stop();
+    await setState(b.botId, "stopped");
+  });
+
+  it("B1: a rejected SL after the entry filled closes the trade at market and pauses with ORDER_REJECTED", async () => {
+    const gw = new (class extends FakeGateway {
+      override submit(
+        a: AccountRef,
+        list: readonly OrderIntent[],
+        fence: Fence,
+        rate?: number,
+      ): Promise<SubmitResult[]> {
+        if (list.some((o) => o.tag.endsWith(":sl")))
+          return Promise.resolve(
+            list.map((o): SubmitResult =>
+              o.tag.endsWith(":sl")
+                ? { clOrdID: o.clOrdID, outcome: "rejected", code: "-1", message: "bad stop" }
+                : { clOrdID: o.clOrdID, outcome: "ok", orderId: 1n },
+            ),
+          );
+        return super.submit(a, list, fence, rate);
+      }
+    })();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b1-slreject");
+    const id = await signal();
+    await ticks(e, 1);
+    const entry = entries(gw)[0];
+    await e.onFill(
+      b.accountId,
+      entry?.clOrdID ?? "",
+      entry?.quantity ?? "0",
+      "100.2",
+      "0.1",
+      clock,
+    );
+    await e.onOrderClosed(b.accountId, entry?.clOrdID ?? "", "filled", clock);
+    await ticks(e, 1);
+    const close = gw.received.find((o) => o.tag === `ns:${id}:sl_rejected`);
+    expect(close).toMatchObject({ type: "market", reduceOnly: true });
+    expect((await botState(b.botId))?.state).toBe("paused");
+    expect((await botState(b.botId))?.reasonCode).toBe("ORDER_REJECTED");
+    await e.onFill(b.accountId, close?.clOrdID ?? "", close?.quantity ?? "0", "100", "0.1", clock);
+    await e.onOrderClosed(b.accountId, close?.clOrdID ?? "", "filled", clock);
+    expect((await tradeOf(b.botId, id))?.status).toBe("closed");
+    await e.stop();
+  });
+
+  it("B1: the owner losing Signal Research access: new signals get ACCESS_OFF, open trades stay managed, also after a restart", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b1-access");
+    const t = await openTrade(e, gw, b);
+    await db
+      .update(users)
+      .set({ role: "user", signalResearch: false })
+      .where(eq(users.id, b.userId));
+    await ticks(e, 1);
+    const later = await signal({ market: "ETH-USD" });
+    await ticks(e, 1);
+    expect((await deliveries(b.botId)).find((d) => d.signalId === later)?.reason).toBe(
+      "ACCESS_OFF",
+    );
+    expect(entries(gw).filter((o) => o.market === "ETH-USD")).toEqual([]);
+    await e.stop();
+    // Engine khởi động lại: bot đang chạy, chủ không còn quyền, còn lệnh mở → vẫn nạp để quản lý.
+    const e2 = newsEngine(gw, "b1-access-2");
+    await ticks(e2, 1);
+    expect(warned).toContain("news_signal bot managed only: no new trades");
+    await e2.onFill(b.accountId, t.tp.clOrdID, t.tp.quantity, t.tp.price ?? "104", "0.1", clock);
+    await e2.onOrderClosed(b.accountId, t.tp.clOrdID, "filled", clock);
+    expect(gw.cancelled).toContain(t.sl.clOrdID);
+    expect((await tradeOf(b.botId, t.id))?.status).toBe("closed");
+    await e2.stop();
+  });
+
+  it("B1: SIGNAL_NEWS_BOTS_ENABLED off = no new trades; an open trade is still managed until it closes", async () => {
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b1-switch");
+    const t = await openTrade(e, gw, b);
+    await e.stop();
+    const off = newsEngine(gw, "b1-switch-off", false);
+    const later = await signal({ market: "ETH-USD" });
+    await ticks(off, 2);
+    // Không đọc tín hiệu, không vào lệnh mới.
+    expect((await deliveries(b.botId)).find((d) => d.signalId === later)).toBeUndefined();
+    expect(entries(gw).filter((o) => o.market === "ETH-USD")).toEqual([]);
+    // Lệnh đang mở vẫn được quản lý: max hold đóng.
+    clock += 80 * 3_600_000;
+    await ticks(off, 1);
+    const close = gw.received.find((o) => o.tag === `ns:${t.id}:hold`);
+    expect(close).toMatchObject({ type: "market", reduceOnly: true });
+    await off.stop();
   });
 });

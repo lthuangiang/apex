@@ -1,11 +1,11 @@
 import type { NewsSignalRow } from "@drift/db";
+import { NewsEntryBlock } from "@drift/shared";
 import type { NewsTrade, OrderIntent } from "@drift/strategies";
 import { describe, expect, it } from "vitest";
 
 import {
   isUniqueViolation,
   NEWS_ACCOUNT_MARKET_UNIQUE,
-  NEWS_CAP_EXCEEDED,
   newsLeverageKey,
   newsOpenBlocked,
   newsSignalInput,
@@ -41,18 +41,23 @@ describe("newsOpenBlocked", () => {
     expect(newsOpenBlocked(entry({ price: "100", quantity: "2" }))).toBeNull();
   });
 
-  it("blocks anything above 200 USDC, a market / GTC / Spot opening order, or one without a price", () => {
+  it("NEWS_CAP_EXCEEDED only when price × quantity is above 200 USDC", () => {
+    for (const o of [entry({ price: "100.01", quantity: "2" }), entry({ quantity: "1000" })])
+      expect(newsOpenBlocked(o)).toBe(NewsEntryBlock.capExceeded);
+  });
+
+  it("NEWS_ORDER_INVALID for a market / GTC / Spot opening order, a missing price or a zero price / size (PM, engine B)", () => {
     for (const o of [
-      entry({ price: "100.01", quantity: "2" }),
-      entry({ quantity: "1000" }),
       entry({ type: "market" }),
       entry({ timeInForce: "GTC" }),
       entry({ engine: "spot" }),
       withoutPrice(),
       entry({ price: "0" }),
       entry({ quantity: "0" }),
+      // Sai loại thắng vượt trần: lệnh market cỡ lớn vẫn là NEWS_ORDER_INVALID.
+      entry({ type: "market", quantity: "1000" }),
     ])
-      expect(newsOpenBlocked(o)).toBe(NEWS_CAP_EXCEEDED);
+      expect(newsOpenBlocked(o)).toBe(NewsEntryBlock.orderInvalid);
   });
 
   it("never blocks reduce-only orders (TP, SL, closes)", () => {

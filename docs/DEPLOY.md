@@ -429,9 +429,10 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 - Tắt khẩn cấp: đặt lại `false`, rồi `docker compose up -d api engine`. Bot đang chạy không bị dừng; muốn dừng thì Stop từng bot hoặc dùng Emergency.
 - Không có migration (bảng của #432, migration `0059`).
 - **Engine (#419 engine A, DEC-368):** cùng biến, đọc ở service `engine` (mẫu `deploy/server/docker-compose.yml` đã có dòng `SIGNAL_NEWS_BOTS_ENABLED: ${SIGNAL_NEWS_BOTS_ENABLED:-false}` trong khối `environment` của `engine`).
-  - Tắt: engine không nạp bot `news_signal` nào (ở mọi trạng thái), không đọc `news_signals`, không subscribe NATS `sr.signal.new`. Log warn `news_signal bot not loaded` (kèm `reason`) cho mỗi bot bị bỏ.
+  - **Tắt = không mở lệnh mới; lệnh đang mở vẫn được quản lý tới khi đóng** (#419 engine B1, DEC-369). Engine không đọc `news_signals`, không subscribe NATS `sr.signal.new`, không nạp bot `news_signal` không còn lệnh mở (log warn `news_signal bot not loaded`). Bot còn lệnh news đang mở được nạp ở chế độ quản lý (log warn `news_signal bot managed only: no new trades`): OCO TP / SL, max hold, Stop vẫn chạy.
   - Bật: engine chỉ nạp bot mainnet của chủ có role team hoặc `users.signal_research`, khi bot vẫn chỉ thu hẹp version gốc. Engine giao tín hiệu mỗi vòng (ngay sau khi nạp bot) và ngay khi nhận chuông NATS `sr.signal.new` của scheduler (`SIGNAL_NEWS_PUBLISH_ENABLED`). Lệnh vào: limit IOC theo sổ lệnh đọc lúc giao (cũ tối đa 1 s), sau khi SoDEX xác nhận 1× isolated cho đúng market; giá × khối lượng ≤ 200 USDC; bot phải `running`; builder fee 10.
-  - **Engine B (Stop / Pause / lệnh của người dùng / max hold) chưa có ở bản này: giữ `false`.**
+  - **Chế độ quản lý (engine B1):** bot `news_signal` còn lệnh mở luôn có runner, cả khi bot pause, đã dừng bằng "Keep open trades", chủ bot mất quyền Signal Research, hoặc công tắc tắt. Chế độ này không bao giờ mở lệnh mới (tín hiệu: `ACCESS_OFF` / `BOT_PAUSED`; lệnh bị chặn: `NEWS_ACCESS_OFF`), nhưng giữ OCO, max hold, Stop. Stop "Close all" đóng từng lệnh bằng market reduce-only; SoDEX từ chối 3 lần thì bot giữ `stopping` kèm Needs attention, không bao giờ `stopped` khi còn vị thế.
+  - **Engine B2 (lệnh Edit TP/SL / Close now của người dùng, so vị thế của chính bot news) chưa có ở bản này: giữ `false`.**
   - Kiểm tra sau khi bật: `select outcome, reason, count(*) from news_signal_deliveries where created_at > now() - interval '1 hour' group by 1, 2;` và log `news signal opening order not sent` (phải không có trong vận hành bình thường).
 
 ## 3. Deploy hằng ngày

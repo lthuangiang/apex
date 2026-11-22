@@ -3,6 +3,7 @@ import {
   costCheck,
   dec,
   Decimal,
+  isNewsEntryBlock,
   levelAtLeast,
   NEWS_RULES,
   NEWS_SIGNAL_LIVE_MAX_USDC,
@@ -918,18 +919,22 @@ function onEnded(
   switch (ref.role) {
     case "entry": {
       if (reject !== null && !dec(t.filled).gt(0)) {
+        // Engine chặn lệnh trước khi gửi (#419 engine B1): ghi đúng mã chặn, không nói là SoDEX từ chối.
+        const blocked = isNewsEntryBlock(reject.code);
         const closed: NewsTrade = {
           ...t,
           entryDone: true,
           status: "closed",
           closedAt: at,
-          closeReason: SignalReason.entryNotFilled,
+          closeReason: blocked ? reject.code : SignalReason.entryNotFilled,
         };
         return {
           actions: [
             log(
               "Entry rejected",
-              `${t.market}: SoDEX rejected the entry (${reject.code}). Signal skipped.`,
+              blocked
+                ? `${t.market}: DeskLabs did not send the entry (${reject.code}). Signal skipped.`
+                : `${t.market}: SoDEX rejected the entry (${reject.code}). Signal skipped.`,
             ),
           ],
           state: prune(withTrade(s, closed)),

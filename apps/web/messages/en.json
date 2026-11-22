@@ -7888,6 +7888,7 @@
             "STOP": "Closed when you stopped the bot",
             "SL_REJECTED": "Closed: stop loss rejected",
             "ENTRY_NOT_FILLED": "Entry not filled",
+            "NEWS_ORDER_INVALID": "Entry blocked by a safety check",
             "other": "Closed"
           }
         },
@@ -7909,6 +7910,7 @@
             "NEWS_CAP_EXCEEDED": "Above the 200 USDC limit",
             "ENTRY_NOT_FILLED": "Entry not filled",
             "LEVERAGE_NOT_SET": "Leverage couldn’t be set to 1×",
+            "ACCESS_OFF": "Signal Research access is off",
             "BELOW_MIN_ORDER_SIZE": "Below SoDEX minimum size",
             "SAME_STORY": "Already traded this story",
             "STORY_TOO_OLD": "Story too old to retry"

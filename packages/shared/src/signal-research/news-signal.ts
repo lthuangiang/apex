@@ -34,6 +34,23 @@ export const newsSignalConfigSchema = botVersionConfigSchema.extend({
 });
 export type NewsSignalConfig = z.infer<typeof newsSignalConfigSchema>;
 
+/**
+ * Mã engine chặn lệnh mở của bot news trước khi gửi (#419 engine A/B1). Chiến lược ghi đúng mã này vào `close_reason` của
+ * lệnh vào bị chặn (không phải `ENTRY_NOT_FILLED`). `NEWS_ORDER_INVALID`: không phải limit IOC Perps có giá;
+ * `NEWS_CAP_EXCEEDED`: giá × khối lượng vượt `NEWS_SIGNAL_LIVE_MAX_USDC`; `NEWS_ACCESS_OFF`: bot chỉ được quản lý lệnh đang
+ * mở (chủ bot mất quyền / công tắc tắt); `BOT_NOT_RUNNING`; `LEVERAGE_NOT_SET`.
+ */
+export const NewsEntryBlock = {
+  orderInvalid: "NEWS_ORDER_INVALID",
+  capExceeded: "NEWS_CAP_EXCEEDED",
+  accessOff: "NEWS_ACCESS_OFF",
+  botNotRunning: "BOT_NOT_RUNNING",
+  leverageNotSet: "LEVERAGE_NOT_SET",
+} as const;
+export type NewsEntryBlock = (typeof NewsEntryBlock)[keyof typeof NewsEntryBlock];
+export const isNewsEntryBlock = (code: string): code is NewsEntryBlock =>
+  (Object.values(NewsEntryBlock) as string[]).includes(code);
+
 /** Tín hiệu đã quá `NEWS_SIGNAL_TTL_MS` chưa (đúng bằng TTL vẫn còn hạn). */
 export function newsSignalStale(signalAt: Date, now: Date): boolean {
   return now.getTime() - signalAt.getTime() > NEWS_SIGNAL_TTL_MS;
