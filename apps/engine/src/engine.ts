@@ -2950,7 +2950,10 @@ export class Engine {
         if (!(await this.#leaseConfirmed(shard))) continue;
         r.awaitingFirstAck = false;
         await this.#transition(r, EngineEvent.confirmedRunning, null);
-      } else if (bot.state === BotState.resuming && r.engines.every((x) => this.#streamReady(r, x))) {
+      } else if (
+        bot.state === BotState.resuming &&
+        r.engines.every((x) => this.#streamReady(r, x))
+      ) {
         // Resume chờ user stream của các engine bot giao dịch (bot có thể là bot duy nhất của account, stream vừa mở): bot
         // dựng lại lệnh ngay khi chạy lại.
         // Lease chưa xác nhận: chưa xác nhận Running (bot giữ `resuming`, vòng sau thử lại), để `resumed` không bị bỏ sau
@@ -3436,7 +3439,10 @@ export class Engine {
       .select({ id: newsSignalTrades.id })
       .from(newsSignalTrades)
       .where(
-        and(eq(newsSignalTrades.botId, botId), inArray(newsSignalTrades.status, ["open", "closing"])),
+        and(
+          eq(newsSignalTrades.botId, botId),
+          inArray(newsSignalTrades.status, ["open", "closing"]),
+        ),
       )
       .limit(1);
     if (t !== undefined) return true;
