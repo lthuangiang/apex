@@ -25,6 +25,7 @@ import { WorkspaceShell } from "@/components/workspace-shell";
 import { AskAboutThis } from "@/features/desk/components/ask-about-this";
 import { PaperChip } from "@/features/desk/components/paper-chip";
 import { NewsConfigBody, NewsStopBlock } from "@/features/signal-analysis/mainnet/agent-news";
+import { useNewsTrades } from "@/features/signal-analysis/mainnet/api";
 import { signalResearchBotHref } from "@/features/signal-analysis/research/mode-memory";
 import { api, ApiError } from "@/lib/api";
 import { useFinancialMutation } from "@/lib/financial-action";
@@ -182,6 +183,14 @@ export function AgentPage({ botId }: { botId?: string }) {
     },
   });
   const actError = (e: Error) => (act.checking ? tc("unconfirmed") : errorText(e));
+  // #471: bot news đã dừng mà còn lệnh mở thì không archive được (API 409 `open_trades`): khoá nút, nói rõ lý do.
+  const tErr = useTranslations("createBot.errors");
+  const newsBotId =
+    bot?.strategy === Strategy.newsSignal && bot.state === BotState.stopped ? bot.id : null;
+  const newsStopped = newsBotId !== null;
+  const newsTrades = useNewsTrades(newsBotId);
+  const archiveLocked =
+    newsStopped && (newsTrades.data?.items.filter((x) => x.status !== "closed").length ?? 0) > 0;
 
   const can = (cmd: (typeof BotCommand)[keyof typeof BotCommand]) =>
     bot !== undefined && applyCommand(bot.state, cmd) !== null;
@@ -711,6 +720,11 @@ export function AgentPage({ botId }: { botId?: string }) {
                     {t("finished.title")}
                   </h2>
                   <p className="m-0 text-sm text-ink-2">{t("finished.body")}</p>
+                  {archiveLocked ? (
+                    <p id="archive-locked" className="m-0 text-sm text-ink-2">
+                      {tErr("archiveOpenTrades")}
+                    </p>
+                  ) : null}
                   {act.error === null || dialog !== null ? null : (
                     <p role="alert" className="m-0 text-sm text-neg-ink">
                       {actError(act.error)}
@@ -728,6 +742,8 @@ export function AgentPage({ botId }: { botId?: string }) {
                   <Button
                     variant="secondary"
                     pending={act.isPending}
+                    disabled={archiveLocked}
+                    {...(archiveLocked ? { "aria-describedby": "archive-locked" } : {})}
                     onClick={() => {
                       act.mutate("archive");
                     }}
