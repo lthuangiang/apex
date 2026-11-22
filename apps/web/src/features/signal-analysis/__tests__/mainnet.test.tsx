@@ -746,6 +746,26 @@ describe("Settings: view the running config (#469 part 1)", () => {
     expect(r.violations.map((v) => v.id)).toEqual([]);
   });
 
+  it("#470: the Open in Signal Research link opens Settings of that bot right away", async () => {
+    const one = bot() as BotSummary;
+    wrap(
+      <MainnetPanel
+        openSettings
+        sources={null}
+        tz="UTC"
+        modeSwitch={null}
+        bots={[one]}
+        botsLoading={false}
+        botsError={null}
+        selected={one}
+        onBot={() => undefined}
+        onHow={() => undefined}
+        onStartFromVersion={() => undefined}
+      />,
+    );
+    expect(await screen.findByRole("dialog", { name: one.name })).toBeInTheDocument();
+  });
+
   it("10× and no daily limit: margin is size ÷ leverage and the day cap says No limit", async () => {
     state.config = { ...CONFIG, sizeUsdc: "50", leverage: 10, maxNewTradesPerDay: null };
     const dialog = await openSettings();

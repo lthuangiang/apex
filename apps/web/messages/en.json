@@ -414,6 +414,9 @@
         "what": "Copies one Hyperliquid trader on SoDEX, on every market listed on both: opens when they open, scales when they add or cut, closes when they close. Only positions they open after you start are copied.",
         "short": "CT",
         "catalog": "Follow a SoDEX wallet"
+      },
+      "news_signal": {
+        "name": "Signal Research"
       }
     },
     "fields": {
@@ -8033,6 +8036,9 @@
           "marketsCount": "{n, plural, one {# market} other {# markets}}",
           "marketsAll": "All markets",
           "marketsExcept": "All except {list}"
+        },
+        "agent": {
+          "open": "Open in Signal Research"
         }
       },
       "mainnetNotReady": "Mainnet bots are not available yet.",
