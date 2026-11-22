@@ -167,3 +167,39 @@ export function largeGap(backtest: Decimal | null, live: Decimal | null): boolea
     .abs()
     .gt(Decimal.max(50, live.abs().mul(0.3)));
 }
+
+/**
+ * Bảng hiệu chỉnh ngắn (không có cột maker): cost của baseline backtest cho từng mô hình khớp so với bot thật cùng market,
+ * cùng kỳ. Công cụ #282 dùng (baseline = biến thể A, Reverse như config).
+ */
+export function calibrationTable(
+  market: string,
+  backtest: readonly { label: string; trades: readonly CostTrade[] }[],
+  live: readonly CostTrade[],
+): string[] {
+  const f = (v: Decimal | null) =>
+    v === null ? "Not available" : Math.round(v.toNumber()).toLocaleString("en-US");
+  const row = (label: string, c: CostSplit | null) =>
+    `| ${label} | ${c === null ? "Not available" : String(c.trades)} | ${f(c?.costPerM ?? null)} | ${f(c?.feesPerM ?? null)} | ${f(c?.pricePerM ?? null)} |`;
+  const l = costSplit(live);
+  const out = [
+    `### Calibration vs live Volume Builder bots (${market})`,
+    "",
+    "| Source | Trades | Cost / $1M | Fees / $1M | Price part / $1M |",
+    "|---|---:|---:|---:|---:|",
+    ...backtest.map((b) => row(b.label, costSplit(b.trades))),
+    row("Live bots (fills, Signal Analysis formula)", l.trades > 0 ? l : null),
+    "",
+  ];
+  if (l.trades === 0) out.push("Live cost: Not available (no closed live trades in this range).");
+  else
+    for (const b of backtest) {
+      const c = costSplit(b.trades).costPerM;
+      out.push(
+        largeGap(c, l.costPerM)
+          ? `- **Large gap (${b.label}):** backtest ${f(c)} vs live ${f(l.costPerM)}. Read only the direction of Δ.`
+          : `- ${b.label}: backtest ${f(c)} vs live ${f(l.costPerM)}, within the gap limit.`,
+      );
+    }
+  return out;
+}
