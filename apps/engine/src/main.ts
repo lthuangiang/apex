@@ -54,6 +54,8 @@ const env = z
     ENGINE_SODEX_READ_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
     /** Weight REST tối đa mỗi phút cho bước tra lệnh của worker (mặc định 600 = 50% bucket IP 1200). */
     ENGINE_LOOKUP_BUDGET: z.coerce.number().int().positive().default(LOOKUP_BUDGET.weight),
+    /** Số bot cùng chạy bước `clock` trong worker (#224); giữ dưới pool DB (10 kết nối). */
+    ENGINE_CLOCK_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(4),
   })
   .parse(process.env);
 const log = pino({
@@ -253,6 +255,7 @@ const engine = new Engine({
   feeCheckMs: env.ENGINE_FEE_CHECK_MS,
   tickWaitMs: env.ENGINE_TICK_WAIT_MS,
   lookupBudget: env.ENGINE_LOOKUP_BUDGET,
+  clockConcurrency: env.ENGINE_CLOCK_CONCURRENCY,
   loopDelay: loopDelayMs,
   health,
   rules: (market) => marketInfo(rest, market),

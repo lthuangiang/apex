@@ -114,7 +114,7 @@ services:
       # MCP (DEC-167, DEPLOY 2.9): gốc URL của apps/mcp và secret introspect nội bộ; secret trống = MCP tắt.
       MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
       MCP_INTROSPECT_SECRET: ${MCP_INTROSPECT_SECRET:-}
-      # #420: chốt chặn bot news_signal mainnet; tắt = tạo / Start / Resume trả 409 (docs/DEPLOY.md mục 2.18).
+      # #420: chốt chặn bot news_signal mainnet; tắt = tạo / Start / Resume trả 409 (docs/DEPLOY.md mục 2.19).
       SIGNAL_NEWS_BOTS_ENABLED: ${SIGNAL_NEWS_BOTS_ENABLED:-false}
     depends_on:
       <<: *app-deps
@@ -149,6 +149,8 @@ services:
       <<: *env
       ENGINE_SHARDS: "64"
       ENGINE_SHARD_LEASE_TTL_MS: "15000"
+      # Số bot cùng chạy bước clock trong một worker (#224), 1–8, dưới pool DB 10 kết nối.
+      ENGINE_CLOCK_CONCURRENCY: ${ENGINE_CLOCK_CONCURRENCY:-4}
       SIGNER_URL: https://signer:8090
       SIGNER_CLIENT_CERT: /certs/engine.crt
       SIGNER_CLIENT_KEY: /certs/engine.key
@@ -215,6 +217,8 @@ services:
       SIGNAL_NEWS_CYCLE_MINUTES: ${SIGNAL_NEWS_CYCLE_MINUTES:-5}
       # Research wallets (#353 / #365): số ví K, trần 40, 0 = tắt. Chỉ scheduler đọc biến này.
       SIGNAL_RESEARCH_WALLETS_K: ${SIGNAL_RESEARCH_WALLETS_K:-30}
+      # #419: tín hiệu mainnet dùng chung (news_signals + NATS sr.signal.new). Mặc định tắt; chỉ scheduler đọc.
+      SIGNAL_NEWS_PUBLISH_ENABLED: ${SIGNAL_NEWS_PUBLISH_ENABLED:-false}
 
   jobs:
     <<: *app

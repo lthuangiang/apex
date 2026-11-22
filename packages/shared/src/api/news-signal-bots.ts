@@ -4,7 +4,7 @@ import { dec } from "../money";
 import { decimalStringSchema } from "../schemas";
 import { newsSignalConfigSchema } from "../signal-research/news-signal";
 
-// API bot `news_signal` mainnet (#420, DEC-360, DEC-TBD-news-signal-api): tạo bot từ một Signal research version, lệnh
+// API bot `news_signal` mainnet (#420, DEC-360, DEC-367): tạo bot từ một Signal research version, lệnh
 // của bot (Mainnet trades), Close now / Edit TP/SL (ghi `news_signal_commands`, engine xử lý) và tín hiệu bot đã nhận.
 // API không gọi SoDEX. Start / Pause / Resume / Stop dùng route chung `/api/v1/bots/:id/actions/*`.
 

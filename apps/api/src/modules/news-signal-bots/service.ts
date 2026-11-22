@@ -47,7 +47,7 @@ import { command, ownBot, summary, account, type BotDeps } from "../bots/service
 import { iso } from "../security/service";
 import { verifyTwoFactor } from "../security/two-factor";
 
-// Bot `news_signal` mainnet (#420, DEC-360, DEC-TBD-news-signal-api). Chốt chặn tiền thật: `SIGNAL_NEWS_BOTS_ENABLED`
+// Bot `news_signal` mainnet (#420, DEC-360, DEC-367). Chốt chặn tiền thật: `SIGNAL_NEWS_BOTS_ENABLED`
 // (mặc định false) — tắt thì tạo bot, Start và Resume trả 409 `FEATURE_NOT_READY` cho mọi người (kể cả team), trước mọi
 // thao tác ghi. Mỗi người chỉ thấy bot của mình: bot của người khác → 404 `BOT_NOT_FOUND`, kể cả với team. API không gọi
 // SoDEX: Close now / Edit TP/SL chỉ ghi `news_signal_commands` (`queued`), engine xử lý.
