@@ -162,6 +162,12 @@ export const NOT_FOUND_AFTER_MS = 30_000;
 export const OPEN_CHECK_MS = 15_000;
 /** Số lệnh đối chiếu tối đa mỗi vòng của một shard, để không tiêu hết hạn mức REST. */
 const OPEN_CHECK_BATCH = 10;
+/**
+ * TP (limit reduce-only) đang mở của bot `news_signal` cũng được tra SoDEX, tối đa một lần mỗi ngần này (#449): tin khớp
+ * TP rớt khỏi user stream thì đối soát bắt lại, chiến lược huỷ SL (OCO) và đóng lệnh news. Chậm hơn OPEN_CHECK_MS vì TP
+ * thường đã có user stream; mỗi lệnh news đang mở thêm tối đa LOOKUP_WEIGHT mỗi phút, vẫn trong LOOKUP_BUDGET (DEC-310).
+ */
+export const NEWS_TP_CHECK_MS = 60_000;
 /** Sau khi user stream đứt, đối soát lệnh Volume Farm trong khoảng này (đủ cho lệnh đang chờ khớp lúc đứt). */
 export const STREAM_GAP_MS = 120_000;
 /**
@@ -6158,13 +6164,20 @@ export class Engine {
     // Lệnh bot đã gửi huỷ mà SoDEX chưa xác nhận: đọc trạng thái thật thay vì huỷ lại mãi (DEC-121).
     const cancelling = (o: { botId: string; clOrdId: string }) =>
       this.#pendingCancels.get(o.botId)?.has(o.clOrdId) === true;
+    // TP của bot `news_signal` (limit reduce-only, một chân của OCO): tra cả khi bot có runner (#449). Chỉ áp cho bot news:
+    // lệnh limit đang nằm sổ của chiến lược khác (grid, DCA…) nhiều hơn nhiều và vẫn dựa vào user stream như trước.
+    const newsTp = (o: OrderRow) =>
+      o.type === "limit" &&
+      o.reduceOnly &&
+      this.#runners.get(o.botId)?.strategy === Strategy.newsSignal;
     const open = rows.filter((o) => {
       const r = this.#runners.get(o.botId);
       return (
         o.type === "market" ||
         r === undefined ||
         cancelling(o) ||
-        (r.strategy === Strategy.volumeFarm && gap(o))
+        (r.strategy === Strategy.volumeFarm && gap(o)) ||
+        newsTp(o)
       );
     });
     // Lệnh Volume Farm DRIFT tự huỷ nhưng chưa xác nhận: có thể đã khớp ngay trước lúc huỷ.
@@ -6175,7 +6188,11 @@ export class Engine {
     const accounts = new Set((snap.accounts.get(shard) ?? []).map((a) => a.id));
     const perAccount = new Map<string, number>();
     return [...open, ...unconfirmed]
-      .filter((o) => now - lastCheck(o) >= OPEN_CHECK_MS)
+      .filter(
+        (o) =>
+          now - lastCheck(o) >=
+          (newsTp(o) && !cancelling(o) && o.type !== "market" ? NEWS_TP_CHECK_MS : OPEN_CHECK_MS),
+      )
       .sort(
         (a, b) =>
           suspect(a) - suspect(b) ||
