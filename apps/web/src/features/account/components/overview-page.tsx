@@ -513,7 +513,7 @@ export function OverviewPage() {
                           aria-hidden="true"
                           className="flex size-[34px] flex-none items-center justify-center rounded-full bg-accent-tint text-[13px] font-extrabold text-accent-ink"
                         >
-                          {botMarket(b, names).slice(0, 1)}
+                          {botMarket(b, names, tm("multiMarket")).slice(0, 1)}
                         </span>
                         <span className="flex min-w-0 flex-1 flex-col">
                           <Link
@@ -522,7 +522,9 @@ export function OverviewPage() {
                           >
                             {b.name}
                           </Link>
-                          <span className="truncate text-xs text-muted">{botMarket(b, names)}</span>
+                          <span className="truncate text-xs text-muted">
+                            {botMarket(b, names, tm("multiMarket"))}
+                          </span>
                         </span>
                         {/* Chỉ trạng thái: lý do đã nằm trong hộp bên dưới, ghi hai lần làm cắt mất tên bot. */}
                         <StatusPill state={b.state} label={stateLabel(b).label} />
@@ -646,6 +648,7 @@ function AgentCard({
   loading: boolean;
 }) {
   const t = useTranslations("overview.agentCard");
+  const tm = useTranslations("createBot");
   const names = useMarketNames();
   const ts = useTranslations("createBot.strategies");
   const stateLabel = useStateLabel();
@@ -706,7 +709,7 @@ function AgentCard({
             <div className="flex min-w-0 flex-col gap-0.5">
               <span className="truncate text-[15px] font-bold">{bot.name}</span>
               <span className="truncate text-xs text-muted">
-                {ts(`${bot.strategy}.name`)} · {botMarket(bot, names)}
+                {ts(`${bot.strategy}.name`)} · {botMarket(bot, names, tm("multiMarket"))}
               </span>
               <span className="text-xs text-muted tabular-nums">
                 {t("updated", { time: formatDateTime(bot.updatedAt) })}
@@ -757,6 +760,7 @@ const DRAFTS_SHOWN = 4;
 function DraftsCard({ drafts }: { drafts: OverviewView["bots"] }) {
   const t = useTranslations("overview");
   const ts = useTranslations("createBot.strategies");
+  const tm = useTranslations("createBot");
   const names = useMarketNames();
   const recent = [...drafts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const more = recent.length - DRAFTS_SHOWN;
@@ -777,7 +781,7 @@ function DraftsCard({ drafts }: { drafts: OverviewView["bots"] }) {
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-sm font-bold">{b.name}</span>
               <span className="truncate text-xs text-muted">
-                {ts(`${b.strategy}.name`)} · {botMarket(b, names)}
+                {ts(`${b.strategy}.name`)} · {botMarket(b, names, tm("multiMarket"))}
               </span>
             </span>
             <span className="hidden text-sm text-ink-2 tabular-nums sm:inline">

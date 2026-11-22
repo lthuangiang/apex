@@ -158,7 +158,9 @@ export function UserDetailPage({ id }: { id: string }) {
                   {
                     key: "market",
                     header: t("market"),
-                    cell: (b: Bot) => b.marketLabel ?? names.market(b.market),
+                    cell: (b: Bot) =>
+                      b.marketLabel ??
+                      (b.market === "" ? tc("multiMarket") : names.market(b.market)),
                   },
                   {
                     key: "strategy",

@@ -391,7 +391,8 @@ export function BotsPage() {
                             )}
                           </strong>
                           <span className="text-xs text-muted">
-                            {botMarket(b, names)} · {tc(`strategies.${b.strategy}.name`)}
+                            {botMarket(b, names, tc("multiMarket"))} ·{" "}
+                            {tc(`strategies.${b.strategy}.name`)}
                             {isBeta(b.strategy) ? (
                               <>
                                 {" "}
@@ -461,7 +462,9 @@ export function BotsPage() {
                               />
                             )}
                           </strong>
-                          <span className="text-xs text-muted">{botMarket(b, names)}</span>
+                          <span className="text-xs text-muted">
+                            {botMarket(b, names, tc("multiMarket"))}
+                          </span>
                         </span>
                       ),
                     },

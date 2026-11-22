@@ -315,7 +315,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                 )}
               </h2>
               <span className="text-[13px] text-ink-2">
-                {botMarket(b, names)} · {tf(`strategies.${b.strategy}.name`)}
+                {botMarket(b, names, tf("multiMarket"))} · {tf(`strategies.${b.strategy}.name`)}
                 {isBeta(b.strategy) ? (
                   <>
                     {" "}
@@ -414,7 +414,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                 <PnlShare
                   data={{
                     botName: b.name,
-                    market: botMarket(b, names),
+                    market: botMarket(b, names, tf("multiMarket")),
                     strategyName: tf(`strategies.${b.strategy}.name`),
                     net: b.netPnl ?? "0",
                     unit:
@@ -528,7 +528,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                     <VolumeMakerCard
                       vm={d.volumeMaker}
                       botName={d.bot.name}
-                      market={botMarket(d.bot, names)}
+                      market={botMarket(d.bot, names, tf("multiMarket"))}
                     />
                   </div>
                 )}
@@ -557,7 +557,7 @@ export function AgentPage({ botId }: { botId?: string }) {
               <VolumeDashboard
                 botId={d.bot.id}
                 botName={d.bot.name}
-                market={botMarket(d.bot, names)}
+                market={botMarket(d.bot, names, tf("multiMarket"))}
                 vf={d.volumeFarm}
               />
             )}
