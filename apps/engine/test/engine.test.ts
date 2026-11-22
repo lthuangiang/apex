@@ -12046,7 +12046,7 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     await e.stop();
   });
 
-  // ---------- #471: bot news archived còn lệnh mở (phòng thủ, DEC-TBD-news-archive-guard) ----------
+  // ---------- #471: bot news archived còn lệnh mở (phòng thủ, DEC-376) ----------
   it("#471: an archived news bot with open trades keeps its runner, also after a restart: OCO runs, Close now works, no new trade", async () => {
     const gw = new FakeGateway();
     const b = await seedNews();

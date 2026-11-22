@@ -1638,7 +1638,7 @@ export async function archiveBot(
     BotCommand.archive,
     { archivedAt: deps.now(), positionMismatch: null },
     // Bot `news_signal` dừng bằng Keep open trades vẫn quản lý lệnh đang mở (OCO, max hold, Close now; DEC-369): còn lệnh
-    // thì không archive (#471, DEC-TBD-news-archive-guard). Kiểm dưới khoá dòng bot.
+    // thì không archive (#471, DEC-376). Kiểm dưới khoá dòng bot.
     async (tx, locked) => {
       if (locked.strategy === Strategy.newsSignal && (await newsBotHasOpen(tx, botId)))
         throw new AppError(
