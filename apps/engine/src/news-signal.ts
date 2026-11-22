@@ -1,6 +1,6 @@
 import type { NewsSignalRow, newsSignalTrades } from "@drift/db";
-import { dec, NEWS_SIGNAL_LIVE_MAX_USDC } from "@drift/shared";
-import type { NewsSignalInput, NewsTrade, OrderIntent } from "@drift/strategies";
+import { dec, NEWS_SIGNAL_LIVE_MAX_USDC, NewsEntryBlock } from "@drift/shared";
+import type { NewsSignalInput, NewsSignalState, NewsTrade, OrderIntent } from "@drift/strategies";
 
 // Phần thuần của engine cho bot `news_signal` mainnet (#419 engine A, DEC-360). Không I/O: engine.ts gọi các hàm này
 // khi giao tín hiệu, ghi `news_signal_trades` và chặn lệnh mở trước khi gửi.
@@ -85,22 +85,20 @@ export function newsTradeRow(
   };
 }
 
-/** Mã chặn một lệnh mở của bot news (lớp engine của trần DEC-360 mục 6). */
-export const NEWS_CAP_EXCEEDED = "NEWS_CAP_EXCEEDED";
-
 /**
- * Lệnh mở vị thế của bot news chỉ được là limit IOC trên Perps, có giá, và giá × khối lượng ≤ `NEWS_SIGNAL_LIVE_MAX_USDC`.
- * Trả mã chặn, hoặc null khi được gửi. Lệnh reduce-only (TP, SL, đóng) không qua kiểm tra này.
+ * Lệnh mở vị thế của bot news chỉ được là limit IOC trên Perps có giá dương và khối lượng dương (`NEWS_ORDER_INVALID`),
+ * và giá × khối lượng ≤ `NEWS_SIGNAL_LIVE_MAX_USDC` (`NEWS_CAP_EXCEEDED`, PM chốt engine B: mã riêng cho từng lỗi). Trả mã
+ * chặn, hoặc null khi được gửi. Lệnh reduce-only (TP, SL, đóng) không qua kiểm tra này.
  */
-export function newsOpenBlocked(o: OrderIntent): string | null {
+export function newsOpenBlocked(o: OrderIntent): NewsEntryBlock | null {
   if (o.reduceOnly) return null;
   if (o.engine !== "perps" || o.type !== "limit" || o.timeInForce !== "IOC")
-    return NEWS_CAP_EXCEEDED;
-  if (o.price === undefined) return NEWS_CAP_EXCEEDED;
+    return NewsEntryBlock.orderInvalid;
+  if (o.price === undefined) return NewsEntryBlock.orderInvalid;
   const price = dec(o.price);
   const qty = dec(o.quantity);
-  if (!price.gt(0) || !qty.gt(0)) return NEWS_CAP_EXCEEDED;
-  return price.mul(qty).gt(NEWS_SIGNAL_LIVE_MAX_USDC) ? NEWS_CAP_EXCEEDED : null;
+  if (!price.gt(0) || !qty.gt(0)) return NewsEntryBlock.orderInvalid;
+  return price.mul(qty).gt(NEWS_SIGNAL_LIVE_MAX_USDC) ? NewsEntryBlock.capExceeded : null;
 }
 
 /** Một account × market chỉ một lệnh news `open` / `closing` (partial unique của migration 0059). */
@@ -124,4 +122,17 @@ export class NewsWriteConflict extends Error {
   constructor(readonly kind: "delivered" | "market") {
     super(`news signal write conflict: ${kind}`);
   }
+}
+
+/**
+ * Bot `news_signal` còn việc phải quản lý: lệnh news chưa đóng, hoặc lệnh SoDEX chiến lược còn chờ kết thúc (#419 engine
+ * B1). Hết thì runner của bot đã dừng được bỏ.
+ */
+export function newsHasOpen(state: unknown): boolean {
+  const s = state as Partial<NewsSignalState> | null;
+  if (s === null || typeof s !== "object") return false;
+  return (
+    Object.values(s.trades ?? {}).some((t) => t.status !== "closed") ||
+    Object.keys(s.orders ?? {}).length > 0
+  );
 }

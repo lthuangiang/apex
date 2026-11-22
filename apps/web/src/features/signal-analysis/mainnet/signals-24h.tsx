@@ -23,6 +23,8 @@ const BOT_REASONS = [
   "NEWS_CAP_EXCEEDED",
   "ENTRY_NOT_FILLED",
   "LEVERAGE_NOT_SET",
+  // Chủ bot mất quyền Signal Research / công tắc tắt: bot chỉ quản lý lệnh đang mở (#419 engine B1, nhãn PM duyệt).
+  "ACCESS_OFF",
   "BELOW_MIN_ORDER_SIZE",
 ] as const;
 type BotReason = (typeof BOT_REASONS)[number];

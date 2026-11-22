@@ -10784,7 +10784,7 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     expect(entries(gw)).toEqual([]);
     expect(warned).toContain("news signal opening order not sent");
     expect(await trades(botId)).toMatchObject([
-      { signalId: id, status: "closed", closeReason: "ENTRY_NOT_FILLED" },
+      { signalId: id, status: "closed", closeReason: "BOT_NOT_RUNNING" },
     ]);
     const { orders: o } = { orders };
     expect(await db.select().from(o).where(eq(o.botId, botId))).toEqual([]);
