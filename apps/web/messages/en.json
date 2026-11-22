@@ -1684,7 +1684,8 @@
         "then": "The bot only posts the order that closes it"
       },
       "footOn": "Position cut is part of Smart quoting. Turn Smart quoting off to set a position loss limit in USDC instead."
-    }
+    },
+    "multiMarket": "Multi-market"
   },
   "tradingAgent": {
     "title": "Trading Agent",

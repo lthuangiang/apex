@@ -41,6 +41,7 @@ vi.mock("@/components/workspace", () => ({
 vi.mock("@/lib/queries", () => ({
   useMe: () => ({ data: { role: "user" } }),
   useSodexConnection: () => ({ data: undefined, isSuccess: false, isPending: true }),
+  useFeatures: () => ({ data: undefined }),
 }));
 vi.mock("@/lib/markets", () => ({
   useMarketNames: () =>
@@ -187,5 +188,39 @@ describe("paper bots in the bot list (SL-01, PB-01)", () => {
     expect(within(row).queryByText("Mainnet")).toBeNull();
     expect(within(row).getByText("Paused: a simulated order was rejected")).toBeInTheDocument();
     expect(within(row).queryByText(/SoDEX rejected/)).toBeNull();
+  });
+});
+
+describe("Signal Research news bots in the bot list (#472)", () => {
+  it("shows the strategy name and Multi-market, never a raw key or an empty market", async () => {
+    tab.value = "mine";
+    list.items = [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "Stock Monitor",
+        strategy: "news_signal",
+        market: "",
+        engine: "perps",
+        state: "running",
+        reasonCode: null,
+        needsAttention: false,
+        activeVersion: 1,
+        netPnl: null,
+        capital: null,
+        capitalUnit: "quote",
+        marketLabel: null,
+        fills: 0,
+        waiting: null,
+        mode: "live",
+        createdAt: "2026-11-22T10:00:00.000Z",
+        updatedAt: "2026-11-22T10:00:00.000Z",
+      },
+    ];
+    show();
+    const row = (await screen.findByText("Stock Monitor")).closest("tr") as HTMLElement;
+    expect(within(row).getAllByText("Multi-market").length).toBeGreaterThan(0);
+    expect(row).toHaveTextContent("Signal Research");
+    expect(row).not.toHaveTextContent("createBot.strategies");
+    expect(row).not.toHaveTextContent(/(^|\s)· Signal Research/);
   });
 });
