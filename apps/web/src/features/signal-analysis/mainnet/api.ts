@@ -3,7 +3,7 @@ import {
   botSummarySchema,
   newsBotSignalsSchema,
   newsCommandSchema,
-  newsTradesSchema,
+  newsTradeSchema,
   startChecksSchema,
   type NewsBotCreateBody,
   type NewsTpslBody,
@@ -24,6 +24,16 @@ export const NEWS_BOTS_KEY = ["newsBots"] as const;
 const botKey = (id: string | null) => [...NEWS_BOTS_KEY, id] as const;
 
 const listSchema = z.object({ items: z.array(botSummarySchema) });
+
+/**
+ * #458: lệnh mainnet có thể kèm `leverage` (mức lúc vào; API thêm sau, lệnh cũ là null). Đọc như trường tuỳ chọn để web
+ * chạy được cả trước khi API có trường này; không có / null thì không hiện đòn bẩy (không suy từ config hiện tại).
+ */
+const mainnetTradeSchema = newsTradeSchema.extend({
+  leverage: z.number().int().positive().nullable().optional(),
+});
+export type MainnetTrade = z.infer<typeof mainnetTradeSchema>;
+const mainnetTradesSchema = z.object({ items: z.array(mainnetTradeSchema) });
 
 /** Trạng thái chuyển tiếp của bot: thăm dò nhanh tới khi backend xác nhận. */
 export const TRANSITIONAL_STATES: readonly string[] = [
@@ -48,7 +58,7 @@ export function useNewsBots(enabled: boolean) {
 export function useNewsTrades(botId: string | null) {
   return useQuery({
     queryKey: [...botKey(botId), "trades"],
-    queryFn: () => api("GET", `${NEWS_BOTS_BASE}/${botId ?? ""}/trades`, newsTradesSchema),
+    queryFn: () => api("GET", `${NEWS_BOTS_BASE}/${botId ?? ""}/trades`, mainnetTradesSchema),
     enabled: botId !== null,
     // Lệnh đang đóng / command chưa xong: đọc lại mỗi giây tới khi engine xác nhận.
     refetchInterval: (q) =>

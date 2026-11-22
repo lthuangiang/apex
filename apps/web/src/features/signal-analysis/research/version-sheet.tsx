@@ -5,6 +5,8 @@ import {
   baselineVersionConfig,
   botVersionConfigSchema,
   changedThings,
+  dec,
+  Decimal,
   defaultMaxOpenTrades,
   diffVersionConfig,
   ErrorCode,
@@ -14,6 +16,7 @@ import {
   NEWS_RULES,
   NEWS_SIGNAL_LIVE_MAX_USDC,
   NEWS_SIGNAL_LEVERAGE,
+  NEWS_SIGNAL_LEVERAGES,
   newsSignalConfigSchema,
   STOCK_MARKET_SET,
   OppositeNewsPolicy,
@@ -21,6 +24,7 @@ import {
   VERSION_START_BALANCE,
   type BotVersionConfig,
   type NewsSignalConfig,
+  type NewsSignalLeverage,
   type ResearchVersion,
   type StartChecks,
   type ResearchVersionCreateBody,
@@ -69,6 +73,8 @@ export interface Draft {
   markets: string[];
   crypto: boolean;
   stocks: boolean;
+  /** #458: đòn bẩy của bot mainnet (1 / 5 / 10 / 20, isolated); version không có trường này, mặc định 1. */
+  leverage: NewsSignalLeverage;
 }
 
 export function draftOf(cfg: BotVersionConfig, name: string, hypothesis = ""): Draft {
@@ -98,6 +104,7 @@ export function draftOf(cfg: BotVersionConfig, name: string, hypothesis = ""): D
     markets: [...cfg.assets.markets],
     crypto: cfg.assets.crypto,
     stocks: cfg.assets.stocks,
+    leverage: NEWS_SIGNAL_LEVERAGE,
   };
 }
 
@@ -207,7 +214,7 @@ export function botConfigOf(d: Draft, source: BotVersionConfig | null): NewsSign
   if (Object.keys(validateBot(d, source)).some((k) => k !== "name")) return null;
   const cfg = configOf({ ...d, hypothesis: "-" });
   if (cfg === null) return null;
-  const parsed = newsSignalConfigSchema.safeParse({ ...cfg, leverage: NEWS_SIGNAL_LEVERAGE });
+  const parsed = newsSignalConfigSchema.safeParse({ ...cfg, leverage: d.leverage });
   return parsed.success ? parsed.data : null;
 }
 
@@ -588,6 +595,7 @@ export function VersionSheet({
                 setD({
                   ...draftOf(v.config ?? baselineVersionConfig(), d.name),
                   opposite: OppositeNewsPolicy.keep,
+                  leverage: d.leverage,
                 });
               }}
               className={input}
@@ -623,10 +631,23 @@ export function VersionSheet({
             )}
           </div>
           <div className="flex flex-col gap-1.5">
-            <span className={lbl}>{tb("leverage")}</span>
-            <span className="flex min-h-tap items-center text-sm font-semibold text-ink">
-              {tb("leverageValue")}
+            <span className={lbl} aria-hidden="true">
+              {tb("leverage")}
             </span>
+            <SegmentedControl
+              label={tb("leverage")}
+              value={String(d.leverage)}
+              disabled={pending}
+              options={NEWS_SIGNAL_LEVERAGES.map((l) => ({
+                value: String(l),
+                label: tb("leverageOpt", { lev: l }),
+              }))}
+              onValueChange={(v) => {
+                const l = NEWS_SIGNAL_LEVERAGES.find((x) => String(x) === v);
+                if (l !== undefined) set({ leverage: l });
+              }}
+            />
+            <span className="text-xs leading-normal text-muted">{tb("leverageHelp")}</span>
           </div>
         </Group>
       ) : (
@@ -822,6 +843,7 @@ export function VersionSheet({
             set({ maxOpen: v }, "maxOpen");
           }}
         />
+        {isBot ? <MarginCalc size={d.size} maxOpen={d.maxOpen} leverage={d.leverage} /> : null}
         <div className="flex flex-col gap-1.5">
           <span className={lbl} id={`${id}-day`}>
             {t("sheet.maxDay")}
@@ -1010,6 +1032,63 @@ export function saveErrorText(
 const input =
   "min-h-tap w-full rounded-control border border-border-input bg-surface px-3 text-sm text-ink tabular-nums aria-invalid:border-neg disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-ink-2";
 const lbl = "text-sm font-semibold text-ink";
+
+/** Số USDC làm tròn lên 2 chữ số (ký quỹ cần: không bao giờ báo thấp hơn thực tế), bỏ số 0 thừa. */
+const marginText = (v: Decimal) => v.toDecimalPlaces(2, Decimal.ROUND_UP).toString();
+
+/**
+ * #458: ký quỹ isolated của bot mainnet = giá trị vị thế ÷ đòn bẩy (Decimal). Mỗi lệnh: size ÷ đòn bẩy; cho Max open trades
+ * lệnh: size × Max open ÷ đòn bẩy (cùng công thức Start check của API). Ô size / Max open chưa hợp lệ thì không hiện số.
+ * Trên 1× có thêm cảnh báo: tín hiệu bị bỏ khi SL nằm sau giá thanh lý.
+ */
+function MarginCalc({
+  size,
+  maxOpen,
+  leverage,
+}: {
+  size: string;
+  maxOpen: string;
+  leverage: NewsSignalLeverage;
+}) {
+  const tb = useTranslations("signalAnalysis.research.mainnet.editor");
+  const s = size.trim();
+  const n = maxOpen.trim();
+  const sizeOk = DECIMAL.test(s) && dec(s).gt(0);
+  const nOk = WHOLE.test(n) && Number(n) >= 1;
+  return (
+    <div className="flex flex-col gap-2 md:col-span-2">
+      {sizeOk ? (
+        <dl
+          data-testid="margin-calc"
+          className="m-0 grid gap-1 rounded-control bg-surface-2 px-3.5 py-2.5 text-[13.5px] text-ink-2"
+        >
+          <div className="flex justify-between gap-3">
+            <dt>{tb("marginPerTrade", { size: s, lev: leverage })}</dt>
+            <dd className="m-0 font-extrabold text-ink tabular-nums">
+              {tb("usdc", { v: marginText(dec(s).div(leverage)) })}
+            </dd>
+          </div>
+          {nOk ? (
+            <div className="flex justify-between gap-3">
+              <dt>{tb("marginNeeded", { n: Number(n) })}</dt>
+              <dd className="m-0 font-extrabold text-ink tabular-nums">
+                {tb("usdc", { v: marginText(dec(s).mul(n).div(leverage)) })}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+      ) : null}
+      {leverage > 1 ? (
+        <p
+          role="note"
+          className="m-0 rounded-control border border-warn-border bg-warn-bg px-3.5 py-2.5 text-[13.5px] text-warn"
+        >
+          {tb("liqWarn", { lev: leverage })}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 const cell = "border-b border-bg px-2 py-2 align-middle";
 
 function Group({
