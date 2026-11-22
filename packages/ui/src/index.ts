@@ -19,6 +19,7 @@ export * from "./components/metric-card";
 export * from "./components/page-header";
 export * from "./components/pnl-value";
 export * from "./components/segmented-control";
+export * from "./components/select";
 export * from "./components/skeleton";
 export * from "./components/stale-badge";
 export * from "./components/status-pill";

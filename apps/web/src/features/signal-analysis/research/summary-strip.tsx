@@ -8,7 +8,7 @@ import {
   type ResearchVersion,
   type ResearchVersions,
 } from "@drift/shared";
-import { Button } from "@drift/ui";
+import { Button, Select } from "@drift/ui";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
@@ -392,13 +392,13 @@ export function SummaryStrip({
     );
   else
     picker = (
-      <select
+      <Select
         id="sr-version"
         value={current?.id ?? ""}
         onChange={(e) => {
           onVersion(e.target.value);
         }}
-        className="min-h-11 w-full min-w-0 cursor-pointer rounded-control border-2 border-accent bg-surface px-3 text-sm font-extrabold text-ink md:w-auto md:min-w-[190px]"
+        className="w-full md:w-auto md:min-w-[190px]"
       >
         {current === null ? <option value="">{tn("na")}</option> : null}
         {tester ? (
@@ -414,7 +414,7 @@ export function SummaryStrip({
         ) : (
           versions.items.map(option)
         )}
-      </select>
+      </Select>
     );
 
   let lines: ReactNode;

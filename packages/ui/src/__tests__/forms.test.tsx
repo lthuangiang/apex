@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Button } from "../components/button";
 import { Field, inputClassName } from "../components/field";
 import { SegmentedControl } from "../components/segmented-control";
+import { Select } from "../components/select";
 import { Switch } from "../components/switch";
 import { expectNoAxeViolations } from "../test/axe";
 
@@ -127,6 +128,54 @@ describe("SegmentedControl tone", () => {
     expect(screen.getByRole("radio", { name: "Long" }).className).toContain(
       "data-[state=checked]:bg-surface",
     );
+  });
+});
+
+describe("Select", () => {
+  function Harness({ onPick }: { onPick: (v: string) => void }) {
+    const [value, setValue] = useState("a");
+    return (
+      <>
+        <label htmlFor="sel-bot">Bot</label>
+        <Select
+          id="sel-bot"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            onPick(e.target.value);
+          }}
+        >
+          <option value="a">Bot A</option>
+          <option value="b">Bot B</option>
+        </Select>
+      </>
+    );
+  }
+
+  it("is a native select: value, change, label, no browser look, chevron hidden from readers", async () => {
+    const onPick = vi.fn();
+    const { container } = render(<Harness onPick={onPick} />);
+    const sel = screen.getByRole("combobox", { name: "Bot" });
+    expect(sel.tagName).toBe("SELECT");
+    expect(sel).toHaveValue("a");
+    expect(sel.className).toContain("appearance-none");
+    await userEvent.selectOptions(sel, "b");
+    expect(sel).toHaveValue("b");
+    expect(onPick).toHaveBeenCalledWith("b");
+    const icon = container.querySelector("svg");
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+    expect(icon?.getAttribute("class")).toContain("pointer-events-none");
+    await expectNoAxeViolations();
+  });
+
+  it("can be disabled", async () => {
+    render(
+      <Select aria-label="Version" value="x" onChange={() => undefined} disabled>
+        <option value="x">X</option>
+      </Select>,
+    );
+    expect(screen.getByRole("combobox", { name: "Version" })).toBeDisabled();
+    await expectNoAxeViolations();
   });
 });
 
