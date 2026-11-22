@@ -1,6 +1,7 @@
 import {
   BotState,
   botSummarySchema,
+  newsBotListSchema,
   newsBotSignalsSchema,
   newsCommandSchema,
   newsTradeSchema,
@@ -23,7 +24,8 @@ export const NEWS_BOTS_BASE = "/api/v1/signal-research/bots";
 export const NEWS_BOTS_KEY = ["newsBots"] as const;
 const botKey = (id: string | null) => [...NEWS_BOTS_KEY, id] as const;
 
-const listSchema = z.object({ items: z.array(botSummarySchema) });
+// #469: mỗi bot kèm Signal research version gốc (`signalVersionId`) cho màn Settings.
+const listSchema = newsBotListSchema;
 
 /** #458: lệnh mainnet kèm `leverage` (mức lúc vào, API trả từ #465); null = lệnh cũ, không hiện đòn bẩy. */
 const mainnetTradeSchema = newsTradeSchema;

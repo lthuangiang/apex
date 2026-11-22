@@ -4,6 +4,8 @@ import { dec } from "../money";
 import { decimalStringSchema } from "../schemas";
 import { newsSignalConfigSchema } from "../signal-research/news-signal";
 
+import { botSummarySchema } from "./bots";
+
 // API bot `news_signal` mainnet (#420, DEC-360, DEC-367): tạo bot từ một Signal research version, lệnh
 // của bot (Mainnet trades), Close now / Edit TP/SL (ghi `news_signal_commands`, engine xử lý) và tín hiệu bot đã nhận.
 // API không gọi SoDEX. Start / Pause / Resume / Stop dùng route chung `/api/v1/bots/:id/actions/*`.
@@ -22,6 +24,16 @@ export const newsBotCreateBodySchema = z.object({
   config: newsSignalConfigSchema,
 });
 export type NewsBotCreateBody = z.infer<typeof newsBotCreateBodySchema>;
+
+/**
+ * Một dòng của `GET /signal-research/bots` (#469): tóm tắt bot như mọi bot, cộng Signal research version gốc mà bot được
+ * chép từ (`bots.signal_version_id`). Null khi không có (dữ liệu cũ); web chỉ hiện "Copied from…" khi map ra được tên.
+ */
+export const newsBotListItemSchema = botSummarySchema.extend({
+  signalVersionId: z.uuid().nullable().default(null),
+});
+export type NewsBotListItem = z.infer<typeof newsBotListItemSchema>;
+export const newsBotListSchema = z.object({ items: z.array(newsBotListItemSchema) });
 
 export const newsBotParamsSchema = z.object({ id: z.uuid() });
 export const newsTradeParamsSchema = z.object({ id: z.uuid(), tradeId: z.uuid() });
