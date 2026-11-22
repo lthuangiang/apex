@@ -27,8 +27,12 @@ const CLOSE_REASONS = [
   "STOP",
   "SL_REJECTED",
   "ENTRY_NOT_FILLED",
-  // Engine chặn lệnh vào trước khi gửi (#419 engine B1, nhãn PM duyệt).
+  // Engine chặn lệnh vào trước khi gửi (#419 engine B1 / B2, nhãn PM duyệt).
   "NEWS_ORDER_INVALID",
+  "NEWS_CAP_EXCEEDED",
+  "NEWS_ACCESS_OFF",
+  "BOT_NOT_RUNNING",
+  "LEVERAGE_NOT_SET",
 ] as const;
 
 type Open = { kind: "close" | "edit"; trade: NewsTrade } | null;

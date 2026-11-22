@@ -116,10 +116,11 @@ export function isUniqueViolation(e: unknown, constraint: string): boolean {
 
 /**
  * Ghi tín hiệu / lệnh news cùng state không được (transaction đã hoàn tác): `delivered` = delivery của tín hiệu này đã
- * có (engine khác / lần giao trước); `market` = account × market đã có lệnh news đang mở (partial unique).
+ * có (engine khác / lần giao trước); `market` = account × market đã có lệnh news đang mở (partial unique); `command` = lệnh
+ * của người dùng không còn `queued` (đã chạy ở lần giao khác).
  */
 export class NewsWriteConflict extends Error {
-  constructor(readonly kind: "delivered" | "market") {
+  constructor(readonly kind: "delivered" | "market" | "command") {
     super(`news signal write conflict: ${kind}`);
   }
 }
@@ -135,4 +136,34 @@ export function newsHasOpen(state: unknown): boolean {
     Object.values(s.trades ?? {}).some((t) => t.status !== "closed") ||
     Object.keys(s.orders ?? {}).length > 0
   );
+}
+
+/** Market của các lệnh news chưa đóng trong state (so vị thế DEC-306 cho chính bot news, #419 B2). */
+export function newsOpenMarkets(state: unknown): string[] {
+  const s = state as Partial<NewsSignalState> | null;
+  if (s === null || typeof s !== "object") return [];
+  return [
+    ...new Set(
+      Object.values(s.trades ?? {})
+        .filter((t) => t.status !== "closed")
+        .map((t) => t.market),
+    ),
+  ];
+}
+
+/**
+ * Lệnh của người dùng (`news_signal_commands.id`) mà lệnh SoDEX `clOrdID` thuộc về: chân TP / SL đang chờ của một lần Edit,
+ * hoặc lệnh đóng của Close now. null = không thuộc lệnh nào.
+ */
+export function newsCommandOf(state: unknown, clOrdID: string): string | null {
+  const s = state as Partial<NewsSignalState> | null;
+  if (s === null || typeof s !== "object") return null;
+  for (const t of Object.values(s.trades ?? {})) {
+    const p = t.pending;
+    if (p !== null && p.commandId !== null && (p.tp?.id === clOrdID || p.sl?.id === clOrdID))
+      return p.commandId;
+    if (t.close !== null && t.close.commandId !== null && t.close.id === clOrdID)
+      return t.close.commandId;
+  }
+  return null;
 }

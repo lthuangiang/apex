@@ -16,6 +16,7 @@ import {
   builderFeeOverridesOf,
   users,
   signalBotVersions,
+  newsSignalCommands,
   newsSignalDeliveries,
   newsSignalTrades,
   insertNewsSignalDelivery,
@@ -98,9 +99,10 @@ import {
   type StrategyModule,
   type OrderIntent,
   newsTrades,
+  type NewsCommandInput,
   type NewsSignalState,
 } from "@drift/strategies";
-import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import { withBotCallContext } from "./call-context";
@@ -119,7 +121,9 @@ import {
   NEWS_ACCOUNT_MARKET_UNIQUE,
   NEWS_BOOK_MAX_AGE_MS,
   NEWS_LEVERAGE,
+  newsCommandOf,
   newsHasOpen,
+  newsOpenMarkets,
   newsLeverageKey,
   newsOpenBlocked,
   newsSignalInput,
@@ -208,6 +212,10 @@ export function opensPosition(
 function positionOf(state: unknown, market: string, engine: "spot" | "perps"): string | null {
   if (typeof state !== "object" || state === null) return null;
   if (isMultiMarketCopyState(state)) return state.markets[market]?.ledger.position ?? null;
+  // Bot `news_signal` (#419 B2): sổ cái theo từng market.
+  const ns = (state as { ledgers?: unknown }).ledgers;
+  if (typeof ns === "object" && ns !== null && !Array.isArray(ns))
+    return (ns as Record<string, Ledger | undefined>)[market]?.position ?? null;
   const s = state as { ledger?: Ledger; perp?: Ledger; spot?: Ledger };
   return (s.ledger ?? (engine === "perps" ? s.perp : s.spot))?.position ?? null;
 }
@@ -412,8 +420,10 @@ interface NewsSnapshot {
   at: number;
   /** Account đã đọc lệnh news đang mở / market của bot khác; bot của account khác chờ lần giao sau. */
   accounts: Set<string>;
-  /** Tín hiệu còn hạn (`expires_at` ≥ lúc đọc), cũ trước. */
+  /** Tín hiệu còn hạn (`expires_at` ≥ lúc đọc), cũ trước. Công tắc tắt: rỗng. */
   signals: NewsSignalRow[];
+  /** Lệnh của người dùng `queued` (Edit TP/SL, Close now), cũ trước, kèm bot của lệnh news (#419 B2). */
+  commands: { botId: string; command: NewsCommandInput }[];
   /** `signalId:botId` đã có delivery. */
   delivered: Set<string>;
   /** `accountId:market` → bot có lệnh news `open` / `closing`. */
@@ -1397,8 +1407,11 @@ export class Engine {
 
   // ---------- news_signal: đường tín hiệu (#419 engine A, DEC-360) ----------
 
+  /**
+   * Shard có runner bot `news_signal` thật. Không xét công tắc: lệnh của người dùng (Close now, Edit TP/SL) vẫn chạy ở chế
+   * độ quản lý khi công tắc tắt (#419 B2); tín hiệu thì chỉ đọc khi công tắc bật (`#newsSnapshot`).
+   */
   #hasNewsRunners(shard: number): boolean {
-    if (!this.#d.newsSignalBots) return false;
     for (const r of this.#runners.values())
       if (r.shard === shard && r.strategy === Strategy.newsSignal && !r.paper) return true;
     return false;
@@ -1414,8 +1427,42 @@ export class Engine {
     const at = this.#d.now();
     const accountIds = [...new Set(accounts)];
     if (accountIds.length === 0) return null;
-    const signals = await unexpiredNewsSignals(db, new Date(at));
-    if (signals.length === 0) return null;
+    // Tín hiệu chỉ đọc khi công tắc bật (tắt = không mở lệnh mới); lệnh của người dùng thì luôn đọc (#419 B2).
+    const signals = this.#d.newsSignalBots ? await unexpiredNewsSignals(db, new Date(at)) : [];
+    const commands = (
+      await db
+        .select({ command: newsSignalCommands, trade: newsSignalTrades })
+        .from(newsSignalCommands)
+        .innerJoin(newsSignalTrades, eq(newsSignalTrades.id, newsSignalCommands.tradeId))
+        .where(
+          and(
+            eq(newsSignalCommands.status, "queued"),
+            inArray(newsSignalTrades.sodexAccountId, accountIds),
+          ),
+        )
+        .orderBy(asc(newsSignalCommands.createdAt), asc(newsSignalCommands.seq))
+    ).map(({ command: c, trade: t }) => ({
+      botId: t.botId,
+      command: {
+        id: c.id,
+        signalId: t.signalId,
+        kind: c.kind === "close" ? ("close" as const) : ("edit_tpsl" as const),
+        seq: c.seq,
+        tp: c.tp === null ? null : dec(c.tp).toString(),
+        sl: c.sl === null ? null : dec(c.sl).toString(),
+      },
+    }));
+    if (signals.length === 0 && commands.length === 0) return null;
+    if (signals.length === 0)
+      return {
+        at,
+        accounts: new Set(accountIds),
+        signals,
+        commands,
+        delivered: new Set(),
+        openTrades: new Map(),
+        otherMarkets: new Map(),
+      };
     const [delivered, open, others] = await Promise.all([
       db
         .select({ signalId: newsSignalDeliveries.signalId, botId: newsSignalDeliveries.botId })
@@ -1469,6 +1516,7 @@ export class Engine {
       at,
       accounts: new Set(accountIds),
       signals,
+      commands,
       delivered: new Set(delivered.map((x) => `${x.signalId}:${x.botId}`)),
       openTrades: new Map(open.map((x) => [`${x.accountId}:${x.market}`, x.botId])),
       otherMarkets,
@@ -1539,7 +1587,28 @@ export class Engine {
     for (const r of runners) pushTo(groups, r.account.id, r);
     let fenced = false;
     await eachLimited([...groups.values()], Number.POSITIVE_INFINITY, async (list) => {
-      for (const r of list)
+      for (const r of list) {
+        // Lệnh của người dùng trước tín hiệu (Close now không chờ tín hiệu). Không giữ khoá trong lúc chờ SoDEX ack: chỉ
+        // ghi `applying` cùng state rồi đi tiếp; kết quả tới qua ack / fill / kết thúc lệnh.
+        for (const c of ns.commands) {
+          if (c.botId !== r.botId) continue;
+          if (fenced || this.#runners.get(r.botId) !== r) return;
+          await this.#clockLimit.run(async () => {
+            if (fenced) return;
+            try {
+              await this.#feed(r, { type: "newsCommand", at: this.#d.now(), command: c.command });
+            } catch (error) {
+              if (error instanceof FencedError) {
+                fenced = true;
+                throw error;
+              }
+              this.#d.log.warn(
+                { err: error, botId: r.botId, commandId: c.command.id },
+                "news command failed for one bot; retrying next tick",
+              );
+            }
+          });
+        }
         for (const sig of ns.signals) {
           if (fenced || this.#runners.get(r.botId) !== r) return;
           await this.#clockLimit.run(async () => {
@@ -1559,6 +1628,7 @@ export class Engine {
             }
           });
         }
+      }
     });
   }
 
@@ -1673,6 +1743,33 @@ export class Engine {
       });
       if (!fresh && event.type === "newsSignal" && a.signalId === event.signal.id)
         throw new NewsWriteConflict("delivered");
+    }
+    // Lệnh của người dùng (#419 B2): `queued → applying` nguyên tử với state của bước này; lệnh không còn `queued` (đã
+    // chạy ở lần giao khác) thì hoàn tác, không hành động nào. Kết quả `applied` / `rejected` lấy từ `commandResult`, ở
+    // bước này hoặc bước sau (ack / fill / kết thúc lệnh của chân Edit / lệnh đóng).
+    if (event.type === "newsCommand") {
+      const taken = await tx
+        .update(newsSignalCommands)
+        .set({ status: "applying", updatedAt: new Date() })
+        .where(
+          and(eq(newsSignalCommands.id, event.command.id), eq(newsSignalCommands.status, "queued")),
+        )
+        .returning({ id: newsSignalCommands.id });
+      if (taken.length === 0) throw new NewsWriteConflict("command");
+    }
+    for (const a of actions) {
+      if (a.type !== "commandResult") continue;
+      await tx
+        .update(newsSignalCommands)
+        .set({
+          status: a.status,
+          result: a.code === undefined ? null : { code: a.code },
+          updatedAt: new Date(),
+        })
+        // `unknown` (đối soát đã bỏ cuộc) giữ nguyên: Needs attention, người kiểm tra trên SoDEX quyết định.
+        .where(
+          and(eq(newsSignalCommands.id, a.commandId), eq(newsSignalCommands.status, "applying")),
+        );
     }
     if (prev === next) return;
     const before = new Map(newsTrades(prev as NewsSignalState).map((t) => [t.signalId, t]));
@@ -2320,11 +2417,20 @@ export class Engine {
     const held = this.#leases.get(shardOf(o.sodexAccountId, this.#d.shards));
     if (held === undefined) return;
     const [b] = await this.#d.db
-      .select({ mode: bots.mode })
+      .select({ mode: bots.mode, strategy: bots.strategy })
       .from(bots)
       .where(eq(bots.id, o.botId))
       .limit(1);
     if (b?.mode !== "live") return;
+    // Bot `news_signal` (#419 B2): không ghi thẳng vào lệnh / sổ cái đã lưu (chiến lược không thấy fill thì OCO, đóng lệnh
+    // news hỏng). Để runner (bot news còn lệnh luôn có runner ở chế độ quản lý) đối soát lại lệnh và đưa fill qua chiến lược.
+    if (b.strategy === Strategy.newsSignal) {
+      this.#d.log.info(
+        { botId: o.botId, clOrdID: o.clOrdId },
+        "news_signal fill without a runner left for reconciliation",
+      );
+      return;
+    }
     const shard = shardOf(o.sodexAccountId, this.#d.shards);
     const recorded = await this.#fenced({ shard, epoch: held.epoch }, async (tx) => {
       const [cur] = await tx.select().from(orders).where(eq(orders.id, o.id)).for("update");
@@ -3674,14 +3780,24 @@ export class Engine {
     try {
       await persist;
     } catch (error) {
-      if (!(error instanceof NewsWriteConflict) || event.type !== "newsSignal") throw error;
+      if (
+        !(error instanceof NewsWriteConflict) ||
+        (event.type !== "newsSignal" && event.type !== "newsCommand")
+      )
+        throw error;
       // Transaction đã hoàn tác: DB còn state cũ. Không có lệnh nào được gửi.
       if (r.state === result.state) r.state = prev;
       this.#d.log.info(
-        { botId: r.botId, signalId: event.signal.id, conflict: error.kind },
+        {
+          botId: r.botId,
+          ...(event.type === "newsSignal"
+            ? { signalId: event.signal.id }
+            : { commandId: event.command.id }),
+          conflict: error.kind,
+        },
         "news signal not applied: write conflict",
       );
-      if (error.kind === "market")
+      if (error.kind === "market" && event.type === "newsSignal")
         await this.#newsDrop(r, event.signal.id, SignalReason.accountMarketBusy);
       return;
     }
@@ -5718,6 +5834,14 @@ export class Engine {
         .returning({ id: orders.id });
       if (rows.length === 0) return false;
       await tx.update(bots).set({ needsAttention: true }).where(eq(bots.id, r.botId));
+      // Bot `news_signal` (#419 B2): lệnh này thuộc một lệnh của người dùng (chân Edit TP/SL / lệnh Close now) thì lệnh đó
+      // thành `unknown` (PM chốt engine B điểm 6), cùng transaction, không retry.
+      const command = r.strategy === Strategy.newsSignal ? newsCommandOf(r.state, o.clOrdId) : null;
+      if (command !== null)
+        await tx
+          .update(newsSignalCommands)
+          .set({ status: "unknown", result: { clOrdID: o.clOrdId }, updatedAt: new Date(now) })
+          .where(and(eq(newsSignalCommands.id, command), eq(newsSignalCommands.status, "applying")));
       await tx.insert(botEvents).values({
         botId: r.botId,
         type: "reconcile",
@@ -6861,7 +6985,12 @@ export class Engine {
         const pairs = runners
           .filter((r) => r.account.id === accountId)
           .flatMap((r) =>
-            this.#perpMarketsOf(r.strategy, r.market, "perps", r.config).flatMap((m) => {
+            // Bot `news_signal` (#419 B2, DEC-306): market của lệnh news đang mở trong state; `holders` đếm lệnh news từ DB
+            // một lần cho mỗi account × market, nên market chỉ có bot news này thì được so với `ledgers[m]`.
+            (r.strategy === Strategy.newsSignal
+              ? newsOpenMarkets(r.state)
+              : this.#perpMarketsOf(r.strategy, r.market, "perps", r.config)
+            ).flatMap((m) => {
               if (holders.get(`${accountId}:${m}`) === 1 && stateOf.has(r.botId)) return [{ r, m }];
               this.#positionWatch.delete(`${r.botId}:${m}`);
               return [];
