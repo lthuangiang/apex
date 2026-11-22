@@ -903,77 +903,23 @@ export function VersionSheet({
         )}
       </Group>
 
-      <Group legend={t("sheet.assets")}>
-        {/* PM: ẩn Crypto / Stocks ở chế độ Only these (danh sách đã chọn đúng từng market). */}
-        {d.mode === AssetMode.only ? null : (
-          <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap gap-4">
-              <label className="inline-flex min-h-11 items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={d.crypto}
-                  disabled={view}
-                  onChange={(e) => {
-                    set({ crypto: e.target.checked }, "kinds");
-                  }}
-                  className="size-5 accent-accent"
-                />
-                {t("sheet.crypto")}
-              </label>
-              <label className="inline-flex min-h-11 items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={d.stocks}
-                  disabled={view}
-                  onChange={(e) => {
-                    set({ stocks: e.target.checked }, "kinds");
-                  }}
-                  className="size-5 accent-accent"
-                />
-                {t("sheet.stocks")}
-              </label>
-            </div>
-            <Err id={`${id}-k-e`} text={errText(shown("kinds"))} />
-          </div>
-        )}
-        <div className="flex flex-col gap-1.5">
-          <span className={lbl}>{t("sheet.which")}</span>
-          <SegmentedControl
-            label={t("sheet.which")}
-            value={d.mode}
-            disabled={view}
-            options={(["all", "only", "except"] as const).map((m) => ({
-              value: m,
-              label: t(`sheet.modes.${m}`),
-            }))}
-            onValueChange={(v) => {
-              set({ mode: v });
-            }}
-          />
-          <span className="text-xs text-muted">{t("sheet.whichHint")}</span>
-          <Err id={`${id}-as-e`} text={errText(errors.assets)} />
-        </div>
-        {d.mode === AssetMode.all ? null : (
-          <div className="flex flex-col gap-1">
-            <AssetPicker
-              markets={markets}
-              value={d.markets}
-              mode={d.mode}
-              mobile={mobile}
-              disabled={view}
-              invalid={shown("markets") !== undefined}
-              describedBy={shown("markets") === undefined ? undefined : `${id}-m-e`}
-              onChange={(m) => {
-                set({ markets: m }, "markets");
-              }}
-              onOpenChange={(o) => {
-                pickerOpen.current = o;
-              }}
-            />
-            <Err id={`${id}-m-e`} text={errText(shown("markets"))} />
-          </div>
-        )}
-      </Group>
+      <AssetsGroup
+        value={{ mode: d.mode, markets: d.markets, crypto: d.crypto, stocks: d.stocks }}
+        onChange={(p, k) => {
+          set(p, k);
+        }}
+        errors={{
+          kinds: errText(shown("kinds")),
+          markets: errText(shown("markets")),
+          assets: errText(errors.assets),
+        }}
+        markets={markets}
+        mobile={mobile}
+        disabled={view}
+        onPickerOpen={(o) => {
+          pickerOpen.current = o;
+        }}
+      />
 
       {isBot && bot.checks !== null ? (
         <div className="flex flex-col gap-2">
@@ -1029,9 +975,9 @@ export function saveErrorText(
   return t("sheet.errors.generic");
 }
 
-const input =
+export const input =
   "min-h-tap w-full rounded-control border border-border-input bg-surface px-3 text-sm text-ink tabular-nums aria-invalid:border-neg disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-ink-2";
-const lbl = "text-sm font-semibold text-ink";
+export const lbl = "text-sm font-semibold text-ink";
 
 /** Số USDC làm tròn lên 2 chữ số (ký quỹ cần: không bao giờ báo thấp hơn thực tế), bỏ số 0 thừa. */
 const marginText = (v: Decimal) => v.toDecimalPlaces(2, Decimal.ROUND_UP).toString();
@@ -1041,7 +987,7 @@ const marginText = (v: Decimal) => v.toDecimalPlaces(2, Decimal.ROUND_UP).toStri
  * lệnh: size × Max open ÷ đòn bẩy (cùng công thức Start check của API). Ô size / Max open chưa hợp lệ thì không hiện số.
  * Trên 1× có thêm cảnh báo: tín hiệu bị bỏ khi SL nằm sau giá thanh lý.
  */
-function MarginCalc({
+export function MarginCalc({
   size,
   maxOpen,
   leverage,
@@ -1091,7 +1037,7 @@ function MarginCalc({
 }
 const cell = "border-b border-bg px-2 py-2 align-middle";
 
-function Group({
+export function Group({
   legend,
   grid = false,
   children,
@@ -1108,7 +1054,7 @@ function Group({
   );
 }
 
-function Err({ id, text }: { id: string; text: string | undefined }) {
+export function Err({ id, text }: { id: string; text: string | undefined }) {
   if (text === undefined) return null;
   return (
     <p id={id} className="m-0 text-xs font-semibold text-neg-ink">
@@ -1117,7 +1063,7 @@ function Err({ id, text }: { id: string; text: string | undefined }) {
   );
 }
 
-function Num({
+export function Num({
   label,
   unit,
   hint,
@@ -1186,5 +1132,103 @@ function Num({
       )}
       <Err id={`${id}-e`} text={error} />
     </div>
+  );
+}
+
+/** Ô Markets của version / bot (Crypto / Stocks, chế độ, danh sách): dùng chung cho editor version và Edit bot mainnet (#469). */
+export function AssetsGroup({
+  value: d,
+  onChange,
+  errors,
+  markets,
+  mobile,
+  disabled,
+  onPickerOpen,
+  help,
+}: {
+  value: Pick<Draft, "mode" | "markets" | "crypto" | "stocks">;
+  onChange: (p: Partial<Draft>, k?: FieldKey) => void;
+  errors: { kinds?: string | undefined; markets?: string | undefined; assets?: string | undefined };
+  markets: MarketsState;
+  mobile: boolean;
+  disabled: boolean;
+  onPickerOpen: (open: boolean) => void;
+  /** Dòng gợi ý thêm dưới chế độ (Edit bot: "Can only narrow the version’s markets."). */
+  help?: string;
+}) {
+  const t = useTranslations("signalAnalysis.research.versions");
+  const id = useId();
+  const set = onChange;
+  return (
+    <Group legend={t("sheet.assets")}>
+      {/* PM: ẩn Crypto / Stocks ở chế độ Only these (danh sách đã chọn đúng từng market). */}
+      {d.mode === AssetMode.only ? null : (
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap gap-4">
+            <label className="inline-flex min-h-11 items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={d.crypto}
+                disabled={disabled}
+                onChange={(e) => {
+                  set({ crypto: e.target.checked }, "kinds");
+                }}
+                className="size-5 accent-accent"
+              />
+              {t("sheet.crypto")}
+            </label>
+            <label className="inline-flex min-h-11 items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={d.stocks}
+                disabled={disabled}
+                onChange={(e) => {
+                  set({ stocks: e.target.checked }, "kinds");
+                }}
+                className="size-5 accent-accent"
+              />
+              {t("sheet.stocks")}
+            </label>
+          </div>
+          <Err id={`${id}-k-e`} text={errors.kinds} />
+        </div>
+      )}
+      <div className="flex flex-col gap-1.5">
+        <span className={lbl}>{t("sheet.which")}</span>
+        <SegmentedControl
+          label={t("sheet.which")}
+          value={d.mode}
+          disabled={disabled}
+          options={(["all", "only", "except"] as const).map((m) => ({
+            value: m,
+            label: t(`sheet.modes.${m}`),
+          }))}
+          onValueChange={(v) => {
+            set({ mode: v });
+          }}
+        />
+        <span className="text-xs text-muted">{t("sheet.whichHint")}</span>
+        {help === undefined ? null : <span className="text-xs text-muted">{help}</span>}
+        <Err id={`${id}-as-e`} text={errors.assets} />
+      </div>
+      {d.mode === AssetMode.all ? null : (
+        <div className="flex flex-col gap-1">
+          <AssetPicker
+            markets={markets}
+            value={d.markets}
+            mode={d.mode}
+            mobile={mobile}
+            disabled={disabled}
+            invalid={errors.markets !== undefined}
+            describedBy={errors.markets === undefined ? undefined : `${id}-m-e`}
+            onChange={(m) => {
+              set({ markets: m }, "markets");
+            }}
+            onOpenChange={onPickerOpen}
+          />
+          <Err id={`${id}-m-e`} text={errors.markets} />
+        </div>
+      )}
+    </Group>
   );
 }

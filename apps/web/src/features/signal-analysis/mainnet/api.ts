@@ -3,10 +3,12 @@ import {
   botSummarySchema,
   newsBotListSchema,
   newsBotSignalsSchema,
+  newsBotVersionResultSchema,
   newsCommandSchema,
   newsTradeSchema,
   startChecksSchema,
   type NewsBotCreateBody,
+  type NewsSignalConfig,
   type NewsTpslBody,
 } from "@drift/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -147,6 +149,39 @@ export function useNewsCommand(onDone?: () => void) {
     onSuccess: async (_d, v) => {
       await qc.invalidateQueries({ queryKey: [...botKey(v.botId), "trades"] });
       onDone?.();
+    },
+  });
+}
+
+export interface NewsVersionVars {
+  botId: string;
+  /** Config đầy đủ của version mới (chỉ 5 field sửa được khác version đang chạy). */
+  config: NewsSignalConfig;
+  twoFactorCode?: string;
+}
+
+/**
+ * Edit bot news (#469): lưu thành version mới qua route chung `POST /bots/:id/versions`. Bot đang chạy / pause: version
+ * `pending` tới khi engine áp ("Applying v{n}…" lấy từ `GET /bots/:id`); bot đã dừng: `active` ngay.
+ */
+export function useSaveNewsVersion(onDone?: (v: NewsVersionVars) => void) {
+  const qc = useQueryClient();
+  return useFinancialMutation({
+    mutationFn: (v: NewsVersionVars, idempotencyKey: string) =>
+      api("POST", `/api/v1/bots/${v.botId}/versions`, newsBotVersionResultSchema, {
+        body: {
+          config: v.config,
+          paramSource: "manual",
+          ...(v.twoFactorCode === undefined ? {} : { twoFactorCode: v.twoFactorCode }),
+        },
+        idempotencyKey,
+      }),
+    identity: (v) => [v.botId, v.config, v.twoFactorCode ?? null],
+    refetch: (v) => [["bot", v.botId], NEWS_BOTS_KEY],
+    onSuccess: async (_d, v) => {
+      if (v.twoFactorCode !== undefined) void qc.invalidateQueries({ queryKey: ME_KEY });
+      await qc.invalidateQueries({ queryKey: ["bot", v.botId] });
+      onDone?.(v);
     },
   });
 }

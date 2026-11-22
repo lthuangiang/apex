@@ -1,20 +1,11 @@
 "use client";
 
-import {
-  applyCommand,
-  BotCommand,
-  botDetailSchema,
-  newsSignalConfigSchema,
-  type BotSummary,
-  type ResearchSource,
-} from "@drift/shared";
+import { applyCommand, BotCommand, type BotSummary, type ResearchSource } from "@drift/shared";
 import { Button, SegmentedControl, Select, StatusPill } from "@drift/ui";
-import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { useStateLabel } from "@/features/bots/components/bots-page";
-import { api } from "@/lib/api";
 import { useSodexConnection, useTwoFactorNeeded } from "@/lib/queries";
 
 import { DEFAULT_HOW_TAB, type HowTab } from "../research/how-it-works";
@@ -28,7 +19,7 @@ import {
   useNewsTrades,
   type NewsBotActionVars,
 } from "./api";
-import { BotSettingsSheet } from "./bot-settings";
+import { ApplyingChip, BotSettingsSheet, useActiveBotVersion } from "./bot-settings";
 import { StartNewsBotDialog, StopNewsBotDialog } from "./dialogs";
 import { useMainnetErrorText } from "./text";
 
@@ -114,19 +105,6 @@ function MainnetBanner({
   );
 }
 
-/** Config của bot (version đang chạy) để ghi dòng cấu hình; null = chưa có / không đọc được. */
-function useBotConfig(botId: string | null) {
-  const q = useQuery({
-    queryKey: ["bot", botId],
-    queryFn: () => api("GET", `/api/v1/bots/${botId ?? ""}`, botDetailSchema),
-    enabled: botId !== null,
-    refetchInterval: 10_000,
-  });
-  const active = q.data?.versions.find((v) => v.status === "active");
-  const parsed = newsSignalConfigSchema.safeParse(active?.config);
-  return parsed.success ? parsed.data : null;
-}
-
 export function MainnetPanel({
   openSettings = false,
   sources,
@@ -172,7 +150,9 @@ export function MainnetPanel({
   const twoFactorNeeded = useTwoFactorNeeded();
   const conn = useSodexConnection();
   const trades = useNewsTrades(selected?.id ?? null);
-  const config = useBotConfig(selected?.id ?? null);
+  // Version đang chạy (dòng cấu hình) và version chờ engine áp ("Applying v{n}…", #469).
+  const versionInfo = useActiveBotVersion(selected?.id ?? null);
+  const config = versionInfo.config;
   const act = useNewsBotAction(() => {
     setDialog(null);
     setCode("");
@@ -243,6 +223,7 @@ export function MainnetPanel({
         <strong className="font-extrabold">{selected.name}</strong>
         <Pill tone="neg">{t("strip.mainnet")}</Pill>
         {pill}
+        {versionInfo.pending === null ? null : <ApplyingChip n={versionInfo.pending} />}
         {last4 === null ? null : (
           <span className="tabular-nums">{t("strip.account", { last4 })}</span>
         )}
@@ -402,6 +383,7 @@ export function MainnetPanel({
         <BotSettingsSheet
           botId={selected.id}
           name={selected.name}
+          state={selected.state}
           signalVersionId={selected.signalVersionId ?? null}
           account={last4 === null ? null : t("strip.account", { last4 })}
           tz={tz}
