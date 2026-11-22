@@ -48,6 +48,7 @@ describe("news_signal constants", () => {
       SignalReason.accountMarketBusy,
       SignalReason.newsCapExceeded,
       SignalReason.entryNotFilled,
+      SignalReason.leverageNotSet,
     ]).toEqual([
       "ASSET_NOT_IN_BOT",
       "SIGNAL_STALE",
@@ -56,6 +57,7 @@ describe("news_signal constants", () => {
       "ACCOUNT_MARKET_BUSY",
       "NEWS_CAP_EXCEEDED",
       "ENTRY_NOT_FILLED",
+      "LEVERAGE_NOT_SET",
     ]);
     // Không trùng mã cũ.
     const all = Object.values(SignalReason);

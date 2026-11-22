@@ -19,6 +19,7 @@ import type {
 } from "../core/types";
 import {
   initialNewsSignalState,
+  NEWS_SIGNAL,
   newsSignal,
   newsTag,
   type NewsSignalState,
@@ -316,7 +317,11 @@ describe("entry", () => {
     const entry = places(a.actions)[0]?.clOrdID ?? "";
     const b = run(cfg(), a.state, [done(entry)]);
     expect(places(b.actions)).toEqual([]);
-    expect(b.state.trades[s.id]).toBeUndefined();
+    // Lệnh đã đóng còn trong state ở bước đóng nó (engine ghi trạng thái cuối, #419 engine A).
+    expect(b.state.trades[s.id]).toMatchObject({
+      status: "closed",
+      closeReason: SignalReason.entryNotFilled,
+    });
     expect(b.state.orders).toEqual({});
     const retry = sig({ storyKey: s.storyKey, decidedAt: T0 + 60_000, expiresAt: T0 + 180_000 });
     expect(places(newsSignal.step(cfg(), b.state, signalEv(retry), ctx).actions)).toHaveLength(1);
@@ -369,10 +374,14 @@ describe("TP / SL", () => {
     expect(cancels(r.actions)).toEqual([o.trade.sl?.id]);
     const t = trade(r.state, o.signal.id);
     expect(t).toMatchObject({ status: "closed", closeReason: SignalReason.takeProfit });
-    // Còn chờ SL kết thúc rồi mới bỏ khỏi state.
+    // Hết lệnh chờ: lệnh đóng còn trong state (engine ghi trạng thái cuối), bỏ sau `closedKeepMs` ở tín hiệu kế tiếp.
     const end = run(cfg(), r.state, [done(o.trade.sl?.id ?? ""), done(o.trade.tp?.id ?? "")]);
-    expect(end.state.trades).toEqual({});
+    expect(end.state.trades[o.signal.id]?.status).toBe("closed");
     expect(end.state.orders).toEqual({});
+    const later = T0 + HOUR + NEWS_SIGNAL.closedKeepMs + 1;
+    const next = sig({ market: "ETH-USD", decidedAt: later, expiresAt: later + 120_000 });
+    const pruned = run(cfg(), end.state, [signalEv(next)]);
+    expect(pruned.state.trades[o.signal.id]).toBeUndefined();
   });
 
   it("a stop loss fill cancels the TP; a partial TP fill keeps the SL", () => {

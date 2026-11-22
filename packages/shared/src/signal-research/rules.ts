@@ -137,6 +137,11 @@ export const SignalReason = {
   entryNotFilled: "ENTRY_NOT_FILLED",
   /** Khối lượng sau khi làm tròn theo lot dưới min size / min notional của market SoDEX: không gửi lệnh. */
   belowMinSize: "BELOW_MIN_ORDER_SIZE",
+  /**
+   * SoDEX chưa xác nhận 1× isolated cho market của tín hiệu (bị từ chối, không rõ kết quả, hoặc vị thế sẵn có với thiết
+   * lập khác, DEC-58): engine không gửi lệnh vào, chỉ bỏ tín hiệu, không pause (#419 engine A).
+   */
+  leverageNotSet: "LEVERAGE_NOT_SET",
 } as const;
 export type SignalReason = (typeof SignalReason)[keyof typeof SignalReason];
 
