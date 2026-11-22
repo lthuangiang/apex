@@ -752,4 +752,9 @@ describe("Decisions titles when a trade closes (#419 B2, PM approved)", () => {
       "Closed by you",
     ]);
   });
+
+  it("a reason without its own title is just Closed, never Closed by you (PM review #448)", () => {
+    expect(closeTitle("SOMETHING_NEW")).toBe("Closed");
+    expect(closeTitle("MANUAL")).toBe("Closed by you");
+  });
 });
