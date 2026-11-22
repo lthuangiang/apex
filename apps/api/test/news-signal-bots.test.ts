@@ -215,7 +215,12 @@ describe("creating a bot from a version (flag on)", () => {
     expect(errOf(big).details).toMatchObject({
       fieldErrors: { "config.sizeUsdc": [expect.any(String)] },
     });
+    // Đòn bẩy 1 / 5 / 10 / 20 (#458): mức khác bị chặn.
     expect((await create(tester, { config: config({ leverage: 2 }) })).statusCode).toBe(400);
+    expect((await create(tester, { config: config({ leverage: 3 }) })).statusCode).toBe(400);
+    expect((await create(tester, { config: config({ leverage: 50 }) })).statusCode).toBe(400);
+    for (const leverage of [5, 10, 20])
+      expect((await create(tester, { config: config({ leverage }) })).statusCode).toBe(201);
     expect((await create(tester, { config: config({ sizeUsdc: "200" }) })).statusCode).toBe(201);
   });
 
@@ -359,6 +364,36 @@ describe("Close now and Edit TP/SL", () => {
     } finally {
       await env.pool.query("update users set signal_research = true where id = $1", [testerId]);
     }
+  });
+});
+
+describe("leverage 1 / 5 / 10 / 20 (#458)", () => {
+  it("the balance start check needs size × max open trades ÷ leverage; a bot without the field reads as 1×", async () => {
+    flag.enabled = true;
+    const u = await user(`nsb-levx-${randomUUID()}@drift.test`, { flag: true });
+    const needed = async (over: Record<string, unknown>) => {
+      const r = await create(u.client, { config: config(over) });
+      expect(r.statusCode).toBe(201);
+      const bot = botSummarySchema.parse(r.json());
+      const res = await u.client.request("GET", `/api/v1/bots/${bot.id}/checks`);
+      const body = startChecksSchema.parse(res.json());
+      const balance = body.checks.find((c) => c.key === "balance");
+      return { botId: bot.id, needed: (balance?.data as { needed?: string } | undefined)?.needed };
+    };
+    const maxOpen = baselineVersionConfig().maxOpenTrades;
+    const one = await needed({ sizeUsdc: "200", leverage: 1 });
+    expect(one.needed).toBe(String(200 * maxOpen));
+    const five = await needed({ sizeUsdc: "200", leverage: 5 });
+    expect(five.needed).toBe(String((200 * maxOpen) / 5));
+    const twenty = await needed({ sizeUsdc: "150", leverage: 20 });
+    expect(twenty.needed).toBe(String((150 * maxOpen) / 20));
+    // Bot cũ: config không có trường `leverage` → 1×.
+    await env.pool.query(`update bot_versions set config = config - 'leverage' where bot_id = $1`, [
+      one.botId,
+    ]);
+    const res = await u.client.request("GET", `/api/v1/bots/${one.botId}/checks`);
+    const balance = startChecksSchema.parse(res.json()).checks.find((c) => c.key === "balance");
+    expect((balance?.data as { needed?: string } | undefined)?.needed).toBe(String(200 * maxOpen));
   });
 });
 

@@ -304,7 +304,7 @@ describe("entry", () => {
   });
 
   it("caps the size at 200 USDC even if the config says more", () => {
-    const raw = { ...cfg(), sizeUsdc: "500" } as NewsSignalConfig;
+    const raw = { ...cfg(), sizeUsdc: "500" };
     const [o] = places(
       newsSignal.step(raw, initialNewsSignalState(), signalEv(sig()), ctx).actions,
     );
@@ -756,5 +756,74 @@ describe("Decisions titles when a trade closes (#419 B2, PM approved)", () => {
   it("a reason without its own title is just Closed, never Closed by you (PM review #448)", () => {
     expect(closeTitle("SOMETHING_NEW")).toBe("Closed");
     expect(closeTitle("MANUAL")).toBe("Closed by you");
+  });
+});
+
+describe("leverage and the liquidation check (#458)", () => {
+  const tiered: StepContext = {
+    ...ctx,
+    rules: {
+      ...ctx.rules,
+      [SOL]: {
+        ...(ctx.rules[SOL] ?? {
+          tickSize: "0.01",
+          stepSize: "0.01",
+          minQuantity: "0.01",
+          minNotional: "5",
+        }),
+        maxLeverage: 20,
+        marginTiers: [
+          {
+            maxNotionalValue: "4000000",
+            maintenanceMarginRate: "0.005",
+            maxLeverage: 40,
+            maintenanceDeduction: "0",
+          },
+        ],
+      },
+    },
+  };
+  const wide = { "24": "10", "48": "10", "72": "10" };
+
+  it("drops a signal whose stop loss would sit beyond the estimated liquidation at the bot's leverage", () => {
+    const s = sig({ typicalByHoldHours: wide });
+    const r = newsSignal.step(cfg({ leverage: 20 }), initialNewsSignalState(), signalEv(s), tiered);
+    expect(places(r.actions)).toEqual([]);
+    expect(outcome(r.actions)).toMatchObject({
+      outcome: "dropped",
+      reason: SignalReason.slBeyondLiquidation,
+      detail: { leverage: 20 },
+    });
+  });
+
+  it("1× never runs the check; at 20× the entry size stays capped at 200 USDC", () => {
+    const s = sig({ typicalByHoldHours: wide });
+    const one = newsSignal.step(
+      cfg({ leverage: 1 }),
+      initialNewsSignalState(),
+      signalEv(s),
+      tiered,
+    );
+    expect(places(one.actions)).toHaveLength(1);
+    // Stop loss gần (typical nhỏ): 20× được vào, cùng khối lượng với 1× (giá trị vị thế ≤ 200, không nhân đòn bẩy).
+    const tight = sig({ typicalByHoldHours: { "24": "1", "48": "1", "72": "1" } });
+    const at20 = newsSignal.step(
+      cfg({ leverage: 20 }),
+      initialNewsSignalState(),
+      signalEv(tight),
+      tiered,
+    );
+    const at1 = newsSignal.step(
+      cfg({ leverage: 1 }),
+      initialNewsSignalState(),
+      signalEv(tight),
+      tiered,
+    );
+    const [o20] = places(at20.actions);
+    const [o1] = places(at1.actions);
+    expect(o20).toBeDefined();
+    expect(o1).toBeDefined();
+    expect(o20?.quantity).toBe(o1?.quantity);
+    expect(Number(o20?.price) * Number(o20?.quantity)).toBeLessThanOrEqual(200);
   });
 });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { liquidationDistance, type MarginTier } from "../desk/needs-you";
 import { dec, Decimal, roundToStep, RoundMode, type DecimalInput } from "../money";
 import { decimalStringSchema } from "../schemas";
 
@@ -12,8 +13,18 @@ import { AssetMode, botVersionConfigSchema, levelAtLeast, type BotVersionConfig 
 
 /** Trần size mỗi lệnh của bot mainnet (USDC), cho tới khi có quyết định khác. */
 export const NEWS_SIGNAL_LIVE_MAX_USDC = "200";
-/** Đòn bẩy cố định của bot mainnet. */
+/** Đòn bẩy mặc định của bot mainnet (bot cũ không có trường `leverage` đọc là mức này). */
 export const NEWS_SIGNAL_LEVERAGE = 1;
+/** Các mức đòn bẩy người dùng chọn được (#458, người dùng duyệt 2026-11-22), luôn isolated. */
+export const NEWS_SIGNAL_LEVERAGES = [1, 5, 10, 20] as const;
+export type NewsSignalLeverage = (typeof NEWS_SIGNAL_LEVERAGES)[number];
+/** Khoảng tới giá thanh lý phải ≥ ngần này × khoảng tới SL (#458): bù phần ước tính bỏ qua phí và funding (DEC-172). */
+export const NEWS_SIGNAL_LIQ_SL_MULTIPLE = "1.5";
+/**
+ * Tỷ lệ ký quỹ duy trì dự phòng khi SoDEX không trả `marginTiers` của market (#458). Bảo thủ: BTC là 1.25% (DEC-172),
+ * altcoin nhỏ thường cao hơn; MMR cao hơn đưa giá thanh lý lại gần, nên bỏ nhiều tín hiệu hơn chứ không ít hơn.
+ */
+export const NEWS_SIGNAL_FALLBACK_MMR = "0.05";
 /** Tín hiệu cũ hơn ngần này (tính từ lúc tín hiệu được ghi) thì bỏ với `SIGNAL_STALE`. */
 export const NEWS_SIGNAL_TTL_MS = 120_000;
 /** Trượt giá thêm cho lệnh vào limit IOC, ngoài nửa spread (phần trăm của giá giữa). */
@@ -25,12 +36,22 @@ const sizeSchema = decimalStringSchema
 
 /**
  * Config của một bot `news_signal` mainnet: config đầy đủ của version (chép từ version gốc) cộng các trường của bot. Size
- * mỗi lệnh ≤ `NEWS_SIGNAL_LIVE_MAX_USDC`, đòn bẩy luôn 1. Max open trades / Max new trades per day dùng đúng các trường
- * của version (người tạo bot chọn).
+ * mỗi lệnh (giá trị vị thế, không phải ký quỹ) ≤ `NEWS_SIGNAL_LIVE_MAX_USDC` ở mọi mức đòn bẩy. Đòn bẩy 1 / 5 / 10 / 20,
+ * isolated (#458); bot cũ không có trường đọc là 1. Max open trades / Max new trades per day dùng đúng các trường của
+ * version (người tạo bot chọn).
  */
 export const newsSignalConfigSchema = botVersionConfigSchema.extend({
   sizeUsdc: sizeSchema,
-  leverage: z.literal(NEWS_SIGNAL_LEVERAGE),
+  leverage: z
+    .union(
+      NEWS_SIGNAL_LEVERAGES.map((l) => z.literal(l)) as [
+        z.ZodLiteral<1>,
+        z.ZodLiteral<5>,
+        z.ZodLiteral<10>,
+        z.ZodLiteral<20>,
+      ],
+    )
+    .default(NEWS_SIGNAL_LEVERAGE),
 });
 export type NewsSignalConfig = z.infer<typeof newsSignalConfigSchema>;
 
@@ -117,4 +138,42 @@ export function narrowsVersion(
   return (
     levelAtLeast(bot.minLevel, version.minLevel) && assetsNarrow(version.assets, bot.assets, kindOf)
   );
+}
+
+/**
+ * Chốt thanh lý trước khi vào lệnh (#458): khoảng tới giá thanh lý isolated ước tính phải ≥ `NEWS_SIGNAL_LIQ_SL_MULTIPLE` ×
+ * khoảng tới SL. Khoảng thanh lý theo công thức DEC-172 (`liquidationDistance`, bậc `marginTiers` của SoDEX chọn theo
+ * notional = giá trần × khối lượng): chỉ là ước tính, bỏ qua phí và funding, nên giá thanh lý thật gần giá vào hơn; hệ số
+ * 1.5× để bù phần đó. Thiếu bậc margin thì dùng `NEWS_SIGNAL_FALLBACK_MMR`, không khấu trừ (`fallback = true`). 1× luôn
+ * đạt (ký quỹ bằng giá trị vị thế). `slPct`: khoảng SL theo % giá (ví dụ "6" = 6%).
+ */
+export function newsLiquidationCheck(input: {
+  side: "long" | "short";
+  leverage: number;
+  slPct: DecimalInput;
+  notional: DecimalInput;
+  tiers: readonly MarginTier[] | undefined;
+}): { ok: boolean; distance: Decimal | null; fallback: boolean } {
+  if (input.leverage <= 1) return { ok: true, distance: null, fallback: false };
+  const fallback = input.tiers === undefined || input.tiers.length === 0;
+  const tiers: readonly MarginTier[] = fallback
+    ? [
+        {
+          maxNotionalValue: "1000000000000000",
+          maintenanceMarginRate: NEWS_SIGNAL_FALLBACK_MMR,
+          maxLeverage: input.leverage,
+          maintenanceDeduction: "0",
+        },
+      ]
+    : (input.tiers ?? []);
+  const distance = liquidationDistance({
+    tiers,
+    leverage: input.leverage,
+    notional: dec(input.notional).toString(),
+    side: input.side,
+  });
+  // Notional vượt mọi bậc (không thể với trần 200 USDC) thì không biết khoảng thanh lý: không vào.
+  if (distance === null) return { ok: false, distance: null, fallback };
+  const sl = dec(input.slPct).div(100);
+  return { ok: distance.gte(sl.mul(NEWS_SIGNAL_LIQ_SL_MULTIPLE)), distance, fallback };
 }

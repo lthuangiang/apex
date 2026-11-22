@@ -69,6 +69,7 @@ import {
   STOCK_MARKET_SET,
   UserRole,
   NewsEntryBlock,
+  NEWS_SIGNAL_FALLBACK_MMR,
 } from "@drift/shared";
 import {
   mmOrderContextSchema,
@@ -134,11 +135,12 @@ import {
   isUniqueViolation,
   NEWS_ACCOUNT_MARKET_UNIQUE,
   NEWS_BOOK_MAX_AGE_MS,
-  NEWS_LEVERAGE,
+  NEWS_MARGIN_MODE,
   newsCommandOf,
   newsHasOpen,
   newsOpenMarkets,
   newsLeverageKey,
+  newsLeverageOf,
   newsOpenBlocked,
   newsSignalInput,
   newsTradeRow,
@@ -1150,6 +1152,8 @@ export class Engine {
   readonly #newsRuns = new Map<number, Promise<void>>();
   /** Lần đọc sổ lệnh cho tín hiệu news theo market (dùng chung lần đọc đang chạy, cũ tối đa NEWS_BOOK_MAX_AGE_MS). */
   readonly #newsBooks = new Map<string, { at: number; p: Promise<BookTop | null> }>();
+  /** Market đã báo dùng MMR dự phòng cho chốt thanh lý của bot news (#458): log warn một lần mỗi market. */
+  readonly #newsFallbackMmrWarned = new Set<string>();
   /** Lần chuông NATS đang chạy (một lần mỗi engine). */
   #newsBell: Promise<void> | null = null;
   /** Lần gia hạn lease do một làn shard gọi, dùng chung cho các làn khác cần cùng lúc. */
@@ -1695,6 +1699,18 @@ export class Engine {
       const rules = await this.#d.rules(sig.market);
       if (rules !== undefined) r.ctx.rules[sig.market] = rules;
     }
+    // SoDEX không trả bậc ký quỹ của market: chốt thanh lý (#458) dùng MMR dự phòng; báo một lần cho mỗi market.
+    if (
+      newsLeverageOf(r.config) > 1 &&
+      (r.ctx.rules[sig.market]?.marginTiers ?? []).length === 0 &&
+      !this.#newsFallbackMmrWarned.has(sig.market)
+    ) {
+      this.#newsFallbackMmrWarned.add(sig.market);
+      this.#d.log.warn(
+        { market: sig.market, mmr: NEWS_SIGNAL_FALLBACK_MMR },
+        "news_signal liquidation check uses the fallback maintenance margin rate",
+      );
+    }
     // Phí taker theo market của tín hiệu (kiểm tra chi phí của chiến lược), như lúc nạp bot theo `bots.market`.
     if (this.#d.feeRate === undefined)
       r.ctx.takerFeeRate = botTakerFeeRate(
@@ -1720,6 +1736,14 @@ export class Engine {
       .step(r.config, r.state, event, r.ctx)
       .actions.find((a) => a.type === "place" && !a.order.reduceOnly);
     if (entry?.type === "place") {
+      // Market có đòn bẩy tối đa thấp hơn mức của bot (#458): không gọi SoDEX, bỏ tín hiệu như khi SoDEX từ chối.
+      const maxLeverage = r.ctx.rules[entry.order.market]?.maxLeverage;
+      if (maxLeverage !== undefined && newsLeverageOf(r.config) > maxLeverage) {
+        await this.#newsDrop(r, sig.id, SignalReason.leverageNotSet, {
+          maxLeverage: String(maxLeverage),
+        });
+        return;
+      }
       const lev = await this.#ensureNewsLeverage(r, entry.order.market, at);
       if (lev !== "ok") {
         await this.#newsDrop(r, sig.id, SignalReason.leverageNotSet, { leverage: lev });
@@ -1886,10 +1910,16 @@ export class Engine {
     market: string,
     at: number,
   ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
-    const key = newsLeverageKey(market);
+    const leverage = newsLeverageOf(r.config);
+    const key = newsLeverageKey(market, leverage);
     if (r.leverageDone.has(key)) return "ok";
     const read = { matched: false };
-    const res = await this.#ensureLeverageOne(r, { market, ...NEWS_LEVERAGE }, at, read);
+    const res = await this.#ensureLeverageOne(
+      r,
+      { market, leverage, marginMode: NEWS_MARGIN_MODE },
+      at,
+      read,
+    );
     if (res !== "ok") return res;
     r.leverageDone.add(key);
     if (!(read.matched && r.leverageKnown.has(key)))
@@ -1897,10 +1927,7 @@ export class Engine {
         r,
         "decision",
         "Leverage set",
-        leverageWhy(
-          r.paper,
-          `${String(NEWS_LEVERAGE.leverage)}× ${NEWS_LEVERAGE.marginMode} on ${market}`,
-        ),
+        leverageWhy(r.paper, `${String(leverage)}× ${NEWS_MARGIN_MODE} on ${market}`),
         at,
       );
     await this.#saveLeverageDone(r, r.versionId, r.leverageDone);
@@ -4164,7 +4191,7 @@ export class Engine {
             ? NewsEntryBlock.accessOff
             : st !== BotState.running
               ? NewsEntryBlock.botNotRunning
-              : !r.leverageDone.has(newsLeverageKey(o.market))
+              : !r.leverageDone.has(newsLeverageKey(o.market, newsLeverageOf(r.config)))
                 ? NewsEntryBlock.leverageNotSet
                 : null);
         if (code !== null) refused.set(o.clOrdID, code);

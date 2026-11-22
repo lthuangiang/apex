@@ -10551,11 +10551,22 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     clock += 600_000;
     book = { bid: "100", ask: "100.1" };
     bookReads = 0;
+    rulesNow = newsRules;
     warned.length = 0;
     const { ne } = await import("drizzle-orm");
     await db.update(bots).set({ state: "stopped" }).where(ne(bots.state, "stopped"));
   });
 
+  /** Quy tắc market trả cho engine; test #458 thêm `maxLeverage` / `marginTiers`. */
+  let rulesNow: typeof newsRules & {
+    maxLeverage?: number;
+    marginTiers?: {
+      maxNotionalValue: string;
+      maintenanceMarginRate: string;
+      maxLeverage: number;
+      maintenanceDeduction: string;
+    }[];
+  } = newsRules;
   const newsEngine = (gw: Gateway, workerId: string, enabled = true) =>
     new Engine({
       db,
@@ -10571,7 +10582,7 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
       now,
       leaseTtlMs: 30_000,
       shards: SHARDS,
-      rules: () => Promise.resolve(newsRules),
+      rules: () => Promise.resolve(rulesNow),
       feeCheckMs: 0,
       newsSignalBots: enabled,
       orderbook: () => {
@@ -11886,5 +11897,119 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
       .update(bots)
       .set({ state: "stopped" })
       .where(eq(bots.id, grid?.id ?? ""));
+  });
+
+  // ---------- #458: đòn bẩy 1 / 5 / 10 / 20× isolated, chốt thanh lý ----------
+  const tiered = (maxLeverage = 20) => ({
+    ...newsRules,
+    maxLeverage,
+    marginTiers: [
+      {
+        maxNotionalValue: "4000000",
+        maintenanceMarginRate: "0.005",
+        maxLeverage: 40,
+        maintenanceDeduction: "0",
+      },
+    ],
+  });
+  const tight = { "24": "1", "48": "1", "72": "1" };
+
+  it("#458: sets the bot's own leverage isolated before the entry; the entry stays at the 200 USDC cap at 20×", async () => {
+    rulesNow = tiered();
+    for (const leverage of [5, 20]) {
+      const gw = new FakeGateway();
+      const { botId } = await seedNews({ bot: { leverage } });
+      const e = newsEngine(gw, `b458-lev-${String(leverage)}`);
+      const id = await signal({ typicalByHoldHours: tight });
+      await ticks(e, 2);
+      expect(gw.leverage).toEqual([{ market: SOL, leverage, marginMode: "isolated", before: 0 }]);
+      const [entry] = entries(gw);
+      expect(entry?.tag).toBe(`ns:${id}:entry`);
+      expect(entry?.quantity).toBe("1.99");
+      expect(
+        dec(entry?.price ?? "0")
+          .mul(entry?.quantity ?? "0")
+          .lte(200),
+      ).toBe(true);
+      expect((await deliveries(botId)).map((d) => d.outcome)).toEqual(["accepted"]);
+      await e.stop();
+      await stopNews();
+    }
+  });
+
+  it("#458: a market whose max leverage is below the bot's gets LEVERAGE_NOT_SET without calling SoDEX; a SoDEX reject also does, without pausing", async () => {
+    rulesNow = tiered(10);
+    const gw = new FakeGateway();
+    const a = await seedNews({ bot: { leverage: 20 } });
+    const e = newsEngine(gw, "b458-max");
+    const id = await signal({ typicalByHoldHours: tight });
+    await ticks(e, 2);
+    expect((await deliveries(a.botId)).map((d) => [d.signalId, d.reason, d.detail])).toEqual([
+      [id, "LEVERAGE_NOT_SET", { maxLeverage: "10" }],
+    ]);
+    expect(gw.leverage).toEqual([]);
+    expect(entries(gw)).toEqual([]);
+    await e.stop();
+    await stopNews();
+    // SoDEX từ chối mức 10× (ví dụ market giới hạn khác): không gửi, không pause.
+    rulesNow = tiered();
+    const gw2 = new FakeGateway();
+    gw2.leverageOutcome = { outcome: "rejected", code: "MAX_LEVERAGE" };
+    const b = await seedNews({ bot: { leverage: 10 } });
+    const e2 = newsEngine(gw2, "b458-reject");
+    const id2 = await signal({ typicalByHoldHours: tight });
+    await ticks(e2, 2);
+    expect((await deliveries(b.botId)).find((d) => d.signalId === id2)?.reason).toBe(
+      "LEVERAGE_NOT_SET",
+    );
+    expect(entries(gw2)).toEqual([]);
+    expect((await botState(b.botId))?.state).toBe("running");
+    await e2.stop();
+  });
+
+  it("#458: a stop loss beyond the estimated liquidation drops the signal (SL_BEYOND_LIQUIDATION) before any leverage call", async () => {
+    rulesNow = tiered();
+    const gw = new FakeGateway();
+    const { botId } = await seedNews({ bot: { leverage: 20 } });
+    const e = newsEngine(gw, "b458-liq");
+    const id = await signal({ typicalByHoldHours: { "24": "10", "48": "10", "72": "10" } });
+    await ticks(e, 2);
+    const [d] = await deliveries(botId);
+    expect(d).toMatchObject({ signalId: id, outcome: "dropped", reason: "SL_BEYOND_LIQUIDATION" });
+    expect(gw.leverage).toEqual([]);
+    expect(gw.received).toEqual([]);
+    await e.stop();
+  });
+
+  it("#458: an older bot without the leverage field still runs at exactly 1×", async () => {
+    const { eq } = await import("drizzle-orm");
+    rulesNow = tiered();
+    const gw = new FakeGateway();
+    const { botId } = await seedNews();
+    await db
+      .update(botVersions)
+      .set({ config: { ...baselineVersionConfig(), sizeUsdc: "200" } })
+      .where(eq(botVersions.botId, botId));
+    const e = newsEngine(gw, "b458-old");
+    await signal({ typicalByHoldHours: { "24": "10", "48": "10", "72": "10" } });
+    await ticks(e, 2);
+    expect(gw.leverage).toEqual([{ market: SOL, leverage: 1, marginMode: "isolated", before: 0 }]);
+    expect(entries(gw)).toHaveLength(1);
+    await e.stop();
+  });
+
+  it("#458: without SoDEX margin tiers the check uses the fallback MMR and warns once per market", async () => {
+    const gw = new FakeGateway();
+    await seedNews({ bot: { leverage: 5 } });
+    const e = newsEngine(gw, "b458-fallback");
+    await signal({ typicalByHoldHours: tight });
+    await signal({ typicalByHoldHours: tight, storyKey: `again-${String(Math.random())}` });
+    await ticks(e, 3);
+    expect(
+      warned.filter(
+        (m) => m === "news_signal liquidation check uses the fallback maintenance margin rate",
+      ),
+    ).toHaveLength(1);
+    await e.stop();
   });
 });

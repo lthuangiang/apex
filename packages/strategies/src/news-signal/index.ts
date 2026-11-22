@@ -8,6 +8,7 @@ import {
   NEWS_RULES,
   NEWS_SIGNAL_LIVE_MAX_USDC,
   newsEntryLimitPrice,
+  newsLiquidationCheck,
   newsSignalStale,
   ReasonCode,
   RoundMode,
@@ -425,6 +426,21 @@ function onSignal(
   // Phòng thủ: giá trần × khối lượng không bao giờ vượt trần mainnet (DEC-360 mục 2).
   if (limit.mul(qty).gt(NEWS_SIGNAL_LIVE_MAX_USDC)) return drop(SignalReason.newsCapExceeded);
   if (!meetsMinimum(limit, qty, rules)) return drop(SignalReason.belowMinSize);
+  // Chốt thanh lý (#458): ở đòn bẩy của bot, khoảng tới giá thanh lý ước tính phải ≥ 1.5 × khoảng tới SL; 1× bỏ qua.
+  const liq = newsLiquidationCheck({
+    side: sig.side,
+    leverage: c.leverage,
+    slPct,
+    notional: limit.mul(qty),
+    tiers: rules.marginTiers,
+  });
+  if (!liq.ok)
+    return drop(SignalReason.slBeyondLiquidation, {
+      leverage: c.leverage,
+      ...(liq.distance === null ? {} : { liquidationPct: liq.distance.mul(100).toFixed(2) }),
+      slPct: slPct.toFixed(2),
+      ...(liq.fallback ? { fallbackMmr: true } : {}),
+    });
 
   const seq = s.nextSeq;
   const tag = newsTag.entry(sig.id);
