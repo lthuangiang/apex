@@ -22,6 +22,7 @@ import {
   userBuilderFees,
   users,
   insertNewsSignal,
+  newsSignalCommands,
   newsSignalDeliveries,
   newsSignalTrades,
   signalBotVersions,
@@ -11386,5 +11387,303 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     const close = gw.received.find((o) => o.tag === `ns:${t.id}:hold`);
     expect(close).toMatchObject({ type: "market", reduceOnly: true });
     await off.stop();
+  });
+
+  // ---------- #419 engine B2: lệnh của người dùng, DEC-306 cho bot news, câu "Closed…" ----------
+
+  async function addCommand(
+    b: { botId: string; userId: string },
+    signalId: string,
+    kind: "close" | "edit_tpsl",
+    seq: number,
+    prices: { tp?: string; sl?: string } = {},
+    status = "queued",
+  ) {
+    const t = await tradeOf(b.botId, signalId);
+    const [c] = await db
+      .insert(newsSignalCommands)
+      .values({
+        tradeId: t?.id ?? "",
+        kind,
+        seq,
+        tp: prices.tp ?? null,
+        sl: prices.sl ?? null,
+        status,
+        createdBy: b.userId,
+      })
+      .returning();
+    return c?.id ?? "";
+  }
+  const commandRow = async (id: string) => {
+    const { eq } = await import("drizzle-orm");
+    return (await db.select().from(newsSignalCommands).where(eq(newsSignalCommands.id, id)))[0];
+  };
+  const decisionsOf = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    return (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).map(
+      (x) => x.decision,
+    );
+  };
+  /** Cổng ghi lại thứ tự gửi / huỷ (để kiểm "lệnh mới có ack rồi mới huỷ lệnh cũ"). */
+  class SeqGateway extends FakeGateway {
+    readonly seq: string[] = [];
+    rejectTag: string | null = null;
+    override submit(
+      a: AccountRef,
+      list: readonly OrderIntent[],
+      fence: Fence,
+      rate?: number,
+    ): Promise<SubmitResult[]> {
+      for (const o of list) this.seq.push(`submit:${o.clOrdID}`);
+      const tag = this.rejectTag;
+      if (tag !== null && list.some((o) => o.tag.endsWith(tag)))
+        return Promise.resolve(
+          list.map((o): SubmitResult =>
+            o.tag.endsWith(tag)
+              ? { clOrdID: o.clOrdID, outcome: "rejected", code: "-1", message: "bad price" }
+              : { clOrdID: o.clOrdID, outcome: "ok", orderId: 9n },
+          ),
+        );
+      return super.submit(a, list, fence, rate);
+    }
+    override cancel(a: AccountRef, list: readonly { clOrdID: string }[]): Promise<CancelResult[]> {
+      for (const o of list) this.seq.push(`cancel:${o.clOrdID}`);
+      return super.cancel(a, list);
+    }
+  }
+
+  it("B2: Edit TP/SL places the new legs first, cancels the old ones only after SoDEX acks, and ends applied", async () => {
+    const gw = new SeqGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b2-edit");
+    const t = await openTrade(e, gw, b);
+    const id = await addCommand(b, t.id, "edit_tpsl", 1, { tp: "106", sl: "97" });
+    await ticks(e, 1);
+    const newTp = gw.received.find((o) => o.tag === `ns:${t.id}:e1:tp`);
+    const newSl = gw.received.find((o) => o.tag === `ns:${t.id}:e1:sl`);
+    expect(newTp).toMatchObject({ price: "106", reduceOnly: true });
+    expect(newSl).toMatchObject({ reduceOnly: true });
+    // Thứ tự: gửi lệnh mới (ack ngay khi SoDEX nhận) trước, huỷ lệnh cũ sau; lúc nào cũng còn một SL.
+    const at = (x: string) => gw.seq.indexOf(x);
+    expect(at(`submit:${newSl?.clOrdID ?? ""}`)).toBeGreaterThanOrEqual(0);
+    expect(at(`cancel:${t.sl.clOrdID}`)).toBeGreaterThan(at(`submit:${newSl?.clOrdID ?? ""}`));
+    expect(at(`cancel:${t.tp.clOrdID}`)).toBeGreaterThan(at(`submit:${newTp?.clOrdID ?? ""}`));
+    expect((await commandRow(id))?.status).toBe("applied");
+    const row = await tradeOf(b.botId, t.id);
+    expect(dec(row?.tpPrice ?? "0").toString()).toBe("106");
+    expect(row?.tpslSeq).toBe(1);
+    await e.stop();
+  });
+
+  it("B2: an Edit leg SoDEX rejects ends the command rejected with the code and keeps the old SL", async () => {
+    const gw = new SeqGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b2-edit-reject");
+    const t = await openTrade(e, gw, b);
+    gw.rejectTag = ":e1:sl";
+    const id = await addCommand(b, t.id, "edit_tpsl", 1, { sl: "97" });
+    await ticks(e, 1);
+    const row = await commandRow(id);
+    expect(row?.status).toBe("rejected");
+    expect(row?.result).not.toBeNull();
+    expect(gw.cancelled).not.toContain(t.sl.clOrdID);
+    await e.stop();
+  });
+
+  it("B2: an Edit leg whose result stays unknown after reconciling makes the command unknown with Needs attention, never retried", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b2-edit-unknown");
+    const t = await openTrade(e, gw, b);
+    gw.timeoutNext = "lost";
+    const id = await addCommand(b, t.id, "edit_tpsl", 1, { tp: "106" });
+    await ticks(e, 1);
+    expect((await commandRow(id))?.status).toBe("applying");
+    const leg = (await db.select().from(orders).where(eq(orders.botId, b.botId))).find((o) =>
+      o.tag.endsWith(":e1:tp"),
+    );
+    expect(leg?.status).toBe("unknown");
+    await db
+      .update(orders)
+      .set({ sodexOrderId: 91n, missingConfirmedAt: new Date(clock - 11 * 60_000) })
+      .where(eq(orders.id, leg?.id ?? ""));
+    for (let i = 0; i < 4; i += 1) {
+      clock += 60_000;
+      await e.tick();
+    }
+    expect((await commandRow(id))?.status).toBe("unknown");
+    expect((await botState(b.botId))?.needsAttention).toBe(true);
+    expect(gw.received.filter((o) => o.tag.endsWith(":e1:tp"))).toEqual([]);
+    await e.stop();
+  });
+
+  it("B2: Close now works while paused, after Stop-Keep, after the owner lost access and with the switch off; Decisions says Closed by you", async () => {
+    const { eq } = await import("drizzle-orm");
+    for (const how of ["paused", "keep", "access", "switch"] as const) {
+      const gw = new FakeGateway();
+      const b = await seedNews();
+      let e = newsEngine(gw, `b2-close-${how}`);
+      const t = await openTrade(e, gw, b);
+      if (how === "switch") {
+        // Công tắc tắt: không mở lệnh mới, nhưng lệnh của người dùng trên lệnh đang mở vẫn chạy.
+        await e.stop();
+        e = newsEngine(gw, "b2-close-switch-off", false);
+      }
+      if (how === "paused") await setState(b.botId, "pausing");
+      if (how === "keep") await setState(b.botId, "stopping", false);
+      if (how === "access")
+        await db
+          .update(users)
+          .set({ role: "user", signalResearch: false })
+          .where(eq(users.id, b.userId));
+      await ticks(e, 1);
+      const id = await addCommand(b, t.id, "close", 1);
+      await ticks(e, 1);
+      const close = gw.received.find((o) => o.tag === `ns:${t.id}:close:1`);
+      expect(close, how).toMatchObject({ type: "market", reduceOnly: true, timeInForce: "IOC" });
+      expect((await commandRow(id))?.status).toBe("applying");
+      await e.onFill(
+        b.accountId,
+        close?.clOrdID ?? "",
+        close?.quantity ?? "0",
+        "101",
+        "0.1",
+        clock,
+      );
+      await e.onOrderClosed(b.accountId, close?.clOrdID ?? "", "filled", clock);
+      expect((await commandRow(id))?.status, how).toBe("applied");
+      expect(await tradeOf(b.botId, t.id)).toMatchObject({
+        status: "closed",
+        closeReason: "MANUAL",
+      });
+      expect(await decisionsOf(b.botId)).toContain("Closed by you");
+      expect(gw.cancelled).toEqual(expect.arrayContaining([t.tp.clOrdID, t.sl.clOrdID]));
+      await e.stop();
+      await stopNews();
+    }
+  });
+
+  it("B2: a command runs once: bell and tick together, a restart in the middle, and a command no longer queued", async () => {
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b2-once");
+    const t = await openTrade(e, gw, b);
+    const id = await addCommand(b, t.id, "close", 1);
+    clock += 1_000;
+    await Promise.all([e.tick(), e.onNewsSignalBell(), e.tick()]);
+    expect(gw.received.filter((o) => o.tag.startsWith(`ns:${t.id}:close`))).toHaveLength(1);
+    await e.stop();
+    // Engine khởi động lại khi lệnh đóng chưa khớp: không gửi lại, lệnh vẫn `applying`.
+    const e2 = newsEngine(gw, "b2-once-2");
+    await ticks(e2, 3);
+    expect(gw.received.filter((o) => o.tag.startsWith(`ns:${t.id}:close`))).toHaveLength(1);
+    expect((await commandRow(id))?.status).toBe("applying");
+    // Lệnh đã `applying` (không còn `queued`) ghi thẳng vào DB: không chạy.
+    const other = await addCommand(b, t.id, "close", 2, {}, "applying");
+    await ticks(e2, 2);
+    expect(gw.received.filter((o) => o.tag === `ns:${t.id}:close:2`)).toEqual([]);
+    expect((await commandRow(other))?.status).toBe("applying");
+    await e2.stop();
+  });
+
+  it("B2: DEC-306 for the news bot itself: alone on a market it is compared with its own ledger; shared with another bot it is not", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b2-position");
+    const t = await openTrade(e, gw, b);
+    // SoDEX có 3 thay vì 1.99 của lệnh news: lệch, chỉ bot news giữ SOL-USD trên account này.
+    gw.perpsPositions.set(SOL, { size: "3", entryPrice: "100" });
+    for (let i = 0; i < 6; i += 1) {
+      clock += 31_000;
+      await e.tick();
+    }
+    expect(await decisionsOf(b.botId)).toContain("Position doesn't match");
+    expect(gw.readsBy.filter((a) => a === b.accountId).length).toBeGreaterThan(0);
+    await e.stop();
+    await stopNews();
+    // Khớp đúng 1.99: được so (đọc vị thế) nhưng không cảnh báo, và không bị đếm hai lần (holders = 1).
+    const gw2 = new FakeGateway();
+    const b2 = await seedNews();
+    const e2 = newsEngine(gw2, "b2-position-2");
+    const t2 = await openTrade(e2, gw2, b2);
+    gw2.perpsPositions.set(SOL, { size: t2.entry.quantity, entryPrice: "100.2" });
+    for (let i = 0; i < 6; i += 1) {
+      clock += 31_000;
+      await e2.tick();
+    }
+    expect(gw2.readsBy.filter((a) => a === b2.accountId).length).toBeGreaterThan(0);
+    expect(await decisionsOf(b2.botId)).not.toContain("Position doesn't match");
+    // Bot thật khác cùng account trên SOL-USD: market dùng chung, không so cho ai.
+    const [grid] = await db
+      .insert(bots)
+      .values({
+        userId: b2.userId,
+        sodexAccountId: b2.accountId,
+        strategy: "futures_grid",
+        market: SOL,
+        engine: "perps",
+        name: "Grid",
+        state: "paused",
+      })
+      .returning();
+    gw2.perpsPositions.set(SOL, { size: "5", entryPrice: "100" });
+    for (let i = 0; i < 6; i += 1) {
+      clock += 31_000;
+      await e2.tick();
+    }
+    expect(await decisionsOf(b2.botId)).not.toContain("Position doesn't match");
+    await e2.stop();
+    await db
+      .update(bots)
+      .set({ state: "stopped" })
+      .where(eq(bots.id, grid?.id ?? ""));
+    expect(t.id).not.toBe(t2.id);
+  });
+
+  it("B2: Decisions titles name the close reason", async () => {
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b2-titles");
+    const t = await openTrade(e, gw, b);
+    await e.onFill(b.accountId, t.tp.clOrdID, t.tp.quantity, t.tp.price ?? "104", "0.1", clock);
+    await e.onOrderClosed(b.accountId, t.tp.clOrdID, "filled", clock);
+    expect(await decisionsOf(b.botId)).toContain("Closed: take profit");
+    await e.stop();
+  });
+
+  it("B2: a news fill that arrives without a runner is not written behind the strategy; once the runner is back it goes through the strategy (OCO)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b2-norunner");
+    const t = await openTrade(e, gw, b);
+    await e.stop();
+    // Account mất kết nối: engine giữ shard nhưng không có runner cho bot.
+    await db
+      .update(sodexAccounts)
+      .set({ status: "disconnected" })
+      .where(eq(sodexAccounts.id, b.accountId));
+    const e2 = newsEngine(gw, "b2-norunner-2");
+    await ticks(e2, 1);
+    await e2.onFill(b.accountId, t.tp.clOrdID, t.tp.quantity, t.tp.price ?? "104", "0.1", clock);
+    const tpRow = (await db.select().from(orders).where(eq(orders.botId, b.botId))).find(
+      (o) => o.clOrdId === t.tp.clOrdID,
+    );
+    expect(dec(tpRow?.filledSize ?? "1").toString()).toBe("0");
+    expect((await tradeOf(b.botId, t.id))?.status).toBe("open");
+    // Kết nối lại: runner nạp (chế độ quản lý); tin khớp tới lại (user stream / đối soát) thì đi qua chiến lược, đúng một lần
+    // (lệnh chưa bị ghi `filledSize` lúc không có runner nên không bị coi là đã khớp).
+    await db
+      .update(sodexAccounts)
+      .set({ status: "connected" })
+      .where(eq(sodexAccounts.id, b.accountId));
+    await ticks(e2, 1);
+    await e2.onFill(b.accountId, t.tp.clOrdID, t.tp.quantity, t.tp.price ?? "104", "0.1", clock);
+    await e2.onOrderClosed(b.accountId, t.tp.clOrdID, "filled", clock);
+    expect((await tradeOf(b.botId, t.id))?.status).toBe("closed");
+    expect(gw.cancelled).toContain(t.sl.clOrdID);
+    await e2.stop();
   });
 });
