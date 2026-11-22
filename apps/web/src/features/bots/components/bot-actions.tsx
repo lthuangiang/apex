@@ -29,7 +29,8 @@ export function BotActions({
   const t = useTranslations("bots");
   const connection = useSodexConnection();
   const keyStatus = connection.data?.connection?.apiKey?.status ?? null;
-  const { primary, more } = botActions(bot, t, keyStatus);
+  const tn = useTranslations("signalAnalysis.research.mainnet.agent");
+  const { primary, more } = botActions(bot, t, keyStatus, tn("open"));
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const menuId = useId();
