@@ -1,6 +1,6 @@
-# vTBD (sau v2.15.0)
+# vTBD (sau v2.16.0)
 
-PM đổi tên file theo tag khi người dùng gõ "release" (xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.15.0` (2026-11-21). Mục nào ghi **chưa merge** là việc đang làm: khi PR merge thì bỏ chữ đó và thêm số PR; PR không vào bản này thì xoá dòng.
+PM đổi tên file theo tag khi người dùng gõ "release" (xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.16.0` (2026-11-22). Mục nào ghi **chưa merge** là việc đang làm: khi PR merge thì bỏ chữ đó và thêm số PR; PR không vào bản này thì xoá dòng.
 
 ## Cho người dùng (English, dùng được cho GitHub Release)
 
@@ -10,27 +10,8 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-- Signal Research ra menu chính (BETA) cho vài tài khoản test: cờ `users.signal_research` (mặc định tắt, team bật ở Admin › Users, có audit), route `/signal-research` dùng lại trang Signal research của team (người dùng test chỉ không thấy Claude cost), My versions (version riêng, tối đa 3 chạy mỗi chủ, chỉ chủ thấy, không tính vào cổng của team), người dùng test chấm nhãn được nhưng cổng chỉ tính nhãn team (#423, DEC-361).
-- Signal research: đổi version Rules / reader không còn ẩn dữ liệu cũ. Feed và phễu theo khoảng Last 24 h / 7 days / 30 days gồm mọi version (chip "Rules vN", dòng ngăn cách, câu tóm tắt), trace bài cũ đọc theo luật của bài (banner, "counted under vN"), Paper trades có Current rules / All rules; Is it working? giữ nguyên (#413, DEC-357).
-- Idempotency-Key: jobs đánh dấu dòng đang chạy quá `IDEMPOTENCY_ABANDONED_AFTER_MIN` phút (mặc định 10) là `failed_unknown` / `ABANDONED`; request lặp lại nhận 409 `unknown`, không chạy lại, không xoá key (#319, DEC-356).
-- Backtest / Review this run / What-if: kết quả đổi khi stop của sàn và lệnh thoát khớp cùng nến (#412), lệnh reduce-only không còn đảo chiều vị thế.
-- CI: test của package phụ thuộc chạy lại khi dependency đổi (bỏ `turbo run test --only`; ví dụ đổi `@drift/strategies` thì chạy lại test engine / backtest), PR chỉ đổi docs vẫn dùng cache (#414, DEC-358).
-- Signal research: Claude reader v5 (`news-classifier-v5`): chỉ thêm 2 ví dụ ngược trong prompt (cổ phiếu lên sàn không phải `listing`, quỹ mua cổ phiếu Strategy không phải `treasury_buy`), Rules giữ `news-v4`; hộp "What Claude reader vN reads differently" theo reader hiện tại, thêm dòng cho v5; nhãn và lệnh của reader mới đếm lại từ 0 (#399, DEC-364). **Chưa merge.**
-- Signal research: random baseline phát lại nến từ phút sau lúc vào lệnh thật (`opened_clock_at`), không từ đầu chu kỳ; lệnh cũ không có cột này giữ `opened_at`, baseline đã lưu không tính lại (#405, DEC-354). **Chưa merge.**
-- Retention 45 ngày của scheduler bỏ thêm `bot_events.payload.quote` (snapshot báo giá Market Making, DEC-312); dòng Decisions và phần còn lại của payload giữ nguyên. Lượt đầu tự tạo index `bot_events_quote_idx` bằng CONCURRENTLY, không cần bước tay (#259, DEC-TBD, DEPLOY 2.14). **Chưa merge.**
-- Signal research: random baseline phát lại nến từ phút sau lúc vào lệnh thật (`opened_clock_at`), không từ đầu chu kỳ; lệnh cũ không có cột này giữ `opened_at`, baseline đã lưu không tính lại (#405, DEC-354).
-- Retention 45 ngày của scheduler bỏ thêm `bot_events.payload.quote` (snapshot báo giá Market Making, DEC-312); dòng Decisions và phần còn lại của payload giữ nguyên. Lượt đầu tự tạo index `bot_events_quote_idx` bằng CONCURRENTLY, không cần bước tay (#259, DEC-363, DEPLOY 2.14).
-- Engine: bước `clock` (nhịp đồng hồ của Volume Farm, Market Making, TWAP, Recurring Buy, Rebalancing, Adaptive DCA, chụp số dư bot paper) chạy song song theo account, tối đa `ENGINE_CLOCK_CONCURRENCY` bot cùng lúc (mặc định 4); bot cùng account vẫn lần lượt; lỗi của một bot không còn bỏ nhịp của các bot khác trong shard; đọc sổ lệnh / nến của một market dùng chung một lần đọc (#224, DEC-366). **Chưa merge.**
-- Engine A của bot `news_signal` mainnet (#419 PR 5): giao tín hiệu `news_signals` cho bot (mỗi vòng và theo chuông NATS `sr.signal.new`), ghi `news_signal_deliveries` / `news_signal_trades` cùng state trước khi gửi lệnh, lệnh vào limit IOC ≤ 200 USDC sau khi SoDEX xác nhận 1× isolated, `ACCOUNT_MARKET_BUSY` tính cả bot khác của account, lý do mới `LEVERAGE_NOT_SET`. Cùng công tắc `SIGNAL_NEWS_BOTS_ENABLED` (mặc định tắt; giữ tắt tới khi có engine B) (DEC-368, DEPLOY 2.19). **Chưa merge.**
-- Engine B1 của bot `news_signal` mainnet: bot còn lệnh mở luôn được quản lý (pause, Stop-Keep, chủ mất quyền, công tắc tắt): không mở lệnh mới nhưng giữ OCO / max hold / Stop; Start → Running; Pause / Resume; Stop Keep / Close all (bỏ cuộc thì giữ `stopping` kèm Needs attention); mã `ACCESS_OFF` / `NEWS_ACCESS_OFF` / `NEWS_ORDER_INVALID`. Công tắc `SIGNAL_NEWS_BOTS_ENABLED` vẫn tắt tới khi có B2 (DEC-369, DEPLOY 2.19). **Chưa merge.**
-- Engine B2 của bot `news_signal` mainnet: lệnh Edit TP/SL / Close now của người dùng (`queued → applying → applied | rejected`, `unknown` khi đối soát bỏ cuộc kèm Needs attention), chạy ở mọi trạng thái quản lý kể cả công tắc tắt; so vị thế của chính bot news với SoDEX (DEC-306); câu Decisions "Closed: …" ghi rõ lý do; nhãn lý do đóng cho lệnh bị chặn trên bảng Mainnet trades (DEC-370, DEPLOY 2.19). **Chưa merge.**
-- Engine: lệnh `unknown` đã bỏ cuộc chỉ được thử lại khi còn mốc xác nhận và bot còn runner (bot news ở chế độ quản lý vẫn được tính); nhịp thử lại trong bộ nhớ được dọn mỗi vòng; Decisions của lệnh news đóng vì lý do chưa có câu riêng hiện "Closed" (#437, DEC-371). **Chưa merge.**
-- Engine: TP đang mở của bot `news_signal` được đối soát với SoDEX tối đa một lần mỗi phút, nên tin khớp TP rớt khỏi user stream vẫn được bắt lại (SL bị huỷ, lệnh news đóng); thêm tối đa 1 lần tra / phút / lệnh news đang mở, trong ngân sách DEC-310 (#449, DEC-372). **Chưa merge.**
+Chưa có thay đổi.
 
-**Migration (chạy khi deploy):** `0057_sr_articles_collected_idx` (index `signal_articles(collected_at)`, #413); `0058_sr_menu_beta` (`users.signal_research`, `signal_bot_versions.owner_user_id` + trigger trần 3 version theo chủ, `signal_classification_labels.labeler`; #423); `0059_news_signal` (bảng `news_signals` bất biến, trigger chặn sửa / xoá; `news_signal_deliveries`, `news_signal_trades`, `news_signal_commands`; cột `bots.signal_version_id`; chỉ thêm bảng / cột, chưa có code ghi; #419 PR 2, **chưa merge**).
+**Migration (chạy khi deploy):** không có.
 
-**Bật Signal Research cho tài khoản test (#423):** sau deploy, team vào Admin › Users, cột **Signal Research**, bấm **Turn on** ở dòng của tài khoản đó (ghi audit `admin.signal_research`). Người đó tải lại trang sẽ thấy mục Signal Research · BETA ngay sau AI Desk. Tắt bằng **Turn off**: mục biến mất, route trả Not found, API trả 403 ngay, version đang chạy của họ tự pause (audit `signal_research_disabled`). Bật lại không tự resume; người đó tự Resume từng version.
-
-**Biến môi trường mới:** `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, tuỳ chọn, mặc định 10; DEPLOY mục 2.17); `SIGNAL_NEWS_PUBLISH_ENABLED` (scheduler, mặc định `false`; ghi `news_signals` và phát NATS `sr.signal.new` cho bot `news_signal` mainnet, #419 PR 4, **chưa merge**; DEPLOY mục 2.16).
-**Biến môi trường mới:** `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, tuỳ chọn, mặc định 10; DEPLOY mục 2.17); `ENGINE_CLOCK_CONCURRENCY` (engine, tuỳ chọn, 1–8, mặc định 4; DEPLOY mục 2.18).
-**Biến môi trường mới:** `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, tuỳ chọn, mặc định 10; DEPLOY mục 2.17); `SIGNAL_NEWS_BOTS_ENABLED` (api và engine, mặc định `false`; chốt chặn bot `news_signal` mainnet: tắt thì api trả 409 `FEATURE_NOT_READY` cho tạo / Start / Resume và engine không nạp bot `news_signal`; #420, engine A #419 **chưa merge**; DEPLOY mục 2.19).
+**Biến môi trường mới:** không có.
