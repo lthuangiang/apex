@@ -26,6 +26,8 @@ const BOT_REASONS = [
   // Chủ bot mất quyền Signal Research / công tắc tắt: bot chỉ quản lý lệnh đang mở (#419 engine B1, nhãn PM duyệt).
   "ACCESS_OFF",
   "BELOW_MIN_ORDER_SIZE",
+  // #458: SL nằm sau giá thanh lý ước tính ở đòn bẩy của bot. Tín hiệu không kèm số đòn bẩy nên dùng câu không số.
+  "SL_BEYOND_LIQUIDATION",
 ] as const;
 type BotReason = (typeof BOT_REASONS)[number];
 const isBotReason = (r: string): r is BotReason => (BOT_REASONS as readonly string[]).includes(r);

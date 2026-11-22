@@ -8,7 +8,7 @@ import { clock } from "../format";
 import { priceText } from "../research/format";
 import { Na } from "../research/ui";
 
-import { useNewsCommand, useNewsTrades } from "./api";
+import { useNewsCommand, useNewsTrades, type MainnetTrade } from "./api";
 import { CloseTradeDialog, EditTpslDialog } from "./dialogs";
 import { useMainnetErrorText } from "./text";
 
@@ -50,12 +50,21 @@ export function MainnetTrades({ botId, tz }: { botId: string; tz: string }) {
   const sideOf = (x: NewsTrade) => tn(`sides.${x.side}`);
   const label = (x: NewsTrade) => t("market", { market: baseOf(x.market), side: sideOf(x) });
 
-  const reason = (x: NewsTrade) =>
-    x.closeReason !== null && (CLOSE_REASONS as readonly string[]).includes(x.closeReason)
+  const reason = (x: MainnetTrade) => {
+    // #458: mức đòn bẩy lúc vào (trường của lệnh); lệnh cũ không có số thì dùng câu không số.
+    if (x.closeReason === "LEVERAGE_NOT_SET" && x.leverage != null)
+      return t("reasonsLev.LEVERAGE_NOT_SET", { lev: x.leverage });
+    return x.closeReason !== null && (CLOSE_REASONS as readonly string[]).includes(x.closeReason)
       ? t(`reasons.${x.closeReason as (typeof CLOSE_REASONS)[number]}`)
       : t("reasons.other");
+  };
+  /** "150 USDC · 5×" (#458); không có đòn bẩy của lệnh thì chỉ size. */
+  const size = (x: MainnetTrade) =>
+    x.leverage == null
+      ? t("sizeOnly", { size: x.sizeUsdc })
+      : t("size", { size: x.sizeUsdc, lev: x.leverage });
 
-  const actions = (x: NewsTrade) => {
+  const actions = (x: MainnetTrade) => {
     if (x.status === "closed") return <span className="text-muted">{reason(x)}</span>;
     // Trạng thái lấy từ backend: lệnh đang đóng hoặc command chưa xong thì chỉ hiện nhãn chuyển tiếp.
     if (x.status === "closing" || x.pendingCommand?.kind === "close")
@@ -153,7 +162,10 @@ export function MainnetTrades({ botId, tz }: { botId: string; tz: string }) {
             {q.data.items.map((x) => (
               <tr key={x.id}>
                 <td className={cell}>{clock(x.openedAt, tz, false)}</td>
-                <td className={cell}>{label(x)}</td>
+                <td className={cell}>
+                  <span className="block">{label(x)}</span>
+                  <span className="block text-xs text-muted tabular-nums">{size(x)}</span>
+                </td>
                 <td className={`${cell} text-right`}>{price(x.entryAvgPrice)}</td>
                 <td className={`${cell} text-right`}>{price(x.tpPrice)}</td>
                 <td className={`${cell} text-right`}>{price(x.slPrice)}</td>

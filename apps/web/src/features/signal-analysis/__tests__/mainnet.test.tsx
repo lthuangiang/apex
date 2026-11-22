@@ -44,7 +44,9 @@ const state = vi.hoisted(
       string,
       { code: ErrorCode | "NETWORK"; status: number; details?: Record<string, unknown> }
     >;
-  } => ({ calls: [], bots: [], trades: [], signals: [], fail: {} }),
+    /** Config của version đang chạy của bot; null = CONFIG. */
+    config: Record<string, unknown> | null;
+  } => ({ calls: [], bots: [], trades: [], signals: [], fail: {}, config: null }),
 );
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -67,7 +69,11 @@ vi.mock("@/lib/api", async (importOriginal) => {
       if (p.endsWith("/signals")) return Promise.resolve(schema.parse({ items: state.signals }));
       if (p.endsWith(`/bots/${BOT_ID}`))
         return Promise.resolve(
-          schema.parse({ ...BOT_DETAIL, bot: bot(), versions: [{ ...VERSION_ROW }] }),
+          schema.parse({
+            ...BOT_DETAIL,
+            bot: bot(),
+            versions: [{ ...VERSION_ROW, config: state.config ?? CONFIG }],
+          }),
         );
       if (method === "POST" && p.endsWith("/close"))
         return Promise.resolve(schema.parse(command("close", null, null)));
@@ -191,6 +197,7 @@ beforeEach(() => {
   state.trades = [trade()];
   state.signals = [];
   state.fail = {};
+  state.config = null;
 });
 afterEach(() => {
   cleanup();
@@ -371,11 +378,12 @@ describe("Mainnet trades", () => {
     expect(M.trades.reasons.NEWS_CAP_EXCEEDED).toBe("Entry blocked by a safety check");
     expect(M.trades.reasons.NEWS_ACCESS_OFF).toBe("Signal Research access is off");
     expect(M.trades.reasons.BOT_NOT_RUNNING).toBe("Bot was not running");
-    expect(M.trades.reasons.LEVERAGE_NOT_SET).toBe("Leverage couldn’t be set to 1×");
+    // #458: lệnh không kèm đòn bẩy (lệnh cũ) dùng câu không số; có số thì "… to {lev}×" (test ở leverage.test.tsx).
+    expect(M.trades.reasons.LEVERAGE_NOT_SET).toBe("Leverage couldn’t be set");
     expect(within(table).getAllByText("Entry blocked by a safety check")).toHaveLength(2);
     expect(within(table).getByText("Signal Research access is off")).toBeInTheDocument();
     expect(within(table).getByText("Bot was not running")).toBeInTheDocument();
-    expect(within(table).getByText("Leverage couldn’t be set to 1×")).toBeInTheDocument();
+    expect(within(table).getByText("Leverage couldn’t be set")).toBeInTheDocument();
     expect(within(table).queryByText(M.trades.reasons.other)).toBeNull();
   });
 
@@ -518,5 +526,159 @@ describe("Start bot from a version (version editor, bot fields)", () => {
       expect(state.calls.filter((c) => c.path.endsWith("/actions/start"))).toHaveLength(2);
     });
     expect(creates()).toHaveLength(1);
+  });
+});
+
+describe("leverage 1 / 5 / 10 / 20 (#458)", () => {
+  const found = VERSIONS.items.find((v) => v.id === BASELINE_ID);
+  if (found === undefined) throw new Error("fixture");
+  const base = found;
+  const E = M.editor;
+
+  async function openEditor() {
+    const user = userEvent.setup();
+    wrap(
+      <NewsBotEditor
+        from={base}
+        versions={VERSIONS.items}
+        onClose={() => undefined}
+        onStarted={() => undefined}
+      />,
+    );
+    const dialog = await screen.findByRole("dialog");
+    const size = within(dialog)
+      .getAllByRole("textbox")
+      .find((x) => (x as HTMLInputElement).value === "500");
+    if (size === undefined) throw new Error("size");
+    await user.clear(size);
+    await user.type(size, "150");
+    return { user, dialog };
+  }
+
+  it("picks 1× / 5× / 10× / 20×; margin follows size ÷ leverage; the liquidation note shows above 1×", async () => {
+    const { user, dialog } = await openEditor();
+    const group = within(dialog).getByRole("radiogroup", { name: E.leverage });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios.map((r) => r.textContent)).toEqual(["1×", "5×", "10×", "20×"]);
+    expect(within(group).getByRole("radio", { name: "1×" })).toBeChecked();
+    expect(within(dialog).getByText(E.leverageHelp)).toBeInTheDocument();
+    expect(within(dialog).getByText(E.size)).toBeInTheDocument();
+    const calc = within(dialog).getByTestId("margin-calc");
+    expect(calc).toHaveTextContent("Margin per trade (150 ÷ 1×)150 USDC");
+    expect(within(dialog).queryByText(/a trade is skipped if its stop loss/)).toBeNull();
+
+    await user.click(within(group).getByRole("radio", { name: "5×" }));
+    expect(within(group).getByRole("radio", { name: "5×" })).toBeChecked();
+    expect(calc).toHaveTextContent("Margin per trade (150 ÷ 5×)30 USDC");
+    const maxOpen = within(dialog).getByRole("textbox", { name: /Max open trades/ });
+    await user.clear(maxOpen);
+    await user.type(maxOpen, "2");
+    expect(calc).toHaveTextContent("Margin needed for 2 open trades60 USDC");
+    expect(
+      within(dialog).getByText(
+        "At 5×, a trade is skipped if its stop loss would sit beyond the liquidation price.",
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(within(group).getByRole("radio", { name: "20×" }));
+    expect(calc).toHaveTextContent("Margin per trade (150 ÷ 20×)7.5 USDC");
+    expect(calc).toHaveTextContent("15 USDC");
+    const r = await axe.run(dialog, { rules: { "color-contrast": { enabled: false } } });
+    expect(r.violations.map((v) => v.id)).toEqual([]);
+  });
+
+  it("sends the picked leverage when the bot is created", async () => {
+    const { user, dialog } = await openEditor();
+    const name = within(dialog).getAllByRole("textbox")[0];
+    if (name === undefined) throw new Error("name");
+    await user.type(name, "Lev bot");
+    await user.click(
+      within(within(dialog).getByRole("radiogroup", { name: E.leverage })).getByRole("radio", {
+        name: "10×",
+      }),
+    );
+    await user.click(within(dialog).getByRole("checkbox", { name: M.dialogs.start.ack }));
+    const start = within(dialog).getAllByRole("button", { name: E.start }).at(-1);
+    if (start === undefined) throw new Error("start");
+    await user.click(start);
+    await waitFor(() => {
+      const c = state.calls.find(
+        (x) => x.method === "POST" && x.path === "/api/v1/signal-research/bots",
+      );
+      expect(c?.body).toMatchObject({ config: { sizeUsdc: "150", leverage: 10 } });
+    });
+  });
+
+  it("the config line shows the bot's leverage; an old bot without the field reads 1×", async () => {
+    const old: Record<string, unknown> = { ...CONFIG };
+    delete old.leverage;
+    state.config = old;
+    const one = bot() as BotSummary;
+    const panel = () => (
+      <MainnetPanel
+        sources={null}
+        tz="UTC"
+        modeSwitch={null}
+        bots={[one]}
+        botsLoading={false}
+        botsError={null}
+        selected={one}
+        onBot={() => undefined}
+        onHow={() => undefined}
+        onStartFromVersion={() => undefined}
+      />
+    );
+    wrap(panel());
+    expect(
+      await screen.findByText("Size 100 USDC · leverage 1× · max 3 open · max 5 new trades a day"),
+    ).toBeInTheDocument();
+    cleanup();
+    state.config = { ...CONFIG, leverage: 10 };
+    wrap(panel());
+    expect(
+      await screen.findByText("Size 100 USDC · leverage 10× · max 3 open · max 5 new trades a day"),
+    ).toBeInTheDocument();
+  });
+
+  it("Mainnet trades: size · leverage when the trade has it, size only for old trades", async () => {
+    state.trades = [
+      trade({ id: "22222222-2222-4222-8222-222222222231", sizeUsdc: "150" }),
+      {
+        ...trade({
+          id: "22222222-2222-4222-8222-222222222232",
+          sizeUsdc: "150",
+          status: "closed",
+          closedAt: NOW,
+          closeReason: "LEVERAGE_NOT_SET",
+        }),
+        leverage: 10,
+      },
+      { ...trade({ id: "22222222-2222-4222-8222-222222222233", sizeUsdc: "80" }), leverage: 5 },
+    ];
+    wrap(<MainnetTrades botId={BOT_ID} tz="UTC" />);
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("80 USDC · 5×")).toBeInTheDocument();
+    expect(within(table).getByText("150 USDC · 10×")).toBeInTheDocument();
+    expect(within(table).getByText("150 USDC")).toBeInTheDocument();
+    expect(within(table).getByText("Leverage couldn’t be set to 10×")).toBeInTheDocument();
+  });
+
+  it("Signals: SL_BEYOND_LIQUIDATION has a label, never the raw code", async () => {
+    state.signals = [
+      {
+        id: SIGNAL_ID,
+        market: "SOL-USD",
+        catalyst: "hack_exploit",
+        side: "short",
+        level: "high",
+        decidedAt: NOW,
+        expiresAt: NOW,
+        outcome: "dropped",
+        reason: "SL_BEYOND_LIQUIDATION",
+      },
+    ];
+    wrap(<Signals24h botId={BOT_ID} tz="UTC" />);
+    const list = await screen.findByRole("list");
+    expect(list).not.toHaveTextContent("SL_BEYOND_LIQUIDATION");
   });
 });
