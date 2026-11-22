@@ -2789,8 +2789,6 @@
     }
   },
   "_pendingReview": [
-    "signalAnalysis.research.page.banner.title",
-    "signalAnalysis.research.page.banner.titleShort",
     "signalAnalysis.filters.botKeys",
     "signalAnalysis.research.trace",
     "signalAnalysis.research.sources.names.claude",
@@ -7911,7 +7909,9 @@
             "NEWS_CAP_EXCEEDED": "Above the 200 USDC limit",
             "ENTRY_NOT_FILLED": "Entry not filled",
             "LEVERAGE_NOT_SET": "Leverage couldn’t be set to 1×",
-            "BELOW_MIN_ORDER_SIZE": "Below SoDEX minimum size"
+            "BELOW_MIN_ORDER_SIZE": "Below SoDEX minimum size",
+            "SAME_STORY": "Already traded this story",
+            "STORY_TOO_OLD": "Story too old to retry"
           }
         },
         "dialogs": {
