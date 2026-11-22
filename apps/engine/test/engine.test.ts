@@ -11932,9 +11932,42 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
           .lte(200),
       ).toBe(true);
       expect((await deliveries(botId)).map((d) => d.outcome)).toEqual(["accepted"]);
+      // Dòng lệnh news lưu đúng mức SoDEX đã xác nhận lúc vào (#458, cột `leverage`, migration 0060).
+      expect((await trades(botId)).map((t) => t.leverage)).toEqual([leverage]);
       await e.stop();
       await stopNews();
     }
+  });
+
+  it("#458: the leverage column is added by migration 0060; trades written before it stay null", async () => {
+    const { eq, sql } = await import("drizzle-orm");
+    const cols = await db.execute<{ data_type: string; is_nullable: string }>(
+      sql`select data_type, is_nullable from information_schema.columns where table_name = 'news_signal_trades' and column_name = 'leverage'`,
+    );
+    expect(cols.rows).toEqual([{ data_type: "smallint", is_nullable: "YES" }]);
+    const b = await seedNews();
+    const s = await signal({ storyKey: `old-${String(Math.random())}` });
+    const [row] = await db
+      .insert(newsSignalTrades)
+      .values({
+        botId: b.botId,
+        sodexAccountId: b.accountId,
+        signalId: s,
+        seq: 1,
+        market: "XRP-USD",
+        side: "long",
+        status: "open",
+        sizeUsdc: "100",
+        entryLimitPrice: "1",
+        maxHoldUntil: new Date(clock + 3_600_000),
+        openedAt: new Date(clock),
+      })
+      .returning();
+    expect(row?.leverage).toBeNull();
+    await db
+      .update(newsSignalTrades)
+      .set({ status: "closed", closedAt: new Date(clock) })
+      .where(eq(newsSignalTrades.id, row?.id ?? ""));
   });
 
   it("#458: a market whose max leverage is below the bot's gets LEVERAGE_NOT_SET without calling SoDEX; a SoDEX reject also does, without pausing", async () => {
