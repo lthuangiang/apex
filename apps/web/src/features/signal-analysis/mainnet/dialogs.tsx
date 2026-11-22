@@ -9,6 +9,8 @@ import { useMarketLast } from "@/lib/markets";
 
 import { priceText } from "../research/format";
 
+import { NewsStartChecks } from "./start-checks";
+
 // Hộp thoại của phần Mainnet (#421, mockup docs/mockups/signal-research/mainnet-team-test.html, mục 3). Dùng lại
 // `ConfirmDialog` như Stop của Trading Agent (PM chốt: Close now giống Stop). Không đóng giữa chừng khi đang chờ backend.
 
@@ -303,6 +305,7 @@ export function StartNewsBotDialog({
         />
         {t("start.ack")}
       </label>
+      <NewsStartChecks botId={bot.id} failure={error} />
     </ConfirmDialog>
   );
 }

@@ -8,7 +8,7 @@ import {
   type BotSummary,
   type ResearchSource,
 } from "@drift/shared";
-import { Button, SegmentedControl, StatusPill } from "@drift/ui";
+import { Button, SegmentedControl, Select, StatusPill } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useId, useState, type ReactNode } from "react";
@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import { useSodexConnection, useTwoFactorNeeded } from "@/lib/queries";
 
 import { DEFAULT_HOW_TAB, type HowTab } from "../research/how-it-works";
+import type { ResearchMode } from "../research/mode-memory";
 import { DOT, useSourceLine } from "../research/summary-strip";
 import { Na, Pill } from "../research/ui";
 
@@ -34,7 +35,7 @@ import { useMainnetErrorText } from "./text";
 // Mainnet), ô Bot (My mainnet bots), dòng bot có Pause / Stop… (trạng thái từ backend), khung nhắc cổng + cấu hình bot +
 // "Start bot from a version". Không phụ thuộc layout admin: dùng được ở tab Signal Analysis và trang Signal Research.
 
-export type ResearchMode = "paper" | "mainnet";
+export type { ResearchMode };
 
 /**
  * Ô "Bots" với hai nút Paper / Mainnet (chỉ đổi chế độ xem; không bao giờ cộng chung paper và mainnet). #454: tab đang chọn
@@ -187,13 +188,13 @@ export function MainnetPanel({
   const picker = botsLoading ? (
     <span className="text-sm text-muted">{t("loading")}</span>
   ) : (
-    <select
+    <Select
       id={`${id}-bot`}
       value={selected?.id ?? ""}
       onChange={(e) => {
         onBot(e.target.value);
       }}
-      className="min-h-11 w-full min-w-0 cursor-pointer rounded-control border-2 border-accent bg-surface px-3 text-sm font-extrabold text-ink md:w-auto md:min-w-[190px]"
+      className="w-full md:w-auto md:min-w-[190px]"
     >
       {bots.length === 0 ? <option value="">{t("noBots")}</option> : null}
       <optgroup label={t("botGroup")}>
@@ -203,7 +204,7 @@ export function MainnetPanel({
           </option>
         ))}
       </optgroup>
-    </select>
+    </Select>
   );
 
   const pill =

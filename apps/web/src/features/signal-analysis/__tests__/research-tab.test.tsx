@@ -64,12 +64,14 @@ const state = vi.hoisted(
     classifiers: unknown;
     summary: unknown;
     versions: unknown;
+    bots: unknown[];
   } => ({
     mode: "ok",
     paths: [],
     classifiers: null,
     summary: null,
     versions: null,
+    bots: [],
   }),
 );
 
@@ -169,7 +171,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
         return Promise.resolve(schema.parse(state.classifiers ?? CLASSIFIERS));
       if (p.endsWith("/signal-research/markets")) return Promise.resolve(schema.parse(MARKETS));
       // #421: bot mainnet của người xem (phần Mainnet có test riêng ở mainnet.test.tsx).
-      if (p === "/api/v1/signal-research/bots") return Promise.resolve(schema.parse({ items: [] }));
+      if (p === "/api/v1/signal-research/bots")
+        return Promise.resolve(schema.parse({ items: state.bots }));
       // #375: độ trễ theo chặng có test riêng (news-trace.test.tsx, latency.test.tsx); ở đây cửa sổ chưa đo được gì.
       if (p.endsWith("/signal-research/latency"))
         return Promise.resolve(schema.parse(LATENCY_EMPTY));
@@ -295,11 +298,15 @@ beforeEach(() => {
   state.classifiers = null;
   state.summary = null;
   state.versions = null;
+  state.bots = [];
   intlErrors.length = 0;
   window.history.replaceState(null, "", "/admin/signal-analysis?tab=research");
+  // #457: chế độ Paper / Mainnet được nhớ trong localStorage; mỗi test bắt đầu như người xem mới.
+  window.localStorage.clear();
 });
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 async function noViolations() {
@@ -810,6 +817,86 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
     );
     expect(window.location.search).not.toContain("bots=");
     expect(await screen.findByRole("region", { name: "Summary" })).toBeInTheDocument();
+  });
+
+  it("#457: picking Mainnet is remembered; opening the page again without ?bots= reopens Mainnet", async () => {
+    const M = messages.signalAnalysis.research.mainnet;
+    const view = wrap();
+    await picker();
+    await userEvent.click(screen.getByRole("radio", { name: M.mode.mainnet }));
+    expect(window.localStorage.getItem("sr:mode")).toBe("mainnet");
+    view.unmount();
+    // Bấm menu Signal Research: URL không có ?bots=.
+    window.history.replaceState(null, "", "/admin/signal-analysis?tab=research");
+    wrap();
+    expect(await screen.findByRole("radio", { name: M.mode.mainnet })).toBeChecked();
+    expect(await screen.findByRole("button", { name: M.count.start })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: M.mode.paper }));
+    expect(window.localStorage.getItem("sr:mode")).toBe("paper");
+  });
+
+  it("#457: ?bots= wins over the remembered mode", async () => {
+    const M = messages.signalAnalysis.research.mainnet;
+    window.localStorage.setItem("sr:mode", "mainnet");
+    window.history.replaceState(null, "", "/admin/signal-analysis?tab=research&bots=paper");
+    wrap();
+    expect(await screen.findByRole("radio", { name: M.mode.paper })).toBeChecked();
+    expect(await screen.findByRole("region", { name: "Summary" })).toBeInTheDocument();
+  });
+
+  it("#457: storage that throws or holds junk opens Paper and the page still works", async () => {
+    const M = messages.signalAnalysis.research.mainnet;
+    window.localStorage.setItem("sr:mode", "garbage");
+    const view = wrap();
+    expect(await screen.findByRole("radio", { name: M.mode.paper })).toBeChecked();
+    view.unmount();
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    wrap();
+    expect(await screen.findByRole("radio", { name: M.mode.paper })).toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: M.mode.mainnet }));
+    expect(screen.getByRole("radio", { name: M.mode.mainnet })).toBeChecked();
+    expect(window.location.search).toContain("bots=mainnet");
+  });
+
+  it("#457: the picked mainnet bot is remembered; a remembered bot that is gone falls back to the first", async () => {
+    const M = messages.signalAnalysis.research.mainnet;
+    const mk = (id: string, name: string) => ({
+      id,
+      name,
+      strategy: "news_signal",
+      market: "",
+      engine: "perps",
+      state: "running",
+      reasonCode: null,
+      needsAttention: false,
+      activeVersion: 1,
+      netPnl: null,
+      createdAt: "2026-11-22T10:00:00.000Z",
+      updatedAt: "2026-11-22T10:00:00.000Z",
+    });
+    const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    state.bots = [mk(A, "News · A"), mk(B, "News · B")];
+    window.localStorage.setItem("sr:mode", "mainnet");
+    window.localStorage.setItem("sr:mainnetBot", "cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+    const view = wrap();
+    const sel = await screen.findByRole("combobox", { name: M.bot });
+    await waitFor(() => {
+      expect(sel).toHaveValue(A);
+    });
+    await userEvent.selectOptions(sel, B);
+    expect(window.localStorage.getItem("sr:mainnetBot")).toBe(B);
+    view.unmount();
+    wrap();
+    const again = await screen.findByRole("combobox", { name: M.bot });
+    await waitFor(() => {
+      expect(again).toHaveValue(B);
+    });
   });
 
   it("summary strip: one line per running / paused version (max 3), the picked one marked, a plain-words label row", async () => {

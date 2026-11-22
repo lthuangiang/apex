@@ -22,6 +22,7 @@ import { BotsLabelsProvider } from "./bots-labels-context";
 import { HowItWorksDrawer, HowItWorksProvider, type HowTab } from "./how-it-works";
 import { IsItWorking } from "./is-it-working";
 import { LABELS_ID } from "./labels";
+import { BOT_KEY, loadMode, MODE_KEY, pickBot, readStored, writeStored } from "./mode-memory";
 import { NewsTrace, type TraceRequest } from "./news-trace";
 import { SummaryStrip } from "./summary-strip";
 import { ResearchTrades } from "./trades";
@@ -55,16 +56,15 @@ function useVersionParam(): [string | null, (id: string | null) => void] {
   return [id, set];
 }
 
-/** #421: chế độ xem ở query `?bots=mainnet` (chia sẻ / tải lại giữ nguyên); không có = Paper. */
+/**
+ * #421: chế độ xem ở query `?bots=mainnet` (chia sẻ / tải lại giữ nguyên). #457: không có query thì mở lại chế độ lần trước
+ * của người xem này (localStorage `sr:mode`), không có nữa thì Paper; đổi tab thì ghi lại (mode-memory.ts).
+ */
 function useModeParam(): [ResearchMode, (m: ResearchMode) => void] {
-  const [mode, setMode] = useState<ResearchMode>(() =>
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("bots") === "mainnet"
-      ? "mainnet"
-      : "paper",
-  );
+  const [mode, setMode] = useState<ResearchMode>(loadMode);
   const set = useCallback((m: ResearchMode) => {
     setMode(m);
+    writeStored(MODE_KEY, m);
     const url = new URL(window.location.href);
     if (m === "paper") url.searchParams.delete("bots");
     else url.searchParams.set("bots", m);
@@ -88,11 +88,16 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
   const [mode, setMode] = useModeParam();
   const mainnet = mode === "mainnet";
   const newsBots = useNewsBots(mainnet);
-  const [botId, setBotId] = useState<string | null>(null);
+  // #457: bot Mainnet đã chọn lần trước (localStorage `sr:mainnetBot`); không còn trong danh sách thì bot đầu tiên.
+  const [botId, setBotIdState] = useState<string | null>(() => readStored(BOT_KEY));
+  const setBotId = useCallback((id: string) => {
+    setBotIdState(id);
+    writeStored(BOT_KEY, id);
+  }, []);
   const [editor, setEditor] = useState(false);
   const mainnetError = useMainnetErrorText();
   const botList = newsBots.data?.items ?? [];
-  const selectedBot = botList.find((b) => b.id === botId) ?? botList[0] ?? null;
+  const selectedBot = pickBot(botList, botId);
   const versions = useResearchVersions();
   const classifiers = useResearchClassifiers();
   const items = versions.data?.items;
