@@ -361,7 +361,7 @@ describe("Mainnet trades", () => {
 });
 
 describe("Signals in the last 24 h", () => {
-  it("uses the funnel reason labels, and the raw code when the funnel has none", async () => {
+  it("uses the funnel reason labels, the bot reason labels, and the raw code only when neither has one", async () => {
     state.signals = [
       {
         id: SIGNAL_ID,
@@ -385,6 +385,17 @@ describe("Signals in the last 24 h", () => {
         outcome: "dropped",
         reason: "ASSET_NOT_IN_BOT",
       },
+      {
+        id: "77777777-7777-4777-8777-777777777777",
+        market: "ETH-USD",
+        catalyst: "listing",
+        side: "long",
+        level: "low",
+        decidedAt: NOW,
+        expiresAt: NOW,
+        outcome: "dropped",
+        reason: "SOME_FUTURE_CODE",
+      },
     ];
     wrap(<Signals24h botId={BOT_ID} tz="UTC" />);
     const list = await screen.findByRole("list");
@@ -392,7 +403,13 @@ describe("Signals in the last 24 h", () => {
       (messages.signalAnalysis.research.trace.reasonLabels as Record<string, string>).levelTooLow ??
       "";
     expect(within(list).getByText(new RegExp(funnelLabel))).toBeInTheDocument();
-    expect(within(list).getByText(/ASSET_NOT_IN_BOT/)).toBeInTheDocument();
+    // Nhãn riêng của bot (PM duyệt ở review #445): không hiện mã thô.
+    expect(
+      within(list).getByText(new RegExp(M.signals.reasons.ASSET_NOT_IN_BOT)),
+    ).toBeInTheDocument();
+    expect(within(list).queryByText(/ASSET_NOT_IN_BOT/)).not.toBeInTheDocument();
+    // Mã chưa có nhãn nào: fallback "Skipped ({code})".
+    expect(within(list).getByText(/SOME_FUTURE_CODE/)).toBeInTheDocument();
   });
 });
 

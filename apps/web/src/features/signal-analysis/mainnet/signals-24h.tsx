@@ -11,7 +11,22 @@ import { baseOf } from "./mainnet-trades";
 import { funnelReasonOf, useMainnetErrorText } from "./text";
 
 // Khối "Signals in the last 24 h" (#421, PM chốt điểm 3): tín hiệu dùng chung và kết quả trên bot đang chọn. Lý do bị bỏ
-// dùng nhãn của phễu (`trace.reasonLabels`); mã chưa có nhãn ở phễu hiện nguyên mã. Phễu theo bot: #444.
+// dùng nhãn của phễu (`trace.reasonLabels`), rồi nhãn riêng của bot (PM duyệt ở review #445); mã chưa có nhãn nào hiện nguyên mã. Phễu theo bot: #444.
+
+/** Lý do riêng của bot mainnet (PM duyệt nhãn ở review #445); mã khác không có trong phễu thì hiện nguyên mã. */
+const BOT_REASONS = [
+  "ASSET_NOT_IN_BOT",
+  "SIGNAL_STALE",
+  "BOT_PAUSED",
+  "MISSED_WHILE_PAUSED",
+  "ACCOUNT_MARKET_BUSY",
+  "NEWS_CAP_EXCEEDED",
+  "ENTRY_NOT_FILLED",
+  "LEVERAGE_NOT_SET",
+  "BELOW_MIN_ORDER_SIZE",
+] as const;
+type BotReason = (typeof BOT_REASONS)[number];
+const isBotReason = (r: string): r is BotReason => (BOT_REASONS as readonly string[]).includes(r);
 
 const isCatalyst = (c: string): c is SignalCatalyst =>
   (SIGNAL_CATALYSTS as readonly string[]).includes(c);
@@ -28,11 +43,14 @@ export function Signals24h({ botId, tz }: { botId: string; tz: string }) {
     if (s.outcome === "accepted")
       return <span className="font-semibold text-ink">{t("accepted")}</span>;
     const key = s.reason === null ? null : funnelReasonOf(s.reason);
+    const own = s.reason !== null && isBotReason(s.reason) ? s.reason : null;
     return (
       <span className="text-ink-2">
         {key !== null
           ? t("dropped", { reason: tn(`trace.reasonLabels.${key}`) })
-          : t("droppedCode", { code: s.reason ?? "" })}
+          : own !== null
+            ? t("dropped", { reason: t(`reasons.${own}`) })
+            : t("droppedCode", { code: s.reason ?? "" })}
       </span>
     );
   };

@@ -2789,7 +2789,6 @@
     }
   },
   "_pendingReview": [
-    "signalAnalysis.research.mainnet",
     "signalAnalysis.research.page.banner.title",
     "signalAnalysis.research.page.banner.titleShort",
     "signalAnalysis.filters.botKeys",
@@ -7888,7 +7887,7 @@
             "MAX_HOLD": "Max hold",
             "OPPOSITE_NEWS": "Closed on opposite news",
             "MANUAL": "Closed by you",
-            "STOP": "Closed on stop",
+            "STOP": "Closed when you stopped the bot",
             "SL_REJECTED": "Closed: stop loss rejected",
             "ENTRY_NOT_FILLED": "Entry not filled",
             "other": "Closed"
@@ -7902,7 +7901,18 @@
           "accepted": "Traded",
           "dropped": "Skipped: {reason}",
           "droppedCode": "Skipped ({code})",
-          "notReceived": "Not received by this bot"
+          "notReceived": "Not received by this bot",
+          "reasons": {
+            "ASSET_NOT_IN_BOT": "Market not in this bot",
+            "SIGNAL_STALE": "Signal too old",
+            "BOT_PAUSED": "Bot was paused",
+            "MISSED_WHILE_PAUSED": "Arrived while paused",
+            "ACCOUNT_MARKET_BUSY": "Another bot uses this market",
+            "NEWS_CAP_EXCEEDED": "Above the 200 USDC limit",
+            "ENTRY_NOT_FILLED": "Entry not filled",
+            "LEVERAGE_NOT_SET": "Leverage couldn’t be set to 1×",
+            "BELOW_MIN_ORDER_SIZE": "Below SoDEX minimum size"
+          }
         },
         "dialogs": {
           "consequences": "What happens",
