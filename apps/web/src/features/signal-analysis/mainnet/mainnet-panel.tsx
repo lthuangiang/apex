@@ -11,7 +11,7 @@ import {
 import { Button, SegmentedControl, Select, StatusPill } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { useStateLabel } from "@/features/bots/components/bots-page";
 import { api } from "@/lib/api";
@@ -128,6 +128,7 @@ function useBotConfig(botId: string | null) {
 }
 
 export function MainnetPanel({
+  openSettings = false,
   sources,
   tz,
   modeSwitch,
@@ -139,6 +140,8 @@ export function MainnetPanel({
   onHow,
   onStartFromVersion,
 }: {
+  /** #470: mở sẵn Settings của bot đang chọn (link "Open in Signal Research"); chỉ mở một lần. */
+  openSettings?: boolean;
   sources: { items: readonly ResearchSource[]; now: string } | null;
   tz: string;
   modeSwitch: ReactNode;
@@ -158,6 +161,12 @@ export function MainnetPanel({
   const errorText = useMainnetErrorText();
   const id = useId();
   const [dialog, setDialog] = useState<"stop" | "start" | "settings" | null>(null);
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!openSettings || opened.current) return;
+    opened.current = true;
+    setDialog("settings");
+  }, [openSettings]);
   const [code, setCode] = useState("");
   const [needCode, setNeedCode] = useState(false);
   const twoFactorNeeded = useTwoFactorNeeded();

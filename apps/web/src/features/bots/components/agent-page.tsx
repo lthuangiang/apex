@@ -7,6 +7,7 @@ import {
   botListSchema,
   botSummarySchema,
   BotState,
+  Strategy,
   UserRole,
   type BotDetail,
 } from "@drift/shared";
@@ -23,6 +24,8 @@ import { PageHead } from "@/components/workspace";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { AskAboutThis } from "@/features/desk/components/ask-about-this";
 import { PaperChip } from "@/features/desk/components/paper-chip";
+import { NewsConfigBody, NewsStopBlock } from "@/features/signal-analysis/mainnet/agent-news";
+import { signalResearchBotHref } from "@/features/signal-analysis/research/mode-memory";
 import { api, ApiError } from "@/lib/api";
 import { useFinancialMutation } from "@/lib/financial-action";
 import { formatDateTime, formatDuration } from "@/lib/format";
@@ -141,7 +144,13 @@ export function AgentPage({ botId }: { botId?: string }) {
   // phân tích, cấu hình, export; thao tác duy nhất là Restore. Chỉ chuyển khi backend đã trả `state` (UI_REVIEW F1).
   useEffect(() => {
     if (bot === undefined) return;
-    if (bot.state === BotState.draft) router.replace(`/bots/${bot.id}/edit`);
+    // #470: bot news không có form ở Strategy Lab: Draft mở bot đó trong Signal Research.
+    if (bot.state === BotState.draft)
+      router.replace(
+        bot.strategy === Strategy.newsSignal
+          ? signalResearchBotHref(bot.id)
+          : `/bots/${bot.id}/edit`,
+      );
   }, [bot, router]);
 
   const bodyOf = (action: Action) =>
@@ -620,8 +629,14 @@ export function AgentPage({ botId }: { botId?: string }) {
                     })}
                   </span>
                 </div>
-                <ConfigList rows={configRows} />
-                {bot.state === BotState.stopped || archived ? null : (
+                {bot.strategy === Strategy.newsSignal ? (
+                  <NewsConfigBody botId={bot.id} />
+                ) : (
+                  <ConfigList rows={configRows} />
+                )}
+                {bot.strategy === Strategy.newsSignal ||
+                bot.state === BotState.stopped ||
+                archived ? null : (
                   <>
                     <Link
                       href={`/bots/${bot.id}/edit`}
@@ -768,7 +783,10 @@ export function AgentPage({ botId }: { botId?: string }) {
               </section>
             ) : null}
 
-            {can(BotCommand.stop) ? (
+            {can(BotCommand.stop) && bot.strategy === Strategy.newsSignal ? (
+              <NewsStopBlock bot={bot} title={t("stopTitle")} />
+            ) : null}
+            {can(BotCommand.stop) && bot.strategy !== Strategy.newsSignal ? (
               <section
                 aria-labelledby="stop-title"
                 className="flex flex-wrap items-center justify-between gap-4 rounded-card border border-neg-border bg-neg-soft p-5"

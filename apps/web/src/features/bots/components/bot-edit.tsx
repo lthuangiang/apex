@@ -1,6 +1,6 @@
 "use client";
 
-import { botDetailSchema, BotState, UserRole } from "@drift/shared";
+import { botDetailSchema, BotState, Strategy, UserRole } from "@drift/shared";
 import { Button, ConfirmDialog } from "@drift/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { PageHead } from "@/components/workspace";
 import { WorkspaceShell } from "@/components/workspace-shell";
+import { signalResearchBotHref } from "@/features/signal-analysis/research/mode-memory";
 import { api } from "@/lib/api";
 import { useFinancialMutation } from "@/lib/financial-action";
 import { formatDateTime } from "@/lib/format";
@@ -94,9 +95,13 @@ export function BotEdit({
   // Bot archived chỉ đọc (BD-01, DEC-263): link Edit cũ đưa về trang bot, không sửa được.
   const router = useRouter();
   const archived = bot?.state === BotState.archived;
+  // #470: Strategy Lab không có form cho bot news (`news_signal`): chuyển sang bot đó trong Signal Research (mở Settings),
+  // không render trang trống.
+  const news = bot?.strategy === Strategy.newsSignal;
   useEffect(() => {
     if (archived) router.replace(`/agent/${botId}`);
-  }, [archived, botId, router]);
+    else if (news) router.replace(signalResearchBotHref(botId));
+  }, [archived, news, botId, router]);
 
   const live = waiting !== null && active !== undefined && active.version >= waiting;
   const note = bot === undefined ? null : pendingNoteOf(bot.strategy, bot.state);
@@ -129,6 +134,7 @@ export function BotEdit({
   if (
     bot === undefined ||
     archived ||
+    news ||
     strategy === undefined ||
     active === undefined ||
     values === null ||
