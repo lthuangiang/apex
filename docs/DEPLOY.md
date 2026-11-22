@@ -367,6 +367,8 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 
 > **v2.16.0** (`docs/releases/v2.16.0.md`): migration `0057`–`0059`, đều chỉ thêm. Biến mới, đều có mặc định: `IDEMPOTENCY_ABANDONED_AFTER_MIN` (jobs, 10), `ENGINE_CLOCK_CONCURRENCY` (engine, 4; mục 2.18), `SIGNAL_NEWS_BOTS_ENABLED` (api + engine, `false`; mục 2.19), `SIGNAL_NEWS_PUBLISH_ENABLED` (scheduler, `false`). Khi deploy: `infra/deploy/build-push.sh --deploy-only v2.16.0` (pull, migrate, up). **Giữ hai công tắc Signal news `false`** tới khi người dùng tự thử một lệnh nhỏ thật (thứ tự trong `docs/releases/v2.16.0.md`). Engine khởi động lại có thể log `RATE_LIMITED` / `shard loop failed` vài giây (nhiều shard nạp market cùng lúc), tự hết. Có vấn đề ở bước clock: `ENGINE_CLOCK_CONCURRENCY=1` rồi `docker compose up -d engine`.
 
+> **v2.17.0** (`docs/releases/v2.17.0.md`): migration `0060_news_trade_leverage` (chỉ thêm cột). Không có biến môi trường mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.17.0`. Bot `news_signal` cũ chạy 1× như trước; bot mới chọn 1 / 5 / 10 / 20× (DEC-373). Sau deploy, nếu log engine có `news_signal liquidation check uses the fallback maintenance margin rate` thì market đó dùng MMR dự phòng 5%.
+
 **3. Service cần pull lại:** cả 11 app. `infra/deploy/changed-apps.sh v2.12.0 <tag mới>` trả cả 11 vì `packages/**` đổi (shared, db). `build-push.sh --deploy-only <tag>` đã pull và `up -d` hết; không cần chọn tay.
 
 **4. Thứ tự làm:**
