@@ -222,6 +222,8 @@ describe("volume maker quoting", () => {
     // Nhật ký lúc dừng cho biết lý do MAX_CYCLES (API đọc để hiện "volume target reached").
     const log = r2.actions.find((x) => x.type === "log" && x.decision === VOLUME_MAKER_STOPPED);
     expect(log?.type === "log" ? volumeMakerStopCause(log.why) : null).toBe("volume_target");
+    // Tên sản phẩm (#463), không còn "Volume Maker stopped".
+    expect(VOLUME_MAKER_STOPPED).toBe("Market Making stopped");
   });
 
   it("reads the MAX_CYCLES cause back from the stop log", () => {
