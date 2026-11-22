@@ -9,7 +9,7 @@ import { useMarketLast } from "@/lib/markets";
 
 import { priceText } from "../research/format";
 
-import { NewsStartChecks } from "./start-checks";
+import { NewsStartChecks, type MarginFormula } from "./start-checks";
 
 // Hộp thoại của phần Mainnet (#421, mockup docs/mockups/signal-research/mainnet-team-test.html, mục 3). Dùng lại
 // `ConfirmDialog` như Stop của Trading Agent (PM chốt: Close now giống Stop). Không đóng giữa chừng khi đang chờ backend.
@@ -245,6 +245,7 @@ export function EditTpslDialog({
 /** Start một bot đã có (Draft / Stopped): xác nhận tiền thật + mã 2FA khi cần (DEC-115). */
 export function StartNewsBotDialog({
   bot,
+  formula = null,
   twoFactor,
   pending,
   error,
@@ -252,6 +253,8 @@ export function StartNewsBotDialog({
   onConfirm,
 }: {
   bot: BotSummary;
+  /** #458: size × Max open ÷ đòn bẩy của config bot để ghi công thức dưới dòng margin; null = chưa đọc được config. */
+  formula?: MarginFormula | null;
   /** Ô 2FA khi đã bật mà phiên chưa được tin; null = không hỏi. */
   twoFactor: { value: string; onChange: (v: string) => void } | null;
   pending: boolean;
@@ -305,7 +308,7 @@ export function StartNewsBotDialog({
         />
         {t("start.ack")}
       </label>
-      <NewsStartChecks botId={bot.id} failure={error} />
+      <NewsStartChecks botId={bot.id} failure={error} formula={formula} />
     </ConfirmDialog>
   );
 }

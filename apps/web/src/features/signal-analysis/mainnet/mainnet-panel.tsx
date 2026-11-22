@@ -299,11 +299,16 @@ export function MainnetPanel({
     config === null
       ? null
       : config.maxNewTradesPerDay === null
-        ? t("count.configNoDay", { size: config.sizeUsdc, open: config.maxOpenTrades })
+        ? t("count.configNoDay", {
+            size: config.sizeUsdc,
+            open: config.maxOpenTrades,
+            lev: config.leverage,
+          })
         : t("count.config", {
             size: config.sizeUsdc,
             open: config.maxOpenTrades,
             day: config.maxNewTradesPerDay,
+            lev: config.leverage,
           });
 
   return (
@@ -376,6 +381,11 @@ export function MainnetPanel({
       {dialog === "start" && selected !== null ? (
         <StartNewsBotDialog
           bot={selected}
+          formula={
+            config === null
+              ? null
+              : { size: config.sizeUsdc, n: config.maxOpenTrades, lev: config.leverage }
+          }
           twoFactor={twoFactorNeeded || needCode ? { value: code, onChange: setCode } : null}
           pending={act.isPending}
           error={actError}

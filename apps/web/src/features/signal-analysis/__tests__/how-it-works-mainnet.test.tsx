@@ -112,7 +112,7 @@ describe("How it works › Overview by mode (#454)", () => {
     expect(svg).toHaveTextContent(
       "SoDEX: real orders from your account. Withdraw or transfer: never.",
     );
-    expect(svg).toHaveTextContent(`≤ ${NEWS_SIGNAL_LIVE_MAX_USDC} USDC · 1× isolated`);
+    expect(svg).toHaveTextContent(`≤ ${NEWS_SIGNAL_LIVE_MAX_USDC} USDC · up to 20×, isolated`);
     const list = within(dlg).getByTestId("hiw-mainnet-list");
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(5);
@@ -121,6 +121,11 @@ describe("How it works › Overview by mode (#454)", () => {
     expect(within(list).getAllByText("mainnet")).toHaveLength(4);
     expect(items[1]).toHaveTextContent("size at most 200 USDC");
     expect(items[2]).toHaveTextContent("Builder fee 0.01% applies to each fill.");
+    // #458: bot chọn đòn bẩy; How it works không còn ghi cứng 1×.
+    expect(items[2]).toHaveTextContent(
+      "DeskLabs sets the coin to your leverage, isolated on your SoDEX account",
+    );
+    expect(dlg).not.toHaveTextContent("1× isolated");
     expect(intlErrors).toEqual([]);
   });
 

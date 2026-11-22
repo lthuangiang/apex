@@ -18,14 +18,23 @@ import { useMainnetErrorText } from "./text";
 
 type Check = StartChecks["checks"][number];
 
+/** #458: số của config bot để ghi công thức margin (size × Max open ÷ đòn bẩy); số "needed" vẫn lấy từ API. */
+export interface MarginFormula {
+  size: string;
+  n: number;
+  lev: number;
+}
+
 const usdc = (v: string | null | undefined) =>
   v === null || v === undefined ? null : (formatMoney(v) ?? v);
 
 export function NewsStartChecks({
   botId,
   failure,
+  formula = null,
 }: {
   botId: string;
+  formula?: MarginFormula | null;
   /** Lỗi của lần Start gần nhất; đổi (khác null) thì đọc lại danh sách kiểm tra. */
   failure: string | null;
 }) {
@@ -64,11 +73,12 @@ export function NewsStartChecks({
         return t("apiKey");
       case "builder_fee":
         return tce("builderFee");
-      case "balance":
-        return t("balance", {
-          available: usdc(d.available) ?? tr("na"),
-          needed: usdc(d.needed) ?? tr("na"),
-        });
+      case "balance": {
+        const needed = usdc(d.needed) ?? tr("na");
+        // Thiếu số available: câu riêng (review #461), không chèn "Not available" vào giữa câu.
+        const a = usdc(d.available);
+        return a === null ? t("balanceNa", { needed }) : t("balance", { available: a, needed });
+      }
       case "leverage_conflict":
         return c.detail === "bot" && d.market != null && d.botName != null
           ? t("leverageBot", { market: d.market, botName: d.botName })
@@ -100,6 +110,11 @@ export function NewsStartChecks({
             label={tb(c.key, { engine: "perps" })}
             detail={c.ok ? okDetail(c) : failDetail(c)}
           />
+          {c.key === "balance" && formula !== null ? (
+            <p data-testid="margin-formula" className="m-0 pb-1 pl-9 text-xs text-muted">
+              {t("formula", { size: formula.size, n: formula.n, lev: formula.lev })}
+            </p>
+          ) : null}
           {!c.ok && (c.key === "api_key" || c.key === "builder_fee") ? (
             <Link
               href="/settings"

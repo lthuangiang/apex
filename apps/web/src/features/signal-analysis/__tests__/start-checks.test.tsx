@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import type { BotSummary, StartChecks } from "@drift/shared";
+import { baselineVersionConfig, type BotSummary, type StartChecks } from "@drift/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -41,7 +41,8 @@ const state = vi.hoisted(
     checksMode: "ok" | "pending" | "error";
     checkCalls: number;
     startFails: boolean;
-  } => ({ checks: null, checksMode: "ok", checkCalls: 0, startFails: false }),
+    config: Record<string, unknown> | null;
+  } => ({ checks: null, checksMode: "ok", checkCalls: 0, startFails: false, config: null }),
 );
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -64,6 +65,27 @@ vi.mock("@/lib/api", async (importOriginal) => {
           );
         return Promise.resolve(schema.parse(bot("starting")));
       }
+      if (p.endsWith(`/bots/${BOT_ID}`) && state.config !== null)
+        return Promise.resolve(
+          schema.parse({
+            events: [],
+            openOrders: 0,
+            serverTime: NOW,
+            recentErrors: [],
+            bot: bot(),
+            versions: [
+              {
+                id: "44444444-4444-4444-8444-444444444444",
+                version: 1,
+                config: state.config,
+                paramSource: "manual",
+                status: "active",
+                appliedAt: NOW,
+                createdAt: NOW,
+              },
+            ],
+          }),
+        );
       if (p.endsWith("/trades") || p.endsWith("/signals"))
         return Promise.resolve(schema.parse({ items: [] }));
       return Promise.reject(new real.ApiError("NOT_FOUND", 404));
@@ -145,6 +167,7 @@ beforeEach(() => {
   state.checksMode = "ok";
   state.checkCalls = 0;
   state.startFails = false;
+  state.config = null;
 });
 afterEach(() => {
   cleanup();
@@ -201,7 +224,7 @@ describe("Start dialog checks (#459)", () => {
     const again = await openStart();
     await waitFor(() => {
       expect(row(again, "balance")).toHaveTextContent(
-        "Isolated margin: Not available USDC available, 300.00 USDC needed.",
+        "Isolated margin: 300.00 USDC needed. Available: Not available.",
       );
     });
     expect(row(again, "balance")).not.toHaveTextContent(/\b0(\.00)? USDC available/);
@@ -278,5 +301,19 @@ describe("Start dialog checks (#459)", () => {
     });
     const r = await axe.run(document.body, { rules: { "color-contrast": { enabled: false } } });
     expect(r.violations.map((v) => v.id)).toEqual([]);
+  });
+  it("#458: the margin row shows the size × open ÷ leverage formula once the bot config is read", async () => {
+    state.config = { ...baselineVersionConfig(), sizeUsdc: "150", leverage: 5, maxOpenTrades: 2 };
+    const dialog = await openStart();
+    await waitFor(() => {
+      expect(within(row(dialog, "balance")).getByTestId("margin-formula")).toHaveTextContent(
+        "150 USDC × 2 trades ÷ 5×",
+      );
+    });
+    cleanup();
+    state.config = null;
+    const again = await openStart();
+    await within(again).findByRole("list", { name: BS.title });
+    expect(within(again).queryByTestId("margin-formula")).toBeNull();
   });
 });
