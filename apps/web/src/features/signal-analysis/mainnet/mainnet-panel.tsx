@@ -36,7 +36,10 @@ import { useMainnetErrorText } from "./text";
 
 export type ResearchMode = "paper" | "mainnet";
 
-/** Ô "Bots" với hai nút Paper / Mainnet (chỉ đổi chế độ xem; không bao giờ cộng chung paper và mainnet). */
+/**
+ * Ô "Bots" với hai nút Paper / Mainnet (chỉ đổi chế độ xem; không bao giờ cộng chung paper và mainnet). #454: tab đang chọn
+ * mang màu chế độ (Paper cam như dải Paper, Mainnet xanh lá như dải Mainnet).
+ */
 export function ModeSwitch({
   mode,
   onMode,
@@ -54,8 +57,8 @@ export function ModeSwitch({
         label={t("label")}
         value={mode}
         options={[
-          { value: "paper", label: t("paper") },
-          { value: "mainnet", label: t("mainnet") },
+          { value: "paper", label: t("paper"), tone: "warn" },
+          { value: "mainnet", label: t("mainnet"), tone: "pos" },
         ]}
         onValueChange={onMode}
       />
@@ -77,7 +80,7 @@ function MainnetBanner({
   return (
     <div
       role="note"
-      className="flex flex-col gap-1 border-b border-neg-border bg-neg-soft px-3 py-2.5 text-xs text-neg-text md:flex-row md:flex-wrap md:items-center md:gap-x-4 md:px-[18px] md:py-2 md:text-[13px]"
+      className="flex flex-col gap-1 border-b border-pos-border bg-pos-bg px-3 py-2.5 text-xs text-pos md:flex-row md:flex-wrap md:items-center md:gap-x-4 md:px-[18px] md:py-2 md:text-[13px]"
     >
       <strong className="text-[13px] md:text-sm">{t("title")}</strong>
       <span>{t("body")}</span>

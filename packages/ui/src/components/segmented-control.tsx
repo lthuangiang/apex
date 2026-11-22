@@ -2,11 +2,25 @@ import * as RadioGroup from "@radix-ui/react-radio-group";
 
 import { cx } from "../lib/cx";
 
+/**
+ * Màu của lựa chọn khi đang chọn (#454): mặc định nền trắng; "warn" nền cam (như dải Paper); "pos" nền xanh lá đậm chữ trắng
+ * (như dải Mainnet; `pos` thay vì `pos-dot` để chữ trắng đủ tương phản AA). Lựa chọn không chọn giữ kiểu cũ.
+ */
+export type SegmentedTone = "default" | "warn" | "pos";
+
 export interface SegmentedOption<T extends string> {
   value: T;
   label: string;
   disabled?: boolean;
+  tone?: SegmentedTone;
 }
+
+const CHECKED: Record<SegmentedTone, string> = {
+  default:
+    "data-[state=checked]:bg-surface data-[state=checked]:text-ink data-[state=checked]:shadow-sm",
+  warn: "data-[state=checked]:bg-warn-bg data-[state=checked]:text-warn data-[state=checked]:ring-1 data-[state=checked]:ring-inset data-[state=checked]:ring-warn-border",
+  pos: "data-[state=checked]:bg-pos data-[state=checked]:text-white",
+};
 
 export interface SegmentedControlProps<T extends string> {
   /** Tên nhóm cho trình đọc màn hình. */
@@ -54,7 +68,8 @@ export function SegmentedControl<T extends string>({
           value={option.value}
           disabled={option.disabled === true}
           className={cx(
-            "min-h-10 rounded-[10px] px-3 text-sm font-semibold text-ink-2 data-[state=checked]:bg-surface data-[state=checked]:text-ink data-[state=checked]:shadow-sm disabled:cursor-not-allowed disabled:opacity-60",
+            "min-h-10 rounded-[10px] px-3 text-sm font-semibold text-ink-2 disabled:cursor-not-allowed disabled:opacity-60",
+            CHECKED[option.tone ?? "default"],
             fullWidth ? "flex-1 whitespace-nowrap" : undefined,
           )}
         >

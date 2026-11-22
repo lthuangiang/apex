@@ -29,6 +29,7 @@ import { count } from "../format";
 import { useResearchClassifiers } from "./api";
 import { useBotsLabels } from "./bots-labels-context";
 import { hold, pctSigned } from "./format";
+import { MainnetOverviewPanel, MainnetTag } from "./how-it-works-mainnet";
 import { OverviewPanel } from "./how-it-works-overview";
 import { LEVEL_TONE, Na, Note, Pill, Sub, tdR, tdW, thR } from "./ui";
 import {
@@ -99,6 +100,7 @@ export function HowItWorksDrawer({
   maxRunning = null,
   baselineNumber = null,
   cycleMinutes = null,
+  mode = "paper",
 }: {
   /** null = đóng. */
   tab: HowTab | null;
@@ -114,6 +116,8 @@ export function HowItWorksDrawer({
   baselineNumber?: number | null;
   /** #394: chu kỳ lane tin tức (phút) từ API tổng kết; null = không biết ("Not available"). */
   cycleMinutes?: number | null;
+  /** #454: chế độ đang xem của trang; Mainnet thì tab Overview hiện bản Mainnet và tiêu đề có nhãn "Mainnet". */
+  mode?: "paper" | "mainnet";
 }) {
   const t = useTranslations("signalAnalysis.research.page.drawer");
   const tv = useTranslations("signalAnalysis.research.versions");
@@ -169,6 +173,7 @@ export function HowItWorksDrawer({
         if (!o) onClose();
       }}
       title={t("title")}
+      {...(mode === "mainnet" ? { titleAside: <MainnetTag /> } : {})}
       description={name === null ? t("descNa") : t("desc", { name })}
       closeLabel={t("close")}
       side
@@ -220,6 +225,7 @@ export function HowItWorksDrawer({
           maxRunning={maxRunning}
           baselineNumber={baselineNumber}
           cycleMinutes={cycleMinutes}
+          mode={mode}
           onClose={onClose}
         />
       </div>
@@ -237,6 +243,7 @@ function Panel({
   maxRunning,
   baselineNumber,
   cycleMinutes,
+  mode,
   onClose,
 }: {
   tab: HowTab;
@@ -246,6 +253,7 @@ function Panel({
   maxRunning: number | null;
   baselineNumber: number | null;
   cycleMinutes: number | null;
+  mode: "paper" | "mainnet";
   onClose: () => void;
 }) {
   const t = useTranslations("signalAnalysis.research.page.drawer");
@@ -255,7 +263,11 @@ function Panel({
   const cfg = version?.config ?? null;
   switch (tab) {
     case "overview":
-      return <OverviewPanel cycleMinutes={cycleMinutes} />;
+      return mode === "mainnet" ? (
+        <MainnetOverviewPanel cycleMinutes={cycleMinutes} />
+      ) : (
+        <OverviewPanel cycleMinutes={cycleMinutes} />
+      );
     case "news":
       return (
         <>

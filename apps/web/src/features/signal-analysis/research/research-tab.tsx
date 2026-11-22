@@ -295,6 +295,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
           version={picked}
           rulesVersion={v?.newsRulesVersion ?? null}
           cycleMinutes={v?.cycleMinutes ?? null}
+          mode={mode}
           maxRunning={versions.data?.maxRunning ?? null}
           baselineNumber={versions.data?.items.find((x) => x.isBaseline)?.number ?? null}
         />
