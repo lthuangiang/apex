@@ -7889,6 +7889,10 @@
             "SL_REJECTED": "Closed: stop loss rejected",
             "ENTRY_NOT_FILLED": "Entry not filled",
             "NEWS_ORDER_INVALID": "Entry blocked by a safety check",
+            "NEWS_CAP_EXCEEDED": "Entry blocked by a safety check",
+            "NEWS_ACCESS_OFF": "Signal Research access is off",
+            "BOT_NOT_RUNNING": "Bot was not running",
+            "LEVERAGE_NOT_SET": "Leverage couldn’t be set to 1×",
             "other": "Closed"
           }
         },

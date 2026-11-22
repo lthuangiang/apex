@@ -346,6 +346,39 @@ describe("Mainnet trades", () => {
     expect(screen.queryByRole("button", { name: M.trades.close })).not.toBeInTheDocument();
   });
 
+  it("closed trades the engine blocked show the approved reason label, never the generic Closed (#419 B2)", async () => {
+    const codes = [
+      "NEWS_ORDER_INVALID",
+      "NEWS_CAP_EXCEEDED",
+      "NEWS_ACCESS_OFF",
+      "BOT_NOT_RUNNING",
+      "LEVERAGE_NOT_SET",
+    ] as const;
+    state.trades = codes.map((closeReason, i) =>
+      trade({
+        id: `6666666${String(i)}-6666-4666-8666-666666666666`,
+        signalId: `7777777${String(i)}-7777-4777-8777-777777777777`,
+        status: "closed",
+        qty: "0",
+        entryAvgPrice: null,
+        closedAt: NOW,
+        closeReason,
+      }),
+    );
+    wrap(<MainnetTrades botId={BOT_ID} tz="UTC" />);
+    const table = await screen.findByRole("table");
+    expect(M.trades.reasons.NEWS_ORDER_INVALID).toBe("Entry blocked by a safety check");
+    expect(M.trades.reasons.NEWS_CAP_EXCEEDED).toBe("Entry blocked by a safety check");
+    expect(M.trades.reasons.NEWS_ACCESS_OFF).toBe("Signal Research access is off");
+    expect(M.trades.reasons.BOT_NOT_RUNNING).toBe("Bot was not running");
+    expect(M.trades.reasons.LEVERAGE_NOT_SET).toBe("Leverage couldn’t be set to 1×");
+    expect(within(table).getAllByText("Entry blocked by a safety check")).toHaveLength(2);
+    expect(within(table).getByText("Signal Research access is off")).toBeInTheDocument();
+    expect(within(table).getByText("Bot was not running")).toBeInTheDocument();
+    expect(within(table).getByText("Leverage couldn’t be set to 1×")).toBeInTheDocument();
+    expect(within(table).queryByText(M.trades.reasons.other)).toBeNull();
+  });
+
   it("empty and 404 states", async () => {
     state.trades = [];
     const a = wrap(<MainnetTrades botId={BOT_ID} tz="UTC" />);

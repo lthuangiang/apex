@@ -722,22 +722,23 @@ function finish(s: NewsSignalState, t: NewsTrade, reason: string, at: number, fi
   return { actions, state: prune(withTrade(s, closed)) };
 }
 
-function closeTitle(reason: string): string {
+/** Tiêu đề Decisions khi lệnh news đóng, luôn ghi rõ lý do (PM duyệt, review #435 điểm 6; #419 B2). */
+export function closeTitle(reason: string): string {
   switch (reason) {
     case SignalReason.takeProfit:
-      return "Take profit";
+      return "Closed: take profit";
     case SignalReason.stopLoss:
-      return "Stop loss";
+      return "Closed: stop loss";
     case SignalReason.maxHold:
-      return "Max hold";
+      return "Closed: max hold";
     case SignalReason.oppositeNews:
-      return "Closed on opposite news";
+      return "Closed: opposite news";
     case "STOP":
-      return "Closed on stop";
+      return "Closed: bot stopped";
     case "SL_REJECTED":
       return "Closed: stop loss rejected";
     default:
-      return "Closed now";
+      return "Closed by you";
   }
 }
 
