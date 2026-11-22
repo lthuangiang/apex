@@ -18,6 +18,7 @@ import type {
   StrategyEvent,
 } from "../core/types";
 import {
+  closeTitle,
   initialNewsSignalState,
   NEWS_SIGNAL,
   newsSignal,
@@ -726,5 +727,29 @@ describe("unknown slots and deterministic ids", () => {
     expect(newsSignal.applyVersion?.(cfg(), o.state, ctx)).toBeNull();
     const empty = initialNewsSignalState();
     expect(newsSignal.applyVersion?.(cfg(), empty, ctx)).toBe(empty);
+  });
+});
+
+describe("Decisions titles when a trade closes (#419 B2, PM approved)", () => {
+  it("always name the reason", () => {
+    expect(
+      [
+        SignalReason.takeProfit,
+        SignalReason.stopLoss,
+        SignalReason.maxHold,
+        SignalReason.oppositeNews,
+        "STOP",
+        "SL_REJECTED",
+        "MANUAL",
+      ].map(closeTitle),
+    ).toEqual([
+      "Closed: take profit",
+      "Closed: stop loss",
+      "Closed: max hold",
+      "Closed: opposite news",
+      "Closed: bot stopped",
+      "Closed: stop loss rejected",
+      "Closed by you",
+    ]);
   });
 });
