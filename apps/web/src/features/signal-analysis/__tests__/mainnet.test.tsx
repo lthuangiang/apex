@@ -684,3 +684,125 @@ describe("leverage 1 / 5 / 10 / 20 (#458)", () => {
     expect(list).toHaveTextContent("Skipped: Stop loss beyond liquidation");
   });
 });
+
+describe("Settings: view the running config (#469 part 1)", () => {
+  const S = M.settings;
+  const E = M.editor;
+
+  function panel(over: Record<string, unknown> = {}) {
+    const one = { ...bot(), ...over } as BotSummary & { signalVersionId?: string | null };
+    return (
+      <MainnetPanel
+        sources={null}
+        tz="UTC"
+        modeSwitch={null}
+        bots={[one]}
+        botsLoading={false}
+        botsError={null}
+        selected={one}
+        onBot={() => undefined}
+        onHow={() => undefined}
+        onStartFromVersion={() => undefined}
+      />
+    );
+  }
+
+  async function openSettings(over: Record<string, unknown> = {}) {
+    const user = userEvent.setup();
+    wrap(panel(over));
+    await user.click(screen.getByRole("button", { name: S.button }));
+    return screen.findByRole("dialog", { name: bot().name });
+  }
+
+  const value = (dialog: HTMLElement, label: string) => {
+    const dt = within(dialog).getByText(label, { selector: "dt" });
+    return dt.nextElementSibling as HTMLElement;
+  };
+
+  it("shows the version, the source version and every field of the running config, with no Edit", async () => {
+    const dialog = await openSettings({ signalVersionId: BASELINE_ID });
+    expect(await within(dialog).findByText("v1 · since Nov 22, 10:00")).toBeInTheDocument();
+    expect(
+      await within(dialog).findByText(
+        "Copied from version “v3 · Baseline”. The version keeps running on paper.",
+      ),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(value(dialog, E.leverage)).toHaveTextContent("1×, isolated");
+    });
+    expect(value(dialog, E.account)).toHaveTextContent("••4f2a");
+    expect(value(dialog, E.size)).toHaveTextContent("100 USDC");
+    expect(value(dialog, S.marginPerTrade)).toHaveTextContent("100 USDC");
+    expect(value(dialog, "Max open trades")).toHaveTextContent("3");
+    expect(value(dialog, S.maxDay)).toHaveTextContent("5");
+    expect(value(dialog, S.minLevel)).toHaveTextContent(/High|Medium|Low/);
+    expect(value(dialog, S.tpsl)).toHaveTextContent(/^TP .+× · SL .+× of the typical move$/);
+    expect(value(dialog, S.maxDelay)).toHaveTextContent(/^\d+ min$/);
+    const table = within(dialog).getByRole("table");
+    expect(within(table).getAllByRole("checkbox").length).toBeGreaterThan(0);
+    for (const c of within(table).getAllByRole("checkbox")) expect(c).toBeDisabled();
+    expect(within(dialog).queryByRole("button", { name: "Edit" })).toBeNull();
+    const r = await axe.run(dialog, { rules: { "color-contrast": { enabled: false } } });
+    expect(r.violations.map((v) => v.id)).toEqual([]);
+  });
+
+  it("#470: the Open in Signal Research link opens Settings of that bot right away", async () => {
+    const one = bot() as BotSummary;
+    wrap(
+      <MainnetPanel
+        openSettings
+        sources={null}
+        tz="UTC"
+        modeSwitch={null}
+        bots={[one]}
+        botsLoading={false}
+        botsError={null}
+        selected={one}
+        onBot={() => undefined}
+        onHow={() => undefined}
+        onStartFromVersion={() => undefined}
+      />,
+    );
+    expect(await screen.findByRole("dialog", { name: one.name })).toBeInTheDocument();
+  });
+
+  it("10× and no daily limit: margin is size ÷ leverage and the day cap says No limit", async () => {
+    state.config = { ...CONFIG, sizeUsdc: "50", leverage: 10, maxNewTradesPerDay: null };
+    const dialog = await openSettings();
+    await waitFor(() => {
+      expect(value(dialog, E.leverage)).toHaveTextContent("10×, isolated");
+    });
+    expect(value(dialog, S.marginPerTrade)).toHaveTextContent("5 USDC");
+    expect(value(dialog, S.maxDay)).toHaveTextContent("No limit");
+  });
+
+  it("an old bot without the leverage field reads 1×; no source version hides the Copied line", async () => {
+    const old: Record<string, unknown> = { ...CONFIG };
+    delete old.leverage;
+    state.config = old;
+    const dialog = await openSettings({ signalVersionId: null });
+    await waitFor(() => {
+      expect(value(dialog, E.leverage)).toHaveTextContent("1×, isolated");
+    });
+    expect(within(dialog).queryByText(/Copied from version/)).toBeNull();
+  });
+
+  it("a source version the viewer can't see also hides the Copied line", async () => {
+    const dialog = await openSettings({ signalVersionId: "99999999-9999-4999-8999-999999999999" });
+    await waitFor(() => {
+      expect(value(dialog, E.leverage)).toHaveTextContent("1×, isolated");
+    });
+    expect(within(dialog).queryByText(/Copied from version/)).toBeNull();
+  });
+
+  it("an unreadable config shows Not available, never 0", async () => {
+    state.config = { junk: true };
+    const dialog = await openSettings();
+    await waitFor(() => {
+      expect(value(dialog, E.leverage)).toHaveTextContent("Not available");
+    });
+    for (const label of [E.size, S.marginPerTrade, S.maxDay, S.markets])
+      expect(value(dialog, label)).toHaveTextContent("Not available");
+    expect(dialog).not.toHaveTextContent(/\b0 USDC/);
+  });
+});

@@ -11,7 +11,7 @@ import {
 import { Button, SegmentedControl, Select, StatusPill } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { useStateLabel } from "@/features/bots/components/bots-page";
 import { api } from "@/lib/api";
@@ -28,6 +28,7 @@ import {
   useNewsTrades,
   type NewsBotActionVars,
 } from "./api";
+import { BotSettingsSheet } from "./bot-settings";
 import { StartNewsBotDialog, StopNewsBotDialog } from "./dialogs";
 import { useMainnetErrorText } from "./text";
 
@@ -127,6 +128,7 @@ function useBotConfig(botId: string | null) {
 }
 
 export function MainnetPanel({
+  openSettings = false,
   sources,
   tz,
   modeSwitch,
@@ -138,6 +140,8 @@ export function MainnetPanel({
   onHow,
   onStartFromVersion,
 }: {
+  /** #470: mở sẵn Settings của bot đang chọn (link "Open in Signal Research"); chỉ mở một lần. */
+  openSettings?: boolean;
   sources: { items: readonly ResearchSource[]; now: string } | null;
   tz: string;
   modeSwitch: ReactNode;
@@ -145,7 +149,8 @@ export function MainnetPanel({
   botsLoading: boolean;
   /** Lỗi khi tải danh sách bot (ví dụ 403); null = không lỗi. */
   botsError: string | null;
-  selected: BotSummary | null;
+  /** #469: `signalVersionId` (version gốc) đến từ danh sách bot; thiếu thì Settings ẩn dòng "Copied from". */
+  selected: (BotSummary & { signalVersionId?: string | null }) | null;
   onBot: (id: string) => void;
   onHow: (tab: HowTab) => void;
   onStartFromVersion: () => void;
@@ -155,7 +160,13 @@ export function MainnetPanel({
   const stateLabel = useStateLabel();
   const errorText = useMainnetErrorText();
   const id = useId();
-  const [dialog, setDialog] = useState<"stop" | "start" | null>(null);
+  const [dialog, setDialog] = useState<"stop" | "start" | "settings" | null>(null);
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!openSettings || opened.current) return;
+    opened.current = true;
+    setDialog("settings");
+  }, [openSettings]);
   const [code, setCode] = useState("");
   const [needCode, setNeedCode] = useState(false);
   const twoFactorNeeded = useTwoFactorNeeded();
@@ -240,6 +251,15 @@ export function MainnetPanel({
         </span>
         {openCount === null ? null : <span>{t("strip.open", { n: openCount })}</span>}
         <span className="ml-auto flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setDialog("settings");
+            }}
+            className="inline-flex min-h-tap cursor-pointer items-center rounded-control border border-accent bg-surface px-4 text-sm font-bold text-accent-ink hover:bg-surface-2"
+          >
+            {t("settings.button")}
+          </button>
           {can(BotCommand.pause) ? (
             <Button
               variant="secondary"
@@ -375,6 +395,18 @@ export function MainnetPanel({
           }}
           onConfirm={(closeAll) => {
             send({ id: selected.id, action: "stop", body: { closePosition: closeAll } });
+          }}
+        />
+      ) : null}
+      {dialog === "settings" && selected !== null ? (
+        <BotSettingsSheet
+          botId={selected.id}
+          name={selected.name}
+          signalVersionId={selected.signalVersionId ?? null}
+          account={last4 === null ? null : t("strip.account", { last4 })}
+          tz={tz}
+          onClose={() => {
+            setDialog(null);
           }}
         />
       ) : null}

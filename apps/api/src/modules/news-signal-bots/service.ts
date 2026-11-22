@@ -39,6 +39,7 @@ import {
   type NewsBotSignal,
   type NewsCommand,
   type NewsTpslBody,
+  type NewsBotListItem,
   type NewsTrade,
   type StartChecks,
   NEWS_SIGNAL_LEVERAGE,
@@ -240,7 +241,7 @@ export async function createNewsBot(
 export async function listNewsBots(
   deps: Pick<BotDeps, "db">,
   userId: string,
-): Promise<BotSummary[]> {
+): Promise<NewsBotListItem[]> {
   const rows = await deps.db
     .select({ bot: bots, version: botVersions.version, config: botVersions.config })
     .from(bots)
@@ -249,7 +250,11 @@ export async function listNewsBots(
       and(eq(bots.userId, userId), eq(bots.strategy, Strategy.newsSignal), isNull(bots.archivedAt)),
     )
     .orderBy(desc(bots.createdAt));
-  return rows.map((r) => summary(r.bot, r.version, null, r.config));
+  // #469: version gốc để màn Settings ghi "Copied from version …".
+  return rows.map((r) => ({
+    ...summary(r.bot, r.version, null, r.config),
+    signalVersionId: r.bot.signalVersionId ?? null,
+  }));
 }
 
 async function activeConfig(deps: Pick<BotDeps, "db">, b: typeof bots.$inferSelect) {

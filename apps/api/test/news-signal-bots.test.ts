@@ -187,6 +187,21 @@ describe("creating a bot from a version (flag on)", () => {
     expect((await plain.request("GET", base)).statusCode).toBe(403);
   });
 
+  it("lists the bot with the Signal research version it was copied from (#469)", async () => {
+    flag.enabled = true;
+    const bot = await createdBot(tester);
+    const list = await tester.request("GET", base);
+    expect(list.statusCode).toBe(200);
+    interface Listed {
+      items: { id: string; signalVersionId: string | null }[];
+    }
+    const items = list.json<Listed>().items;
+    expect(items.find((x) => x.id === bot.id)?.signalVersionId).toBe(baselineId);
+    await env.pool.query("update bots set signal_version_id = null where id = $1", [bot.id]);
+    const again = (await tester.request("GET", base)).json<Listed>().items;
+    expect(again.find((x) => x.id === bot.id)?.signalVersionId).toBeNull();
+  });
+
   it("markets can only narrow and Min level can only rise; size is capped at 200 USDC, leverage 1", async () => {
     flag.enabled = true;
     const narrow = {
@@ -667,5 +682,54 @@ describe("Edit: save as a new version (#469)", () => {
       twoFactorCode: generateTotp(setup.secret, env.clock.now),
     });
     expect(ok.statusCode, ok.body).toBe(202);
+  });
+});
+
+describe("Archive while trades are open (#471)", () => {
+  it("409 open_trades while a news trade is open / closing or an order is open / unknown; archives once all are done", async () => {
+    flag.enabled = true;
+    const bot = await createdBot(tester);
+    await env.pool.query("update bots set state = 'stopped' where id = $1", [bot.id]);
+    const archive = () => tester.request("POST", `/api/v1/bots/${bot.id}/actions/archive`);
+    const blocked = async () => {
+      const r = await archive();
+      expect(r.statusCode, r.body).toBe(409);
+      expect(errOf(r)).toMatchObject({
+        code: "STATE_CONFLICT",
+        message: "This bot still has open trades. Close them first, then archive.",
+        details: { reason: "open_trades" },
+      });
+      expect(
+        await count("select count(*) as n from bots where id = $1 and state = 'stopped'", [bot.id]),
+      ).toBe(1);
+    };
+    const tradeId = await openTrade(bot.id);
+    await blocked();
+    await env.pool.query("update news_signal_trades set status = 'closing' where id = $1", [
+      tradeId,
+    ]);
+    await blocked();
+    await env.pool.query(
+      "update news_signal_trades set status = 'closed', closed_at = now() where id = $1",
+      [tradeId],
+    );
+    // Lệnh SoDEX chưa xong (TP / SL còn treo, hoặc kết quả không rõ) cũng chặn.
+    const { rows } = await env.pool.query<{ account: string }>(
+      "select sodex_account_id as account from bots where id = $1",
+      [bot.id],
+    );
+    const { rows: o } = await env.pool.query<{ id: string }>(
+      "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, status, tag, epoch, created_at) values (gen_random_uuid(), $1, $2, $3, 'SOL-USD', 'perps', 'sell', 'limit', 'GTC', 1, 'open', 'ns:x:e0:tp', 1, now()) returning id",
+      [bot.id, rows[0]?.account, `d${randomUUID().slice(0, 8)}-1-x-0`],
+    );
+    await blocked();
+    for (const status of ["partially_filled", "unknown"]) {
+      await env.pool.query("update orders set status = $2 where id = $1", [o[0]?.id, status]);
+      await blocked();
+    }
+    await env.pool.query("update orders set status = 'cancelled' where id = $1", [o[0]?.id]);
+    const ok = await archive();
+    expect(ok.statusCode, ok.body).toBe(202);
+    expect(botSummarySchema.parse(ok.json()).state).toBe("archived");
   });
 });

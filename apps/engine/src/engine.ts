@@ -1028,6 +1028,12 @@ function newsVersionTarget(
   return active.id !== r.versionId && active.version > r.version ? active : undefined;
 }
 
+/**
+ * Trạng thái đã dừng mà bot `news_signal` còn lệnh mở vẫn có runner ở chế độ quản lý (#419 B1): `stopped` (Stop-Keep) và
+ * `archived` (phòng thủ, #471: bot lỡ archive khi còn lệnh). Không bao giờ mở lệnh mới, vẫn giữ OCO, max hold, Close now.
+ */
+const NEWS_ENDED_STATES: readonly BotState[] = [BotState.stopped, BotState.archived];
+
 /** Version trong clOrdID tất định (`d{bot}-{version}-{hash}-{attempt}`, `clOrdId`); không đọc được → vô cực. */
 export function versionOfClOrdId(id: string): number {
   const v = Number(id.split("-")[1]);
@@ -2871,6 +2877,8 @@ export class Engine {
         );
       // Bot `news_signal` đã pause / dừng (Stop-Keep) mà còn lệnh news đang mở hoặc lệnh SoDEX chưa xong: vẫn có runner ở
       // chế độ quản lý (#419 engine B1), để OCO / max hold / đóng lệnh không bị bỏ rơi, kể cả sau khi engine khởi động lại.
+      // Cả bot đã archive (phòng thủ, #471): API chặn archive khi còn lệnh, nhưng bot lỡ archive trước bản sửa vẫn được
+      // quản lý tới khi hết lệnh.
       const managed = await db
         .select({ bot: bots, version: botVersions })
         .from(bots)
@@ -2880,7 +2888,7 @@ export class Engine {
             inArray(bots.sodexAccountId, [...shardOfAccount.keys()]),
             eq(bots.strategy, Strategy.newsSignal),
             eq(bots.mode, "live"),
-            inArray(bots.state, [BotState.paused, BotState.stopped]),
+            inArray(bots.state, [BotState.paused, ...NEWS_ENDED_STATES]),
             or(
               sql`exists (select 1 from ${newsSignalTrades} t where t.bot_id = ${bots.id} and t.status in ('open', 'closing'))`,
               sql`exists (select 1 from ${orders} o where o.bot_id = ${bots.id} and o.status in ('open', 'partially_filled', 'unknown'))`,
@@ -2953,7 +2961,10 @@ export class Engine {
             // lý, #419 B1). Bot đã dừng hẳn không còn ai chờ `orderDone` (#437).
             or(
               inArray(bots.state, [...ENGINE_ACTIVE_STATES, BotState.paused]),
-              and(eq(bots.strategy, Strategy.newsSignal), eq(bots.state, BotState.stopped)),
+              and(
+                eq(bots.strategy, Strategy.newsSignal),
+                inArray(bots.state, [...NEWS_ENDED_STATES]),
+              ),
             ),
           ),
         )
@@ -3060,7 +3071,7 @@ export class Engine {
       // Bot `news_signal` ở chế độ quản lý (paused / stopped còn lệnh mở, #419 engine B1) cũng có runner.
       const newsManaged =
         bot.strategy === Strategy.newsSignal &&
-        (bot.state === BotState.paused || bot.state === BotState.stopped);
+        (bot.state === BotState.paused || NEWS_ENDED_STATES.includes(bot.state));
       if (!ENGINE_ACTIVE_STATES.includes(bot.state) && !newsManaged) continue;
       const account = accounts.find((a) => a.id === bot.sodexAccountId);
       if (account === undefined) continue;
@@ -3126,7 +3137,7 @@ export class Engine {
         r.newsEntries =
           this.#d.newsSignalBots && (snap.newsAccess.get(bot.userId) ?? false) && r.newsNarrow;
         // Chế độ quản lý của bot đã dừng: hết lệnh news đang mở và lệnh SoDEX chờ thì bỏ runner.
-        if (bot.state === BotState.stopped) {
+        if (NEWS_ENDED_STATES.includes(bot.state)) {
           if (!newsHasOpen(r.state)) this.#runners.delete(r.botId);
           continue;
         }
@@ -4288,7 +4299,7 @@ export class Engine {
     // dừng; bot pause giữ hành vi cũ.
     if (source !== null && places.some((o) => !o.reduceOnly)) {
       const st = await this.#currentState(r.botId);
-      if (st === BotState.stopping || st === BotState.stopped) {
+      if (st === BotState.stopping || st === BotState.stopped || st === BotState.archived) {
         const dropped = places.filter((o) => !o.reduceOnly);
         places = places.filter((o) => o.reduceOnly);
         this.#d.log.info(
