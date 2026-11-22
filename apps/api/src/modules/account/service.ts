@@ -66,6 +66,7 @@ import {
   type PortfolioView,
   type RiskLimitKey,
   type RiskView,
+  decisionDisplayName,
 } from "@drift/shared";
 import type { SodexRestClient } from "@drift/sodex";
 import { copyLedgerTotals, isMultiMarketCopyState } from "@drift/strategies";
@@ -513,7 +514,7 @@ export async function overview(
       botId: e.botId,
       botName: name,
       type: e.type,
-      decision: e.decision,
+      decision: decisionDisplayName(e.decision),
       why: e.why,
       occurredAt: iso(e.occurredAt),
     })),

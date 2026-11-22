@@ -203,6 +203,9 @@ const KNOWN_DECISIONS: ReadonlySet<string> = new Set([
   "Stopped",
   "Stopping",
   "TWAP finished",
+  // Tên sản phẩm (#463) và tên cũ của các dòng ghi trước đó (giữ để dòng cũ vẫn được nhận diện).
+  "Volume Builder stopped",
+  "Market Making stopped",
   "Volume Farm stopped",
   "Volume Maker stopped",
   "Waiting",

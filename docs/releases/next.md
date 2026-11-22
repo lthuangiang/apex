@@ -4,7 +4,7 @@ PM đổi tên file theo tag khi người dùng gõ "release" (xem `docs/RELEASE
 
 ## Cho người dùng (English, dùng được cho GitHub Release)
 
-Chưa có thay đổi.
+- Decisions now say "Volume Builder stopped" and "Market Making stopped" (product names); older lines show the new names too (#463).
 
 Not financial advice. Past results are not a forecast.
 

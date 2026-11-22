@@ -29,6 +29,7 @@ import {
   type GoLiveView,
   type PaperView,
   type StartPaperBody,
+  decisionDisplayName,
 } from "@drift/shared";
 import { meetsMinSize, paperEquity, requirementOf, type PaperBook } from "@drift/strategies";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -289,7 +290,7 @@ export async function paperView(deps: DeskDeps, userId: string, botId: string): 
       market: null,
       price: null,
       size: null,
-      decision: e.decision,
+      decision: decisionDisplayName(e.decision),
       why: e.why,
     })),
   ]

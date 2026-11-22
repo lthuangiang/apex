@@ -1,4 +1,4 @@
-import type { DecisionOutcome } from "@drift/shared";
+import { botEventSchema, type DecisionOutcome } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -143,7 +143,17 @@ describe("groupDecisions", () => {
   });
 
   it("knows the decision names the bots write, and valid ISO times", () => {
-    for (const d of ["Bid pulled", "Order filled", "Bought at level 3", "Cycle 2 took profit"])
+    for (const d of [
+      "Bid pulled",
+      "Order filled",
+      "Bought at level 3",
+      "Cycle 2 took profit",
+      // #463: tên sản phẩm và tên cũ của dòng ghi trước đó.
+      "Volume Builder stopped",
+      "Market Making stopped",
+      "Volume Farm stopped",
+      "Volume Maker stopped",
+    ])
       expect(isKnownDecision(d)).toBe(true);
     for (const d of ["Send us your seed phrase", "Bid pulled ", "Order hacked", ""])
       expect(isKnownDecision(d)).toBe(false);
@@ -213,5 +223,25 @@ describe("Volume Farm entry rounds (DEC-307)", () => {
     expect(entryDuration([tryEv(1, 0), tryEv(0, 45)])).toEqual({ unit: "seconds", n: 45 });
     expect(entryDuration([tryEv(7, 0), tryEv(0, 125)])).toEqual({ unit: "minutes", n: 2 });
     expect(entryDuration([tryEv(9, 0), tryEv(0, 3_900)])).toEqual({ unit: "hours", h: 1, m: 5 });
+  });
+});
+
+describe("stop decisions use the product names (#463)", () => {
+  it("shows an old stored line with the new name once parsed", () => {
+    const base = {
+      id: "11111111-1111-4111-8111-111111111111",
+      type: "decision",
+      why: "Volume target 100000 reached.",
+      result: null,
+      occurredAt: "2026-11-16T07:42:51Z",
+    };
+    expect(botEventSchema.parse({ ...base, decision: "Volume Maker stopped" }).decision).toBe(
+      "Market Making stopped",
+    );
+    expect(botEventSchema.parse({ ...base, decision: "Volume Farm stopped" }).decision).toBe(
+      "Volume Builder stopped",
+    );
+    expect(botEventSchema.parse({ ...base, decision: "Bid pulled" }).decision).toBe("Bid pulled");
+    expect(botEventSchema.parse({ ...base, decision: null }).decision).toBeNull();
   });
 });

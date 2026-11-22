@@ -97,7 +97,9 @@ async function seedBot(
 }
 
 const running = { type: "state", decision: "Running", why: "SoDEX acknowledged the first orders." };
+// Dòng ghi trước #463 ("Volume Maker stopped") và dòng mới ("Market Making stopped") đều là nhật ký dừng.
 const stopped = (why: string) => ({ type: "decision", decision: "Volume Maker stopped", why });
+const stoppedNew = (why: string) => ({ type: "decision", decision: "Market Making stopped", why });
 
 describe("stopDetail on the bot list", () => {
   it("uses the stop log, even after the bot was edited (both directions)", async () => {
@@ -137,8 +139,16 @@ describe("stopDetail on the bot list", () => {
       versions: [vmConfig()],
     });
 
+    // Nhật ký dừng ghi bằng tên mới (#463).
+    const renamed = await seedBot(u, {
+      name: "renamed",
+      events: [running, stoppedNew("Run time ended.")],
+      versions: [vmConfig()],
+    });
+
     const list = botListSchema.parse((await u.client.request("GET", "/api/v1/bots")).json());
     const detail = (id: string) => list.items.find((b) => b.id === id)?.stopDetail;
+    expect(detail(renamed)).toBe("end_time");
     expect(detail(raised)).toBe("volume_target");
     expect(detail(lowered)).toBe("end_time");
     expect(detail(noLog)).toBeNull();
@@ -149,6 +159,10 @@ describe("stopDetail on the bot list", () => {
     const res = await u.client.request("GET", `/api/v1/bots/${raised}`);
     expect(res.statusCode).toBe(200);
     expect(botDetailSchema.parse(res.json()).bot.stopDetail).toBe("volume_target");
+    // Dòng cũ trả ra bằng tên sản phẩm (#463), kể cả khi đọc JSON thô (không qua schema của web).
+    const raw = res.json<{ events: { decision: string | null }[] }>();
+    expect(raw.events.map((e) => e.decision)).toContain("Market Making stopped");
+    expect(raw.events.map((e) => e.decision)).not.toContain("Volume Maker stopped");
   });
 
   it("loads the stop logs of the whole list in one query", async () => {

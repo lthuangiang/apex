@@ -412,6 +412,10 @@ describe("volume farm cycle", () => {
       reason: "BOT_MAX_LOSS",
       close: true,
     });
+    // Tên sản phẩm (#463), không còn "Volume Farm stopped".
+    expect(all.find((a) => a.type === "log" && a.decision.endsWith("stopped"))).toMatchObject({
+      decision: "Volume Builder stopped",
+    });
   });
 
   it("does not trade in a blocked UTC hour", () => {

@@ -1,4 +1,4 @@
-import type { SignalTimelineItem } from "@drift/shared";
+import { decisionDisplayName, type SignalTimelineItem } from "@drift/shared";
 import { sql } from "drizzle-orm";
 
 import { rowsOf, type Exec } from "./common";
@@ -63,7 +63,7 @@ export async function timelineOf(
     ...rowsOf<{ at: number; decision: string; why: string | null }>(ev).map((e) => ({
       kind: "decision" as const,
       at: iso(e.at),
-      decision: e.decision,
+      decision: decisionDisplayName(e.decision),
       why: e.why,
     })),
     ...orders.map((o) => ({
