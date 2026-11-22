@@ -11,14 +11,23 @@ import { z } from "zod";
 import { guardIdleKill, IDLE_KILL_MESSAGE, isIdleKill } from "../replay/abort";
 import { checkRange, loadStudy, MAX_RANGE_DAYS, StudyLimitError } from "../vb-counter-trend/load";
 
+import { MOVE_MINUTES, STRONG_FACTOR, TYPICAL_WINDOW } from "./balance";
 import { liveTrades, loadLiveVbFills, type LiveVbFill } from "./live";
-import { MEDIAN_WINDOW, pauseMarkdown, runPauseStudy } from "./study";
+import {
+  FILL_MODELS,
+  MEDIAN_WINDOW,
+  PART2_RULE,
+  pauseMarkdown,
+  runPauseStudy,
+  type LimitFill,
+} from "./study";
 
 // CLI nghiên cứu "tạm dừng khi biến động vọt lên" của Volume Builder (#363, việc 1). Chỉ đọc, cùng mức an toàn với công cụ
 // #282 (DEC-316): một `readOnlyTx` (READ ONLY, statement timeout, idle timeout, trần thời gian tổng), tối đa 14 ngày; không
 // gọi SoDEX, không đặt lệnh, không ghi DB; mô phỏng chạy sau khi transaction đóng. Markdown ra stdout. Ví dụ:
 //   pnpm --filter @drift/backtest exec tsx src/vb-vol-pause/cli.ts --from 2026-11-07 --to 2026-11-21 > vb-vol-pause.md
-// Tuỳ chọn: --markets SOL-USD (thêm market), --config bots|default (mặc định bots).
+// Tuỳ chọn: --markets SOL-USD (thêm market), --config bots|default (mặc định bots), --fill-models through,touch (mặc định
+// through: mô hình khớp limit cũ; thêm touch để đặt Δ của hai mô hình cạnh nhau).
 // Báo cáo có thêm dòng hiệu chỉnh: baseline backtest so với cost thật của bot Volume Builder tiền thật cùng market, cùng kỳ
 // (đọc `fills` / `orders`, công thức tab Volume Builder của Signal Analysis; xem `live.ts`).
 
@@ -50,6 +59,7 @@ let from: Date;
 let to: Date;
 let extra: string[];
 let configFrom: "bots" | "default";
+let fills: LimitFill[];
 try {
   from = date(arg("from"), "from");
   to = date(arg("to"), "to");
@@ -65,6 +75,10 @@ try {
   if (c !== "bots" && c !== "default")
     throw new StudyLimitError("--config must be bots or default");
   configFrom = c;
+  const fm = (arg("fill-models") ?? "through").split(",").map((x) => x.trim());
+  fills = FILL_MODELS.filter((x) => fm.includes(x));
+  if (fills.length === 0 || fills.length !== fm.length)
+    throw new StudyLimitError("--fill-models takes through, touch or through,touch");
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
@@ -123,12 +137,20 @@ try {
     builder: feeRateToFraction(builderFeeRateFor(Strategy.volumeFarm)).toString(),
   };
   const range = { from: from.getTime(), to: to.getTime() };
-  const reports = loaded.markets.map((m) => ({
-    ...runPauseStudy(m, fees, range, (what) => {
-      process.stderr.write(`vb-vol-pause: ${what}\n`);
-    }),
-    live: liveTrades(loaded.live.get(m.market) ?? []),
-  }));
+  const reports = loaded.markets.flatMap((m) =>
+    fills.map((fill) => ({
+      ...runPauseStudy(
+        m,
+        fees,
+        range,
+        (what) => {
+          process.stderr.write(`vb-vol-pause: ${what}\n`);
+        },
+        fill,
+      ),
+      live: liveTrades(loaded.live.get(m.market) ?? []),
+    })),
+  );
   process.stdout.write(
     pauseMarkdown(reports, {
       source: "stored candles_1m (read-only)",
@@ -143,7 +165,9 @@ try {
         "95% intervals: paired block bootstrap by UTC day (2,000 resamples, fixed seed); Δ = cell − baseline on the same resampled days. With few days the intervals are narrower than the truth.",
         `Fees: SoDEX perps base maker ${SODEX_BASE_FEE_PCT.perps.maker}% / taker ${SODEX_BASE_FEE_PCT.perps.taker}% + builder ${dec(fees.builder).mul(100).toFixed()}% per side; market-order slippage 0.05%; no funding. Candle-only signal (no historical order book).`,
         "Calibration: live cost uses the Volume Builder tab formula of the team Signal Analysis page (closed trades of live volume_farm bots on the market, both-leg volume, result = price P&L − all fill fees, real fees from fills). Fees / $1M + price part / $1M = cost / $1M. The backtest decides on candles and its fill model is pessimistic, so when the gap is large only Δ cost vs baseline should be read.",
-        "Possible causes of a gap (defaults are NOT changed by this tool): (1) assumed 0.05% slippage on every market order (stop loss and taker legs), i.e. 500 USDC / $1M on that leg; (2) maker / taker mix: a backtest limit order only fills when price trades through it, so it fills maker less often than live, which falls back to taker; (3) fills on 1-minute candles: no queue, no intra-minute path, exits at candle prices; (4) fee rate: base SoDEX rates here vs the real rate on each fill; (5) live bots may have run on fewer days, other sizes or other configs than the backtest config. Compare the fees and price-part columns: a fee gap points at (2) or (4), a price-part gap at (1) or (3). An easy step closer to live would be to set the slippage to the live taker slippage and the fee rate to the live average, but that is a separate decision.",
+        "Possible causes of a gap (defaults are NOT changed by this tool): the backtest sees only 1-minute candles and no order book, so it has no intra-minute price path, no queue position and none of the book information the live bot uses; exits use candle prices. The limit-fill rule is not the main cause when the touch model barely moves the cost (on local data it moved it by about 20 USDC / $1M while the price part stayed about 400 / $1M off). Fee rates (base tiers here vs real fills) can add a fee-part gap; slippage on taker legs is small because about 90% of backtest volume is maker. Live bots may also have run on fewer days or other configs.",
+        "Fill models: through (default) fills a limit only when price trades through it; touch fills it as soon as price touches it. Run with --fill-models through,touch to put both side by side; the model closer to live in the calibration line is more trustworthy. Δ of a rule can be inflated when the rule avoids exactly the adverse fills a model exaggerates.",
+        `Part 2: a trade is in a strong move when, at its entry decision, price moved more than ${String(STRONG_FACTOR)} × the median of the same ${String(MOVE_MINUTES)}-minute move over the ${String(TYPICAL_WINDOW)} closed candles before (closed candles only); otherwise calm. Balance = entries forced to balance long / short volume (snapshot flag), signal = the rest. "With rule" uses k ${String(PART2_RULE.k)} · m ${String(PART2_RULE.m)} from part 1. Mean intervals: block bootstrap by UTC day.`,
         `Range limit ${String(MAX_RANGE_DAYS)} days per run.`,
       ],
     }),

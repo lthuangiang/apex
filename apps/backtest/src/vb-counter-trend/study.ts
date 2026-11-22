@@ -194,6 +194,8 @@ export interface SimInput {
   /** Chỉ tính lượt vào trong [from, to). */
   from: number;
   to: number;
+  /** Mô hình khớp limit của backtest (#363): mặc định "through". */
+  limitFill?: "through" | "touch";
 }
 
 /** Một lần mô phỏng (một biến thể, một market, Reverse bật hoặc tắt, một seed). */
@@ -211,6 +213,7 @@ export function simulate(i: SimInput): SimResult {
     snapshotCandles: 120,
     decisionPayload: true,
     vbResearch: i.research,
+    limitFill: i.limitFill ?? "through",
   });
   const snaps = new Map<string, SnapshotLite>();
   let entryOrders = 0;
@@ -372,6 +375,8 @@ export interface MarketReport {
   seeds: number;
   rows: Row[];
   random: Row;
+  /** Mô hình khớp limit của lần chạy này. */
+  fill: "through" | "touch";
 }
 
 function cellsBy(
@@ -426,8 +431,16 @@ export function runStudy(
   range: { from: number; to: number },
   seeds = DEFAULT_SEEDS,
   progress: (what: string) => void = () => undefined,
+  fill: "through" | "touch" = "through",
 ): MarketReport {
-  const base = { market: m.market, candles: m.candles, rules: m.rules, fees, ...range };
+  const base = {
+    market: m.market,
+    candles: m.candles,
+    rules: m.rules,
+    fees,
+    ...range,
+    limitFill: fill,
+  };
   const mid = (range.from + range.to) / 2;
   progress(`${m.market} R`);
   const randomSim = simulateSeeds(
@@ -466,6 +479,7 @@ export function runStudy(
     seeds,
     rows,
     random,
+    fill,
   };
 }
 
@@ -536,7 +550,7 @@ export function toMarkdown(
     const all = [...r.rows, r.random];
     const perH = (x: Row) => (r.hours > 0 ? f0(x.all.volume.div(r.hours).div(x.sim.runs)) : "n/a");
     L.push("");
-    L.push(`## ${r.market}`);
+    L.push(`## ${r.market} · fill model: ${r.fill}`);
     L.push("");
     L.push(
       `Config: ${r.configSource} (size ${r.config.orderSizeMinUsd}–${r.config.orderSizeMaxUsd} USDC, hold ${String(r.config.minHoldSecs)}–${String(r.config.maxHoldSecs)} s, ${String(r.config.leverage)}×, SL ${r.config.slMarginPct}% margin, TP ${r.config.tpUsd} USDC, early ${r.config.earlyProfitFees}× fees, cooldown ${String(r.config.cooldownSecs)} s). Live VB bots on this market: ${String(r.liveBots)}.`,
