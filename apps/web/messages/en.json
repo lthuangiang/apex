@@ -9372,7 +9372,83 @@
                 "body2": "Closed trades show on this page and are compared with random entries at the same moments. See <b>When a signal passes</b>."
               }
             },
-            "never": "<b>Never:</b> no order is sent to SoDEX and no user money is touched. Claude only names the news type. The side, TP and SL come from the rules table and price data, so every decision can be replayed."
+            "never": "<b>Never:</b> no order is sent to SoDEX and no user money is touched. Claude only names the news type. The side, TP and SL come from the rules table and price data, so every decision can be replayed.",
+            "mainnet": {
+              "tag": "Mainnet",
+              "intro": "Every <b>{min, plural, one {minute} other {# minutes}}</b> DeskLabs reads new crypto news, keeps articles about a coin listed on SoDEX, asks Claude what kind of news it is, then your mainnet bot decides whether to send a <b>real order to SoDEX</b> from your account. TP and SL are orders on SoDEX. DeskLabs never withdraws or transfers.",
+              "introNa": "On a fixed schedule (how often: <b>Not available</b>) DeskLabs reads new crypto news, keeps articles about a coin listed on SoDEX, asks Claude what kind of news it is, then your mainnet bot decides whether to send a <b>real order to SoDEX</b> from your account. TP and SL are orders on SoDEX. DeskLabs never withdraws or transfers.",
+              "diagram": {
+                "label": "Diagram of one mainnet run",
+                "soso": "crypto news, every {min, plural, one {minute} other {# min}}",
+                "sosoNa": "crypto news, every: Not available",
+                "stepTitle": "{n} · {name}",
+                "steps": {
+                  "collect": "new articles, duplicates out",
+                  "normalize": "which coin? listed on SoDEX?",
+                  "score": "ask Claude, then the rules table",
+                  "context": "save the moment, block nothing",
+                  "filter": "your bot's rules + safety checks",
+                  "decide": "send a real order to SoDEX"
+                },
+                "reader": {
+                  "title": "Claude reader",
+                  "l1": "names the news type",
+                  "l2": "never picks buy or sell"
+                },
+                "bot": {
+                  "title": "Your mainnet bot",
+                  "l1": "version rules,",
+                  "l2": "≤ {usdc} USDC · {lev}× isolated"
+                },
+                "sodex": {
+                  "order": "order",
+                  "title": "SoDEX · your account",
+                  "entry": "<b>Entry:</b> limit IOC, priced to fill now. Nothing fills → signal skipped.",
+                  "tpsl": "<b>TP:</b> reduce-only limit · <b>SL:</b> stop order, both on SoDEX",
+                  "cancel": "One fills → DeskLabs cancels the other.",
+                  "hold": "<b>Max hold:</b> market reduce-only close."
+                },
+                "trades": {
+                  "title": "Mainnet trades",
+                  "l1": "status and close reason,",
+                  "l2": "never mixed with paper"
+                },
+                "control": {
+                  "title": "You stay in control",
+                  "l1": "Pause · Stop · Close now ·",
+                  "l2": "Edit TP/SL"
+                },
+                "never": "SoDEX: real orders from your account. Withdraw or transfer: never."
+              },
+              "list": {
+                "same": "same as Paper",
+                "badge": "mainnet",
+                "shared": {
+                  "name": "1–4 · Collect, Normalize, Score, Context",
+                  "body": "Same news, same Claude reader, same context. Paper and mainnet share the signal; only what happens after step 4 is different."
+                },
+                "filter": {
+                  "name": "5 · Filter",
+                  "sub": "your bot's rules + safety checks",
+                  "body": "Your bot checks its version's rules (markets, min level). Then the safety checks: the bot is running, no other open trade on this coin in your account, size at most {usdc} USDC."
+                },
+                "decide": {
+                  "name": "6 · Decide",
+                  "sub": "send a real order to SoDEX",
+                  "body": "DeskLabs sets the coin to {lev}× isolated on your SoDEX account, then sends a limit IOC order priced to fill now. If nothing fills, the signal is skipped. Builder fee {fee} applies to each fill."
+                },
+                "sodex": {
+                  "name": "On SoDEX: TP, SL and max hold",
+                  "sub": "orders on the exchange",
+                  "body": "After the entry fills, TP is placed as a reduce-only limit and SL as a stop order on SoDEX, so they stay even if DeskLabs is offline. When one fills, DeskLabs cancels the other. At max hold, DeskLabs closes with a market reduce-only order."
+                },
+                "trades": {
+                  "name": "Mainnet trades",
+                  "sub": "what you see, what you can do",
+                  "body": "Each trade shows its status and close reason. You can Pause or Stop the bot, Close now or Edit TP/SL at any time. Mainnet trades are never added to paper results."
+                }
+              }
+            }
           }
         },
         "teamGroup": "Team versions · view only",

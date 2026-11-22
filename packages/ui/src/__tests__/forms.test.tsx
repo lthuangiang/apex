@@ -85,6 +85,51 @@ describe("SegmentedControl", () => {
   });
 });
 
+describe("SegmentedControl tone", () => {
+  function Toned({ start }: { start: "paper" | "mainnet" }) {
+    const [value, setValue] = useState(start);
+    return (
+      <SegmentedControl
+        label="Bots"
+        value={value}
+        onValueChange={setValue}
+        options={[
+          { value: "paper", label: "Paper", tone: "warn" },
+          { value: "mainnet", label: "Mainnet", tone: "pos" },
+        ]}
+      />
+    );
+  }
+
+  it("colors only the selected option by its tone", async () => {
+    render(<Toned start="paper" />);
+    const paper = screen.getByRole("radio", { name: "Paper" });
+    const mainnet = screen.getByRole("radio", { name: "Mainnet" });
+    expect(paper.className).toContain("data-[state=checked]:bg-warn-bg");
+    expect(mainnet.className).toContain("data-[state=checked]:bg-pos");
+    expect(mainnet.className).not.toContain("bg-pos-dot");
+    expect(paper).toHaveAttribute("data-state", "checked");
+    expect(mainnet).toHaveAttribute("data-state", "unchecked");
+    await userEvent.click(mainnet);
+    expect(mainnet).toBeChecked();
+    await expectNoAxeViolations();
+  });
+
+  it("keeps the old look without a tone", () => {
+    render(
+      <SegmentedControl
+        label="Direction"
+        value="long"
+        onValueChange={() => undefined}
+        options={[{ value: "long", label: "Long" }]}
+      />,
+    );
+    expect(screen.getByRole("radio", { name: "Long" }).className).toContain(
+      "data-[state=checked]:bg-surface",
+    );
+  });
+});
+
 describe("Switch", () => {
   it("toggles with role switch", async () => {
     const onChange = vi.fn();

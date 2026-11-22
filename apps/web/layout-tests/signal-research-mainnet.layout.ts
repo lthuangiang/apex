@@ -8,6 +8,7 @@ import {
   SUMMARY_1D,
   TRACES,
 } from "../src/features/signal-analysis/__tests__/news-trace-fixtures";
+import { RESEARCH_TRADES } from "../src/features/signal-analysis/__tests__/research-fixtures";
 import {
   CLASSIFIERS,
   MARKETS,
@@ -108,7 +109,11 @@ const SIGNALS = [
   },
 ];
 
-async function open(page: Page, baseURL: string | undefined) {
+async function open(
+  page: Page,
+  baseURL: string | undefined,
+  mode: "paper" | "mainnet" = "mainnet",
+) {
   await page
     .context()
     .addCookies([{ name: "drift_session", value: "x", url: baseURL ?? "http://127.0.0.1" }]);
@@ -137,6 +142,7 @@ async function open(page: Page, baseURL: string | undefined) {
     if (p === "/api/v1/signal-research/bots") return json({ items: [BOT] });
     if (p.endsWith(`/bots/${BOT_ID}/trades`)) return json({ items: TRADES });
     if (p.endsWith(`/bots/${BOT_ID}/signals`)) return json({ items: SIGNALS });
+    if (p.endsWith("/signal-research/trades")) return json(RESEARCH_TRADES);
     if (p.endsWith("/signal-research/summary")) return json(SUMMARY_1D);
     if (p.endsWith("/signal-research/articles/new")) return json({ items: [], since: "c1" });
     if (p.endsWith("/signal-research/latency")) return json(LATENCY_1D);
@@ -150,6 +156,11 @@ async function open(page: Page, baseURL: string | undefined) {
     if (tr !== undefined) return json(tr);
     return json({ error: { code: "NOT_FOUND", message: "Not found." } }, 404);
   });
+  if (mode === "paper") {
+    await page.goto("/signal-research");
+    await page.getByRole("button", { name: "How it works", exact: true }).waitFor();
+    return;
+  }
   await page.goto("/signal-research?bots=mainnet");
   await page.getByRole("heading", { name: M.trades.title }).waitFor();
 }
@@ -180,5 +191,47 @@ for (const narrow of [false, true]) {
     expect
       .soft(await sideScroll(page), "editor open: page does not scroll sideways")
       .toBeLessThanOrEqual(0);
+  });
+}
+
+// #454: drawer How it works › Overview bản Mainnet: không cuộn ngang (sơ đồ cuộn trong khung của nó), khối không bị ép dẹt.
+for (const narrow of [false, true]) {
+  test(`Mainnet How it works${narrow ? " at 390" : ""}: no side scroll, nothing squashed`, async ({
+    page,
+    baseURL,
+  }) => {
+    if (narrow) await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, baseURL);
+    await page.getByRole("button", { name: "How it works", exact: true }).click();
+    const dlg = page.getByRole("dialog", { name: "How it works" });
+    await expect(dlg.getByTestId("hiw-mainnet-list")).toBeVisible();
+    const m = await dlg.evaluate((el) => {
+      const panel = el.querySelector<HTMLElement>("[role='tabpanel']");
+      const kids = panel === null ? [] : [...panel.children].map((c) => c as HTMLElement);
+      return {
+        overflowX: el.scrollWidth - el.clientWidth,
+        squashed: kids.filter((k) => k.getBoundingClientRect().height + 1 < k.scrollHeight).length,
+      };
+    });
+    expect.soft(m.overflowX, "drawer does not scroll sideways").toBeLessThanOrEqual(0);
+    expect.soft(m.squashed, "no block is squashed").toBe(0);
+    expect.soft(await sideScroll(page), "page does not scroll sideways").toBeLessThanOrEqual(0);
+  });
+}
+
+// #454: ảnh đầu trang (Paper / Mainnet) và drawer How it works › Overview cho PR, chỉ chạy khi có MODE_SHOTS (thư mục ra).
+const shots = process.env.MODE_SHOTS;
+for (const width of [1440, 390]) {
+  test(`mode colors screenshots at ${String(width)}`, async ({ page, baseURL }, info) => {
+    test.skip(shots === undefined || info.project.name !== "w1440", "screenshots only on demand");
+    if (width === 390) await page.setViewportSize({ width: 390, height: 844 });
+    for (const mode of ["paper", "mainnet"] as const) {
+      await open(page, baseURL, mode);
+      await page.screenshot({ path: `${shots ?? "."}/${mode}-top-${String(width)}.png` });
+      await page.getByRole("button", { name: "How it works", exact: true }).click();
+      const dlg = page.getByRole("dialog", { name: "How it works" });
+      await dlg.getByRole("tab", { name: "Overview" }).waitFor();
+      await page.screenshot({ path: `${shots ?? "."}/${mode}-drawer-${String(width)}.png` });
+    }
   });
 }

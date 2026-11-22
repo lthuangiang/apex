@@ -83,6 +83,31 @@ export const Segmented: Story = {
   ),
 };
 
+function ModeDemo({ start }: { start: "paper" | "mainnet" }) {
+  const [value, setValue] = useState(start);
+  return (
+    <SegmentedControl
+      label="Bots"
+      value={value}
+      onValueChange={setValue}
+      options={[
+        { value: "paper", label: "Paper", tone: "warn" },
+        { value: "mainnet", label: "Mainnet", tone: "pos" },
+      ]}
+    />
+  );
+}
+
+/** #454: tab Paper / Mainnet của Signal Research; chỉ lựa chọn đang chọn mang màu chế độ. */
+export const SegmentedTone: Story = {
+  render: () => (
+    <>
+      <ModeDemo start="paper" />
+      <ModeDemo start="mainnet" />
+    </>
+  ),
+};
+
 function SwitchDemo() {
   const [on, setOn] = useState(true);
   return (

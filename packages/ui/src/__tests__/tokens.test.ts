@@ -44,6 +44,7 @@ describe("design tokens", () => {
       pos: "#0f7a43",
       "pos-bg": "#ddf4e7",
       "pos-dot": "#16a05a",
+      "pos-border": "#a9dcbf",
       neg: "#c2312f",
       "neg-ink": "#a72826",
       "neg-bg": "#fde4e1",
@@ -133,5 +134,9 @@ describe("design tokens", () => {
 
   it("keeps white step numbers on arch-badge at 4.5:1 or more", () => {
     expect(contrast(WHITE, token("arch-badge"))).toBeGreaterThanOrEqual(4.5);
+  });
+  // #454: tab Mainnet đang chọn của SegmentedControl (tone "pos") là chữ trắng trên `pos`; `pos-dot` không đủ (≈ 3.4:1).
+  it("keeps white on pos at 4.5:1 or more", () => {
+    expect(contrast(WHITE, token("pos"))).toBeGreaterThanOrEqual(4.5);
   });
 });

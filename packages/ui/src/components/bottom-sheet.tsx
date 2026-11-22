@@ -8,6 +8,8 @@ export interface BottomSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  /** Nhãn nhỏ đứng cạnh tiêu đề (ví dụ "Mainnet" của drawer How it works, #454); không thuộc tên của dialog. */
+  titleAside?: ReactNode;
   description?: string;
   children: ReactNode;
   /** Nút chính ghim ở đáy, có safe-area padding (docs/DESIGN.md, Responsive). */
@@ -43,6 +45,7 @@ export function BottomSheet({
   open,
   onOpenChange,
   title,
+  titleAside,
   description,
   children,
   footer,
@@ -53,6 +56,15 @@ export function BottomSheet({
   onEscapeKeyDown,
 }: BottomSheetProps) {
   const returnFocus = useReturnFocus();
+  const heading =
+    titleAside === undefined ? (
+      <Dialog.Title className="text-lg font-bold text-ink">{title}</Dialog.Title>
+    ) : (
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Dialog.Title className="text-lg font-bold text-ink">{title}</Dialog.Title>
+        {titleAside}
+      </div>
+    );
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -74,10 +86,10 @@ export function BottomSheet({
           {...(description ? {} : { "aria-describedby": undefined })}
         >
           {closeLabel === undefined ? (
-            <Dialog.Title className="text-lg font-bold text-ink">{title}</Dialog.Title>
+            heading
           ) : (
             <div className="flex items-start justify-between gap-3">
-              <Dialog.Title className="text-lg font-bold text-ink">{title}</Dialog.Title>
+              {heading}
               <Dialog.Close
                 aria-label={closeLabel}
                 className="flex size-11 shrink-0 items-center justify-center rounded-full bg-surface-2 text-lg text-ink"

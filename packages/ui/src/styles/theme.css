@@ -19,6 +19,7 @@
   --color-pos: var(--pos);
   --color-pos-bg: var(--pos-bg);
   --color-pos-dot: var(--pos-dot);
+  --color-pos-border: var(--pos-border);
   --color-neg: var(--neg);
   --color-neg-ink: var(--neg-ink);
   --color-neg-bg: var(--neg-bg);

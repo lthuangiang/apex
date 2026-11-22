@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mainnet Mode Colors</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+/* Mockup: Paper = cam (warn, giữ nguyên), Mainnet = xanh lá (pos) cho dải, tab và pill; How it works bản Mainnet có gửi lệnh xuống SoDEX.
+   Màu lấy đúng token của packages/ui/src/styles/tokens.css. */
+:root{
+  --bg:#eef1fa; --surface:#fff; --surface-2:#f5f7fd; --ink:#141a33; --ink-2:#3b4262; --muted:#5f6684; --border:#e3e7f5;
+  --accent:#2e62e8; --accent-ink:#1d47b8; --accent-tint:#e6ecfe;
+  --pos:#0f7a43; --pos-bg:#ddf4e7; --pos-dot:#16a05a; --pos-border:#a9dcbf; --pos-soft:#f0faf4;
+  --neg:#c2312f; --neg-soft:#fff4f2; --neg-border:#f6d3cd; --neg-text:#5b2a22;
+  --warn:#7a3e00; --warn-bg:#fdebd3; --warn-border:#f0c27e; --warn-soft:#fff8ee;
+  --ai:#5a2ca0; --ai-bg:#f0e6ff; --note:#5a2ca0; --note-bg:#f0e6ff;
+  --f:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif; color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--f)}
+.wrap{max-width:1240px;margin:0 auto;padding:28px 16px 64px;display:grid;gap:22px}
+h1{margin:0;font-size:24px;font-weight:800}
+.lede{margin:4px 0 0;color:var(--ink-2);max-width:100ch}
+.note{border:2px dashed var(--note);background:var(--note-bg);color:var(--note);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600}
+.fr{display:grid;gap:8px}
+.fr>.cap{font-size:12px;font-weight:800;color:var(--accent-ink);text-transform:uppercase;letter-spacing:.05em}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:20px;overflow:hidden}
+/* header */
+.top{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 20px 12px}
+.top h2{margin:0;font-size:26px;font-weight:800;display:flex;align-items:center;gap:10px}
+.beta{font-size:12px;font-weight:800;padding:2px 9px;border-radius:99px;background:var(--accent-tint);color:var(--accent-ink)}
+.top p{margin:2px 0 0;color:var(--ink-2)}
+.pill{display:inline-flex;align-items:center;gap:7px;font-weight:800;font-size:14px;padding:7px 14px;border-radius:99px}
+.pill i{width:8px;height:8px;border-radius:50%;display:block}
+.pill.paper{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-border)} .pill.paper i{background:var(--warn)}
+.pill.main{background:var(--pos-dot);color:#fff} .pill.main i{background:#fff}
+.pill.old{background:var(--neg);color:#fff} .pill.old i{background:#fff}
+.conn{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:14px;padding:7px 14px;border-radius:99px;border:1px solid var(--border)}
+.conn i{width:8px;height:8px;border-radius:50%;background:var(--pos-dot);display:block}
+.strip{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;padding:9px 20px;font-size:13px;border-block:1px solid}
+.strip strong{font-size:14px}
+.strip.paper{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn)}
+.strip.main{background:var(--pos-bg);border-color:var(--pos-border);color:var(--pos)}
+.strip.old{background:var(--neg-soft);border-color:var(--neg-border);color:var(--neg-text)}
+.strip .d{display:inline-flex;align-items:center;gap:6px} .strip .d i{width:8px;height:8px;border-radius:50%;background:var(--pos-dot);display:block}
+.row{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;padding:14px 20px}
+.lbl{font-size:12px;font-weight:800;margin-bottom:4px}
+.seg{display:inline-flex;padding:4px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border)}
+.seg span{padding:8px 16px;border-radius:9px;font-weight:700;color:var(--ink-2);display:inline-flex;align-items:center;gap:7px}
+.seg span i{display:none}
+.seg .p i{background:var(--warn-border)} .seg .m i{background:var(--pos-border)}
+.seg .p.on{background:var(--warn-bg);color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn-border)} .seg .p.on i{background:var(--warn)}
+.seg .m.on{background:var(--pos-dot);color:#fff} .seg .m.on i{background:#fff}
+.seg.old .on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(20,26,51,.12)} .seg.old i{display:none}
+.sel{min-width:230px;padding:10px 14px;border-radius:12px;border:2px solid var(--accent);font-weight:700;display:flex;justify-content:space-between}
+.how{margin-left:auto;padding:10px 18px;border-radius:12px;border:2px solid var(--accent);color:var(--accent-ink);font-weight:800}
+.gate{margin:0 20px 18px;padding:12px 16px;border-radius:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.gate.paper{background:var(--warn-soft)} .gate.main{background:var(--pos-soft)} .gate.old{background:var(--accent-tint)}
+.chip{font-size:12px;font-weight:800;padding:3px 10px;border-radius:99px;background:var(--warn-bg);color:var(--warn)}
+.btn{margin-left:auto;padding:10px 18px;border-radius:12px;background:var(--accent);color:#fff;font-weight:800}
+.ind{display:flex;flex-wrap:wrap;gap:8px;padding:0 20px 16px;font-size:13px;color:var(--ink-2)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:16px}
+.mini .top h2{font-size:20px} .mini .row{padding:12px 16px}
+.k{font-size:12px;font-weight:800;color:var(--muted);padding:10px 20px 0}
+/* drawer */
+.drawer{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0}
+@media (max-width:900px){.drawer{grid-template-columns:minmax(0,1fr)}}
+.dh{padding:18px 22px;border-bottom:1px solid var(--border);grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.dh h3{margin:0;font-size:20px;font-weight:800}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.tabs span{font-size:13px;font-weight:700;padding:6px 12px;border-radius:99px;background:var(--surface-2)} .tabs .on{background:var(--ink);color:#fff}
+.mtag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;padding:3px 10px;border-radius:99px;background:var(--pos-dot);color:#fff}
+.intro{grid-column:1/-1;margin:14px 22px 0;padding:12px 16px;border-radius:12px;background:var(--pos-soft);border:1px solid var(--pos-border);color:var(--ink)}
+.diag{padding:16px 22px}
+.diag svg{width:100%;height:auto;display:block}
+.list{padding:16px 22px;display:grid;gap:10px;align-content:start}
+.item{border:1px solid var(--border);border-radius:14px;padding:12px 14px}
+.item b.n{font-size:15px} .item .s{color:var(--muted);font-size:13px}
+.item p{margin:6px 0 0;color:var(--ink-2);font-size:13.5px}
+.item.chg{border-color:var(--pos-border);background:var(--pos-soft)}
+.new{font-size:11px;font-weight:800;padding:1px 8px;border-radius:99px;background:var(--pos-dot);color:#fff;margin-left:6px;vertical-align:2px}
+.same{font-size:11px;font-weight:800;padding:1px 8px;border-radius:99px;background:var(--surface-2);color:var(--muted);margin-left:6px;vertical-align:2px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+td:first-child{font-weight:700;white-space:nowrap}
+.tw{overflow-x:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Signal Research · màu Paper / Mainnet và How it works bản Mainnet</h1>
+    <p class="lede">Hai thay đổi:
+      (1) Paper giữ màu cam như hiện tại. Mainnet đổi sang xanh lá cho cả dải trên cùng, pill ở góc và tab Paper / Mainnet, để nhìn là biết đang ở chế độ nào.
+      (2) How it works khi đang ở Mainnet vẽ đúng thực tế: lệnh thật gửi xuống SoDEX từ tài khoản của người dùng, TP / SL nằm trên SoDEX.
+      Câu chữ trên app vẫn tiếng Anh; chỗ đổi được đánh dấu.</p>
+  </header>
+
+  <div class="note" style="border-color:#16a05a;background:#f0faf4;color:#0f7a43">Đã duyệt 2026-11-22: How it works bản Mainnet giữ như khung 4–5. Tab Paper / Mainnet không đổi bố cục, chỉ thêm màu cho tab đang chọn: Paper cam (giống dải Paper), Mainnet xanh lá (giống dải Mainnet). Không thêm chấm, không đổi chữ hay kích thước.</div>
+  <div class="note">Màu dùng token sẵn có: Paper = <code>warn-bg / warn</code>, Mainnet = <code>pos-bg / pos / pos-dot</code>. Lưu ý: app cũng dùng xanh lá cho số lãi. Để không nhầm, chỉ dải, pill và tab mang màu chế độ; số lãi / lỗ trong bảng giữ nguyên.</div>
+
+  <!-- Frame 1: before / after -->
+  <section class="fr">
+    <span class="cap">Khung 1 · Đầu trang: hiện tại và đề xuất</span>
+    <div class="two">
+      <div class="card mini">
+        <div class="k">HIỆN TẠI · Mainnet</div>
+        <div class="top"><div><h2>Signal Research <span class="beta">Beta</span></h2></div><div style="display:flex;gap:8px"><span class="pill old"><i></i>Mainnet</span></div></div>
+        <div class="strip old"><strong>Mainnet</strong><span>Orders go to your SoDEX account. Withdraw or transfer: never.</span></div>
+        <div class="row"><div><div class="lbl">Bots</div><div class="seg old"><span class="p">Paper</span><span class="m on">Mainnet</span></div></div></div>
+      </div>
+      <div class="card mini">
+        <div class="k">ĐỀ XUẤT · Mainnet</div>
+        <div class="top"><div><h2>Signal Research <span class="beta">Beta</span></h2></div><div style="display:flex;gap:8px"><span class="pill main"><i></i>Mainnet</span></div></div>
+        <div class="strip main"><strong>Mainnet</strong><span>Orders go to your SoDEX account. Withdraw or transfer: never.</span></div>
+        <div class="row"><div><div class="lbl">Bots</div><div class="seg"><span class="p">Paper</span><span class="m on"><i></i>Mainnet</span></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Frame 2: Paper full -->
+  <section class="fr">
+    <span class="cap">Khung 2 · Paper (màu giữ nguyên, tab có màu cam)</span>
+    <div class="card">
+      <div class="top"><div><h2>Signal Research <span class="beta">Beta</span></h2><p>Crypto news turned into signals, tested with paper trades before any real money.</p></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="pill paper"><i></i>Paper</span><span class="conn"><i></i>SoDEX connected</span></div></div>
+      <div class="strip paper"><strong>Paper</strong><span>Fake money. No order is sent to SoDEX.</span><span class="d"><i></i>SoSoValue news · OK · 1 min ago</span><span class="d"><i></i>Claude · OK · 1 min ago</span><span class="d"><i></i>SoDEX prices · OK · now</span></div>
+      <div class="row"><div><div class="lbl">Bots</div><div class="seg"><span class="p on"><i></i>Paper</span><span class="m"><i></i>Mainnet</span></div></div>
+        <div><div class="lbl">Version</div><div class="sel">news-v4 · team <span>▾</span></div></div><span class="how">How it works</span></div>
+      <div class="gate paper"><span class="chip">Signal checks not passed yet</span><span>Paper results are not a forecast.</span></div>
+    </div>
+  </section>
+
+  <!-- Frame 3: Mainnet full -->
+  <section class="fr">
+    <span class="cap">Khung 3 · Mainnet (xanh lá cho dải, pill, tab và nền khung nhắc)</span>
+    <div class="card">
+      <div class="top"><div><h2>Signal Research <span class="beta">Beta</span></h2><p>Crypto news turned into signals, tested with paper trades before any real money.</p></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="pill main"><i></i>Mainnet</span><span class="conn"><i></i>SoDEX connected</span></div></div>
+      <div class="strip main"><strong>Mainnet</strong><span>Orders go to your SoDEX account. Withdraw or transfer: never.</span><span class="d"><i></i>SoSoValue news · OK · 1 min ago</span><span class="d"><i></i>Claude · OK · 1 min ago</span><span class="d"><i></i>SoDEX prices · OK · now</span></div>
+      <div class="row"><div><div class="lbl">Bots</div><div class="seg"><span class="p"><i></i>Paper</span><span class="m on"><i></i>Mainnet</span></div></div>
+        <div><div class="lbl">Bot</div><div class="sel">No mainnet bots yet <span>▾</span></div></div><span class="how">How it works</span></div>
+      <div class="gate main"><span class="chip">Signal checks not passed yet</span><span>Paper results are not a forecast.</span><span class="btn">Start bot from a version</span></div>
+    </div>
+  </section>
+
+  <!-- Frame 4: How it works mainnet -->
+  <section class="fr">
+    <span class="cap">Khung 4 · How it works › Overview khi đang ở Mainnet</span>
+    <div class="card drawer">
+      <div class="dh"><h3>How it works</h3><span class="mtag">● Mainnet</span>
+        <div class="tabs"><span class="on">Overview</span><span>Take profit / Stop loss</span><span>Context questions</span><span>Labels</span><span>Versions</span></div></div>
+      <div class="intro">Every <b>minute</b> DeskLabs reads new crypto news, keeps articles about a coin listed on SoDEX, asks Claude what kind of news it is, then your mainnet bot decides whether to send a <b>real order to SoDEX</b> from your account. TP and SL are orders on SoDEX. DeskLabs never withdraws or transfers.</div>
+      <div class="diag">
+        <svg viewBox="0 0 560 760" role="img" aria-label="Diagram of one mainnet run">
+          <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#5f6684"/></marker>
+            <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#0f7a43"/></marker></defs>
+          <g font-family="Plus Jakarta Sans, sans-serif">
+            <!-- sources -->
+            <rect x="8" y="22" width="120" height="58" rx="10" fill="#f5f7fd" stroke="#e3e7f5"/><text x="20" y="46" font-size="13" font-weight="800" fill="#141a33">SoSoValue</text><text x="20" y="64" font-size="11" fill="#5f6684">crypto news, every minute</text>
+            <line x1="128" y1="51" x2="168" y2="51" stroke="#5f6684" stroke-width="1.5" marker-end="url(#ar)"/>
+            <!-- steps -->
+            <g font-size="13">
+              <rect x="170" y="22" width="230" height="58" rx="10" fill="#1d47b8"/><text x="184" y="46" fill="#fff" font-weight="800">1 · Collect</text><text x="184" y="64" fill="#c8d3ff" font-size="11">new articles, duplicates out</text>
+              <rect x="170" y="100" width="230" height="58" rx="10" fill="#2e62e8"/><text x="184" y="124" fill="#fff" font-weight="800">2 · Normalize</text><text x="184" y="142" fill="#dfe6ff" font-size="11">which coin? listed on SoDEX?</text>
+              <rect x="170" y="178" width="230" height="58" rx="10" fill="#7f9ff0"/><text x="184" y="202" fill="#0b1124" font-weight="800">3 · Score</text><text x="184" y="220" fill="#1d2a55" font-size="11">ask Claude, then the rules table</text>
+              <rect x="170" y="256" width="230" height="58" rx="10" fill="#fff" stroke="#7f9ff0" stroke-width="2" stroke-dasharray="6 4"/><text x="184" y="280" fill="#141a33" font-weight="800">4 · Context</text><text x="184" y="298" fill="#5f6684" font-size="11">save the moment, block nothing</text>
+              <rect x="170" y="334" width="230" height="58" rx="10" fill="#cbd8fa"/><text x="184" y="358" fill="#0b1124" font-weight="800">5 · Filter</text><text x="184" y="376" fill="#1d2a55" font-size="11">your bot's rules + safety checks</text>
+              <rect x="170" y="412" width="230" height="58" rx="10" fill="#16a05a"/><text x="184" y="436" fill="#fff" font-weight="800">6 · Decide</text><text x="184" y="454" fill="#e6fbef" font-size="11">send a real order to SoDEX</text>
+            </g>
+            <g stroke="#5f6684" stroke-width="1.5"><line x1="285" y1="80" x2="285" y2="98" marker-end="url(#ar)"/><line x1="285" y1="158" x2="285" y2="176" marker-end="url(#ar)"/><line x1="285" y1="236" x2="285" y2="254" marker-end="url(#ar)"/><line x1="285" y1="314" x2="285" y2="332" marker-end="url(#ar)"/><line x1="285" y1="392" x2="285" y2="410" marker-end="url(#ar)"/></g>
+            <!-- claude -->
+            <rect x="424" y="172" width="128" height="70" rx="10" fill="#f0e6ff" stroke="#5a2ca0"/><text x="436" y="194" font-size="12" font-weight="800" fill="#5a2ca0">Claude reader</text><text x="436" y="211" font-size="10.5" fill="#3b4262">names the news type</text><text x="436" y="227" font-size="10.5" fill="#3b4262">never picks buy or sell</text>
+            <line x1="400" y1="200" x2="422" y2="200" stroke="#5a2ca0" stroke-width="1.5" marker-end="url(#ar)"/><line x1="422" y1="216" x2="402" y2="216" stroke="#5a2ca0" stroke-width="1.5" marker-end="url(#ar)"/>
+            <!-- bot -->
+            <rect x="424" y="328" width="128" height="70" rx="10" fill="#fff" stroke="#e3e7f5"/><text x="436" y="350" font-size="12" font-weight="800" fill="#141a33">Your mainnet bot</text><text x="436" y="367" font-size="10.5" fill="#3b4262">version rules,</text><text x="436" y="383" font-size="10.5" fill="#3b4262">≤ 200 USDC · 1× isolated</text>
+            <line x1="422" y1="363" x2="402" y2="363" stroke="#5f6684" stroke-width="1.5" marker-end="url(#ar)"/>
+            <!-- SoDEX -->
+            <rect x="96" y="500" width="456" height="150" rx="14" fill="#f0faf4" stroke="#16a05a" stroke-width="2"/>
+            <text x="114" y="526" font-size="14" font-weight="800" fill="#0f7a43">SoDEX · your account</text>
+            <text x="114" y="550" font-size="12" fill="#141a33"><tspan font-weight="800">Entry:</tspan> limit IOC, priced to fill now. Nothing fills → signal skipped.</text>
+            <text x="114" y="574" font-size="12" fill="#141a33"><tspan font-weight="800">TP:</tspan> reduce-only limit · <tspan font-weight="800">SL:</tspan> stop order, both on SoDEX</text>
+            <text x="114" y="598" font-size="12" fill="#141a33">One fills → DeskLabs cancels the other.</text>
+            <text x="114" y="622" font-size="12" fill="#141a33"><tspan font-weight="800">Max hold:</tspan> market reduce-only close.</text>
+            <line x1="285" y1="470" x2="285" y2="498" stroke="#0f7a43" stroke-width="2" marker-end="url(#ag)"/>
+            <text x="292" y="490" font-size="11" font-weight="700" fill="#0f7a43">order</text>
+            <!-- results -->
+            <rect x="96" y="672" width="210" height="62" rx="10" fill="#fff" stroke="#e3e7f5"/><text x="110" y="696" font-size="12.5" font-weight="800" fill="#141a33">Mainnet trades</text><text x="110" y="714" font-size="10.5" fill="#3b4262">status and close reason,</text><text x="110" y="728" font-size="10.5" fill="#3b4262">never mixed with paper</text>
+            <rect x="328" y="672" width="224" height="62" rx="10" fill="#fff" stroke="#e3e7f5"/><text x="342" y="696" font-size="12.5" font-weight="800" fill="#141a33">You stay in control</text><text x="342" y="714" font-size="10.5" fill="#3b4262">Pause · Stop · Close now ·</text><text x="342" y="728" font-size="10.5" fill="#3b4262">Edit TP/SL</text>
+            <line x1="200" y1="650" x2="200" y2="670" stroke="#5f6684" stroke-width="1.5" marker-end="url(#ar)"/>
+            <text x="8" y="756" font-size="11.5" font-weight="700" fill="#0f7a43">SoDEX: real orders from your account. Withdraw or transfer: never.</text>
+          </g>
+        </svg>
+      </div>
+      <div class="list">
+        <div class="item"><b class="n">1–4 · Collect, Normalize, Score, Context</b><span class="same">same as Paper</span><p>Same news, same Claude reader, same context. Paper and mainnet share the signal; only what happens after step 4 is different.</p></div>
+        <div class="item chg"><b class="n">5 · Filter</b><span class="new">mainnet</span><div class="s">your bot's rules + safety checks</div><p>Your bot checks its version's rules (markets, min level). Then the safety checks: the bot is running, no other open trade on this coin in your account, size at most 200 USDC.</p></div>
+        <div class="item chg"><b class="n">6 · Decide</b><span class="new">mainnet</span><div class="s">send a real order to SoDEX</div><p>DeskLabs sets the coin to 1× isolated on your SoDEX account, then sends a limit IOC order priced to fill now. If nothing fills, the signal is skipped. Builder fee 0.01% applies to each fill.</p></div>
+        <div class="item chg"><b class="n">On SoDEX: TP, SL and max hold</b><span class="new">mainnet</span><div class="s">orders on the exchange</div><p>After the entry fills, TP is placed as a reduce-only limit and SL as a stop order on SoDEX, so they stay even if DeskLabs is offline. When one fills, DeskLabs cancels the other. At max hold, DeskLabs closes with a market reduce-only order.</p></div>
+        <div class="item chg"><b class="n">Mainnet trades</b><span class="new">mainnet</span><div class="s">what you see, what you can do</div><p>Each trade shows its status and close reason. You can Pause or Stop the bot, Close now or Edit TP/SL at any time. Mainnet trades are never added to paper results.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Frame 5: copy diff -->
+  <section class="fr">
+    <span class="cap">Khung 5 · Câu chữ: Paper và Mainnet (Paper giữ nguyên)</span>
+    <div class="card tw">
+      <table>
+        <thead><tr><th>Chỗ</th><th>Paper (hiện tại)</th><th>Mainnet (mới)</th></tr></thead>
+        <tbody>
+          <tr><td>Intro</td><td>…then each running version decides whether to open a <b>fake-money</b> trade. A watcher closes trades at TP, SL or max hold.</td><td>…then your mainnet bot decides whether to send a <b>real order to SoDEX</b> from your account. TP and SL are orders on SoDEX. DeskLabs never withdraws or transfers.</td></tr>
+          <tr><td>Bước 5</td><td>each version’s own rules</td><td>your bot's rules + safety checks</td></tr>
+          <tr><td>Bước 6</td><td>open a fake-money trade · mid + half the spread + the taker fee</td><td>send a real order to SoDEX · limit IOC priced to fill now, 1× isolated, ≤ 200 USDC</td></tr>
+          <tr><td>Watcher</td><td>keeps reading bid / ask: TP, SL, max hold</td><td>On SoDEX: TP reduce-only limit, SL stop order; one fills → the other is cancelled; max hold → market reduce-only close</td></tr>
+          <tr><td>Results</td><td>this page, compared with random entries</td><td>Mainnet trades: status and close reason, never mixed with paper</td></tr>
+          <tr><td>Dòng cuối sơ đồ</td><td>SoDEX: no order is ever sent. Fake money only.</td><td>SoDEX: real orders from your account. Withdraw or transfer: never.</td></tr>
+          <tr><td>Dải trên cùng (Paper)</td><td>(dải cam hiện tại)</td><td>Paper giữ dải cam; thêm chữ “Fake money. No order is sent to SoDEX.” nếu anh muốn cho đối xứng</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="note">Phạm vi khi giao code: chỉ web (màu dải / pill / tab theo chế độ, drawer How it works đọc chế độ đang chọn và hiện bản Mainnet). Không đổi API, engine hay số liệu. Các tab khác của How it works (Take profit / Stop loss, Context, Labels, Versions) giữ nguyên.</p>
+</div>
+</body>
+</html>

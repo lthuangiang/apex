@@ -18,6 +18,8 @@
   --pos: #0f7a43;
   --pos-bg: #ddf4e7;
   --pos-dot: #16a05a;
+  /* #454: viền dải Mainnet của Signal Research (cùng kiểu warn-border của dải Paper). */
+  --pos-border: #a9dcbf;
 
   --neg: #c2312f;
   --neg-ink: #a72826;
