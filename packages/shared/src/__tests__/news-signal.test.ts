@@ -4,6 +4,9 @@ import { Strategy } from "../enums";
 import { builderFeeRateFor, builderFeeRateOf, DRIFT_BUILDER_FEE_RATE } from "../fees";
 import {
   isNewsEntryBlock,
+  NEWS_SIGNAL_FALLBACK_MMR,
+  NEWS_SIGNAL_LEVERAGES,
+  newsLiquidationCheck,
   NewsEntryBlock,
   narrowsVersion,
   NEWS_SIGNAL_ENTRY_SLIPPAGE_PCT,
@@ -94,10 +97,9 @@ describe("newsSignalConfigSchema (mainnet)", () => {
     expect(r.error?.issues.map((i) => i.message)).toContain("Above the 200 USDC cap");
   });
 
-  it("only allows 1× leverage, and leverage is required", () => {
+  it("rejects leverage outside 1 / 5 / 10 / 20 (#458, replaces the old 1× only rule)", () => {
     for (const leverage of [2, 0, 1.5, "1"])
       expect(newsSignalConfigSchema.safeParse(bot({ leverage })).success).toBe(false);
-    expect(newsSignalConfigSchema.safeParse(bot({ leverage: undefined })).success).toBe(false);
   });
 
   it("keeps the version rules: max open ≥ 1, max per day Off or ≥ 1", () => {
@@ -274,5 +276,118 @@ describe("news_signal builder fee (DEC-94, DEC-159)", () => {
     expect(builderFeeRateFor(Strategy.newsSignal, { news_signal: 50 })).toBe(10);
     // Mức riêng của chiến lược khác không áp vào.
     expect(builderFeeRateFor(Strategy.newsSignal, { volume_farm: 2 })).toBe(10);
+  });
+});
+
+describe("leverage and the liquidation check (#458)", () => {
+  const tier = (mmr: string) => [
+    {
+      maxNotionalValue: "4000000",
+      maintenanceMarginRate: mmr,
+      maxLeverage: 40,
+      maintenanceDeduction: "0",
+    },
+  ];
+  it("accepts 1 / 5 / 10 / 20, rejects other levels, and reads a missing field as 1", () => {
+    expect(NEWS_SIGNAL_LEVERAGES).toEqual([1, 5, 10, 20]);
+    for (const leverage of [1, 5, 10, 20])
+      expect(newsSignalConfigSchema.safeParse(bot({ leverage })).success).toBe(true);
+    for (const leverage of [2, 3, 25, 0, 1.5])
+      expect(newsSignalConfigSchema.safeParse(bot({ leverage })).success).toBe(false);
+    const raw: Record<string, unknown> = { ...bot() };
+    delete raw.leverage;
+    expect(newsSignalConfigSchema.parse(raw).leverage).toBe(1);
+  });
+
+  it("20× long, MMR 0.5%: liquidation ≈ 4.52% away, so a stop loss up to ≈ 3.01% passes", () => {
+    const at = (slPct: string) =>
+      newsLiquidationCheck({
+        side: "long",
+        leverage: 20,
+        slPct,
+        notional: "199",
+        tiers: tier("0.005"),
+      });
+    expect(at("3").ok).toBe(true);
+    expect(at("3.1").ok).toBe(false);
+    expect(at("3").distance?.toDecimalPlaces(5).toString()).toBe("0.04523");
+  });
+
+  it("10× short, MMR 0.5%: liquidation ≈ 9.45% away, so a stop loss up to ≈ 6.30% passes", () => {
+    const at = (slPct: string) =>
+      newsLiquidationCheck({
+        side: "short",
+        leverage: 10,
+        slPct,
+        notional: "199",
+        tiers: tier("0.005"),
+      });
+    expect(at("6.3").ok).toBe(true);
+    expect(at("6.31").ok).toBe(false);
+  });
+
+  it("5× long, MMR 1.25%; exactly 1.5 × the stop loss distance still passes", () => {
+    const d = newsLiquidationCheck({
+      side: "long",
+      leverage: 5,
+      slPct: "1",
+      notional: "100",
+      tiers: tier("0.0125"),
+    }).distance;
+    expect(d?.toDecimalPlaces(4).toString()).toBe("0.1899");
+    const edge = d?.div("1.5").mul(100).toString() ?? "0";
+    expect(
+      newsLiquidationCheck({
+        side: "long",
+        leverage: 5,
+        slPct: edge,
+        notional: "100",
+        tiers: tier("0.0125"),
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("without SoDEX margin tiers uses the conservative fallback MMR (5%); 1× always passes", () => {
+    expect(NEWS_SIGNAL_FALLBACK_MMR).toBe("0.05");
+    // 20× long: (1/20 − 5%) / (1 − 5%) = 0 → no stop loss can pass.
+    const twenty = newsLiquidationCheck({
+      side: "long",
+      leverage: 20,
+      slPct: "0.1",
+      notional: "199",
+      tiers: undefined,
+    });
+    expect(twenty).toMatchObject({ ok: false, fallback: true });
+    // 10× short: (0.1 − 0.05) / 1.05 ≈ 4.76% → a stop loss up to ≈ 3.17%.
+    expect(
+      newsLiquidationCheck({
+        side: "short",
+        leverage: 10,
+        slPct: "3.1",
+        notional: "199",
+        tiers: [],
+      }).ok,
+    ).toBe(true);
+    expect(
+      newsLiquidationCheck({
+        side: "short",
+        leverage: 10,
+        slPct: "3.2",
+        notional: "199",
+        tiers: [],
+      }).ok,
+    ).toBe(false);
+    expect(
+      newsLiquidationCheck({
+        side: "long",
+        leverage: 1,
+        slPct: "50",
+        notional: "199",
+        tiers: undefined,
+      }),
+    ).toMatchObject({
+      ok: true,
+      fallback: false,
+    });
   });
 });

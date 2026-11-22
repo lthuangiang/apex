@@ -158,7 +158,7 @@ export function newsLiquidationCheck(input: {
   const tiers: readonly MarginTier[] = fallback
     ? [
         {
-          maxNotionalValue: "1e30",
+          maxNotionalValue: "1000000000000000",
           maintenanceMarginRate: NEWS_SIGNAL_FALLBACK_MMR,
           maxLeverage: input.leverage,
           maintenanceDeduction: "0",
