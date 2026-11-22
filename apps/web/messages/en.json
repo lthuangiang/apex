@@ -7823,6 +7823,166 @@
     },
     "loading": "Loading…",
     "research": {
+      "mainnet": {
+        "mode": {
+          "label": "Bots",
+          "paper": "Paper",
+          "mainnet": "Mainnet"
+        },
+        "banner": {
+          "title": "Mainnet",
+          "body": "Orders go to your SoDEX account. Withdraw or transfer: never."
+        },
+        "bot": "Bot",
+        "botGroup": "My mainnet bots",
+        "noBots": "No mainnet bots yet",
+        "loading": "Loading…",
+        "strip": {
+          "label": "Mainnet bot",
+          "mainnet": "Mainnet",
+          "account": "••{last4}",
+          "result": "Result after fees",
+          "open": "{n} open",
+          "shownBelow": "shown below",
+          "pause": "Pause",
+          "resume": "Resume",
+          "stop": "Stop…",
+          "start": "Start"
+        },
+        "count": {
+          "pill": "Signal checks not passed yet",
+          "notForecast": "Paper results are not a forecast.",
+          "config": "Size {size} USDC · leverage 1× · max {open} open · max {day} new trades a day",
+          "configNoDay": "Size {size} USDC · leverage 1× · max {open} open · no daily limit",
+          "start": "Start bot from a version"
+        },
+        "trades": {
+          "title": "Mainnet trades",
+          "label": "Mainnet trades",
+          "cols": {
+            "opened": "Opened",
+            "market": "Market",
+            "entry": "Entry",
+            "tp": "TP",
+            "sl": "SL",
+            "maxHold": "Max hold",
+            "result": "Result",
+            "actions": "Actions"
+          },
+          "market": "{market} · {side}",
+          "until": "until {time}",
+          "closedAt": "closed {time}",
+          "noMaxHold": "No max hold",
+          "edit": "Edit TP/SL",
+          "close": "Close now",
+          "closing": "Closing…",
+          "applying": "Applying…",
+          "note": "TP and SL are orders on SoDEX, so they stay in place even if DeskLabs is down. Result after SoDEX and builder fees.",
+          "empty": "No mainnet trades yet.",
+          "reasons": {
+            "TAKE_PROFIT": "Take profit",
+            "STOP_LOSS": "Stop loss",
+            "MAX_HOLD": "Max hold",
+            "OPPOSITE_NEWS": "Closed on opposite news",
+            "MANUAL": "Closed by you",
+            "STOP": "Closed when you stopped the bot",
+            "SL_REJECTED": "Closed: stop loss rejected",
+            "ENTRY_NOT_FILLED": "Entry not filled",
+            "other": "Closed"
+          }
+        },
+        "signals": {
+          "title": "Signals in the last 24 h",
+          "label": "Signals in the last 24 h",
+          "empty": "No signals in the last 24 h.",
+          "row": "{market} · {side} · {type}",
+          "accepted": "Traded",
+          "dropped": "Skipped: {reason}",
+          "droppedCode": "Skipped ({code})",
+          "notReceived": "Not received by this bot",
+          "reasons": {
+            "ASSET_NOT_IN_BOT": "Market not in this bot",
+            "SIGNAL_STALE": "Signal too old",
+            "BOT_PAUSED": "Bot was paused",
+            "MISSED_WHILE_PAUSED": "Arrived while paused",
+            "ACCOUNT_MARKET_BUSY": "Another bot uses this market",
+            "NEWS_CAP_EXCEEDED": "Above the 200 USDC limit",
+            "ENTRY_NOT_FILLED": "Entry not filled",
+            "LEVERAGE_NOT_SET": "Leverage couldn’t be set to 1×",
+            "BELOW_MIN_ORDER_SIZE": "Below SoDEX minimum size",
+            "SAME_STORY": "Already traded this story",
+            "STORY_TOO_OLD": "Story too old to retry"
+          }
+        },
+        "dialogs": {
+          "consequences": "What happens",
+          "cancel": "Cancel",
+          "stop": {
+            "title": "Stop {name}?",
+            "body": "The bot stops opening trades.",
+            "open": "{n, plural, =0 {No trade is open.} one {# trade is open.} other {# trades are open.}}",
+            "legend": "Open trades",
+            "keepTitle": "Keep open trades",
+            "keepBody": "Their TP and SL stay on SoDEX until one fills.",
+            "closeTitle": "Close all now",
+            "closeBody": "Closes at market price. Taker fee applies.",
+            "cta": "Stop bot"
+          },
+          "close": {
+            "title": "Close {market} · {side} now?",
+            "body": "Closes at market price. Taker fee applies.",
+            "cta": "Close now"
+          },
+          "edit": {
+            "title": "Edit TP / SL · {market} {side}",
+            "tp": "Take profit",
+            "sl": "Stop loss",
+            "mark": "Mark {price}. The old orders stay on SoDEX until the new ones are confirmed.",
+            "markNa": "Mark Not available. The old orders stay on SoDEX until the new ones are confirmed.",
+            "save": "Save",
+            "invalid": "Enter a price above 0.",
+            "slBelow": "Stop loss must be below take profit.",
+            "slAbove": "Stop loss must be above take profit."
+          },
+          "start": {
+            "title": "Start {name}?",
+            "warn": "This news type hasn’t passed its checks yet. Paper results are not a forecast.",
+            "never": "Withdraw or transfer: never. DeskLabs only places orders on your account and charges its builder fee on them.",
+            "ack": "I understand this bot places orders on my SoDEX mainnet account.",
+            "cta": "Start bot",
+            "twoFactor": "2FA code"
+          }
+        },
+        "editor": {
+          "title": "Start bot from a version",
+          "desc": "Rules copied, the version keeps running.",
+          "botBlock": "Bot",
+          "version": "Version",
+          "runOn": "Run on",
+          "mainnet": "Mainnet",
+          "account": "SoDEX account",
+          "connect": "Connect SoDEX",
+          "size": "Size per trade",
+          "sizeHint": "max 200",
+          "sizeCap": "Above the 200 USDC limit for team tests. Use 200 or less.",
+          "leverage": "Leverage",
+          "leverageValue": "1×",
+          "narrowMarkets": "Can only narrow the version’s markets.",
+          "raiseLevel": "Can only be raised from the version.",
+          "start": "Start bot",
+          "starting": "Starting…",
+          "checks": "Before it starts"
+        },
+        "errors": {
+          "commandPending": "Another change to this trade is still running.",
+          "tradeNotOpen": "This trade is not open.",
+          "leverageConflict": "Another bot on this account trades one of these markets.",
+          "tradeNotFound": "Trade not found.",
+          "tpslRequired": "Enter a take profit or a stop loss.",
+          "botNotFound": "This bot isn’t yours or no longer exists."
+        }
+      },
+      "mainnetNotReady": "Mainnet bots are not available yet.",
       "states": {
         "emptyTitle": "No signal research data yet",
         "emptyBody": "Nothing has been collected or replayed yet. Nothing is sent to SoDEX.",
@@ -8998,8 +9158,8 @@
       },
       "page": {
         "banner": {
-          "title": "Research only · fake money",
-          "titleShort": "Research only · fake money.",
+          "title": "Paper",
+          "titleShort": "Paper.",
           "body": "Nothing here is sent to SoDEX.",
           "sourcesLabel": "Sources"
         },
