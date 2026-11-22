@@ -102,7 +102,21 @@ import {
   type NewsCommandInput,
   type NewsSignalState,
 } from "@drift/strategies";
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { Logger } from "pino";
 
 import { withBotCallContext } from "./call-context";
@@ -5841,7 +5855,9 @@ export class Engine {
         await tx
           .update(newsSignalCommands)
           .set({ status: "unknown", result: { clOrdID: o.clOrdId }, updatedAt: new Date(now) })
-          .where(and(eq(newsSignalCommands.id, command), eq(newsSignalCommands.status, "applying")));
+          .where(
+            and(eq(newsSignalCommands.id, command), eq(newsSignalCommands.status, "applying")),
+          );
       await tx.insert(botEvents).values({
         botId: r.botId,
         type: "reconcile",
