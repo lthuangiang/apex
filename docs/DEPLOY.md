@@ -369,6 +369,8 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 
 > **v2.17.0** (`docs/releases/v2.17.0.md`): migration `0060_news_trade_leverage` (chỉ thêm cột). Không có biến môi trường mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.17.0`. Bot `news_signal` cũ chạy 1× như trước; bot mới chọn 1 / 5 / 10 / 20× (DEC-373). Sau deploy, nếu log engine có `news_signal liquidation check uses the fallback maintenance margin rate` thì market đó dùng MMR dự phòng 5%.
 
+> **v2.17.1** (`docs/releases/v2.17.1.md`): chỉ đổi câu Decisions sang tên sản phẩm. Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.17.1`.
+
 **3. Service cần pull lại:** cả 11 app. `infra/deploy/changed-apps.sh v2.12.0 <tag mới>` trả cả 11 vì `packages/**` đổi (shared, db). `build-push.sh --deploy-only <tag>` đã pull và `up -d` hết; không cần chọn tay.
 
 **4. Thứ tự làm:**
