@@ -436,6 +436,7 @@ function tradeView(t: TradeRow, pending: CommandRow | undefined): NewsTrade {
     side: t.side === "short" ? "short" : "long",
     status: t.status === "closed" ? "closed" : t.status === "closing" ? "closing" : "open",
     sizeUsdc: dec(t.sizeUsdc).toFixed(),
+    leverage: t.leverage,
     qty: dec(t.qty).toFixed(),
     entryAvgPrice: decOut(t.entryAvgPrice),
     tpPrice: decOut(t.tpPrice),

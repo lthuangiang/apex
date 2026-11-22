@@ -68,6 +68,8 @@ export function newsTradeRow(
   sodexAccountId: string,
   t: NewsTrade,
   at: number,
+  /** Đòn bẩy SoDEX đã xác nhận cho market của lệnh lúc vào (#458); null = chưa xác nhận. Chỉ ghi lúc tạo dòng. */
+  leverage: number | null = null,
 ): TradeInsert {
   const filled = dec(t.filled);
   return {
@@ -79,6 +81,7 @@ export function newsTradeRow(
     side: t.side,
     status: tradeStatus(t),
     sizeUsdc: t.sizeUsdc,
+    leverage,
     entryLimitPrice: t.entryLimit,
     qty: filled.toString(),
     // Không có khớp thì chưa có giá vào: null, không bao giờ 0 (quy tắc 1.8).

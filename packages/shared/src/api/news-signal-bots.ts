@@ -66,6 +66,8 @@ export const newsTradeSchema = z.object({
   side: z.enum(["long", "short"]),
   status: z.enum(["open", "closing", "closed"]),
   sizeUsdc: decimalStringSchema,
+  /** Đòn bẩy isolated SoDEX đã xác nhận lúc vào lệnh (#458); null = lệnh ghi trước khi có cột này. */
+  leverage: z.number().int().positive().nullable(),
   qty: decimalStringSchema,
   /** null = lệnh vào chưa khớp ("Not available"). */
   entryAvgPrice: decimalStringSchema.nullable(),
