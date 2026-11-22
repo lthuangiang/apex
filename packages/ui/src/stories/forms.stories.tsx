@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { Button } from "../components/button";
 import { Field, inputClassName } from "../components/field";
 import { SegmentedControl } from "../components/segmented-control";
+import { Select } from "../components/select";
 import { Switch } from "../components/switch";
 
 const meta: Meta = {
@@ -104,6 +105,45 @@ export const SegmentedTone: Story = {
     <>
       <ModeDemo start="paper" />
       <ModeDemo start="mainnet" />
+    </>
+  ),
+};
+
+function SelectDemo({ disabled = false }: { disabled?: boolean }) {
+  const [value, setValue] = useState("v3");
+  const id = useId();
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-xs font-extrabold text-ink">
+        Version
+      </label>
+      <Select
+        id={id}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => {
+          setValue(e.target.value);
+        }}
+        className="w-full md:w-auto md:min-w-[190px]"
+      >
+        <optgroup label="Team versions">
+          <option value="v3">Baseline (v3)</option>
+          <option value="v4">v4 · Strict subject</option>
+        </optgroup>
+        <optgroup label="My versions">
+          <option value="v5">v5 · Majors only</option>
+        </optgroup>
+      </Select>
+    </div>
+  );
+}
+
+/** #457: ô chọn Bot / Version của Signal Research, giống nhau trên Safari / Firefox / Chrome. */
+export const SelectBox: Story = {
+  render: () => (
+    <>
+      <SelectDemo />
+      <SelectDemo disabled />
     </>
   ),
 };
