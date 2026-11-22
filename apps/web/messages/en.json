@@ -7956,7 +7956,12 @@
             "never": "Withdraw or transfer: never. DeskLabs only places orders on your account and charges its builder fee on them.",
             "ack": "I understand this bot places orders on my SoDEX mainnet account.",
             "cta": "Start bot",
-            "twoFactor": "2FA code"
+            "twoFactor": "2FA code",
+            "checks": {
+              "apiKey": "SoDEX API key isn't ready. Reconnect SoDEX in Settings.",
+              "balance": "Isolated margin: {available} USDC available, {needed} USDC needed.",
+              "leverageBot": "{market} is used by your bot “{botName}”. Remove {market} from Markets or stop that bot."
+            }
           }
         },
         "editor": {
