@@ -1,6 +1,6 @@
 "use client";
 
-import { BotState, botSummarySchema, type BotSummary } from "@drift/shared";
+import { BotState, botSummarySchema, Strategy, type BotSummary } from "@drift/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
 import Link from "next/link";
@@ -8,10 +8,13 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState } from "react";
 
+import { useNewsTrades } from "@/features/signal-analysis/mainnet/api";
 import { api } from "@/lib/api";
 import { useSodexConnection } from "@/lib/queries";
 
 import { botActions } from "../bot-actions";
+
+import { useBotErrorText } from "./bot-errors";
 
 const BOTS_QUERY = ["bots"] as const;
 
@@ -19,7 +22,8 @@ export function BotActions({
   bot,
   stretch = false,
 }: {
-  bot: Pick<BotSummary, "id" | "name" | "state" | "reasonCode">;
+  bot: Pick<BotSummary, "id" | "name" | "state" | "reasonCode"> &
+    Partial<Pick<BotSummary, "strategy">>;
   stretch?: boolean;
 }) {
   const t = useTranslations("bots");
@@ -42,6 +46,16 @@ export function BotActions({
       if (action === "unarchive") router.push(`/agent/${bot.id}`);
     },
   });
+  const errorText = useBotErrorText();
+  const tc = useTranslations("createBot.errors");
+  // #471: bot news còn lệnh mở thì không archive được (API 409 `open_trades`): khoá nút và nói rõ lý do. Chỉ hỏi lệnh của
+  // bot news đã dừng.
+  const newsStopped = bot.strategy === Strategy.newsSignal && bot.state === BotState.stopped;
+  const trades = useNewsTrades(newsStopped ? bot.id : null);
+  const openTrades =
+    trades.data === undefined ? 0 : trades.data.items.filter((x) => x.status !== "closed").length;
+  const locked = newsStopped && openTrades > 0;
+  const lockId = useId();
   const inlineClass = `flex min-h-tap items-center justify-center rounded-[10px] px-3 text-[13px] font-bold ${stretch ? "flex-1" : ""}`;
 
   useEffect(() => {
@@ -61,7 +75,7 @@ export function BotActions({
   }, [open]);
 
   return (
-    <span ref={ref} className={`relative flex gap-1.5 ${stretch ? "" : "justify-end"}`}>
+    <span ref={ref} className={`relative flex flex-wrap gap-1.5 ${stretch ? "" : "justify-end"}`}>
       {bot.state === BotState.archived ? (
         <>
           {/* Bot archived xem được ở chế độ chỉ đọc (BD-01, DEC-263). */}
@@ -94,9 +108,10 @@ export function BotActions({
       {bot.state === BotState.stopped ? (
         <button
           type="button"
-          disabled={archive.isPending}
+          disabled={archive.isPending || locked}
           aria-label={t("archiveLabel", { name: bot.name })}
-          className={`${inlineClass} border border-border-input text-ink`}
+          {...(locked ? { "aria-describedby": lockId } : {})}
+          className={`${inlineClass} border border-border-input text-ink disabled:cursor-not-allowed disabled:opacity-60`}
           onClick={() => {
             archive.mutate("archive");
           }}
@@ -104,6 +119,15 @@ export function BotActions({
           {t("archive")}
         </button>
       ) : null}
+      {locked ? (
+        <span id={lockId} className="basis-full text-right text-xs text-muted">
+          {tc("archiveOpenTrades")}
+        </span>
+      ) : archive.error === null ? null : (
+        <span role="alert" className="basis-full text-right text-xs text-neg-ink">
+          {errorText(archive.error)}
+        </span>
+      )}
       {more.length > 0 ? (
         <>
           <button
