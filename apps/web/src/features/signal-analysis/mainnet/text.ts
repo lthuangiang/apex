@@ -1,4 +1,9 @@
-import { ErrorCode, type ResearchDropReason } from "@drift/shared";
+import {
+  AssetMode,
+  ErrorCode,
+  type NewsSignalConfig,
+  type ResearchDropReason,
+} from "@drift/shared";
 import { useTranslations } from "next-intl";
 
 import { useBotErrorText } from "@/features/bots/components/bot-errors";
@@ -49,5 +54,21 @@ export function useMainnetErrorText() {
       if (reason === "leverage_conflict") return t("leverageConflict");
     }
     return bot(e);
+  };
+}
+
+/** Tóm tắt Markets của một config ("Stocks only · 12 markets"), dùng ở Settings và danh sách thay đổi của Edit. */
+export function useMarketsText() {
+  const t = useTranslations("signalAnalysis.research.mainnet.settings");
+  return (cfg: NewsSignalConfig): string => {
+    const kind = !cfg.assets.stocks ? t("cryptoOnly") : !cfg.assets.crypto ? t("stocksOnly") : null;
+    const list = cfg.assets.markets;
+    const scope =
+      cfg.assets.mode === AssetMode.only
+        ? t("marketsCount", { n: list.length })
+        : cfg.assets.mode === AssetMode.except && list.length > 0
+          ? t("marketsExcept", { list: list.join(", ") })
+          : t("marketsAll");
+    return [kind, scope].filter((x) => x !== null).join(" · ");
   };
 }

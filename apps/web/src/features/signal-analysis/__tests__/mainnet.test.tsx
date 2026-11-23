@@ -2,7 +2,9 @@
 import "@testing-library/jest-dom/vitest";
 import {
   baselineVersionConfig,
+  newsSignalConfigSchema,
   type BotSummary,
+  type NewsSignalConfig,
   type ErrorCode,
   type NewsTrade,
 } from "@drift/shared";
@@ -16,13 +18,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 
 import messages from "../../../../messages/en.json";
+import { editConfigOf, editDraftOf, validateEdit } from "../mainnet/bot-edit";
 import { NewsBotEditor } from "../mainnet/bot-editor";
 import { MainnetPanel, ModeSwitch } from "../mainnet/mainnet-panel";
 import { MainnetTrades } from "../mainnet/mainnet-trades";
 import { Signals24h } from "../mainnet/signals-24h";
 import { botConfigOf, draftOf, validateBot } from "../research/version-sheet";
 
-import { BASELINE_ID, MARKETS, VERSIONS } from "./versions-fixtures";
+import { BASELINE_ID, MARKETS, V4, V4_ID, VERSIONS } from "./versions-fixtures";
 
 // #421: phần Mainnet của Signal research. API giả (#443) trả dữ liệu qua đúng zod schema; không kiểm câu chữ nằm trong
 // `_pendingReview` (PM chốt), chỉ kiểm vai trò / trạng thái / câu đã duyệt ("Mainnet bots are not available yet.").
@@ -36,7 +39,7 @@ const M = messages.signalAnalysis.research.mainnet;
 
 const state = vi.hoisted(
   (): {
-    calls: { method: string; path: string; body: unknown }[];
+    calls: { method: string; path: string; body: unknown; idempotencyKey?: string | undefined }[];
     bots: unknown[];
     trades: unknown[];
     signals: unknown[];
@@ -46,15 +49,33 @@ const state = vi.hoisted(
     >;
     /** Config của version đang chạy của bot; null = CONFIG. */
     config: Record<string, unknown> | null;
-  } => ({ calls: [], bots: [], trades: [], signals: [], fail: {}, config: null }),
+    /** #469: version `pending` (đang chờ engine áp); null = không có. */
+    pending: number | null;
+    /** #469: kết quả `POST /bots/:id/versions`. */
+    saved: Record<string, unknown>;
+  } => ({
+    calls: [],
+    bots: [],
+    trades: [],
+    signals: [],
+    fail: {},
+    config: null,
+    pending: null,
+    saved: {},
+  }),
 );
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/api")>();
   return {
     ...real,
-    api: (method: string, path: string, schema: z.ZodType, opts?: { body?: unknown }) => {
-      state.calls.push({ method, path, body: opts?.body });
+    api: (
+      method: string,
+      path: string,
+      schema: z.ZodType,
+      opts?: { body?: unknown; idempotencyKey?: string },
+    ) => {
+      state.calls.push({ method, path, body: opts?.body, idempotencyKey: opts?.idempotencyKey });
       const p = new URL(path, "http://x").pathname;
       const key = `${method} ${p}`;
       const f = Object.entries(state.fail).find(([k]) => key.endsWith(k))?.[1];
@@ -72,9 +93,24 @@ vi.mock("@/lib/api", async (importOriginal) => {
           schema.parse({
             ...BOT_DETAIL,
             bot: bot(),
-            versions: [{ ...VERSION_ROW, config: state.config ?? CONFIG }],
+            versions: [
+              { ...VERSION_ROW, config: state.config ?? CONFIG },
+              ...(state.pending === null
+                ? []
+                : [
+                    {
+                      ...VERSION_ROW,
+                      id: "66666666-6666-4666-8666-666666666666",
+                      version: state.pending,
+                      status: "pending",
+                      appliedAt: null,
+                    },
+                  ]),
+            ],
           }),
         );
+      if (method === "POST" && p.endsWith(`/bots/${BOT_ID}/versions`))
+        return Promise.resolve(schema.parse(state.saved));
       if (method === "POST" && p.endsWith("/close"))
         return Promise.resolve(schema.parse(command("close", null, null)));
       if (method === "POST" && p.endsWith("/tpsl")) {
@@ -199,6 +235,12 @@ beforeEach(() => {
   state.signals = [];
   state.fail = {};
   state.config = null;
+  state.pending = null;
+  state.saved = {
+    version: 2,
+    status: "pending",
+    balance: { ok: true, available: "500", needed: "20" },
+  };
 });
 afterEach(() => {
   cleanup();
@@ -719,7 +761,7 @@ describe("Settings: view the running config (#469 part 1)", () => {
     return dt.nextElementSibling as HTMLElement;
   };
 
-  it("shows the version, the source version and every field of the running config, with no Edit", async () => {
+  it("shows the version, the source version and every field of the running config, and an Edit button (#469 part 2)", async () => {
     const dialog = await openSettings({ signalVersionId: BASELINE_ID });
     expect(await within(dialog).findByText("v1 · since Nov 22, 10:00")).toBeInTheDocument();
     expect(
@@ -741,7 +783,7 @@ describe("Settings: view the running config (#469 part 1)", () => {
     const table = within(dialog).getByRole("table");
     expect(within(table).getAllByRole("checkbox").length).toBeGreaterThan(0);
     for (const c of within(table).getAllByRole("checkbox")) expect(c).toBeDisabled();
-    expect(within(dialog).queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: S.edit })).toBeEnabled();
     const r = await axe.run(dialog, { rules: { "color-contrast": { enabled: false } } });
     expect(r.violations.map((v) => v.id)).toEqual([]);
   });
@@ -804,5 +846,275 @@ describe("Settings: view the running config (#469 part 1)", () => {
     for (const label of [E.size, S.marginPerTrade, S.maxDay, S.markets])
       expect(value(dialog, label)).toHaveTextContent("Not available");
     expect(dialog).not.toHaveTextContent(/\b0 USDC/);
+  });
+});
+
+describe("Edit: save as a new version (#469 part 2)", () => {
+  const S = M.settings;
+  const E = M.editor;
+  const one = (over: Record<string, unknown> = {}) =>
+    ({ ...bot(), signalVersionId: BASELINE_ID, ...over }) as BotSummary & {
+      signalVersionId?: string | null;
+    };
+
+  async function openEdit(over: Record<string, unknown> = {}) {
+    const user = userEvent.setup();
+    const b = one(over);
+    wrap(
+      <MainnetPanel
+        sources={null}
+        tz="UTC"
+        modeSwitch={null}
+        bots={[b]}
+        botsLoading={false}
+        botsError={null}
+        selected={b}
+        onBot={() => undefined}
+        onHow={() => undefined}
+        onStartFromVersion={() => undefined}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: S.button }));
+    const settings = await screen.findByRole("dialog", { name: b.name });
+    const edit = within(settings).getByRole("button", { name: S.edit });
+    await waitFor(() => {
+      expect(edit).toBeEnabled();
+    });
+    await user.click(edit);
+    const dialog = await screen.findByRole("dialog", { name: `Edit ${b.name}` });
+    return { user, dialog };
+  }
+  const saves = () =>
+    state.calls.filter((c) => c.method === "POST" && c.path.endsWith(`/bots/${BOT_ID}/versions`));
+
+  it("validates like the API: size ≤ 200, max open 1–1000, markets only narrow, min level only rises; other fields are kept", () => {
+    const current: NewsSignalConfig = newsSignalConfigSchema.parse({
+      ...CONFIG,
+      ...V4.config,
+      sizeUsdc: "100",
+      leverage: 1,
+      maxOpenTrades: 3,
+    });
+    const src = V4.config ?? null;
+    const d = editDraftOf(current);
+    expect(validateEdit(current, d, src)).toEqual({});
+    expect(validateEdit(current, { ...d, size: "200.01" }, src).size).toEqual({ key: "sizeCap" });
+    expect(validateEdit(current, { ...d, maxOpen: "0" }, src).maxOpen).toEqual({
+      key: "range",
+      min: 1,
+      max: 1000,
+    });
+    expect(validateEdit(current, { ...d, minLevel: "low" }, src).minLevel).toEqual({
+      key: "raiseLevel",
+    });
+    expect(validateEdit(current, { ...d, minLevel: "high" }, src)).toEqual({});
+    // Version gốc chỉ có BTC / ETH: thêm SOL là mở rộng.
+    const majors: NewsSignalConfig = {
+      ...current,
+      assets: { mode: "only", markets: ["BTC-USD"], crypto: true, stocks: true },
+    };
+    const onlySrc = {
+      ...src,
+      assets: { mode: "only", markets: ["BTC-USD", "ETH-USD"], crypto: true, stocks: true },
+    } as never;
+    const md = editDraftOf(majors);
+    expect(
+      validateEdit(majors, { ...md, markets: ["BTC-USD", "SOL-USD"] }, onlySrc).assets,
+    ).toEqual({
+      key: "narrowMarkets",
+    });
+    expect(validateEdit(majors, { ...md, markets: ["ETH-USD"] }, onlySrc)).toEqual({});
+    // Config gửi API: 5 ô từ form, mọi field khác đúng như version đang chạy.
+    const out = editConfigOf(current, { ...d, leverage: 10, size: "50", maxOpen: "2" }, src);
+    expect(out).toEqual({ ...current, leverage: 10, sizeUsdc: "50", maxOpenTrades: 2 });
+    expect(editConfigOf(current, { ...d, size: "300" }, src)).toBeNull();
+  });
+
+  it("shows only the 5 fields, lists the changes, and saves with paramSource manual and an Idempotency-Key; Applying v2… until the backend confirms", async () => {
+    const { user, dialog } = await openEdit();
+    // Lệnh đang mở (lệnh cũ chưa có đòn bẩy) giữ thiết lập lúc vào.
+    expect(within(dialog).getByRole("note")).toHaveTextContent(/SOL-USD/);
+    expect(within(dialog).getByRole("radiogroup", { name: E.leverage })).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(E.size)).toHaveValue("100");
+    expect(within(dialog).getByLabelText("Max open trades")).toHaveValue("3");
+    expect(within(dialog).getByLabelText(S.minLevel)).toBeInTheDocument();
+    for (const gone of ["Take profit", "Stop loss", "Max source delay", "Opposite news"])
+      expect(within(dialog).queryByLabelText(new RegExp(gone))).toBeNull();
+    const save = within(dialog).getByRole("button", { name: "Save as v2" });
+    expect(save).toBeDisabled();
+    await user.click(within(dialog).getByRole("radio", { name: "5×" }));
+    const size = within(dialog).getByLabelText(E.size);
+    await user.clear(size);
+    await user.type(size, "40");
+    expect(within(dialog).getByText("Changes in v2")).toBeInTheDocument();
+    expect(within(dialog).getByText("Leverage 1× → 5×")).toBeInTheDocument();
+    expect(within(dialog).getByText("Position size 100 → 40 USDC")).toBeInTheDocument();
+    await noViolations(dialog);
+    expect(save).toBeEnabled();
+    // Server: version mới `pending` tới khi engine áp.
+    state.pending = 2;
+    await user.click(save);
+    await waitFor(() => {
+      expect(saves()).toHaveLength(1);
+    });
+    expect(saves()[0]?.body).toEqual({
+      config: { ...CONFIG, leverage: 5, sizeUsdc: "40" },
+      paramSource: "manual",
+    });
+    expect(saves()[0]?.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+    // Lưu xong: về Settings, câu đã duyệt; engine chưa áp nên "Applying v2…" (trạng thái từ backend).
+    const settings = await screen.findByRole("dialog", { name: bot().name });
+    expect(
+      within(settings).getByText(
+        "Saved as v2. New signals use v2; open trades keep the settings they opened with.",
+      ),
+    ).toBeInTheDocument();
+    const applying = await within(settings).findByText("Applying v2…", {}, { timeout: 3_000 });
+    expect(applying).toBeInTheDocument();
+    expect(within(settings).getByRole("button", { name: S.edit })).toBeDisabled();
+  });
+
+  it("an open trade with its leverage says so with the approved sentence", async () => {
+    state.trades = [trade({ leverage: 10, market: "AAPL-USD" })];
+    const { dialog } = await openEdit();
+    expect(within(dialog).getByRole("note")).toHaveTextContent(
+      "1 trade is open on AAPL-USD at 10×. It keeps its TP, SL, max hold and leverage. Change them with Edit TP/SL in Mainnet trades.",
+    );
+  });
+
+  it("not enough isolated margin for the new config: saved anyway, with the Start box warning", async () => {
+    state.saved = {
+      version: 2,
+      status: "pending",
+      balance: { ok: false, available: "10", needed: "20" },
+    };
+    const { user, dialog } = await openEdit();
+    await user.click(within(dialog).getByRole("radio", { name: "5×" }));
+    await user.click(within(dialog).getByRole("button", { name: "Save as v2" }));
+    const settings = await screen.findByRole("dialog", { name: bot().name });
+    expect(within(settings).getByRole("alert")).toHaveTextContent(
+      "Isolated margin: 10 USDC available, 20 USDC needed.",
+    );
+  });
+
+  it("client errors stop the save and show at the field", async () => {
+    state.config = { ...CONFIG, ...V4.config, sizeUsdc: "100", leverage: 1, maxOpenTrades: 3 };
+    const { user, dialog } = await openEdit({ signalVersionId: V4_ID });
+    const size = within(dialog).getByLabelText(E.size);
+    await user.clear(size);
+    await user.type(size, "250");
+    await user.selectOptions(within(dialog).getByLabelText(S.minLevel), "low");
+    expect(within(dialog).getByText(E.sizeCap)).toBeInTheDocument();
+    expect(within(dialog).getAllByText(E.raiseLevel).length).toBeGreaterThanOrEqual(2);
+    expect(within(dialog).getByLabelText(S.minLevel)).toHaveAttribute("aria-invalid", "true");
+    await user.click(within(dialog).getByRole("button", { name: "Save as v2" }));
+    expect(saves()).toHaveLength(0);
+    await noViolations(dialog);
+  });
+
+  it("API errors: fieldErrors go to the field, leverage_conflict and a 409 while applying show a sentence", async () => {
+    state.fail = {
+      [`POST /api/v1/bots/${BOT_ID}/versions`]: {
+        code: "VALIDATION_FAILED",
+        status: 400,
+        details: { fieldErrors: { minLevel: ["Can only be raised from the version."] } },
+      },
+    };
+    const { user, dialog } = await openEdit();
+    await user.click(within(dialog).getByRole("radio", { name: "5×" }));
+    const save = within(dialog).getByRole("button", { name: "Save as v2" });
+    await user.click(save);
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText(S.minLevel)).toHaveAttribute("aria-invalid", "true");
+    });
+    state.fail = {
+      [`POST /api/v1/bots/${BOT_ID}/versions`]: {
+        code: "STATE_CONFLICT",
+        status: 409,
+        details: { reason: "leverage_conflict", market: "SOL-USD" },
+      },
+    };
+    await user.click(within(dialog).getByRole("radio", { name: "10×" }));
+    await user.click(save);
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(M.errors.leverageConflict);
+    state.fail = {
+      [`POST /api/v1/bots/${BOT_ID}/versions`]: {
+        code: "BOT_STATE_CONFLICT",
+        status: 409,
+        details: { reason: "applying", version: 2 },
+      },
+    };
+    await user.click(within(dialog).getByRole("radio", { name: "20×" }));
+    await user.click(save);
+    await waitFor(() => {
+      expect(within(dialog).getByRole("alert")).toHaveTextContent(S.stillApplying);
+    });
+  });
+
+  it("asks for the 2FA code when the API needs it, then sends it", async () => {
+    state.fail = {
+      [`POST /api/v1/bots/${BOT_ID}/versions`]: { code: "TWO_FACTOR_REQUIRED", status: 403 },
+    };
+    const { user, dialog } = await openEdit();
+    await user.click(within(dialog).getByRole("radio", { name: "5×" }));
+    const save = within(dialog).getByRole("button", { name: "Save as v2" });
+    await user.click(save);
+    const code = await within(dialog).findByLabelText(M.dialogs.start.twoFactor);
+    state.fail = {};
+    await user.type(code, "123456");
+    await user.click(save);
+    await waitFor(() => {
+      expect(saves().at(-1)?.body).toMatchObject({
+        twoFactorCode: "123456",
+        paramSource: "manual",
+      });
+    });
+  });
+
+  it("Edit is locked while a version is applying or the bot is changing state; the strip shows Applying v{n}…", async () => {
+    state.pending = 2;
+    const user = userEvent.setup();
+    const b = one();
+    wrap(
+      <MainnetPanel
+        sources={null}
+        tz="UTC"
+        modeSwitch={null}
+        bots={[b]}
+        botsLoading={false}
+        botsError={null}
+        selected={b}
+        onBot={() => undefined}
+        onHow={() => undefined}
+        onStartFromVersion={() => undefined}
+      />,
+    );
+    const strip = screen.getByRole("group", { name: M.strip.label });
+    expect(await within(strip).findByText("Applying v2…")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: S.button }));
+    const settings = await screen.findByRole("dialog", { name: b.name });
+    await within(settings).findByText("Applying v2…");
+    expect(within(settings).getByRole("button", { name: S.edit })).toBeDisabled();
+    cleanup();
+    state.pending = null;
+    const pausing = one({ state: "pausing" });
+    wrap(
+      <MainnetPanel
+        sources={null}
+        tz="UTC"
+        modeSwitch={null}
+        bots={[pausing]}
+        botsLoading={false}
+        botsError={null}
+        selected={pausing}
+        onBot={() => undefined}
+        onHow={() => undefined}
+        onStartFromVersion={() => undefined}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: S.button }));
+    const s2 = await screen.findByRole("dialog", { name: pausing.name });
+    await within(s2).findByText(/1×, isolated/);
+    expect(within(s2).getByRole("button", { name: S.edit })).toBeDisabled();
   });
 });

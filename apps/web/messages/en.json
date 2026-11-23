@@ -8040,7 +8040,22 @@
           "cryptoOnly": "Crypto only",
           "marketsCount": "{n, plural, one {# market} other {# markets}}",
           "marketsAll": "All markets",
-          "marketsExcept": "All except {list}"
+          "marketsExcept": "All except {list}",
+          "edit": "Edit",
+          "editTitle": "Edit {name}",
+          "saved": "Saved as v{n}. New signals use v{n}; open trades keep the settings they opened with.",
+          "openTrade": "{n} trade is open on {market} at {lev}×. It keeps its TP, SL, max hold and leverage. Change them with <b>Edit TP/SL</b> in Mainnet trades.",
+          "openTradeNoLev": "{n} trade is open on {market}. It keeps its TP, SL, max hold and leverage. Change them with <b>Edit TP/SL</b> in Mainnet trades.",
+          "changes": "Changes in v{n}",
+          "changeLeverage": "Leverage {from}× → {to}×",
+          "changeSize": "Position size {from} → {to} USDC",
+          "changeMaxOpen": "Max open trades {from} → {to}",
+          "changeMarkets": "Markets {from} → {to}",
+          "changeLevel": "Min level {from} → {to}",
+          "noChanges": "No changes yet.",
+          "saveAs": "Save as v{n}",
+          "applying": "Applying v{n}…",
+          "stillApplying": "The last edit is still applying. Edit again once it’s applied."
         },
         "agent": {
           "open": "Open in Signal Research"
