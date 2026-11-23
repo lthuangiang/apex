@@ -46,6 +46,8 @@ export const NEEDS_YOU_RULES = [
   "max_loss_hit",
   "taker_costly",
   "better_review",
+  /** #472: bot đang cần chú ý (`needsAttention`), ví dụ SL bị từ chối, lệnh `unknown`, bị pause vì lỗi. Mọi chiến lược. */
+  "bot_needs_attention",
 ] as const;
 export type NeedsYouRule = (typeof NEEDS_YOU_RULES)[number];
 /**
@@ -64,6 +66,7 @@ export const RULE_SEVERITY: Record<NeedsYouRule, number> = {
   max_loss_hit: 3,
   taker_costly: 2,
   better_review: 1,
+  bot_needs_attention: 2,
 };
 
 /** Một số liệu có nguồn. LLM chỉ được nhắc số có trong fact (DEC-164 mục 3). */
@@ -172,6 +175,8 @@ export interface DeskBotFacts {
   review: DeskReviewFact | null;
   /** Nhận xét của AI Analyst (`deskNotes`): `fees` / `attention` / `fine`. */
   analyst: "fees" | "attention" | "fine";
+  /** #472: bot đang "Needs attention" (cùng cờ với Strategy Lab / Trading Agent). */
+  needsAttention: boolean;
 }
 
 export interface NeedsYouCandidate {
@@ -313,10 +318,35 @@ export function ruleReview(b: DeskBotFacts, now: number): NeedsYouCandidate | nu
   };
 }
 
+/**
+ * Quy tắc 5 (#472): bot đang "Needs attention" (mọi chiến lược, kể cả bot Signal Research). Không có What-if; thẻ có nút
+ * "Open bot". Fingerprint = lần dừng / pause gần nhất (lần dừng mới → việc mới). Bot đã có việc "max loss" thì không
+ * thêm việc này (cùng một lần dừng, không hiện hai thẻ).
+ */
+export function ruleNeedsAttention(b: DeskBotFacts): NeedsYouCandidate | null {
+  if (!b.needsAttention) return null;
+  if (ruleMaxLoss(b) !== null) return null;
+  const facts = [fact(b.botId, "state", b.state, "text", "bot_state")];
+  if (b.reasonCode !== null)
+    facts.push(fact(b.botId, "reasonCode", b.reasonCode, "text", "bot_state"));
+  return {
+    botId: b.botId,
+    rule: "bot_needs_attention",
+    severity: RULE_SEVERITY.bot_needs_attention,
+    badness: "0",
+    fingerprint: String(b.stoppedAt ?? 0),
+    facts,
+  };
+}
+
 export function evaluateBot(b: DeskBotFacts, now: number): NeedsYouCandidate[] {
-  return [ruleLiquidation(b), ruleMaxLoss(b), ruleTaker(b), ruleReview(b, now)].filter(
-    (x): x is NeedsYouCandidate => x !== null,
-  );
+  return [
+    ruleLiquidation(b),
+    ruleMaxLoss(b),
+    ruleTaker(b),
+    ruleReview(b, now),
+    ruleNeedsAttention(b),
+  ].filter((x): x is NeedsYouCandidate => x !== null);
 }
 
 /* ------------------------------------------- Sức khoẻ bot và chọn việc ------------------------------------------- */

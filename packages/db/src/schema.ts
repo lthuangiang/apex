@@ -1307,7 +1307,13 @@ export const deskItems = pgTable(
       .notNull()
       .references(() => bots.id),
     rule: text("rule", {
-      enum: ["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"],
+      enum: [
+        "liquidation_before_stop",
+        "max_loss_hit",
+        "taker_costly",
+        "better_review",
+        "bot_needs_attention",
+      ],
     }).notNull(),
     severity: integer("severity").notNull(),
     /** `DeskFact[]` lúc tính gần nhất (nguồn số liệu cho thẻ và cho Desk AI). */

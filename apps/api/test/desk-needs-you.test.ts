@@ -144,6 +144,48 @@ describe("Needs you", () => {
     expect(rows[0]?.resolved_at).not.toBeNull();
   });
 
+  it("#472: a news bot that needs attention gets one item with no what-if; a new stop makes it new again", async () => {
+    const { client, userId, accountId } = await deskUser("needs-news@example.com");
+    const { rows } = await env.pool.query<{ id: string }>(
+      "insert into bots (id, user_id, sodex_account_id, strategy, market, engine, name, state, mode, reason_code, needs_attention) values (gen_random_uuid(), $1, $2, 'news_signal', '', 'perps', 'Stock Monitor', 'paused', 'live', 'SL_REJECTED', true) returning id",
+      [userId, accountId],
+    );
+    const botId = rows[0]?.id ?? "";
+    await env.pool.query(
+      "insert into bot_versions (id, bot_id, version, config, param_source, status, applied_at) values (gen_random_uuid(), $1, 1, '{}', 'manual', 'active', now())",
+      [botId],
+    );
+    await env.pool.query(
+      `insert into bot_events (id, bot_id, type, decision, why, occurred_at) values (gen_random_uuid(), $1, 'state', 'Paused', 'SL_REJECTED', now() - interval '1 hour')`,
+      [botId],
+    );
+    const v = await view(client);
+    expect(v.items.map((i) => [i.botName, i.rule, i.severity])).toEqual([
+      ["Stock Monitor", "bot_needs_attention", 2],
+    ]);
+    expect(v.items[0]?.facts.find((f) => f.name === "reasonCode")?.value).toBe("SL_REJECTED");
+    expect(v.bots.find((b) => b.botId === botId)?.health).toBe("needs_you");
+    const id = v.items[0]?.id ?? "";
+    // Không có What-if cho việc này.
+    const w = await client.request("POST", `/api/v1/desk/needs-you/${id}/whatif`);
+    expect(w.statusCode).toBe(400);
+    expect(errorOf(w.json()).details).toMatchObject({ reason: "not_supported" });
+    // Hoãn, rồi một lần dừng mới: việc hiện lại.
+    await client.request("POST", `/api/v1/desk/needs-you/${id}/later`);
+    expect((await view(client)).items).toEqual([]);
+    await env.pool.query(
+      `insert into bot_events (id, bot_id, type, decision, why, occurred_at) values (gen_random_uuid(), $1, 'state', 'Paused', 'SL_REJECTED', now())`,
+      [botId],
+    );
+    expect((await view(client)).items.map((i) => i.rule)).toEqual(["bot_needs_attention"]);
+    // Hết Needs attention: việc không còn.
+    await env.pool.query(
+      "update bots set state = 'running', reason_code = null, needs_attention = false where id = $1",
+      [botId],
+    );
+    expect((await view(client)).items).toEqual([]);
+  });
+
   it("survives two reads at the same time for a new item", async () => {
     const { client } = await deskUser("needs-race@example.com");
     const made = await client.request("POST", "/api/v1/bots", {

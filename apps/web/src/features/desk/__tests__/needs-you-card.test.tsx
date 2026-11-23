@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import type { DeskHomeView } from "@drift/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import axe from "axe-core";
 import { NextIntlClientProvider } from "next-intl";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -106,5 +107,67 @@ describe("Needs you card auto-compare", () => {
     await waitFor(() => {
       expect(posts).toHaveLength(2);
     });
+  });
+});
+
+describe("Needs you card: bot needs attention (#472)", () => {
+  const attention = (facts: DeskHomeView["items"][number]["facts"]) => ({
+    ...item,
+    botName: "Stock Monitor",
+    strategy: "news_signal",
+    market: "",
+    rule: "bot_needs_attention" as const,
+    severity: 2,
+    facts,
+  });
+  const fact = (name: string, value: string) => ({
+    id: `b:${name}`,
+    name,
+    value,
+    unit: "text" as const,
+    source: "bot_state" as const,
+  });
+
+  it("shows the title, the reason label and Open bot, with no what-if", async () => {
+    render(
+      wrap(
+        <main>
+          <NeedsYouCard
+            item={attention([fact("state", "paused"), fact("reasonCode", "BOT_MAX_LOSS")])}
+            checkedAt="t1"
+          />
+        </main>,
+      ),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Stock Monitor needs your attention" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Check the bot’s recent decisions.")).toBeNull();
+    expect(screen.getByRole("link", { name: "Open bot" })).toHaveAttribute(
+      "href",
+      `/agent/${item.botId ?? ""}`,
+    );
+    await new Promise((r) => setTimeout(r, 100));
+    expect(posts).toHaveLength(0);
+    const r = await axe.run(document.body, { rules: { "color-contrast": { enabled: false } } });
+    expect(r.violations.map((v) => v.id)).toEqual([]);
+  });
+
+  it("no reason (or a code without a label) uses the fallback sentence", () => {
+    const view = render(
+      wrap(<NeedsYouCard item={attention([fact("state", "running")])} checkedAt="t1" />),
+    );
+    expect(screen.getByText("Check the bot’s recent decisions.")).toBeInTheDocument();
+    view.unmount();
+    render(
+      wrap(
+        <NeedsYouCard
+          item={attention([fact("state", "paused"), fact("reasonCode", "SOMETHING_NEW")])}
+          checkedAt="t1"
+        />,
+      ),
+    );
+    expect(screen.getByText("Check the bot’s recent decisions.")).toBeInTheDocument();
+    expect(screen.queryByText("SOMETHING_NEW")).toBeNull();
   });
 });

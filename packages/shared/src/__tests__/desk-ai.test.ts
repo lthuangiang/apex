@@ -124,6 +124,7 @@ describe("Desk AI facts and prompt", () => {
       taker: { trades: 40, takerTrades: 10, takerCostPerMillion: null, makerCostPerMillion: null },
       review: null,
       analyst: "fine",
+      needsAttention: false,
     };
     const f = deskAiFacts({ bots: [bot], goal: { limit: "500", used: null }, questionsUsed: 3 });
     expect(f.map((x) => [x.key, x.value])).toEqual([
