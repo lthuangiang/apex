@@ -75,8 +75,8 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - **Pause on fast moves** (`pauseOnFastMoves`, mặc định tắt; **ẩn khỏi form** từ DEC-241, config cũ vẫn chạy): giá (cao nhất − thấp nhất) trong 6 s gần nhất ≥ max(3 bước giá, 2 bp của giá) → huỷ
   ngay lệnh mở, chỉ giữ lệnh đóng reduce-only; mỗi lần kích hoạt gia hạn thêm 15 s; hết hạn thì báo giá lại. Decisions ghi
   "Quotes paused on a fast move" / "Quoting again after a fast move". Độc lập với Smart quoting.
-- **Smart quoting từ DEC-242:** bật mặc định khi tạo bot mới (config cũ thiếu trường vẫn tắt); muốn ra volume
-  nhanh thì tắt. Gồm: định giá theo Binance, rút lệnh giá đã chạy qua, giữ lệnh nằm yên, sổ lệnh SoDEX thời gian thực
+- **Smart quoting từ DEC-242:** tắt mặc định khi tạo bot mới (DEC-TBD-mm-smart-quoting-off, #498, thay phần "bật
+  mặc định" của DEC-242; bot đang có giữ thiết lập của nó, config cũ thiếu trường vẫn tắt); người dùng tự bật. Gồm: định giá theo Binance, rút lệnh giá đã chạy qua, giữ lệnh nằm yên, sổ lệnh SoDEX thời gian thực
   (DEC-248), cắt vị thế khi giá chạy ngược (DEC-249), cộng hai bước còn lại của DEC-152 (khởi động, sổ lệnh lệch). Đà ngắn
   và xu hướng đã bỏ (DEC-247). Câu "How it works" trên form theo đúng các bước này.
 - **Sổ lệnh SoDEX thời gian thực** (DEC-248): `marketdata` gửi `md.<market>.book` (giá mua / bán tốt nhất từ WS
