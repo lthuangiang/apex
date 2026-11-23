@@ -9974,6 +9974,16 @@
   },
   "signalResearch": {
     "title": "Signal Research",
-    "lede": "Crypto news turned into signals, tested with paper trades before any real money."
+    "lede": "Crypto news turned into signals, tested with paper trades before any real money.",
+    "export": {
+      "button": "Export data",
+      "exporting": "Exporting…",
+      "period": "Export period",
+      "periods": {
+        "24h": "24h",
+        "7d": "7d",
+        "30d": "30d"
+      }
+    }
   }
 }

@@ -14,6 +14,7 @@ import {
   loadSignalResearchTrade,
   loadSignalResearchTrades,
   loadResearchWallets,
+  loadSignalResearchExport,
   readOnlyTx,
   saveSignalClassificationLabel,
   ownerFor,
@@ -61,6 +62,9 @@ import {
   parseSrMarkets,
   researchVersionCreatedSchema,
   researchWalletsSchema,
+  srExportFileName,
+  srExportQuerySchema,
+  srExportSchema,
   type ResearchWallets,
   srMarketsStale,
   STOCK_MARKET_SET,
@@ -595,6 +599,40 @@ export async function signalResearchSetVersionStatus(
   return versionItem(deps, id, viewer);
 }
 
+/** Trần tổng thời gian của request Export data (nhiều câu hơn các trang; mỗi câu vẫn bị `statement_timeout`). */
+const EXPORT_DEADLINE_MS = 45_000;
+
+/**
+ * Export data (#489): một file JSON cho PM phân tích, CHỈ role team (người dùng test bật cờ cũng 403), kiểm trước khi parse
+ * tham số. Chỉ đọc. Nội dung theo `srExportSchema` (không email / user id / ví / key / token / id bot mainnet); parse lại
+ * trước khi trả để không lọt trường ngoài hợp đồng.
+ */
+export async function signalResearchExport(
+  deps: SignalResearchDeps,
+  userId: string,
+  query: unknown,
+): Promise<{ fileName: string; body: string }> {
+  const viewer = await researchViewer(deps.db, userId);
+  if (!viewer.team)
+    throw new AppError(ErrorCode.forbidden, "Export data is for the DeskLabs team only.");
+  const { period } = parseOrThrow(srExportQuerySchema, query);
+  const now = deps.now();
+  const lane = await laneOf(deps);
+  const out = await readOnlyTx(
+    deps.db,
+    {
+      statementTimeoutMs: deps.queryTimeoutMs ?? QUERY_TIMEOUT_MS,
+      deadlineMs: EXPORT_DEADLINE_MS,
+    },
+    (q, check) =>
+      loadSignalResearchExport(q, { period, now, cycleMinutes: lane?.cycleMinutes ?? null }, check),
+  );
+  return {
+    fileName: srExportFileName(period, now),
+    body: JSON.stringify(srExportSchema.parse(out), null, 2),
+  };
+}
+
 export function registerSignalResearchRoutes(
   app: FastifyInstance,
   input: SignalResearchDeps,
@@ -659,6 +697,14 @@ export function registerSignalResearchRoutes(
   app.get(`${base}/versions`, async (request, reply) => {
     void reply.header("cache-control", "no-store");
     return signalResearchVersions(deps, requireAuth(request).userId, request.query);
+  });
+  app.get(`${base}/export`, async (request, reply) => {
+    const file = await signalResearchExport(deps, requireAuth(request).userId, request.query);
+    return reply
+      .header("Content-Type", "application/json; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="${file.fileName}"`)
+      .header("Cache-Control", "no-store")
+      .send(file.body);
   });
   app.get(`${base}/markets`, async (request, reply) => {
     void reply.header("cache-control", "no-store");
