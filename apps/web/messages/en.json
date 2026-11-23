@@ -2896,12 +2896,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "signalAnalysis.research.mainnet.settings.openTradeNoLev",
-    "signalAnalysis.research.mainnet.settings.changeMaxOpen",
-    "signalAnalysis.research.mainnet.settings.changeMarkets",
-    "signalAnalysis.research.mainnet.settings.noChanges",
-    "signalAnalysis.research.mainnet.settings.stillApplying"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
