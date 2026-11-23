@@ -220,7 +220,9 @@ export class SignedWriteClient {
       };
     }
 
-    const success = successEnvelope(z.unknown()).safeParse(body);
+    // Một số action không có `data` khi thành công (`updateLeverage`: `{"code":0,"timestamp":…}`, Go SDK README). Với zod 4
+    // một key `z.unknown()` vẫn bắt buộc có mặt, nên trước đây response đó thành `unknown` (#495): `data` là tuỳ chọn.
+    const success = successEnvelope(z.unknown().optional()).safeParse(body);
     if (response.ok && success.success) {
       return { outcome: "ok", data: success.data.data };
     }

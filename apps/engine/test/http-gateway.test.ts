@@ -1,4 +1,9 @@
-import type { SignedWriteClient, SodexRestClient } from "@drift/sodex";
+import {
+  MemoryRateLimitStore,
+  SignedWriteClient,
+  type FetchLike,
+  type SodexRestClient,
+} from "@drift/sodex";
 import type { OrderIntent } from "@drift/strategies";
 import { describe, expect, it } from "vitest";
 
@@ -332,5 +337,56 @@ describe("market info on the order path (DEC-308)", () => {
     await gw.recentTrades(account(7n), q, { urgent: true });
     await gw.tradesOf(account(7n), ref, { urgent: true });
     expect(used).toEqual(["urgent:open", "urgent:history", "urgent:trades", "urgent:trades"]);
+  });
+});
+
+describe("updateLeverage without data (#495)", () => {
+  /** Gateway với SignedWriteClient thật; HTTP giả trả `body` (không có lệnh nào tới SoDEX thật). */
+  function real(body: string, status = 200) {
+    const rest = {
+      getSpotSymbols: () => Promise.resolve([]),
+      getPerpsSymbols: () => Promise.resolve([{ ...symbol, id: 9n, name: "NVDA-USD" }]),
+    } as unknown as SodexRestClient;
+    const fetchImpl: FetchLike = () => Promise.resolve(new Response(body, { status }));
+    const writer = new SignedWriteClient({
+      config: { restUrl: "https://mainnet-gw.sodex.dev" },
+      rateLimit: new MemoryRateLimitStore(),
+      egressKey: "test",
+      fetch: fetchImpl,
+    });
+    const signer = { sign: () => Promise.resolve(`0x01${"ab".repeat(65)}` as `0x${string}`) };
+    return new HttpGateway(rest, writer, signer, BUILDER);
+  }
+  const spec = { market: "NVDA-USD", leverage: 1, marginMode: "isolated" as const };
+  const fence = { shard: 0, epoch: 1 };
+
+  it("is ok when SoDEX answers {code:0,timestamp} with no data (prod 2026-11-23)", async () => {
+    expect(
+      await real('{"code":0,"timestamp":1795400000000}').setLeverage(account(7n), spec, fence),
+    ).toEqual({
+      outcome: "ok",
+    });
+  });
+
+  it("still rejects an error envelope and keeps an unreadable body unknown", async () => {
+    expect(
+      await real('{"code":-1,"error":"invalid leverage","timestamp":1}', 400).setLeverage(
+        account(7n),
+        spec,
+        fence,
+      ),
+    ).toEqual({ outcome: "rejected", code: "-1" });
+    expect(
+      await real("<html>bad gateway</html>", 502).setLeverage(account(7n), spec, fence),
+    ).toEqual({
+      outcome: "unknown",
+    });
+  });
+
+  it("an order response with an ok envelope but no order results stays unknown (reconcile by clOrdID)", async () => {
+    const { gw } = gateway({ outcome: "ok", data: undefined });
+    expect(await gw.submit(account(7n), [order], fence)).toEqual([
+      { clOrdID: "c1", outcome: "unknown" },
+    ]);
   });
 });

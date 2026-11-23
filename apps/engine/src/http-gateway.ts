@@ -3,7 +3,6 @@ import { DRIFT_BUILDER_FEE_RATE, dec, isBuilderAccount } from "@drift/shared";
 import {
   MonotonicNonceSource,
   orderResultSchema,
-  parseOrderResults,
   perpsCancelOrders,
   perpsModifyOrder,
   perpsNewOrders,
@@ -361,7 +360,14 @@ export class HttpGateway implements Gateway {
           })),
         );
       } else {
-        const items = parseOrderResults(result.data);
+        // Envelope ok mà không có / không đọc được kết quả từng lệnh: không biết lệnh nào đã vào sổ → `unknown`, đối soát
+        // theo clOrdID (quy tắc 1.7). Trước #495 trường hợp thiếu `data` đã là `unknown` ở SignedWriteClient.
+        const parsed = z.array(orderResultSchema).safeParse(result.data);
+        if (!parsed.success) {
+          out.push(...group.map((o): SubmitResult => ({ clOrdID: o.clOrdID, outcome: "unknown" })));
+          continue;
+        }
+        const items = parsed.data;
         for (const o of group) {
           // Lỗi pre-validation có thể chỉ trả một phần tử cho cả batch: khớp theo clOrdID, không giả định độ dài.
           const item =
