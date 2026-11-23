@@ -899,3 +899,60 @@ export async function loadSignalResearchArticleTrace(
     }),
   };
 }
+
+// ── Export data (#489) ───────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Một bài của file Export data: item feed + vài cột thô (Claude xong lúc nào, nhãn Claude). */
+export interface SignalArticleExportRow {
+  article: ResearchArticle;
+  claudeDoneAt: Date | null;
+  catalyst: string | null;
+  relevance: string | null;
+  promotional: boolean | null;
+}
+
+/**
+ * Bài thu từ `since` (theo `collected_at`, cùng mốc với feed), mới nhất trước, tối đa `limit` dòng, bước dừng / kết quả
+ * theo version Baseline: CÙNG câu SQL trạng thái với feed (một lần, không phân trang). `total` = mọi bài khớp kỳ, để nơi
+ * gọi ghi rõ số dòng bị bỏ khi vượt trần.
+ */
+export async function loadSignalResearchArticlesExport(
+  q: Q,
+  since: Date,
+  limit: number,
+  check: () => void = () => undefined,
+): Promise<{ rows: SignalArticleExportRow[]; total: number; scope: SignalVersionScope | null }> {
+  const scope = await resolveSignalVersion(q, undefined);
+  check();
+  const counted = await q.execute<{ n: string | number }>(
+    sql`${stateCte(since, null, scope, true)} select count(*) as n from st`,
+  );
+  check();
+  const page = await q.execute<StateRow>(sql`${stateCte(since, null, scope, true)}
+    select * from st order by published_at desc, id desc limit ${limit}`);
+  check();
+  const ids = page.rows.map((r) => r.id);
+  const articles = new Map<string, ArticleRow>();
+  for (let i = 0; i < ids.length; i += 1000) {
+    const chunk = ids.slice(i, i + 1000);
+    for (const a of await q.select().from(signalArticles).where(inArray(signalArticles.id, chunk)))
+      articles.set(a.id, a);
+    check();
+  }
+  const rows = page.rows.flatMap((r): SignalArticleExportRow[] => {
+    const a = articles.get(r.id);
+    if (a === undefined) return [];
+    const cls = parseOr(classificationSchema, a.classification, {});
+    return [
+      {
+        // Bối cảnh xuất riêng ở phần `context`; không cần nạp ở đây.
+        article: articleItem(a, r, scope, undefined),
+        claudeDoneAt: a.claudeDoneAt,
+        catalyst: cls.catalyst ?? null,
+        relevance: cls.relevance ?? null,
+        promotional: cls.promotional ?? null,
+      },
+    ];
+  });
+  return { rows, total: Number(counted.rows[0]?.n ?? 0), scope };
+}

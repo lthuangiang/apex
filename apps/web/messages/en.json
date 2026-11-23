@@ -2896,7 +2896,11 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch"
+    "signalAnalysis.research.live.batch",
+    "signalResearch.export.button",
+    "signalResearch.export.exporting",
+    "signalResearch.export.period",
+    "signalResearch.export.periods"
   ],
   "beta": {
     "label": "Beta",
@@ -9974,6 +9978,16 @@
   },
   "signalResearch": {
     "title": "Signal Research",
-    "lede": "Crypto news turned into signals, tested with paper trades before any real money."
+    "lede": "Crypto news turned into signals, tested with paper trades before any real money.",
+    "export": {
+      "button": "Export data",
+      "exporting": "Exporting…",
+      "period": "Export period",
+      "periods": {
+        "24h": "24h",
+        "7d": "7d",
+        "30d": "30d"
+      }
+    }
   }
 }

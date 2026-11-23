@@ -12,6 +12,7 @@ import { BetaChip } from "@/features/bots/components/beta-chip";
 import { useFeatures, useMe } from "@/lib/queries";
 
 import { ResearchAudienceContext, type ResearchAudience } from "../research/audience";
+import { ResearchExport } from "../research/research-export";
 import { ResearchTab } from "../research/research-tab";
 
 import type { PageCtx } from "./page-ctx";
@@ -60,21 +61,25 @@ export function SignalResearchPage() {
           badge={<BetaChip bare />}
           subtitle={t("lede")}
           action={
-            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-control bg-surface-2 py-1 pr-1 pl-3 text-[12.5px] font-bold">
-              <Globe aria-hidden="true" size={15} />
-              <span>
-                {utc ? ts("tzUtc") : ts("tzLocal", { tz: tzLocal, offset: offsetLabel(offset) })}
-              </span>
-              <button
-                type="button"
-                aria-pressed={utc}
-                onClick={() => {
-                  setUtc((x) => !x);
-                }}
-                className="min-h-11 cursor-pointer rounded-[9px] border border-border-input bg-surface px-3 text-[12.5px] font-bold text-ink"
-              >
-                {utc ? ts("showLocal") : ts("showUtc")}
-              </button>
+            <div className="flex flex-wrap items-start gap-2.5">
+              {/* #489: Export data chỉ cho team (API cũng chỉ trả cho team). */}
+              {audience === "team" ? <ResearchExport /> : null}
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-control bg-surface-2 py-1 pr-1 pl-3 text-[12.5px] font-bold">
+                <Globe aria-hidden="true" size={15} />
+                <span>
+                  {utc ? ts("tzUtc") : ts("tzLocal", { tz: tzLocal, offset: offsetLabel(offset) })}
+                </span>
+                <button
+                  type="button"
+                  aria-pressed={utc}
+                  onClick={() => {
+                    setUtc((x) => !x);
+                  }}
+                  className="min-h-11 cursor-pointer rounded-[9px] border border-border-input bg-surface px-3 text-[12.5px] font-bold text-ink"
+                >
+                  {utc ? ts("showLocal") : ts("showUtc")}
+                </button>
+              </div>
             </div>
           }
         />

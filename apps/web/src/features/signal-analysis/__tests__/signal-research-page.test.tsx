@@ -22,10 +22,16 @@ import { BASELINE, CLASSIFIERS, V4, VERSIONS } from "./versions-fixtures";
 
 const MINE_ID = "00000000-0000-4000-8000-000000000012";
 const state = vi.hoisted(
-  (): { flag: boolean | undefined; role: "user" | "team"; calls: string[] } => ({
+  (): {
+    flag: boolean | undefined;
+    role: "user" | "team";
+    calls: string[];
+    exportFail: boolean;
+  } => ({
     flag: true,
     role: "user",
     calls: [],
+    exportFail: false,
   }),
 );
 
@@ -122,10 +128,44 @@ vi.mock("@/lib/api", async (importOriginal) => {
           schema.parse({ items: [], nextCursor: null, total: 0, totalInRange: 0 }),
         );
       if (p.endsWith("/signal-research/latency")) return Promise.resolve(schema.parse(LATENCY_1D));
+      if (p.endsWith("/signal-research/export"))
+        return state.exportFail
+          ? Promise.reject(new real.ApiError("INTERNAL_ERROR", 500))
+          : Promise.resolve(schema.parse(exportFile(new URL(path, "http://x").searchParams)));
       return Promise.reject(new real.ApiError("NOT_FOUND", 404));
     },
   };
 });
+
+/** File Export data tối thiểu hợp lệ theo `srExportSchema` (#489). */
+function exportFile(q: URLSearchParams) {
+  const section = { rows: 0, total: 0, omitted: 0, truncated: false, limit: 5000 };
+  return {
+    meta: {
+      schemaVersion: 1,
+      period: q.get("period"),
+      from: "2026-11-22T10:00:00.000Z",
+      to: "2026-11-23T10:00:00.000Z",
+      exportedAt: "2026-11-23T10:00:00.000Z",
+      rulesVersion: "news-v5",
+      readerVersion: null,
+      articlesVersion: 1,
+      truncated: false,
+      sections: { articles: section, context: section, paperTrades: section },
+    },
+    articles: [],
+    context: [],
+    versions: { team: [], private: { total: 0, byStatus: [] } },
+    paperTrades: { items: [], privateVersionTrades: 0 },
+    mainnet: {
+      signals: { total: 0, byLevel: [], byKind: [] },
+      deliveries: { total: 0, byOutcome: [] },
+      trades: { total: 0, byStatus: [], byCloseReason: [] },
+    },
+    costs: { days: [] },
+    sources: [],
+  };
+}
 
 function wrap() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -139,6 +179,7 @@ function wrap() {
 }
 
 beforeEach(() => {
+  state.exportFail = false;
   state.flag = true;
   state.role = "user";
   state.calls = [];
@@ -218,5 +259,57 @@ describe("Signal Research page (BETA, #423)", { timeout: 20_000 }, () => {
       "Test users: 3 labels, not counted · agree with the team on 1 of 2 (50%)",
     );
     await noViolations();
+  });
+});
+
+// Export data (#489): chỉ team thấy; chọn kỳ rồi tải file JSON tên theo kỳ và ngày UTC; lỗi theo câu chữ chung. Câu chữ mới
+// còn ở `_pendingReview` nên test đọc từ en.json, không chép cứng.
+describe("Signal Research Export data (#489)", { timeout: 20_000 }, () => {
+  const EX = messages.signalResearch.export;
+  const downloads: string[] = [];
+  beforeEach(() => {
+    downloads.length = 0;
+    URL.createObjectURL = () => "blob:export";
+    URL.revokeObjectURL = () => undefined;
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloads.push(this.download);
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("is hidden from testers", async () => {
+    wrap();
+    await screen.findByText("From headline to trade", {}, { timeout: 5_000 });
+    expect(screen.queryByRole("button", { name: EX.button })).toBeNull();
+    expect(state.calls.some((c) => c.includes("/export"))).toBe(false);
+  });
+
+  it("team picks a period and downloads the JSON file; no accessibility violations", async () => {
+    state.role = "team";
+    const user = userEvent.setup({ delay: null });
+    wrap();
+    const button = await screen.findByRole("button", { name: EX.button }, { timeout: 5_000 });
+    const period = screen.getByRole("radiogroup", { name: EX.period });
+    await user.click(within(period).getByRole("radio", { name: EX.periods["7d"] }));
+    await user.click(button);
+    await vi.waitFor(() => {
+      expect(downloads).toEqual(["desklabs-signal-research-7d-2026-11-23.json"]);
+    });
+    expect(state.calls).toContain("GET /api/v1/admin/signal-research/export?period=7d");
+    await noViolations();
+  });
+
+  it("shows the shared error text when the export fails", async () => {
+    state.role = "team";
+    state.exportFail = true;
+    const user = userEvent.setup({ delay: null });
+    wrap();
+    await user.click(await screen.findByRole("button", { name: EX.button }, { timeout: 5_000 }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong. Try again.");
+    expect(downloads).toEqual([]);
   });
 });
