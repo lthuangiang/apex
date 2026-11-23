@@ -663,7 +663,8 @@ export function cancelItemResult(clOrdID: string, data: unknown): CancelResult {
   return {
     clOrdID,
     outcome: "unknown",
-    detail: `ok envelope, unreadable result: ${JSON.stringify(data).slice(0, 300)}`,
+    // `data` có thể thiếu (#495: envelope thành công không có `data`); `JSON.stringify(undefined)` không phải chuỗi.
+    detail: `ok envelope, unreadable result: ${data === undefined ? "no data" : JSON.stringify(data).slice(0, 300)}`,
   };
 }
 

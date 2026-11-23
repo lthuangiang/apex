@@ -190,6 +190,12 @@ describe("cancel results (DEC-308)", () => {
       code: "-2",
     });
     // Mã lỗi khác mà không có clOrdID: không biết lệnh nào, vẫn chưa rõ (quy tắc 1.7).
+    // #495: envelope thành công không có `data` → `unknown`, không ném lỗi.
+    expect(cancelItemResult("c1", undefined)).toEqual({
+      clOrdID: "c1",
+      outcome: "unknown",
+      detail: "ok envelope, unreadable result: no data",
+    });
     expect(cancelItemResult("c1", [{ code: -1, error: "busy" }])).toMatchObject({
       clOrdID: "c1",
       outcome: "unknown",
