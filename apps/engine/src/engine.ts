@@ -127,6 +127,7 @@ import {
   type AccountRef,
   type CancelResult,
   type Gateway,
+  type LeverageResult,
   type LookupResult,
   type NotSentCode,
   type OrderTrade,
@@ -4097,10 +4098,24 @@ export class Engine {
       this.#d.log.warn({ botId: r.botId }, "leverage result unknown and SoDEX unreadable; waiting");
       return "unknown";
     }
-    const res = await r.gateway.setLeverage(r.account, spec, {
+    let res: LeverageResult = await r.gateway.setLeverage(r.account, spec, {
       shard: r.shard,
       epoch: r.epoch,
     });
+    // Kết quả không rõ (#495): đọc lại thiết lập trên SoDEX ngay, không gửi lại lệnh đặt (quy tắc 1.7). Đã đúng mức và chế
+    // độ thì coi như đã đặt; bot news chỉ được giao mỗi tín hiệu một lần nên không thể chờ đối soát ở nhịp sau.
+    if (res.outcome === "unknown") {
+      try {
+        const again = await r.gateway.readLeverage(r.account, spec.market);
+        if (
+          again.setting?.leverage === spec.leverage &&
+          again.setting.marginMode === spec.marginMode
+        )
+          res = { outcome: "ok" };
+      } catch {
+        // Không đọc được: giữ `unknown`, đối soát lần sau như cũ.
+      }
+    }
     r.leverageUnknown = res.outcome === "unknown";
     if (res.outcome === "ok") {
       r.blocked = null;
