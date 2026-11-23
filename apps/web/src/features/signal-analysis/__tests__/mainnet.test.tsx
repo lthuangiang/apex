@@ -2,7 +2,9 @@
 import "@testing-library/jest-dom/vitest";
 import {
   baselineVersionConfig,
+  newsSignalConfigSchema,
   type BotSummary,
+  type NewsSignalConfig,
   type ErrorCode,
   type NewsTrade,
 } from "@drift/shared";
@@ -886,13 +888,13 @@ describe("Edit: save as a new version (#469 part 2)", () => {
     state.calls.filter((c) => c.method === "POST" && c.path.endsWith(`/bots/${BOT_ID}/versions`));
 
   it("validates like the API: size ≤ 200, max open 1–1000, markets only narrow, min level only rises; other fields are kept", () => {
-    const current = {
+    const current: NewsSignalConfig = newsSignalConfigSchema.parse({
       ...CONFIG,
       ...V4.config,
       sizeUsdc: "100",
       leverage: 1,
       maxOpenTrades: 3,
-    } as never;
+    });
     const src = V4.config ?? null;
     const d = editDraftOf(current);
     expect(validateEdit(current, d, src)).toEqual({});
@@ -907,10 +909,10 @@ describe("Edit: save as a new version (#469 part 2)", () => {
     });
     expect(validateEdit(current, { ...d, minLevel: "high" }, src)).toEqual({});
     // Version gốc chỉ có BTC / ETH: thêm SOL là mở rộng.
-    const majors = {
+    const majors: NewsSignalConfig = {
       ...current,
       assets: { mode: "only", markets: ["BTC-USD"], crypto: true, stocks: true },
-    } as never;
+    };
     const onlySrc = {
       ...src,
       assets: { mode: "only", markets: ["BTC-USD", "ETH-USD"], crypto: true, stocks: true },
@@ -924,7 +926,7 @@ describe("Edit: save as a new version (#469 part 2)", () => {
     expect(validateEdit(majors, { ...md, markets: ["ETH-USD"] }, onlySrc)).toEqual({});
     // Config gửi API: 5 ô từ form, mọi field khác đúng như version đang chạy.
     const out = editConfigOf(current, { ...d, leverage: 10, size: "50", maxOpen: "2" }, src);
-    expect(out).toEqual({ ...(current as object), leverage: 10, sizeUsdc: "50", maxOpenTrades: 2 });
+    expect(out).toEqual({ ...current, leverage: 10, sizeUsdc: "50", maxOpenTrades: 2 });
     expect(editConfigOf(current, { ...d, size: "300" }, src)).toBeNull();
   });
 
