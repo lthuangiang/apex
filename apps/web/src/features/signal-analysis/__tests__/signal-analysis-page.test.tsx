@@ -17,10 +17,19 @@ import { ALL, MM, MM_DETAIL, MM_FILLS, VB, VB_DETAIL, VB_ENTRIES } from "./fixtu
 // Signal Analysis (team): mọi số đến từ API; ở đây API giả trả fixture đã qua đúng zod schema của web.
 
 type Mode = "ok" | "forbidden" | "error" | "empty" | "pending" | "thin" | "timeout" | "slow30";
-const state = vi.hoisted((): { mode: Mode; paths: string[]; tz: string | null } => ({
-  mode: "ok",
-  paths: [],
-  tz: null,
+const state = vi.hoisted(
+  (): { mode: Mode; paths: string[]; tz: string | null; role: "team" | "user" | null } => ({
+    mode: "ok",
+    paths: [],
+    tz: null,
+    role: null,
+  }),
+);
+
+// #495: nút Export data của tab Signal research chỉ cho role team; mặc định /me chưa có (không thấy nút).
+vi.mock("@/lib/queries", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useMe: () => ({ data: state.role === null ? undefined : { id: "u", role: state.role } }),
 }));
 
 // Múi giờ trình duyệt cố định khi test cần (mặc định: múi giờ thật của máy).
@@ -134,6 +143,7 @@ beforeEach(() => {
   state.mode = "ok";
   state.paths = [];
   state.tz = null;
+  state.role = null;
   intlErrors.length = 0;
   window.history.replaceState(null, "", "/admin/signal-analysis");
 });
@@ -412,5 +422,32 @@ describe("Signal Analysis page", { timeout: 30_000 }, () => {
     expect(state.paths.some((p) => p.includes("botId=0195f3a0-0000-7000-8000-000000000001"))).toBe(
       true,
     );
+  });
+});
+
+// #495: Export data (#489) cũng có ở tab Signal research của Admin › Signal Analysis, chỉ cho team. Câu chữ còn ở
+// `_pendingReview` nên đọc từ en.json.
+describe("Signal Analysis · Signal research tab Export data (#495)", { timeout: 30_000 }, () => {
+  const EX = messages.signalResearch.export;
+  it("team sees the Export data button and the period picker on the Signal research tab, without axe violations", async () => {
+    state.role = "team";
+    window.history.replaceState(null, "", "/admin/signal-analysis?tab=research");
+    wrap();
+    expect(await screen.findByRole("button", { name: EX.button })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: EX.period })).toBeInTheDocument();
+    await noViolations();
+  });
+
+  it("is not on the other tabs, and not for a viewer whose role is not team", async () => {
+    state.role = "team";
+    wrap();
+    await screen.findByRole("tablist");
+    expect(screen.queryByRole("button", { name: EX.button })).toBeNull();
+    cleanup();
+    state.role = "user";
+    window.history.replaceState(null, "", "/admin/signal-analysis?tab=research");
+    wrap();
+    await screen.findByRole("tablist");
+    expect(screen.queryByRole("button", { name: EX.button })).toBeNull();
   });
 });

@@ -497,6 +497,58 @@ describe("Signals in the last 24 h", () => {
   });
 });
 
+describe("Signals in the last 24 h · every code the news bot can skip with (#495)", () => {
+  // Mọi mã chiến lược news (packages/strategies/src/news-signal) và engine (#newsDrop) ghi vào delivery `dropped`.
+  const CODES = [
+    "BOT_PAUSED",
+    "MISSED_WHILE_PAUSED",
+    "SIGNAL_STALE",
+    "NEWS_TYPE_OFF",
+    "ASSET_NOT_IN_BOT",
+    "LEVEL_TOO_LOW",
+    "SOURCE_LATE",
+    "SAME_STORY",
+    "STORY_TOO_OLD",
+    "NEWS_TRADE_ALREADY_OPEN",
+    "ACCOUNT_MARKET_BUSY",
+    "LIMIT_OPEN",
+    "LIMIT_DAY",
+    "NOT_ENOUGH_HISTORY",
+    "NO_SODEX_PRICE",
+    "NO_BOOK_DATA",
+    "TOO_THIN_TO_TRADE",
+    "MOVE_TOO_SMALL_FOR_COST",
+    "NEWS_CAP_EXCEEDED",
+    "BELOW_MIN_ORDER_SIZE",
+    "SL_BEYOND_LIQUIDATION",
+    "ENTRY_NOT_FILLED",
+    "LEVERAGE_NOT_SET",
+    "ACCESS_OFF",
+    "OPPOSITE_NEWS",
+  ];
+
+  it("shows Story too old to retry instead of the raw STORY_TOO_OLD, and no code falls back to Skipped (CODE)", async () => {
+    state.signals = CODES.map((reason, i) => ({
+      id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+      market: "SOL-USD",
+      catalyst: "listing",
+      side: "long",
+      level: "high",
+      decidedAt: NOW,
+      expiresAt: NOW,
+      outcome: "dropped",
+      reason,
+    }));
+    wrap(<Signals24h botId={BOT_ID} tz="UTC" />);
+    const list = await screen.findByRole("list");
+    expect(within(list).getByText("Skipped: Story too old to retry")).toBeInTheDocument();
+    expect(within(list).getByText("Skipped: Already traded this story")).toBeInTheDocument();
+    expect(within(list).getAllByRole("listitem")).toHaveLength(CODES.length);
+    expect(list).not.toHaveTextContent(/Skipped \(/);
+    for (const code of CODES) expect(list, code).not.toHaveTextContent(code);
+  });
+});
+
 describe("Start bot from a version (version editor, bot fields)", () => {
   const base = VERSIONS.items.find((v) => v.id === BASELINE_ID);
   if (base === undefined) throw new Error("fixture");
