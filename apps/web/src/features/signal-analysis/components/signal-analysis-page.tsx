@@ -1,5 +1,6 @@
 "use client";
 
+import { UserRole } from "@drift/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { Globe, Info, Lock, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -7,9 +8,11 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 
 import { Card, PageHead, Workspace } from "@/components/workspace";
 import { browserTimeZone, offsetLabel, offsetMinutes } from "@/features/account/market-hours-time";
+import { useMe } from "@/lib/queries";
 
 import { SIGNAL_KEY } from "../api";
 import { clock } from "../format";
+import { ResearchExport } from "../research/research-export";
 import { ResearchTab } from "../research/research-tab";
 
 import { AllTab } from "./all-tab";
@@ -38,6 +41,8 @@ export function SignalAnalysisPage() {
   const [browserTz, setBrowserTz] = useState<string | null>(null);
   const [utc, setUtc] = useState(false);
   const [forbidden, setForbidden] = useState(false);
+  // #495: nút Export data (#489) ở tab Signal research, chỉ role team (API cũng chỉ trả cho team).
+  const isTeam = useMe().data?.role === UserRole.team;
   const [meta, setMeta] = useState<Record<Tab, Meta>>({
     all: null,
     vb: null,
@@ -105,6 +110,7 @@ export function SignalAnalysisPage() {
                     {t("readOnly")}
                   </span>
                 )}
+                {tab === "research" && isTeam ? <ResearchExport /> : null}
                 {cur === null ? null : (
                   <span className="text-muted">
                     {t("updated", { time: clock(cur.computedAt, tz, false) })}
