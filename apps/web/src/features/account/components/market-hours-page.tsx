@@ -19,8 +19,11 @@ import { useTranslations } from "next-intl";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Card, PageHead, Workspace } from "@/components/workspace";
+import { Picker } from "@/features/bots/components/picker";
+import { marketItems, type Market, type PickItem } from "@/features/bots/pickers";
 import { api, ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/format";
+import { useMarkets } from "@/lib/markets";
 
 import {
   browserTimeZone,
@@ -208,6 +211,7 @@ export function MarketHoursPage() {
   const tzLocal = browserTz ?? "UTC";
   const [utcMode, setUtcMode] = useState(false);
   const [market, setMarket] = useState<string | null>(null);
+  const marketId = useId();
   const [days, setDays] = useState<(typeof PERIODS)[number]>("30");
   const [strategy, setStrategy] = useState<Strategy>("both");
   const tz = utcMode ? "UTC" : tzLocal;
@@ -246,22 +250,20 @@ export function MarketHoursPage() {
               aria-label={t("filters")}
               className="flex flex-col gap-3 rounded-tile border border-border bg-surface p-3 md:flex-row md:flex-wrap md:items-start md:gap-x-4 md:px-4"
             >
-              <label className="flex flex-col gap-1 text-[12.5px] font-bold text-ink-2">
-                {t("market")}
-                <select
+              <div className="flex flex-col gap-1 md:w-60">
+                <label htmlFor={marketId} className="text-[12.5px] font-bold text-ink-2">
+                  {t("market")}
+                </label>
+                <MarketHoursPicker
+                  id={marketId}
+                  names={v?.markets ?? []}
                   value={v?.market ?? market ?? ""}
-                  onChange={(e) => {
-                    setMarket(e.target.value);
+                  onChange={(m) => {
+                    // Trang luôn xem một market: nút xoá của picker không bỏ market đang xem.
+                    if (m !== "") setMarket(m);
                   }}
-                  className="min-h-11 min-w-36 rounded-control border border-border-input bg-surface px-3 text-sm font-semibold text-ink"
-                >
-                  {(v?.markets ?? []).map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                />
+              </div>
               <div className="flex flex-col gap-1">
                 <span className="text-[12.5px] font-bold text-ink-2">{t("period")}</span>
                 <SegmentedControl
@@ -541,10 +543,99 @@ function CutCalc({ est, market }: { est: MarketHoursView["estimate"]; market: st
   );
 }
 
-const COLS = "grid grid-cols-[272px_repeat(24,minmax(0,1fr))] gap-[3px]";
+// Cột cuối "Avg" (#486) chỉ có ở hai dòng CPM; các dòng khác để trống ô đó.
+/**
+ * Mục của ô Market (#486): picker của form tạo bot (`marketItems`: nhóm "Popular" rồi A→Z theo quote), chỉ gồm các
+ * market trang này hỗ trợ (`names` từ api). Market đã ngừng giao dịch vẫn chọn được vì còn số quá khứ; market không có
+ * trong danh sách của SoDEX vẫn hiện bằng mã gốc ở nhóm "Other".
+ */
+export function marketHoursItems(
+  all: readonly Market[],
+  names: readonly string[],
+  labels: { popular: string; quote: (q: string) => string; other: string },
+): PickItem[] {
+  const want = new Set(names);
+  const known = all.filter((m) => want.has(m.name)).map((m) => ({ ...m, trading: true }));
+  const items = [...marketItems(known, "perps", labels), ...marketItems(known, "spot", labels)];
+  const seen = new Set(items.map((x) => x.value));
+  return [
+    ...items,
+    ...names.filter((n) => !seen.has(n)).map((n) => ({ value: n, label: n, group: labels.other })),
+  ];
+}
+
+function MarketHoursPicker({
+  id,
+  names,
+  value,
+  onChange,
+}: {
+  id: string;
+  names: readonly string[];
+  value: string;
+  onChange: (market: string) => void;
+}) {
+  const t = useTranslations("createBot.marketPicker");
+  const markets = useMarkets();
+  const all = markets.data?.items;
+  const items = useMemo(
+    () =>
+      marketHoursItems(all ?? [], names, {
+        popular: t("popular"),
+        quote: (quote) => (quote === "" ? t("other") : t("quote", { quote })),
+        other: t("other"),
+      }),
+    [all, names, t],
+  );
+  return (
+    <Picker
+      items={items}
+      value={value}
+      onChange={onChange}
+      inputProps={{ id }}
+      placeholder={t("placeholder")}
+      loading={markets.isPending && names.length === 0}
+      noMatch={(q) => t("noMatch", { q })}
+      sheetTitle={t("sheetTitle")}
+    />
+  );
+}
+
+const COLS = "grid grid-cols-[272px_repeat(24,minmax(0,1fr))_64px] gap-[3px]";
 const GRID = `${COLS} items-center`;
 const CELL =
   "flex min-h-[26px] flex-col items-center justify-center rounded-[4px] text-center text-[11px] leading-tight font-semibold";
+
+/**
+ * Avg của "Markout cost / $1M" (#486): tổng chi phí ÷ tổng volume của cả kỳ, không phải trung bình cộng 24 ô. Chi phí
+ * của một giờ = cost / $1M × volume ÷ 1e6, nên Avg = Σ (cost / $1M × volume) ÷ Σ volume, trên các giờ có cả hai số
+ * (giờ "Thin sample" vẫn tính). Giờ không có cost (không fill, hoặc thiếu giá 1 phút sau) bị bỏ khỏi cả tử lẫn mẫu.
+ * Không có volume nào → null ("Not available"), không bao giờ 0. Tính bằng Decimal.
+ */
+export function markoutAvg(hours: readonly MarketHoursHour[]): Decimal | null {
+  let cost = new Decimal(0);
+  let volume = new Decimal(0);
+  for (const { bots } of hours) {
+    if (bots.costPerMillion === null || bots.volume === null) continue;
+    const vol = dec(bots.volume);
+    if (vol.lte(0)) continue;
+    cost = cost.add(dec(bots.costPerMillion).mul(vol));
+    volume = volume.add(vol);
+  }
+  return volume.isZero() ? null : cost.div(volume);
+}
+
+/**
+ * Avg của "Est. CPM (estimate)" (#486): số mô hình, không có volume thật, nên là trung bình cộng các giờ có số. Không
+ * giờ nào có số → null ("Not available"). Tính bằng Decimal.
+ */
+export function estAvg(hours: readonly MarketHoursHour[]): Decimal | null {
+  const xs = hours
+    .map((x) => x.volatility.estCalibratedCostPerMillion)
+    .filter((x): x is string => x !== null);
+  if (xs.length === 0) return null;
+  return xs.reduce((a, x) => a.add(dec(x)), new Decimal(0)).div(xs.length);
+}
 
 /** Bỏ các ngày đầu kỳ chưa có nến nào (cả 24 ô đều thiếu); ngày thiếu ở giữa kỳ vẫn giữ. */
 export function trimLeadingEmptyDays(
@@ -610,7 +701,13 @@ function Desktop({
   const [modelOpen, setModelOpen] = useState(false);
   const modelId = useId();
   const estThin = calibrationThin(v.estimate);
-  const row = (labelText: string, help: HelpKey, cells: ReactNode[], mark?: ReactNode) => (
+  const row = (
+    labelText: string,
+    help: HelpKey,
+    cells: ReactNode[],
+    mark?: ReactNode,
+    avg?: ReactNode,
+  ) => (
     <div className={GRID}>
       <span className="flex items-center gap-1 pr-2 text-xs leading-tight font-bold whitespace-nowrap">
         <span className="min-w-0">{labelText}</span>
@@ -618,6 +715,7 @@ function Desktop({
         {mark}
       </span>
       {cells}
+      {avg}
     </div>
   );
   return (
@@ -652,6 +750,9 @@ function Desktop({
               </button>
             );
           })}
+          <span className="self-end pb-1 text-center text-xs font-bold text-muted">
+            {t("avg.head")}
+          </span>
         </div>
 
         <BlockHead
@@ -813,6 +914,7 @@ function Desktop({
               />
             )),
             estThin ? <ThinMark /> : null,
+            <AvgCell key="avg" kind="est" hours={v.hours} />,
           )}
         </Marked>
         <div>
@@ -934,6 +1036,8 @@ function Desktop({
             t("botBlock.cost"),
             "cost",
             H.map((h) => <BotCell key={h} b={hourOf(v, h).bots} hour={h} kind="cost" />),
+            null,
+            <AvgCell key="avg" kind="cost" hours={v.hours} />,
           )}
           {row(
             t("botBlock.volume"),
@@ -1316,6 +1420,36 @@ function BlockHead({
   );
 }
 
+/**
+ * Ô "Avg" cuối dòng (#486). Hai dòng tính khác nhau nên nhãn nhỏ trong ô khác nhau: "Markout cost / $1M" = tổng chi
+ * phí ÷ tổng volume ("Period avg"); "Est. CPM (estimate)" = trung bình cộng các giờ có số ("Mean of hours").
+ */
+function AvgCell({ kind, hours }: { kind: "cost" | "est"; hours: readonly MarketHoursHour[] }) {
+  const t = useTranslations("marketHours.avg");
+  const tm = useTranslations("common.missing");
+  const value = kind === "cost" ? markoutAvg(hours) : estAvg(hours);
+  const n = hours.filter((x) => x.volatility.estCalibratedCostPerMillion !== null).length;
+  const text = value === null ? null : usd(value.toString());
+  const tip =
+    kind === "cost"
+      ? text === null
+        ? t("costNa")
+        : t("costTip", { value: text })
+      : text === null
+        ? t("estNa")
+        : t("estTip", { value: text, n });
+  return (
+    <span title={tip} className={`${CELL} gap-0.5 bg-surface-2 px-1`}>
+      <span className="text-[9px] leading-[1.1] font-bold text-muted">
+        {t(kind === "cost" ? "costLabel" : "estLabel")}
+      </span>
+      <span className={text === null ? "text-[10px] text-muted" : ""}>
+        {text ?? tm("notAvailable")}
+      </span>
+    </span>
+  );
+}
+
 function Num({ v, bg }: { v: string | null; bg?: string }) {
   const tb = useTranslations("marketHours.botBlock");
   return (
@@ -1456,6 +1590,30 @@ function FiveMin({ values }: { values: readonly (string | null)[] }) {
         );
       })}
     </div>
+  );
+}
+
+/** 390 px: hai số Avg (#486) dưới danh sách giờ, cùng công thức và nhãn với cột Avg của bản desktop. */
+function MobileAvg({ hours }: { hours: readonly MarketHoursHour[] }) {
+  const t = useTranslations("marketHours.avg");
+  const tm = useTranslations("common.missing");
+  const cost = markoutAvg(hours);
+  const est = estAvg(hours);
+  return (
+    <dl className="m-0 flex flex-col gap-1 rounded-tile bg-surface-2 p-2.5 text-xs">
+      <div className="flex flex-wrap justify-between gap-x-2">
+        <dt className="font-bold">{t("mobileCost")}</dt>
+        <dd className="m-0 font-semibold">
+          {cost === null ? tm("notAvailable") : usd(cost.toString())}
+        </dd>
+      </div>
+      <div className="flex flex-wrap justify-between gap-x-2">
+        <dt className="font-bold">{t("mobileEst")}</dt>
+        <dd className="m-0 font-semibold">
+          {est === null ? tm("notAvailable") : usd(est.toString())}
+        </dd>
+      </div>
+    </dl>
   );
 }
 
@@ -1652,6 +1810,7 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
           );
         })}
       </ol>
+      <MobileAvg hours={v.hours} />
       <p className="m-0 text-xs text-muted">{tm("hint")}</p>
     </div>
   );

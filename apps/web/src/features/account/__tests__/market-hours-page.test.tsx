@@ -10,7 +10,17 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
-import { fx, hottestHours, MarketHoursPage, usd } from "../components/market-hours-page";
+import {
+  estAvg,
+  fx,
+  hottestHours,
+  markoutAvg,
+  marketHoursItems,
+  MarketHoursPage,
+  usd,
+} from "../components/market-hours-page";
+
+import { view } from "./market-hours-fixtures";
 
 // Market hours (docs/mockups/market-hours): múi giờ của trình duyệt (ở đây Asia/Kolkata +5:30) + nút đổi sang UTC;
 // thiếu số → "n/a", không bao giờ 0; ô mẫu mỏng gắn "Thin"; trạng thái rỗng / lỗi / không phải team; axe.
@@ -39,102 +49,55 @@ const mock = vi.hoisted(() => {
   const state: { respond: (path: string) => Promise<unknown> } = {
     respond: () => Promise.reject(new Error("not set")),
   };
-  return { FakeApiError, calls: [] as string[], state };
+  const m = (name: string, engine: "spot" | "perps", trading = true) => ({
+    name,
+    engine,
+    displayName: name,
+    base: name.split(/[-_]/)[0] ?? null,
+    quote: "USD",
+    tickSize: "0.1",
+    stepSize: "0.001",
+    trading,
+    minNotional: "10",
+    maxLeverage: engine === "perps" ? 20 : null,
+    last: null,
+  });
+  // SOL-USD không có trong danh sách của trang → không được hiện; DOGE-USD đã ngừng giao dịch nhưng trang có số.
+  const markets = [
+    m("BTC-USD", "perps"),
+    m("ETH-USD", "perps"),
+    m("SOL-USD", "perps"),
+    m("DOGE-USD", "perps", false),
+  ];
+  return { FakeApiError, calls: [] as string[], state, markets };
 });
 const { FakeApiError, calls } = mock;
 vi.mock("@/lib/api", () => ({
   ApiError: mock.FakeApiError,
   api: (_m: string, path: string) => {
+    // Danh sách market của SoDEX cho picker (#486); không ghi vào `calls` (các test đọc request market-hours).
+    if (path === "/api/v1/markets") return Promise.resolve({ items: mock.markets });
     mock.calls.push(path);
     return mock.state.respond(path);
   },
 }));
+// jsdom không có matchMedia: picker dùng nó để chọn bản desktop / bottom sheet.
+Object.defineProperty(window, "matchMedia", {
+  configurable: true,
+  value: (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }),
+});
+// jsdom không có scrollIntoView (picker cuộn dòng đang chọn vào tầm nhìn).
+Element.prototype.scrollIntoView = () => undefined;
 const setRespond = (fn: (path: string) => Promise<unknown>) => {
   mock.state.respond = fn;
 };
 /** Thoát ký tự đặc biệt để ghép câu chữ vào RegExp. */
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
-  return {
-    market: "BTC-USD",
-    markets: ["BTC-USD", "ETH-USD"],
-    days: 30,
-    strategy: "both",
-    tz: "Asia/Kolkata",
-    hours: Array.from({ length: 24 }, (_, h) => ({
-      hour: h,
-      volatility: {
-        medianBp: h === 3 ? null : "4.25",
-        p90Bp: h === 3 ? null : "9.1",
-        ratio: h === 3 ? null : h === 20 ? "2.4" : "1",
-        hotPct: h === 3 ? null : h === 20 ? 60 : 0,
-        fiveMin: Array.from({ length: 12 }, () => "4.2"),
-        swingBp: h === 3 ? null : h === 21 ? "12.43" : "4.1",
-        estCostPerMillion: h === 3 ? null : h === 21 ? "214.37" : "88.5",
-        // "incl. shock days": giờ 21 có 9 / 30 ngày sốc → trung bình cao hơn ngày điển hình.
-        estShockCostPerMillion: h === 3 ? null : h === 21 ? "336.1" : "95.25",
-        // "calibrated" = "incl. shock days" × 1.42.
-        estCalibratedCostPerMillion: h === 3 ? null : h === 21 ? "477.26" : "135.26",
-        estDays: h === 3 ? null : 30,
-        shockDays: h === 3 ? null : h === 21 ? 9 : 1,
-        // Giờ 08 (Kolkata): một phút 133 bp và chuỗi 15 phút 276 bp (bắt đầu 08:57 Kolkata = 03:27 UTC).
-        maxRangeBp: h === 3 ? null : h === 8 ? "133.24" : "8.5",
-        maxRangeAt:
-          h === 3 ? null : h === 8 ? "2026-11-15T03:31:00.000Z" : "2026-11-14T00:00:00.000Z",
-        maxMove15Bp: h === 3 ? null : h === 8 ? "276.43" : "30.2",
-        maxMove15At:
-          h === 3 ? null : h === 8 ? "2026-11-15T03:27:00.000Z" : "2026-11-14T00:00:00.000Z",
-      },
-      cost: { markoutBp: h === 3 ? null : "-1.2", spreadTicks: h === 3 ? null : 1.5 },
-      bots:
-        h === 3
-          ? { costPerMillion: null, volume: null, fees: null, botHours: 0, thin: false }
-          : {
-              costPerMillion: "150",
-              volume: "73000",
-              fees: h === 5 ? "0.3125" : "10.2",
-              botHours: h === 4 ? 2 : 8,
-              thin: h === 4,
-            },
-    })),
-    heatmap: [
-      {
-        date: "2026-11-15",
-        cells: Array.from({ length: 24 }, (_, h) => ({
-          ratio: h === 3 ? null : "1",
-          medianBp: h === 3 ? null : "4.2",
-        })),
-      },
-    ],
-    candlesSince: "2026-10-02T00:00:00.000Z",
-    markoutSince: "2026-11-12T00:00:00.000Z",
-    markoutDays: 4,
-    fillsSince: "2026-10-20T00:00:00.000Z",
-    estimate: {
-      feesBp: "0.7",
-      stepBp: "1.02",
-      modelVersion: 3,
-      unavailable: null,
-      shockBp: 15,
-      cutTakerBp: "4",
-      cutSlippageBp: null,
-      cutCostBp: "4",
-      cuts: 2,
-      cutNotional: null,
-      // Chưa đủ lệnh cắt thật: cỡ cắt = R (2×) × order size, volume một bot-hour = 34.9× order size → 5.7%.
-      positionRatio: "2.04",
-      positionRatioSource: "market",
-      fillsPerBotHour: "34.9",
-      cutShare: "0.0573",
-      cutScope: { source: "market", botHours: 37, marketBotHours: 37, markets: [] },
-      calibration: "1.42",
-      calibrationScope: { source: "market", botHours: 37, marketBotHours: 37, markets: [] },
-      calibrationHours: 18,
-    },
-    ...over,
-  };
-}
 
 const show = () =>
   render(
@@ -1066,5 +1029,166 @@ describe("Market hours page", { timeout: 30_000 }, () => {
     expect(
       await screen.findByText("Market hours is for the DeskLabs team only."),
     ).toBeInTheDocument();
+  });
+});
+
+/** 24 giờ, mỗi giờ lấy số từ `at(h)` (null = giờ không có số). */
+function hoursWith(
+  at: (h: number) => {
+    cost: string | null;
+    volume: string | null;
+    est: string | null;
+    thin?: boolean;
+  },
+): MarketHoursView["hours"] {
+  return view().hours.map((x) => {
+    const a = at(x.hour);
+    return {
+      ...x,
+      volatility: { ...x.volatility, estCalibratedCostPerMillion: a.est },
+      bots: {
+        ...x.bots,
+        costPerMillion: a.cost,
+        volume: a.volume,
+        botHours: a.thin === true ? 1 : 8,
+        thin: a.thin === true,
+      },
+    };
+  });
+}
+const none = { cost: null, volume: null, est: null };
+
+// Cột Avg cuối hai dòng CPM (#486): Markout = tổng chi phí ÷ tổng volume (giờ Thin vẫn tính); Est. CPM = trung bình
+// cộng các giờ có số; thiếu → null ("Not available"), không bao giờ 0.
+describe("Market hours Avg column", { timeout: 30_000 }, () => {
+  it("Markout Avg is total cost ÷ total volume, Thin hours included, not the mean of the cells", () => {
+    // Giờ 0 (Thin): $100 / $1M trên $3,000; giờ 1: $200 / $1M trên $1,000 → (0.3 + 0.2) ÷ 4,000 × 1e6 = $125.
+    // Trung bình cộng hai ô sẽ là $150.
+    const hours = hoursWith((h) =>
+      h === 0
+        ? { cost: "100", volume: "3000", est: null, thin: true }
+        : h === 1
+          ? { cost: "200", volume: "1000", est: null }
+          : none,
+    );
+    expect(markoutAvg(hours)?.toString()).toBe("125");
+  });
+
+  it("Markout Avg leaves out hours with no cost or no volume, and is null with no volume at all", () => {
+    const hours = hoursWith((h) =>
+      h === 0
+        ? { cost: "100", volume: "2000", est: null }
+        : h === 1
+          ? // Có volume nhưng thiếu giá 1 phút sau → không có cost: bỏ khỏi cả tử lẫn mẫu.
+            { cost: null, volume: "9000", est: null }
+          : h === 2
+            ? { cost: "500", volume: "0", est: null }
+            : none,
+    );
+    expect(markoutAvg(hours)?.toString()).toBe("100");
+    expect(markoutAvg(hoursWith(() => none))).toBeNull();
+    expect(markoutAvg(hoursWith(() => ({ cost: "120", volume: "0", est: null })))).toBeNull();
+  });
+
+  it("Est. CPM Avg is the simple mean of the hours that have a value, and null when none do", () => {
+    const hours = hoursWith((h) =>
+      h === 0
+        ? { cost: null, volume: null, est: "100" }
+        : h === 1
+          ? { cost: null, volume: null, est: "300", thin: true }
+          : h === 2
+            ? { cost: null, volume: null, est: "50.5" }
+            : none,
+    );
+    expect(estAvg(hours)?.toFixed(4)).toBe("150.1667");
+    expect(estAvg(hoursWith(() => none))).toBeNull();
+  });
+
+  it("shows each Avg at the end of its row, and Not available (never $0) when there is no data", async () => {
+    setRespond(() =>
+      Promise.resolve(
+        view({
+          hours: hoursWith((h) =>
+            h === 0
+              ? { cost: "100", volume: "3000", est: "100", thin: true }
+              : h === 1
+                ? { cost: "200", volume: "1000", est: "300" }
+                : none,
+          ),
+        }),
+      ),
+    );
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const lastCell = (label: string) => {
+      const row = screen.getByText(label, { selector: "span.min-w-0" }).closest("div.grid");
+      if (row === null) throw new Error(`no row ${label}`);
+      return row.lastElementChild;
+    };
+    expect(lastCell("Markout cost / $1M")).toHaveTextContent(/\$125$/);
+    expect(lastCell("Est. CPM (estimate)")).toHaveTextContent(/\$200$/);
+    cleanup();
+
+    setRespond(() => Promise.resolve(view({ hours: hoursWith(() => none) })));
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    expect(lastCell("Markout cost / $1M")).toHaveTextContent(/Not available$/);
+    expect(lastCell("Est. CPM (estimate)")).toHaveTextContent(/Not available$/);
+    expect(lastCell("Markout cost / $1M")).not.toHaveTextContent(/\$0/);
+  });
+});
+
+// Ô Market (#486): picker của form tạo bot, chỉ các market trang hỗ trợ; nhóm Popular; tìm kiếm; bàn phím.
+describe("Market hours market picker", { timeout: 30_000 }, () => {
+  it("lists only the page's markets, Popular first, and unknown ones under Other", () => {
+    const items = marketHoursItems(mock.markets, ["DOGE-USD", "ETH-USD", "BTC-USD", "XYZ-USD"], {
+      popular: "Popular",
+      quote: (q) => `${q} markets`,
+      other: "Other",
+    });
+    expect(items.map((x) => [x.value, x.group])).toEqual([
+      ["BTC-USD", "Popular"],
+      ["ETH-USD", "Popular"],
+      ["DOGE-USD", "USD markets"],
+      ["XYZ-USD", "Other"],
+    ]);
+  });
+
+  it("finds a market by search and switches to it with the keyboard", async () => {
+    const user = userEvent.setup({ delay: null });
+    setRespond(() => Promise.resolve(view({ markets: ["BTC-USD", "ETH-USD", "DOGE-USD"] })));
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const filters = screen.getByRole("region", { name: "Filters" });
+    const box = within(filters).getByRole("combobox", { name: "Market" });
+    expect(box).toHaveValue("BTC-USD");
+    await user.click(box);
+    const list = within(filters).getByRole("listbox");
+    expect(within(list).getByRole("group", { name: "Popular" })).toBeInTheDocument();
+    expect(within(list).queryByText("SOL-USD")).not.toBeInTheDocument();
+    await user.clear(box);
+    await user.type(box, "eth");
+    expect(
+      within(list)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["ETH-USD"]);
+    await user.keyboard("{ArrowDown}{Enter}");
+    await waitFor(() => {
+      expect(calls.at(-1)).toContain("market=ETH-USD");
+    });
+  });
+
+  it("has no accessibility violations with the picker open", async () => {
+    const user = userEvent.setup({ delay: null });
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const filters = screen.getByRole("region", { name: "Filters" });
+    await user.click(within(filters).getByRole("combobox", { name: "Market" }));
+    const r = await axe.run(filters, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
   });
 });

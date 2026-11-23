@@ -2896,7 +2896,16 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch"
+    "signalAnalysis.research.live.batch",
+    "marketHours.avg.head",
+    "marketHours.avg.costLabel",
+    "marketHours.avg.costTip",
+    "marketHours.avg.costNa",
+    "marketHours.avg.estLabel",
+    "marketHours.avg.estTip",
+    "marketHours.avg.estNa",
+    "marketHours.avg.mobileCost",
+    "marketHours.avg.mobileEst"
   ],
   "beta": {
     "label": "Beta",
@@ -6766,7 +6775,18 @@
       "markerTag": "{hour} UTC",
       "collecting": "Cost to make markets: collecting since {date}"
     },
-    "footer": "Past numbers, not a forecast; nothing on this page pauses or changes bots."
+    "footer": "Past numbers, not a forecast; nothing on this page pauses or changes bots.",
+    "avg": {
+      "head": "Avg",
+      "costLabel": "Period avg",
+      "costTip": "Period avg = {value}: total cost ÷ total volume over the period, Thin sample hours included. Not the average of the hourly cells.",
+      "costNa": "Period avg: Not available. No bot volume with a markout cost in this period.",
+      "estLabel": "Mean of hours",
+      "estTip": "Mean of hours = {value}: simple average of the {n} hours that have an Est. CPM. A model estimate, not a measured cost.",
+      "estNa": "Mean of hours: Not available. No hour has an Est. CPM.",
+      "mobileCost": "Markout / $1M · period avg",
+      "mobileEst": "Est. CPM (estimate) · mean of hours"
+    }
   },
   "architecture": {
     "title": "System Architecture Diagram",
