@@ -814,7 +814,7 @@ export function emptyValues(strategy: keyof typeof FIELDS): FormValues {
       maxOrders: "1",
       quoteLevel: "0",
       refreshSeconds: "3",
-      // Smart quoting tắt mặc định cho bot mới (#498, DEC-TBD-mm-smart-quoting-off, thay phần "bật mặc định" của DEC-242);
+      // Smart quoting tắt mặc định cho bot mới (#498, DEC-378, thay phần "bật mặc định" của DEC-242);
       // bot đang có giữ thiết lập của nó. Như schema (`smartQuoting` mặc định false).
       smartQuoting: false,
     });
