@@ -2896,16 +2896,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "marketHours.avg.head",
-    "marketHours.avg.costLabel",
-    "marketHours.avg.costTip",
-    "marketHours.avg.costNa",
-    "marketHours.avg.estLabel",
-    "marketHours.avg.estTip",
-    "marketHours.avg.estNa",
-    "marketHours.avg.mobileCost",
-    "marketHours.avg.mobileEst"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
