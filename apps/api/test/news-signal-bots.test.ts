@@ -6,11 +6,14 @@ import {
   errorResponseSchema,
   meSchema,
   NEWS_BOTS_NOT_READY,
+  newsBotVersionResultSchema,
   newsCommandSchema,
   newsTradesSchema,
   startChecksSchema,
 } from "@drift/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { generateTotp } from "../src/lib/totp";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
@@ -485,6 +488,206 @@ describe("leverage_conflict start-check (DEC-58)", () => {
       detail: "bot",
       data: { market: "BTC-USD", botName: "Grid BTC-USD" },
     });
+  });
+  it("#469: an edit is also blocked when another live bot uses one of the markets (leverage_conflict)", async () => {
+    flag.enabled = true;
+    const u = await user(`nsb-lev3-${randomUUID()}@drift.test`, { flag: true });
+    const r = await create(u.client, { config: config({ assets: only("BTC-USD") }) });
+    const bot = botSummarySchema.parse(r.json());
+    await liveBot(u.id, "BTC-USD");
+    const res = await u.client.request("POST", `/api/v1/bots/${bot.id}/versions`, {
+      body: { config: config({ assets: only("BTC-USD"), leverage: 5 }) },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(errOf(res)).toMatchObject({
+      code: "STATE_CONFLICT",
+      details: { reason: "leverage_conflict", market: "BTC-USD" },
+    });
+    expect(await count("select count(*) as n from bot_versions where bot_id = $1", [bot.id])).toBe(
+      1,
+    );
+  });
+});
+
+describe("Edit: save as a new version (#469)", () => {
+  const edit = (c: TestClient, id: string, body: Record<string, unknown>, key?: string) =>
+    c.request("POST", `/api/v1/bots/${id}/versions`, {
+      // `paramSource` như form Edit chung: bot của người khác đi đường chung và nhận 404.
+      body: { paramSource: "manual", ...body },
+      ...(key === undefined ? {} : { idempotencyKey: key }),
+    });
+  const versions = async (id: string) =>
+    (
+      await env.pool.query<{ version: number; status: string }>(
+        "select version, status from bot_versions where bot_id = $1 order by version",
+        [id],
+      )
+    ).rows.map((v) => [v.version, v.status]);
+  const setState = (id: string, state: string) =>
+    env.pool.query("update bots set state = $2 where id = $1", [id, state]);
+
+  it("running → pending v2 with the margin check of the new config; a second edit while applying is 409; stopped → active at once", async () => {
+    flag.enabled = true;
+    const bot = await createdBot(tester);
+    await setState(bot.id, "running");
+    const key = randomUUID();
+    const body = { config: config({ leverage: 5, sizeUsdc: "50", maxOpenTrades: 2 }) };
+    const r = await edit(tester, bot.id, body, key);
+    expect(r.statusCode, r.body).toBe(202);
+    const saved = newsBotVersionResultSchema.parse(r.json());
+    expect(saved).toMatchObject({ version: 2, status: "pending" });
+    // Margin isolated = 50 × 2 ÷ 5.
+    expect(saved.balance.needed).toBe("20");
+    expect(await versions(bot.id)).toEqual([
+      [1, "active"],
+      [2, "pending"],
+    ]);
+    const { rows } = await env.pool.query<{ config: Record<string, unknown> }>(
+      "select config from bot_versions where bot_id = $1 and version = 2",
+      [bot.id],
+    );
+    expect(rows[0]?.config).toMatchObject({ leverage: 5, sizeUsdc: "50", maxOpenTrades: 2 });
+    // Cùng Idempotency-Key: cùng kết quả, không thêm version.
+    const again = await edit(tester, bot.id, body, key);
+    expect(newsBotVersionResultSchema.parse(again.json()).version).toBe(2);
+    // Đang Applying: không sửa tiếp.
+    const busy = await edit(tester, bot.id, { config: config({ leverage: 10 }) });
+    expect(busy.statusCode).toBe(409);
+    expect(errOf(busy)).toMatchObject({
+      code: "BOT_STATE_CONFLICT",
+      details: { reason: "applying", version: 2 },
+    });
+    expect(await versions(bot.id)).toEqual([
+      [1, "active"],
+      [2, "pending"],
+    ]);
+    // Engine áp xong (giả lập), bot dừng: version mới thành active ngay (DEC-131).
+    await env.pool.query(
+      "update bot_versions set status = case when version = 2 then 'active' else 'superseded' end where bot_id = $1",
+      [bot.id],
+    );
+    await setState(bot.id, "stopped");
+    const stopped = await edit(tester, bot.id, { config: config({ leverage: 10 }) });
+    expect(newsBotVersionResultSchema.parse(stopped.json())).toMatchObject({
+      version: 3,
+      status: "active",
+    });
+    expect(await versions(bot.id)).toEqual([
+      [1, "superseded"],
+      [2, "superseded"],
+      [3, "active"],
+    ]);
+    // Bot đang chuyển trạng thái: không sửa.
+    for (const state of ["starting", "pausing", "resuming", "stopping", "archived"]) {
+      await setState(bot.id, state);
+      const res = await edit(tester, bot.id, { config: config({ leverage: 20 }) });
+      expect(res.statusCode, state).toBe(409);
+      expect(errOf(res).code).toBe("BOT_STATE_CONFLICT");
+    }
+  });
+
+  it("markets only narrow, Min level only rises, size ≤ 200, leverage 1 / 5 / 10 / 20, every other field locked", async () => {
+    flag.enabled = true;
+    const narrow = {
+      ...baselineVersionConfig(),
+      minLevel: "medium",
+      assets: { mode: "only", markets: ["SOL-USD", "ETH-USD"], crypto: true, stocks: true },
+    };
+    const { rows } = await env.pool.query<{ id: string }>(
+      `insert into signal_bot_versions (id, number, name, config, status) values (gen_random_uuid(),
+         (select max(number) + 1 from signal_bot_versions), 'Narrow edit', $1, 'stopped') returning id`,
+      [JSON.stringify(narrow)],
+    );
+    const base = config({ assets: narrow.assets, minLevel: "medium" });
+    const made = await create(tester, { versionId: rows[0]?.id, config: base });
+    expect(made.statusCode).toBe(201);
+    const bot = botSummarySchema.parse(made.json());
+    await setState(bot.id, "running");
+    const bad = async (over: Record<string, unknown>, field: string) => {
+      const res = await edit(tester, bot.id, { config: { ...base, ...over } });
+      expect(res.statusCode, field).toBe(400);
+      const details = errOf(res).details as { fieldErrors?: Record<string, string[]> };
+      expect(details.fieldErrors?.[field], field).toEqual([expect.any(String)]);
+      return details.fieldErrors?.[field];
+    };
+    // Field khoá: `fieldErrors.{field}` = ["locked"] (400 VALIDATION_FAILED, C6).
+    const locked = async (over: Record<string, unknown>, field: string) => {
+      expect(await bad(over, field), field).toEqual(["locked"]);
+    };
+    await bad(
+      { assets: { ...narrow.assets, markets: ["SOL-USD", "ETH-USD", "BTC-USD"] } },
+      "assets",
+    );
+    await bad({ minLevel: "low" }, "minLevel");
+    await bad({ sizeUsdc: "200.01" }, "config.sizeUsdc");
+    await bad({ leverage: 3 }, "config.leverage");
+    await locked({ tpMultiple: "9" }, "tpMultiple");
+    await locked({ slMultiple: "0.1" }, "slMultiple");
+    await locked({ onOppositeNews: "close" }, "onOppositeNews");
+    await locked({ maxNewTradesPerDay: 3 }, "maxNewTradesPerDay");
+    await locked({ maxSourceDelayMinutes: 5 }, "maxSourceDelayMinutes");
+    await locked({ minTpCostMultiple: "5" }, "minTpCostMultiple");
+    await locked({ news: {} }, "news");
+    expect(await versions(bot.id)).toEqual([[1, "active"]]);
+    const ok = await edit(tester, bot.id, {
+      config: {
+        ...base,
+        assets: { ...narrow.assets, markets: ["SOL-USD"] },
+        minLevel: "high",
+        sizeUsdc: "200",
+        leverage: 20,
+        maxOpenTrades: 1,
+      },
+    });
+    expect(ok.statusCode, ok.body).toBe(202);
+    expect(newsBotVersionResultSchema.parse(ok.json()).balance.needed).toBe("10");
+  });
+
+  it("flag off 409, no Signal Research access 403, someone else's bot 404, other strategies keep the generic edit", async () => {
+    flag.enabled = true;
+    const bot = await createdBot(tester);
+    flag.enabled = false;
+    const off = await edit(tester, bot.id, { config: config({ leverage: 5 }) });
+    expect(off.statusCode).toBe(409);
+    expect(errOf(off).code).toBe("FEATURE_NOT_READY");
+    flag.enabled = true;
+    expect((await edit(other, bot.id, { config: config({ leverage: 5 }) })).statusCode).toBe(404);
+    await env.pool.query("update users set signal_research = false where id = $1", [testerId]);
+    try {
+      expect((await edit(tester, bot.id, { config: config({ leverage: 5 }) })).statusCode).toBe(
+        403,
+      );
+    } finally {
+      await env.pool.query("update users set signal_research = true where id = $1", [testerId]);
+    }
+    expect(await versions(bot.id)).toEqual([[1, "active"]]);
+  });
+
+  it("asks for the 2FA code like Start when 2FA is on", async () => {
+    flag.enabled = true;
+    const u = await user(`nsb-2fa-${randomUUID()}@drift.test`, { flag: true });
+    const setup = (await u.client.request("POST", "/api/v1/security/2fa/setup")).json<{
+      secret: string;
+    }>();
+    await u.client.request("POST", "/api/v1/security/2fa/enable", {
+      body: { code: generateTotp(setup.secret, env.clock.now) },
+    });
+    const bot = await createdBot(u.client);
+    await env.pool.query("update sessions set twofa_verified_at = null where user_id = $1", [u.id]);
+    const none = await edit(u.client, bot.id, { config: config({ leverage: 5 }) });
+    expect(none.statusCode).toBe(403);
+    expect(errOf(none).code).toBe("TWO_FACTOR_REQUIRED");
+    const wrong = await edit(u.client, bot.id, {
+      config: config({ leverage: 5 }),
+      twoFactorCode: "000000",
+    });
+    expect(errOf(wrong).code).toBe("TWO_FACTOR_INVALID");
+    env.clock.now = new Date(env.clock.now.getTime() + 31_000);
+    const ok = await edit(u.client, bot.id, {
+      config: config({ leverage: 5 }),
+      twoFactorCode: generateTotp(setup.secret, env.clock.now),
+    });
+    expect(ok.statusCode, ok.body).toBe(202);
   });
 });
 

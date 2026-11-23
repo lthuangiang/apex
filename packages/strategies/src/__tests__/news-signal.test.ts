@@ -722,11 +722,58 @@ describe("unknown slots and deterministic ids", () => {
     );
   });
 
-  it("does not apply a new version while a trade is open", () => {
+  it("Start again after Stop (engine sends resumed) clears the stop mark, so later signals trade; kept trades keep max hold off (#469)", () => {
     const o = opened();
-    expect(newsSignal.applyVersion?.(cfg(), o.state, ctx)).toBeNull();
+    const stopped = run(cfg(), o.state, [{ type: "newsStop", at: T0 + HOUR, close: false }]);
+    expect(stopped.state.stopping).toBe("keep");
+    const blocked = run(cfg(), stopped.state, [
+      signalEv(sig({ market: "ETH-USD" }), T0 + HOUR + 1),
+    ]);
+    expect(outcome(blocked.actions)).toMatchObject({ outcome: "dropped" });
+    const at = T0 + 2 * HOUR;
+    const started = run(cfg(), stopped.state, [{ type: "resumed", at, prices: {} }]);
+    expect(started.state.stopping).toBeNull();
+    expect(trade(started.state, o.signal.id).maxHoldOff).toBe(true);
+    const later = sig({ market: "ETH-USD", decidedAt: at + 1_000, expiresAt: at + 120_000 });
+    const next = run(cfg(), started.state, [signalEv(later)]);
+    expect(places(next.actions).map((p) => p.tag)).toEqual([newsTag.entry(later.id)]);
+  });
+
+  it("applies a new version while a trade is open and keeps the state as is (#469)", () => {
+    const o = opened(cfg({ leverage: 10 }));
+    expect(newsSignal.applyVersion?.(cfg({ leverage: 5 }), o.state, ctx)).toBe(o.state);
     const empty = initialNewsSignalState();
     expect(newsSignal.applyVersion?.(cfg(), empty, ctx)).toBe(empty);
+  });
+
+  it("keeps the open trade's TP, SL, max hold and leverage; later signals use the new config (#469)", () => {
+    const v1 = cfg({ leverage: 10, sizeUsdc: "200" });
+    const v2 = cfg({ leverage: 5, sizeUsdc: "100", tpMultiple: "3", slMultiple: "0.5" });
+    const o = opened(v1);
+    expect(o.trade.leverage).toBe(10);
+    const applied = newsSignal.applyVersion?.(v2, o.state, ctx);
+    if (applied === null || applied === undefined) throw new Error("not applied");
+    const kept = trade(applied, o.signal.id);
+    expect(kept).toEqual(o.trade);
+    // Ack TP / SL dưới v2: không gửi lại, không huỷ gì.
+    const tpId = o.trade.tp?.id ?? "";
+    const slId = o.trade.sl?.id ?? "";
+    const acked = run(v2, applied, [ack(tpId), ack(slId)]);
+    expect(places(acked.actions)).toEqual([]);
+    expect(cancels(acked.actions)).toEqual([]);
+    // Max hold vẫn theo lúc vào, đóng cả khối lượng của lệnh cũ (không theo size mới).
+    const hold = run(v2, acked.state, [{ type: "timer", at: o.trade.maxHoldUntil }]);
+    const close = places(hold.actions).find((p) => p.reduceOnly && p.type === "market");
+    expect(close?.quantity).toBe("1.99");
+    // Tín hiệu sau ở market khác: size, đòn bẩy, TP / SL của v2.
+    const eth = sig({ market: "ETH-USD", storyKey: "ETH-USD|listing" });
+    const next = run(v2, acked.state, [signalEv(eth)]);
+    const fresh = trade(next.state, eth.id);
+    expect(fresh.leverage).toBe(5);
+    expect(fresh.sizeUsdc).toBe("100");
+    expect(fresh.tpPct).toBe("9");
+    expect(fresh.slPct).toBe("1.5");
+    expect(trade(next.state, o.signal.id)).toEqual(o.trade);
   });
 });
 

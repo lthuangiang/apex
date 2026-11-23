@@ -181,3 +181,15 @@ export function newsCommandOf(state: unknown, clOrdID: string): string | null {
   }
   return null;
 }
+
+/**
+ * Câu Decisions khi bot `news_signal` áp version mới (#469, PM duyệt): lệnh đang mở giữ thiết lập lúc vào. Không còn lệnh
+ * mở thì chỉ câu đầu.
+ */
+export function newsVersionAppliedWhy(version: number, open: number): string {
+  const head = `New signals use v${String(version)}.`;
+  if (open <= 0) return head;
+  return open === 1
+    ? `${head} 1 open trade keeps the settings it opened with.`
+    : `${head} ${String(open)} open trades keep the settings they opened with.`;
+}

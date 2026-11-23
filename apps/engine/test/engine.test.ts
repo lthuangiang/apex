@@ -12046,6 +12046,251 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     await e.stop();
   });
 
+  // ---------- #469: sửa bot news thành version mới (DEC-377) ----------
+  /** Version mới của bot: `pending` (sửa khi đang chạy / pause) hoặc `active` ngay (sửa khi đã dừng, DEC-131). */
+  async function saveNewsVersion(
+    botId: string,
+    version: number,
+    over: Record<string, unknown>,
+    status: "pending" | "active" = "pending",
+  ) {
+    const { eq } = await import("drizzle-orm");
+    if (status === "active")
+      await db
+        .update(botVersions)
+        .set({ status: "superseded" })
+        .where(eq(botVersions.botId, botId));
+    const [v] = await db
+      .insert(botVersions)
+      .values({
+        botId,
+        version,
+        paramSource: "manual",
+        status,
+        appliedAt: status === "active" ? new Date(clock) : null,
+        config: { ...baselineVersionConfig(), sizeUsdc: "200", leverage: 1, ...over },
+      })
+      .returning();
+    if (status === "active")
+      await db
+        .update(bots)
+        .set({ activeVersionId: v?.id ?? "" })
+        .where(eq(bots.id, botId));
+    return v?.id ?? "";
+  }
+  const versionsOf = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    return (await db.select().from(botVersions).where(eq(botVersions.botId, botId)))
+      .sort((x, y) => x.version - y.version)
+      .map((v) => [v.version, v.status]);
+  };
+  const versionEvents = async (botId: string) => {
+    const { eq, and } = await import("drizzle-orm");
+    return (
+      await db
+        .select()
+        .from(botEvents)
+        .where(and(eq(botEvents.botId, botId), eq(botEvents.type, "version")))
+    ).map((x) => [x.decision, x.why]);
+  };
+
+  it("#469: applying v2 with an open trade cancels no order; the trade keeps TP, SL, max hold and leverage, and OCO still runs", async () => {
+    rulesNow = tiered();
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b469-apply");
+    const t = await openTrade(e, gw, b);
+    const before = await tradeOf(b.botId, t.id);
+    await saveNewsVersion(b.botId, 2, { leverage: 5, sizeUsdc: "100" });
+    await ticks(e, 2);
+    expect(gw.cancelled).toEqual([]);
+    expect(await versionsOf(b.botId)).toEqual([
+      [1, "superseded"],
+      [2, "active"],
+    ]);
+    expect(await versionEvents(b.botId)).toEqual([
+      ["Applied v2", "New signals use v2. 1 open trade keeps the settings it opened with."],
+    ]);
+    const after = await tradeOf(b.botId, t.id);
+    expect(after?.status).toBe("open");
+    expect(after?.tpPrice).toBe(before?.tpPrice);
+    expect(after?.slPrice).toBe(before?.slPrice);
+    expect(after?.maxHoldUntil).toEqual(before?.maxHoldUntil);
+    expect(after?.leverage).toBe(1);
+    expect((await botState(b.botId))?.state).toBe("running");
+    // TP khớp sau khi áp: SL của lệnh cũ vẫn được huỷ (OCO), lệnh đóng.
+    await e.onFill(b.accountId, t.tp.clOrdID, t.tp.quantity, t.tp.price ?? "104", "0.1", clock);
+    await e.onOrderClosed(b.accountId, t.tp.clOrdID, "filled", clock);
+    expect(gw.cancelled).toEqual([t.sl.clOrdID]);
+    expect((await tradeOf(b.botId, t.id))?.status).toBe("closed");
+    await e.stop();
+  });
+
+  it("#469: an Edit TP/SL leg with an unknown result (trade seq below the new version) is not cancelled and the command stays applying", async () => {
+    const { eq } = await import("drizzle-orm");
+    rulesNow = tiered();
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b469-cmd");
+    const t = await openTrade(e, gw, b);
+    gw.timeoutNext = "lost";
+    const cmd = await addCommand(b, t.id, "edit_tpsl", 1, { tp: "106" });
+    await ticks(e, 1);
+    expect((await commandRow(cmd))?.status).toBe("applying");
+    const leg = (await db.select().from(orders).where(eq(orders.botId, b.botId))).find((o) =>
+      o.tag.endsWith(":e1:tp"),
+    );
+    expect(leg?.status).toBe("unknown");
+    await saveNewsVersion(b.botId, 3, { leverage: 5 });
+    await ticks(e, 2);
+    expect(await versionsOf(b.botId)).toEqual([
+      [1, "superseded"],
+      [3, "active"],
+    ]);
+    expect(gw.cancelled).toEqual([]);
+    expect((await commandRow(cmd))?.status).toBe("applying");
+    expect(dec((await commandRow(cmd))?.tp ?? "0").toString()).toBe("106");
+    await e.stop();
+  });
+
+  it("#469: later signals use v2 (its leverage set isolated first, its size); the open trade's market waits; another market with a position at other settings gets LEVERAGE_NOT_SET", async () => {
+    rulesNow = tiered();
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b469-next");
+    const t = await openTrade(e, gw, b);
+    await saveNewsVersion(b.botId, 2, { leverage: 5, sizeUsdc: "100" });
+    await ticks(e, 1);
+    const eth = await signal({ market: "ETH-USD" });
+    await ticks(e, 1);
+    expect(gw.leverage.at(-1)).toMatchObject({
+      market: "ETH-USD",
+      leverage: 5,
+      marginMode: "isolated",
+    });
+    const entry = gw.received.find((o) => o.tag === `ns:${eth}:entry`);
+    expect(entry?.quantity).toBe("0.99");
+    expect((await tradeOf(b.botId, eth))?.leverage).toBe(5);
+    expect((await tradeOf(b.botId, t.id))?.leverage).toBe(1);
+    // Cùng market với lệnh đang mở (1×): không đổi đòn bẩy trên vị thế đang mở (DEC-58), tín hiệu chờ lệnh cũ đóng.
+    const calls = gw.leverage.length;
+    const sol = await signal({ market: SOL });
+    await ticks(e, 1);
+    expect((await deliveries(b.botId)).find((d) => d.signalId === sol)?.reason).toBe(
+      "NEWS_TRADE_ALREADY_OPEN",
+    );
+    expect(gw.leverage).toHaveLength(calls);
+    // Vị thế ngoài bot ở thiết lập khác trên market khác: đọc trước, không đổi, không vào lệnh.
+    gw.positions.set("BTC-USD", { leverage: 10, marginMode: "isolated" });
+    gw.settings.set("BTC-USD", { leverage: 10, marginMode: "isolated" });
+    const btc = await signal({ market: "BTC-USD" });
+    await ticks(e, 1);
+    expect((await deliveries(b.botId)).find((d) => d.signalId === btc)?.reason).toBe(
+      "LEVERAGE_NOT_SET",
+    );
+    expect(gw.leverage).toHaveLength(calls);
+    expect(gw.received.filter((o) => o.tag === `ns:${btc}:entry`)).toEqual([]);
+    expect(gw.cancelled).toEqual([]);
+    await e.stop();
+  });
+
+  it("#469: a paused bot applies v2 at once without cancelling anything; after Resume new signals use v2", async () => {
+    rulesNow = tiered();
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b469-paused");
+    const t = await openTrade(e, gw, b);
+    await setState(b.botId, "pausing");
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("paused");
+    await saveNewsVersion(b.botId, 2, { leverage: 5, sizeUsdc: "100" });
+    await ticks(e, 1);
+    expect(await versionsOf(b.botId)).toEqual([
+      [1, "superseded"],
+      [2, "active"],
+    ]);
+    expect(gw.cancelled).toEqual([]);
+    expect((await tradeOf(b.botId, t.id))?.status).toBe("open");
+    await setState(b.botId, "resuming");
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("running");
+    const eth = await signal({ market: "ETH-USD" });
+    await ticks(e, 1);
+    expect(gw.received.find((o) => o.tag === `ns:${eth}:entry`)?.quantity).toBe("0.99");
+    expect((await tradeOf(b.botId, eth))?.leverage).toBe(5);
+    await e.stop();
+  });
+
+  it("#469: Stop-Keep, edit while stopped (active right away), restart, then Start: the open trade stays managed and new signals use the edit", async () => {
+    rulesNow = tiered();
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b469-stopped");
+    const t = await openTrade(e, gw, b);
+    await setState(b.botId, "stopping", false);
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("stopped");
+    await saveNewsVersion(b.botId, 2, { leverage: 5, sizeUsdc: "100" }, "active");
+    await ticks(e, 1);
+    // Engine khởi động lại lúc bot đã dừng: lệnh đang mở vẫn được quản lý (state không mất khi version đổi).
+    await e.stop();
+    const e2 = newsEngine(gw, "b469-stopped-2");
+    await ticks(e2, 1);
+    await e2.onFill(b.accountId, t.sl.clOrdID, t.sl.quantity, "95", "0.1", clock);
+    await e2.onOrderClosed(b.accountId, t.sl.clOrdID, "filled", clock);
+    expect(gw.cancelled).toEqual([t.tp.clOrdID]);
+    expect((await tradeOf(b.botId, t.id))?.status).toBe("closed");
+    expect((await tradeOf(b.botId, t.id))?.leverage).toBe(1);
+    await setState(b.botId, "starting");
+    await ticks(e2, 1);
+    expect((await botState(b.botId))?.state).toBe("running");
+    const eth = await signal({ market: "ETH-USD" });
+    await ticks(e2, 1);
+    expect(gw.received.find((o) => o.tag === `ns:${eth}:entry`)?.quantity).toBe("0.99");
+    expect((await tradeOf(b.botId, eth))?.leverage).toBe(5);
+    await e2.stop();
+  });
+
+  it("#469: a stopped bot with a runner still managing a trade adopts the edit on Start, without cancelling the kept TP / SL", async () => {
+    rulesNow = tiered();
+    const gw = new FakeGateway();
+    const b = await seedNews();
+    const e = newsEngine(gw, "b469-adopt");
+    const t = await openTrade(e, gw, b);
+    await setState(b.botId, "stopping", false);
+    await ticks(e, 1);
+    await saveNewsVersion(b.botId, 2, { leverage: 5, sizeUsdc: "100" }, "active");
+    await ticks(e, 1);
+    await setState(b.botId, "starting");
+    await ticks(e, 2);
+    expect((await botState(b.botId))?.state).toBe("running");
+    expect(gw.cancelled).toEqual([]);
+    const eth = await signal({ market: "ETH-USD" });
+    await ticks(e, 1);
+    expect(gw.received.find((o) => o.tag === `ns:${eth}:entry`)?.quantity).toBe("0.99");
+    expect((await tradeOf(b.botId, eth))?.leverage).toBe(5);
+    expect((await tradeOf(b.botId, t.id))?.leverage).toBe(1);
+    await e.stop();
+  });
+
+  it("#469: a stopped bot without a runner, edited and started again, runs with the edited config", async () => {
+    rulesNow = tiered();
+    const gw = new FakeGateway();
+    const b = await seedNews({ state: "stopped" });
+    await saveNewsVersion(b.botId, 2, { leverage: 5, sizeUsdc: "100" }, "active");
+    const e = newsEngine(gw, "b469-fresh");
+    await ticks(e, 1);
+    await setState(b.botId, "starting");
+    await ticks(e, 1);
+    expect((await botState(b.botId))?.state).toBe("running");
+    const id = await signal();
+    await ticks(e, 1);
+    expect(gw.leverage).toEqual([{ market: SOL, leverage: 5, marginMode: "isolated", before: 0 }]);
+    expect(entries(gw).map((o) => o.quantity)).toEqual(["0.99"]);
+    expect((await tradeOf(b.botId, id))?.leverage).toBe(5);
+    await e.stop();
+  });
+
   // ---------- #471: bot news archived còn lệnh mở (phòng thủ, DEC-376) ----------
   it("#471: an archived news bot with open trades keeps its runner, also after a restart: OCO runs, Close now works, no new trade", async () => {
     const gw = new FakeGateway();

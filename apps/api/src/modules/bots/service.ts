@@ -1837,10 +1837,28 @@ export async function newVersion(
 ) {
   const b = await ownBot(deps.db, userId, botId);
   const config = await checkVersionConfig(deps, userId, b, input.config);
+  return saveVersion(deps, botId, config, input);
+}
+
+/**
+ * Ghi version mới của bot (Edit): bot đang chạy / pause → `pending` (engine áp rồi mới `active`); bot draft / stopped →
+ * `active` ngay (DEC-131). Config đã được kiểm tra. `beforeInsert` chạy dưới khoá dòng bot, trước khi ghi (bot news: từ chối
+ * khi còn version đang chờ áp, #469).
+ */
+export async function saveVersion(
+  deps: BotDeps,
+  botId: string,
+  config: Record<string, unknown>,
+  input: { paramSource: "ai" | "ai_edited" | "manual"; aiSuggestionId?: string | undefined },
+  beforeInsert?: (tx: DbTx, locked: typeof bots.$inferSelect) => Promise<void>,
+) {
   return deps.db.transaction(async (tx) => {
     // Khoá dòng bot (#318): hai lần Apply cùng lúc (hai Idempotency-Key khác nhau) lần lượt chạy, lần sau thấy
     // version `pending` của lần trước.
-    await tx.select({ id: bots.id }).from(bots).where(eq(bots.id, botId)).for("update");
+    const [locked] = await tx.select().from(bots).where(eq(bots.id, botId)).for("update");
+    if (locked === undefined) throw new AppError(ErrorCode.botNotFound, "Bot not found.");
+    if (beforeInsert !== undefined) await beforeInsert(tx, locked);
+    const b = locked;
     const [{ v } = { v: 0 }] = await tx
       .select({ v: max(botVersions.version) })
       .from(botVersions)
