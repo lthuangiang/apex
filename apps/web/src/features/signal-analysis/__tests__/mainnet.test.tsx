@@ -16,11 +16,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 
 import messages from "../../../../messages/en.json";
+import { editConfigOf, editDraftOf, validateEdit } from "../mainnet/bot-edit";
 import { NewsBotEditor } from "../mainnet/bot-editor";
 import { MainnetPanel, ModeSwitch } from "../mainnet/mainnet-panel";
 import { MainnetTrades } from "../mainnet/mainnet-trades";
 import { Signals24h } from "../mainnet/signals-24h";
-import { editConfigOf, editDraftOf, validateEdit } from "../mainnet/bot-edit";
 import { botConfigOf, draftOf, validateBot } from "../research/version-sheet";
 
 import { BASELINE_ID, MARKETS, V4, V4_ID, VERSIONS } from "./versions-fixtures";
@@ -37,7 +37,7 @@ const M = messages.signalAnalysis.research.mainnet;
 
 const state = vi.hoisted(
   (): {
-    calls: { method: string; path: string; body: unknown }[];
+    calls: { method: string; path: string; body: unknown; idempotencyKey?: string | undefined }[];
     bots: unknown[];
     trades: unknown[];
     signals: unknown[];
@@ -67,8 +67,13 @@ vi.mock("@/lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/api")>();
   return {
     ...real,
-    api: (method: string, path: string, schema: z.ZodType, opts?: { body?: unknown }) => {
-      state.calls.push({ method, path, body: opts?.body });
+    api: (
+      method: string,
+      path: string,
+      schema: z.ZodType,
+      opts?: { body?: unknown; idempotencyKey?: string },
+    ) => {
+      state.calls.push({ method, path, body: opts?.body, idempotencyKey: opts?.idempotencyKey });
       const p = new URL(path, "http://x").pathname;
       const key = `${method} ${p}`;
       const f = Object.entries(state.fail).find(([k]) => key.endsWith(k))?.[1];
@@ -944,6 +949,8 @@ describe("Edit: save as a new version (#469 part 2)", () => {
     expect(within(dialog).getByText("Position size 100 → 40 USDC")).toBeInTheDocument();
     await noViolations(dialog);
     expect(save).toBeEnabled();
+    // Server: version mới `pending` tới khi engine áp.
+    state.pending = 2;
     await user.click(save);
     await waitFor(() => {
       expect(saves()).toHaveLength(1);
@@ -952,8 +959,8 @@ describe("Edit: save as a new version (#469 part 2)", () => {
       config: { ...CONFIG, leverage: 5, sizeUsdc: "40" },
       paramSource: "manual",
     });
+    expect(saves()[0]?.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
     // Lưu xong: về Settings, câu đã duyệt; engine chưa áp nên "Applying v2…" (trạng thái từ backend).
-    state.pending = 2;
     const settings = await screen.findByRole("dialog", { name: bot().name });
     expect(
       within(settings).getByText(

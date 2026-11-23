@@ -281,7 +281,12 @@ describe("logging", () => {
     await signIn(env, client, nextEmail());
     await client.request("GET", "/api/v1/me");
     const all = env.logs.join("\n");
-    expect(all).not.toContain(lastCode(env.mails));
+    // Mã OTP là 6 chữ số ngẫu nhiên: so như một số đứng riêng, không phải một đoạn của số khác trong log (vd `responseTime`
+    // 0.9114349999999831 chứa "499999", CI run 45048092132). Mã bị log ở bất kỳ dạng nào ("code":"499999", ?code=499999…)
+    // vẫn có ký tự không phải số ở hai bên nên vẫn bị bắt.
+    const code = lastCode(env.mails);
+    expect(code).toMatch(/^\d{6}$/);
+    expect(all).not.toMatch(new RegExp(`(?<![0-9])${code}(?![0-9])`));
     expect(all).not.toContain(client.session ?? "missing");
   });
 });
