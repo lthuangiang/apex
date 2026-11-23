@@ -138,6 +138,13 @@ export interface VolumeMakerState {
    * sau mốc này mà SoDEX phẳng (và đủ điều kiện mới / yên / đã đối soát) thì lấy SoDEX làm chuẩn ngay; null = không nghi.
    */
   positionSuspectAt?: number | null;
+  /** #497: số lần liên tiếp lệnh đóng reduce-only bị từ chối vì không có vị thế, chưa được giải quyết. */
+  suspectRejects?: number;
+  /**
+   * #497: đã quá `VM_SUSPECT_MAX_REJECTS` lần mà lần đọc vị thế vẫn chưa giải quyết được: giữ mọi lệnh mới (Needs
+   * attention), không lặp vô hạn. Gỡ khi sổ cái và SoDEX cùng phẳng, hoặc người dùng Resume.
+   */
+  positionStuck?: boolean;
 }
 
 /** Điều chỉnh Smart quoting của một phía: lùi `ticks` tick, hoặc rút hẳn lệnh mở (`pull`). */
@@ -192,6 +199,8 @@ export const VM_DRIFT_ADOPT_MS = 30_000;
  * - `capFreshMs`: vị thế SoDEX đọc trong chừng này ms còn được dùng cho chốt Max open position (lớn hơn một nhịp kiểm tra
  *   30 s của engine).
  */
+/** #497: "position not found" liên tiếp ngần này lần mà chưa giải quyết được thì giữ lệnh mới và gắn Needs attention. */
+export const VM_SUSPECT_MAX_REJECTS = 4;
 export const VM_DRIFT = {
   freshMs: 5_000,
   settleMs: 60_000,
@@ -747,6 +756,8 @@ function quote(
       }
     }
   }
+  // #497: đang giữ lệnh (Needs attention): không đặt lệnh mới nào; lệnh đang nằm vẫn bị huỷ như thường.
+  if (s.positionStuck === true) places.length = 0;
   // Phía còn lệnh mở chưa xác nhận huỷ: chỉ bỏ lệnh mở mới (DEC-253). Lệnh mở đang nằm vẫn bị huỷ như thường (huỷ
   // không bao giờ làm tăng vị thế); lệnh đóng không bị ảnh hưởng.
   for (let i = places.length - 1; i >= 0; i -= 1) {
@@ -1329,8 +1340,11 @@ function stepCore(
         maxInventory: Decimal.max(s.maxInventory, inv).toString(),
         orders,
         requoteDue: true,
-        // #497: sổ cái vừa đổi; độ lệch với SoDEX (nếu có) phải được thấy lại từ đầu, không nối với lần đọc trước.
+        // #497: sổ cái vừa đổi; độ lệch với SoDEX (nếu có) phải được thấy lại từ đầu, không nối với lần đọc trước. Lần bị
+        // từ chối "position not found" trước fill này cũng không còn là bằng chứng (SoDEX có thể đã có vị thế từ fill này
+        // mà account state còn chậm, vẫn đọc ra phẳng), nên bỏ cả mốc nghi.
         drift: null,
+        positionSuspectAt: null,
         lastFillAt: e.at,
       };
       // Đã dừng: fill (lệnh đóng lúc dừng, khớp trễ) chỉ vào sổ cái, không chạy lại guard (không đặt thêm lệnh đóng).
@@ -1350,7 +1364,8 @@ function stepCore(
     case "orderAck": {
       const o = s.orders[e.clOrdID];
       if (o?.role !== "close") return { actions: [], state: s };
-      return { actions: [], state: { ...s, closeRejects: 0 } };
+      // SoDEX nhận lệnh đóng: có vị thế thật để đóng, bỏ đếm "position not found" (#497).
+      return { actions: [], state: { ...s, closeRejects: 0, suspectRejects: 0 } };
     }
     case "orderReject": {
       const o = s.orders[e.clOrdID];
@@ -1402,19 +1417,33 @@ function stepCore(
       // vị thế ngay và lần đọc đó sửa sổ cái (nhánh `positionSync`).
       if (o.role === "close" && e.positionNotFound === true) {
         const first = s.positionSuspectAt == null;
-        state = { ...state, closeRejects: 0, positionSuspectAt: s.positionSuspectAt ?? e.at };
-        return {
-          actions: first
-            ? [
-                {
-                  type: "log",
-                  decision: "Checking the position on SoDEX",
-                  why: "SoDEX rejected a reduce-only close because it has no position, so the bot's position may be wrong. Close orders stay reduce-only.",
-                },
-              ]
-            : [],
-          state,
+        const n = (s.suspectRejects ?? 0) + 1;
+        const stuckNow = n >= VM_SUSPECT_MAX_REJECTS && s.positionStuck !== true;
+        state = {
+          ...state,
+          closeRejects: 0,
+          positionSuspectAt: s.positionSuspectAt ?? e.at,
+          suspectRejects: n,
+          ...(stuckNow ? { positionStuck: true } : {}),
         };
+        const actions: StrategyAction[] = [];
+        if (first)
+          actions.push({
+            type: "log",
+            decision: "Checking the position on SoDEX",
+            why: "SoDEX rejected a reduce-only close because it has no position, so the bot's position may be wrong. Close orders stay reduce-only.",
+          });
+        // Lần đọc lại vẫn chưa giải quyết được: không lặp vô hạn, giữ lệnh mới và báo người dùng.
+        if (stuckNow)
+          actions.push(
+            {
+              type: "log",
+              decision: "Position needs a check",
+              why: `SoDEX rejected ${String(n)} reduce-only closes because it has no position, and fresh reads have not settled it. New orders are on hold until the bot's position and SoDEX are both flat, or you resume the bot.`,
+            },
+            { type: "flag", needsAttention: true },
+          );
+        return { actions, state };
       }
       // Lệnh đóng reduce-only bị từ chối: có thể SoDEX không chấp nhận GTX kèm reduceOnly. Post-only bị từ chối (mã SoDEX
       // `PostOnly`, mã giả lập `POST_ONLY_WOULD_TRADE`) chỉ là giá chạy, không tính.
@@ -1505,8 +1534,22 @@ function stepCore(
       // #497: lúc đọc (engine bắt đầu đọc account state); event cũ không có thì coi như lúc nhận.
       const readAt = e.readAt ?? e.at;
       const seen: VolumeMakerState = { ...s, sodexPosition: { size: e.size, at: readAt } };
-      if (gap.lt(rules.stepSize))
-        return { actions: [], state: { ...seen, drift: null, positionSuspectAt: null } };
+      if (gap.lt(rules.stepSize)) {
+        // Sổ cái khớp SoDEX: hết nghi. Đang giữ lệnh (#497) thì chỉ gỡ khi cả hai cùng phẳng (không còn gì để đóng, nên
+        // không thể quay lại vòng "position not found").
+        const flatBoth =
+          isFlat(ours, s.mid ?? e.entryPrice, rules) && isFlat(sdex, s.mid ?? e.entryPrice, rules);
+        const unstick = s.positionStuck === true && flatBoth;
+        return {
+          actions: [],
+          state: {
+            ...seen,
+            drift: null,
+            positionSuspectAt: null,
+            ...(unstick ? { positionStuck: false, suspectRejects: 0 } : {}),
+          },
+        };
+      }
       const lastFill = s.lastFillAt ?? null;
       // Cùng một độ lệch với lần đọc trước (số SoDEX và sổ cái đều không đổi, không fill xen giữa: fill xoá `drift`).
       // Lần thấy độ lệch trước khi đủ `settleMs` sau fill gần nhất không được tính làm mốc (số SoDEX lúc đó có thể cũ).
@@ -1522,10 +1565,12 @@ function stepCore(
       // SoDEX đã báo không có vị thế (lệnh đóng reduce-only bị từ chối) và lần đọc SAU đó cũng phẳng: không cần chờ thêm
       // 30 s (hai bằng chứng độc lập cùng nói phẳng). Các điều kiện (a)–(c) dưới vẫn áp dụng.
       const suspect = s.positionSuspectAt ?? null;
-      const confirmedFlat = suspect !== null && readAt > suspect && sdex.isZero();
+      // Lần đọc SAU lần bị từ chối: phẳng → sửa sổ cái về 0; còn vị thế → lấy đúng chiều và đúng số đã đọc, lệnh đóng
+      // kế tiếp là reduce-only theo số đó (SoDEX tự chặn nếu nó làm tăng vị thế).
+      const confirmedRead = suspect !== null && readAt > suspect;
       // (b) Không có fill nào của sổ cái giữa lần đọc và lúc áp (fill cũng xoá `drift`, nên cả từ lúc thấy độ lệch).
       if (lastFill !== null && lastFill >= readAt) return waiting;
-      if (confirmedFlat) {
+      if (confirmedRead) {
         if (lastFill !== null && lastFill > readAt - VM_DRIFT.quietMs) return waiting;
       } else {
         // Số SoDEX có thể còn cũ ~50 s: chỉ đếm độ lệch thấy từ `settleMs` sau fill gần nhất, kéo dài ≥ VM_DRIFT_ADOPT_MS.
@@ -1545,8 +1590,8 @@ function stepCore(
           {
             type: "log",
             decision: "Position re-synced from SoDEX",
-            why: confirmedFlat
-              ? `SoDEX rejected a close because it has no position, and a fresh read shows ${e.size}; the bot had ${s.ledger.position}.`
+            why: confirmedRead
+              ? `SoDEX rejected a close because it had no position; a fresh read shows ${e.size}, the bot had ${s.ledger.position}.`
               : `SoDEX position ${e.size} differed from the bot's ${s.ledger.position} for ${String(Math.round(VM_DRIFT_ADOPT_MS / 1000))} s.`,
           },
           { type: "flag", needsAttention: true },
@@ -1556,6 +1601,11 @@ function stepCore(
           ledger: { ...s.ledger, position, avgCost },
           drift: null,
           positionSuspectAt: null,
+          // Lấy số phẳng: không còn gì để đóng, gỡ giữ lệnh (#497). Còn vị thế: giữ nguyên đếm, lệnh đóng reduce-only theo
+          // số mới mà vẫn bị từ chối thì tới `VM_SUSPECT_MAX_REJECTS` là dừng lặp.
+          ...(isFlat(sdex, s.mid ?? e.entryPrice, rules)
+            ? { positionStuck: false, suspectRejects: 0 }
+            : {}),
           requoteDue: true,
         },
       };
@@ -1579,8 +1629,13 @@ function stepCore(
       // Đợt mới: lần từ chối vì thiếu margin kế tiếp được gửi lại một lệnh đóng vị thế lẻ (DEC-292).
       return {
         actions: [],
-        state:
-          s.dustHold == null && s.dustClose == null ? s : { ...s, dustHold: null, dustClose: null },
+        state: {
+          ...(s.dustHold == null && s.dustClose == null
+            ? s
+            : { ...s, dustHold: null, dustClose: null }),
+          // #497: người dùng đã kiểm và Resume: gỡ giữ lệnh, đếm lại từ đầu.
+          ...(s.positionStuck === true ? { positionStuck: false, suspectRejects: 0 } : {}),
+        },
       };
   }
 }

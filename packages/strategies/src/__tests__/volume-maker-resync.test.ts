@@ -327,8 +327,8 @@ describe("Market Making Max open position check from the SoDEX position (#497)",
 });
 
 describe("Market Making 'position not found' on a reduce-only close (#497, PM comment)", () => {
-  const rejects = (positionNotFound: boolean): StrategyEvent[] =>
-    [3_000, 6_000, 9_000].flatMap((t, i) => [
+  const rejects = (positionNotFound: boolean, times = [3_000, 6_000, 9_000]): StrategyEvent[] =>
+    times.flatMap((t, i) => [
       { type: "timer", at: t } as const,
       {
         type: "orderReject",
@@ -364,12 +364,123 @@ describe("Market Making 'position not found' on a reduce-only close (#497, PM co
     expect(fixed.s.positionSuspectAt).toBeNull();
   });
 
-  it("kiểm ngược: other reduce-only rejects still use the old fallback; a non-flat read after the reject waits", () => {
+  it("a fill after the reject cancels it as evidence: a flat read 10 s later is not applied (PM review #502)", () => {
     const c = cfg();
-    const old = run(c, [...idleShort(), ...rejects(false)]);
-    expect(old.s.closeReduceOnly).toBe(false);
     const r = run(c, [...idleShort(), ...rejects(true)]);
-    const notFlat = run(c, [sync(9_500, "0.002", { historyAt: 9_200 })], r.s);
-    expect(resynced(notFlat.all)).toBe(false);
+    expect(r.s.positionSuspectAt).not.toBeNull();
+    // Một fill tới sau lần bị từ chối: SoDEX thật đã đổi vị thế, account state còn chậm vẫn đọc ra phẳng.
+    // Lệnh mua đang nằm trên sổ (ví dụ đặt ở lượt trước) khớp 0.001.
+    const live = "late-bid";
+    const withLive: VolumeMakerState = {
+      ...r.s,
+      orders: {
+        ...r.s.orders,
+        [live]: {
+          side: "buy",
+          role: "open",
+          price: "99990",
+          qty: "0.001",
+          filled: "0",
+          status: "live",
+          since: 9_200,
+        },
+      },
+    };
+    const filled = run(
+      c,
+      [{ type: "fill", at: 9_500, clOrdID: live, price: "99990", quantity: "0.001", fee: "0" }],
+      withLive,
+    );
+    expect(filled.s.ledger.position).toBe("-0.004");
+    expect(filled.s.positionSuspectAt).toBeNull();
+    const after = run(c, [sync(19_500, "0", { historyAt: 19_000 })], filled.s);
+    expect(resynced(after.all)).toBe(false);
+    expect(after.s.ledger.position).toBe(filled.s.ledger.position);
+  });
+
+  it("kiểm ngược: other reduce-only rejects still use the old fallback", () => {
+    const old = run(cfg(), [...idleShort(), ...rejects(false)]);
+    expect(old.s.closeReduceOnly).toBe(false);
+  });
+
+  it("a fresh read after the reject that still shows a position: takes that side and size, and closes it reduce-only", () => {
+    const c = cfg();
+    const r = run(c, [...idleShort(), ...rejects(true)]);
+    // Sổ cái short −0.005 (sai); SoDEX thật long 0.002.
+    const fixed = run(
+      c,
+      [sync(9_500, "0.002", { historyAt: 9_200 }), { type: "timer", at: 12_000 }],
+      r.s,
+    );
+    expect(resynced(fixed.all)).toBe(true);
+    expect(fixed.s.ledger.position).toBe("0.002");
+    const closes = fixed.all.flatMap((a) =>
+      a.type === "place" && a.order.reduceOnly ? [a.order] : [],
+    );
+    expect(closes).toHaveLength(1);
+    expect(closes[0]).toMatchObject({ side: "sell", quantity: "0.002", reduceOnly: true });
+  });
+});
+
+describe("Market Making does not loop forever on 'position not found' (#497)", () => {
+  const reject = (t: number, cycle: number): StrategyEvent[] => [
+    { type: "timer", at: t },
+    {
+      type: "orderReject",
+      at: t + 100,
+      clOrdID: id(`vm:${String(cycle)}:rc`),
+      code: "-1",
+      message: "position not found: 2",
+      positionNotFound: true,
+    },
+  ];
+  const placedIn = (a: StrategyAction[]) => a.filter((x) => x.type === "place").length;
+
+  it("after 4 unresolved rejects holds new orders with Needs attention, once; a flat read on both sides releases it", () => {
+    const c = cfg();
+    const r = run(c, [
+      ...idleShort(),
+      ...[3_000, 6_000, 9_000, 12_000].flatMap((t, i) => reject(t, i + 2)),
+    ]);
+    expect(r.s.positionStuck).toBe(true);
+    const held = r.all.filter((a) => a.type === "log" && a.decision === "Position needs a check");
+    expect(held).toHaveLength(1);
+    expect(r.all).toEqual(expect.arrayContaining([{ type: "flag", needsAttention: true }]));
+    // Giữ lệnh: nhịp báo giá kế tiếp không đặt gì; thêm lần từ chối nữa không ghi lại.
+    const quiet = run(c, [{ type: "timer", at: 15_000 }], r.s);
+    expect(placedIn(quiet.all)).toBe(0);
+    // Đọc lại: SoDEX phẳng → sổ cái về 0 (ghi Decisions), gỡ giữ lệnh, báo giá lại hai phía.
+    const fixed = run(
+      c,
+      [sync(16_000, "0", { historyAt: 15_500 }), { type: "timer", at: 18_000 }],
+      quiet.s,
+    );
+    expect(resynced(fixed.all)).toBe(true);
+    expect(fixed.s.ledger.position).toBe("0");
+    expect(fixed.s.positionStuck).toBe(false);
+    expect(placedIn(fixed.all)).toBe(2);
+  });
+
+  it("kiểm ngược: 3 rejects do not hold orders; Resume releases a hold", () => {
+    const c = cfg();
+    const three = run(c, [
+      ...idleShort(),
+      ...[3_000, 6_000, 9_000].flatMap((t, i) => reject(t, i + 2)),
+    ]);
+    expect(three.s.positionStuck ?? false).toBe(false);
+    const four = run(c, [
+      ...idleShort(),
+      ...[3_000, 6_000, 9_000, 12_000].flatMap((t, i) => reject(t, i + 2)),
+    ]);
+    const resumed = run(
+      c,
+      [
+        { type: "resumed", at: 13_000, prices: {} },
+        { type: "timer", at: 15_000 },
+      ],
+      four.s,
+    );
+    expect(resumed.s.positionStuck).toBe(false);
+    expect(placedIn(resumed.all)).toBeGreaterThan(0);
   });
 });
