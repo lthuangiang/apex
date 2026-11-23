@@ -64,7 +64,7 @@ describe("toSodexCallRow", () => {
     });
   });
 
-  it("is unreadable when a cancel result has no clOrdID", () => {
+  it("#493: a cancel whose every error is OrderNotFound without clOrdID is rejected, not unreadable", () => {
     const row = toSodexCallRow(
       rest({
         responseText:
@@ -73,12 +73,73 @@ describe("toSodexCallRow", () => {
       "engine",
     );
     expect(row).toMatchObject({
-      outcome: "unreadable",
-      unreadableReason: "order_result_without_cl_ord_id",
+      outcome: "rejected",
+      unreadableReason: null,
       envelopeCode: 0,
       sodexCode: -1,
       sodexError: "order rejected: OrderNotFound",
+      orderCodes: [-1],
       problem: true,
+    });
+    // Nhiều item, đều OrderNotFound (không clOrdID), lẫn một item thành công có clOrdID: vẫn rejected.
+    const many = toSodexCallRow(
+      rest({
+        responseText:
+          '{"code":0,"timestamp":1,"data":[{"code":0,"clOrdID":"a"},{"code":-1,"error":"order rejected: OrderNotFound"},{"code":-1,"error":"OrderNotFound"}]}',
+      }),
+      "engine",
+    );
+    expect(many).toMatchObject({ outcome: "rejected", sodexCode: -1, orderCodes: [0, -1, -1] });
+    expect(many.clOrdIds).toContain("a");
+  });
+
+  it("#493: another error without clOrdID is still unreadable, even next to an OrderNotFound", () => {
+    const other = toSodexCallRow(
+      rest({
+        responseText:
+          '{"code":0,"timestamp":1,"data":[{"code":-1,"error":"order rejected: PostOnly"}]}',
+      }),
+      "engine",
+    );
+    expect(other).toMatchObject({
+      outcome: "unreadable",
+      unreadableReason: "order_result_without_cl_ord_id",
+      sodexCode: -1,
+      sodexError: "order rejected: PostOnly",
+    });
+    const mixed = toSodexCallRow(
+      rest({
+        responseText:
+          '{"code":0,"timestamp":1,"data":[{"code":-1,"error":"order rejected: OrderNotFound"},{"code":-1,"error":"InsufficientMargin"}]}',
+      }),
+      "engine",
+    );
+    expect(mixed).toMatchObject({
+      outcome: "unreadable",
+      unreadableReason: "order_result_without_cl_ord_id",
+    });
+    // Code 0 không kèm clOrdID: vẫn không đọc được (không biết là lệnh nào).
+    expect(
+      toSodexCallRow(
+        rest({ responseText: '{"code":0,"timestamp":1,"data":[{"code":0}]}' }),
+        "engine",
+      ),
+    ).toMatchObject({ outcome: "unreadable", unreadableReason: "order_result_without_cl_ord_id" });
+  });
+
+  it("#493: a mix of OrderNotFound and another error that has a clOrdID follows the batch rule (rejected, first error)", () => {
+    const row = toSodexCallRow(
+      rest({
+        responseText:
+          '{"code":0,"timestamp":1,"data":[{"code":-2,"clOrdID":"b","error":"PostOnly"},{"code":-1,"error":"order rejected: OrderNotFound"}]}',
+      }),
+      "engine",
+    );
+    expect(row).toMatchObject({
+      outcome: "rejected",
+      sodexCode: -2,
+      sodexError: "PostOnly",
+      orderCodes: [-2, -1],
     });
   });
 
