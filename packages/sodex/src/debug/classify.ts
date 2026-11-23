@@ -23,7 +23,8 @@ import {
 } from "./redact";
 
 // Bản ghi thô → dòng lưu được (chạy ở bước flush, ngoài đường gửi lệnh). Phân loại outcome theo DEC-309:
-// ok / rejected (code ≠ 0 ở envelope hoặc ở một lệnh) / timeout / network / unreadable (envelope ok nhưng không đọc được).
+// ok / rejected (code ≠ 0 ở envelope hoặc ở một lệnh; kể cả `OrderNotFound` của lệnh huỷ không kèm clOrdID, #493) / timeout /
+// network / unreadable (envelope ok nhưng không đọc được).
 // Không parse JSON ở đây (review PR #217, B2): code envelope và kết quả lệnh đến từ object client đã parse; clOrdID và
 // accountID trong body request lấy bằng regex; body chỉ được che bằng regex trên chuỗi đã cắt.
 
@@ -192,6 +193,13 @@ function classifyRest(c: SodexRestCapture): Verdict {
       const orderId = idString(o.orderID);
       if (orderId !== null) v.orderIds.push(orderId);
       const error = typeof o.error === "string" ? o.error : null;
+      // SoDEX trả `OrderNotFound` khi huỷ mà không kèm clOrdID (`[{"code":-1,"error":"order rejected: OrderNotFound"}]`):
+      // từ chối nghiệp vụ đã biết (engine xử lý là `not_found`, DEC-250 / DEC-308), không phải response không đọc được
+      // (#493, DEC-379). Item lỗi khác mà thiếu clOrdID vẫn là `unreadable`.
+      if (typeof o.clOrdID !== "string" && itemCode !== 0 && isOrderNotFound(error)) {
+        firstBad ??= { code: itemCode, error };
+        continue;
+      }
       if (typeof o.clOrdID !== "string") {
         return {
           ...unreadable(SodexUnreadableReason.orderResultWithoutClOrdId),
@@ -213,6 +221,10 @@ function classifyRest(c: SodexRestCapture): Verdict {
   }
   return v;
 }
+
+/** Lỗi `OrderNotFound` của SoDEX (như `isOrderNotFound` của engine, `apps/engine/src/http-gateway.ts`). */
+const isOrderNotFound = (error: string | null): boolean =>
+  error?.includes("OrderNotFound") === true;
 
 /** Kết quả chính xác cho việc chọn bảng / bỏ gì khi đầy: dùng lại lúc record (rẻ: không parse). */
 export function captureOutcome(c: SodexCallCapture): SodexCallOutcome {

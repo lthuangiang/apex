@@ -1,5 +1,6 @@
 import { createDb, runMigrations, type Db } from "@drift/db";
 import { engineHealthKey, teamIncidentCountKey } from "@drift/shared";
+import { toSodexCallRow, type SodexRestCapture } from "@drift/sodex";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -150,6 +151,52 @@ describe("team incident checks", () => {
         detail: "12 of 112 REST calls failed in 10 min (11%) · most: /perps/orders",
       },
     ]);
+  });
+
+  it("#493: cancels answered OrderNotFound (no clOrdID) are business rejects, not errors: no spike", async () => {
+    // Đúng response SoDEX trả trên prod 2026-11-23: HTTP 200, envelope 0, item lỗi OrderNotFound không kèm clOrdID.
+    const results = [{ code: -1, error: "order rejected: OrderNotFound" }];
+    const capture: SodexRestCapture = {
+      kind: "rest",
+      startedAt: NOW - MIN,
+      latencyMs: 40,
+      method: "DELETE",
+      url: "https://mainnet-gw.sodex.dev/api/v1/perps/trade/orders",
+      requestHeaders: {},
+      requestBody: '{"accountID":1,"cancels":[{"symbolID":2,"clOrdID":"d1-1-x-0"}]}',
+      signed: true,
+      actionType: "cancelOrder",
+      failure: null,
+      errorDetail: null,
+      httpStatus: 200,
+      responseHeaders: {},
+      responseText: JSON.stringify({ code: 0, timestamp: 1, data: results }),
+      responseLength: null,
+      json: true,
+      envelopeCode: 0,
+      envelopeError: null,
+      orderEndpoint: true,
+      orderResults: results,
+      context: undefined,
+    };
+    const row = toSodexCallRow(capture, "engine");
+    expect(row).toMatchObject({ outcome: "rejected", problem: true, sodexCode: -1 });
+    for (let i = 0; i < 90; i++) await call({});
+    for (let i = 0; i < 30; i++)
+      await call({
+        table: row.problem ? "problem" : "ok",
+        outcome: row.outcome,
+        http: row.httpStatus,
+        method: "DELETE",
+        endpoint: row.endpoint,
+      });
+    // 30 / 120 = 25%: trước #493 (ghi `unreadable`) là cảnh báo giả.
+    expect(await checkTeamIncidents(db, memStore(), NOW)).toEqual([]);
+    expect(await queued()).toEqual([]);
+    // Response thật sự không đọc được vẫn được tính.
+    for (let i = 0; i < 30; i++)
+      await call({ table: "problem", outcome: "unreadable", http: 200, endpoint: row.endpoint });
+    expect(await checkTeamIncidents(db, memStore(), NOW)).toEqual(["sodex_errors"]);
   });
 
   it("raises user-stream closes above the hourly limit with the account masked", async () => {

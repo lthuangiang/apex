@@ -139,7 +139,7 @@ beforeAll(async () => {
       items: [{ c: "drift-b31-l2-a0", i: 777, X: "NEW" }],
     },
     rest({}),
-    // Huỷ trả kết quả không có clOrdID → unreadable, cùng clOrdID gốc qua origClOrdID.
+    // Huỷ trả kết quả lỗi không có clOrdID (không phải OrderNotFound, #493) → unreadable, cùng clOrdID gốc qua origClOrdID.
     rest({
       startedAt: now - MIN + 580,
       method: "DELETE",
@@ -147,7 +147,7 @@ beforeAll(async () => {
       requestBody:
         '{"accountID":20417,"cancels":[{"symbolID":2,"clOrdID":"drift-b31-cx-1","origClOrdID":"drift-b31-l2-a0"}]}',
       responseText:
-        '{"code":0,"timestamp":1,"data":[{"code":-1,"error":"order rejected: OrderNotFound"}]}',
+        '{"code":0,"timestamp":1,"data":[{"code":-1,"error":"order rejected: InternalError"}]}',
       latencyMs: 214,
       context: { botId, accountId, traceId: "trace-cancel" },
     }),
@@ -290,7 +290,7 @@ describe("SoDEX Debugger API", () => {
       unreadableReason: "order_result_without_cl_ord_id",
       envelopeCode: 0,
       sodexCode: -1,
-      sodexSays: "order rejected: OrderNotFound",
+      sodexSays: "order rejected: InternalError",
       signed: true,
       actionType: "cancelOrder",
       traceId: "trace-cancel",
