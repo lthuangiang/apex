@@ -72,6 +72,17 @@ describe("SignedWriteClient", () => {
     expect(init?.headers).toHaveProperty("X-API-Chain", "286623");
   });
 
+  it("#495: a success envelope without data (updateLeverage) is ok, not unknown", async () => {
+    const result = await client(respond('{"code":0,"timestamp":1795400000000}')).write({
+      ...REQUEST,
+      path: "/perps/trade/leverage",
+      method: "POST",
+    });
+    expect(result).toEqual({ outcome: "ok", data: undefined });
+    // `code` ≠ 0 hoặc thiếu `timestamp` vẫn không phải thành công.
+    expect((await client(respond('{"code":0}')).write(REQUEST)).outcome).toBe("unknown");
+  });
+
   it("returns rejected for a SoDEX error envelope", async () => {
     const result = await client(
       respond('{"code":-1,"error":"invalid nonce","timestamp":1}', 400),

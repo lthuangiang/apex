@@ -100,6 +100,8 @@ class FakeGateway implements Gateway {
   readonly leverage: { market: string; leverage: number; marginMode: string; before: number }[] =
     [];
   leverageOutcome: LeverageResult = { outcome: "ok" };
+  /** #495: SoDEX áp thiết lập dù kết quả trả về là `unknown` (response không đọc được). */
+  unknownApplies = false;
   /** Giữ lần đặt đòn bẩy kế tiếp tới khi promise này xong (đang đặt). */
   holdLeverage: Promise<void> | null = null;
   /** Thiết lập trên "SoDEX" theo market (đọc lại bằng readLeverage). */
@@ -122,7 +124,7 @@ class FakeGateway implements Gateway {
     this.leverage.push({ ...input, before: this.received.length });
     const outcome = this.leverageOutcome;
     const apply = () => {
-      if (outcome.outcome === "ok")
+      if (outcome.outcome === "ok" || (outcome.outcome === "unknown" && this.unknownApplies))
         this.settings.set(input.market, { leverage: input.leverage, marginMode: input.marginMode });
       return outcome;
     };
@@ -1823,6 +1825,20 @@ describe("engine", () => {
     await e.onPrice("BTC-USD", "100", clock);
     expect(gw.leverage.filter((l) => l.leverage === 20)).toHaveLength(sent);
     expect(gw.received.length).toBeGreaterThan(0);
+    await e.stop();
+  });
+
+  it("#495: an unknown leverage result that SoDEX did apply is read back at once: orders go on the first price, no resend", async () => {
+    const gw = new FakeGateway();
+    gw.leverageOutcome = { outcome: "unknown" };
+    gw.unknownApplies = true;
+    const { botId } = await seedBot("starting", futuresGrid);
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100", clock);
+    expect(gw.leverage.filter((l) => l.leverage === 20)).toHaveLength(1);
+    expect(gw.received.length).toBeGreaterThan(0);
+    expect((await botState(botId))?.state).not.toBe("paused");
     await e.stop();
   });
 
@@ -12410,5 +12426,40 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
     );
     expect((await botState(b.botId))?.state).toBe("archived");
     await e2.stop();
+  });
+
+  // ---------- #495: đặt đòn bẩy trả `unknown` dù SoDEX đã áp → tín hiệu đầu tiên của mỗi market bị bỏ ----------
+  it("#495: the first signal on a market is delivered when the leverage result is unknown but SoDEX shows it applied", async () => {
+    const gw = new FakeGateway();
+    gw.leverageOutcome = { outcome: "unknown" };
+    gw.unknownApplies = true;
+    const { botId } = await seedNews();
+    const e = newsEngine(gw, "b495-applied");
+    await ticks(e, 1);
+    const id = await signal();
+    await ticks(e, 1);
+    expect(gw.leverage).toEqual([{ market: SOL, leverage: 1, marginMode: "isolated", before: 0 }]);
+    expect(entries(gw).map((o) => o.tag)).toEqual([`ns:${id}:entry`]);
+    expect((await deliveries(botId)).map((d) => [d.outcome, d.reason])).toEqual([
+      ["accepted", null],
+    ]);
+    expect((await trades(botId)).map((t) => t.leverage)).toEqual([1]);
+    await e.stop();
+  });
+
+  it("#495: still LEVERAGE_NOT_SET when the result is unknown and SoDEX does not show it, with no second leverage call", async () => {
+    const gw = new FakeGateway();
+    gw.leverageOutcome = { outcome: "unknown" };
+    const { botId } = await seedNews();
+    const e = newsEngine(gw, "b495-unknown");
+    await ticks(e, 1);
+    await signal();
+    await ticks(e, 1);
+    expect(gw.leverage).toHaveLength(1);
+    expect(entries(gw)).toEqual([]);
+    expect((await deliveries(botId)).map((d) => [d.outcome, d.reason, d.detail])).toEqual([
+      ["dropped", "LEVERAGE_NOT_SET", { leverage: "unknown" }],
+    ]);
+    await e.stop();
   });
 });
