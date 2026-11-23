@@ -318,7 +318,7 @@ describe("TWAP duration hint (UI_REVIEW G4)", () => {
 });
 
 describe("Market Making defaults", () => {
-  it("turns Smart quoting on for a new bot (DEC-242)", () => {
-    expect(emptyValues("volume_maker").smartQuoting).toBe(true);
+  it("leaves Smart quoting off for a new bot, like the schema (#498, replaces DEC-242's default on)", () => {
+    expect(emptyValues("volume_maker").smartQuoting).toBe(false);
   });
 });
