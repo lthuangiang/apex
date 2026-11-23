@@ -195,7 +195,7 @@ function classifyRest(c: SodexRestCapture): Verdict {
       const error = typeof o.error === "string" ? o.error : null;
       // SoDEX trả `OrderNotFound` khi huỷ mà không kèm clOrdID (`[{"code":-1,"error":"order rejected: OrderNotFound"}]`):
       // từ chối nghiệp vụ đã biết (engine xử lý là `not_found`, DEC-250 / DEC-308), không phải response không đọc được
-      // (#493, DEC-TBD-cancel-notfound-outcome). Item lỗi khác mà thiếu clOrdID vẫn là `unreadable`.
+      // (#493, DEC-379). Item lỗi khác mà thiếu clOrdID vẫn là `unreadable`.
       if (typeof o.clOrdID !== "string" && itemCode !== 0 && isOrderNotFound(error)) {
         firstBad ??= { code: itemCode, error };
         continue;
