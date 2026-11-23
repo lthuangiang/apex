@@ -25,6 +25,7 @@ interface MainnetCopy {
   signals: { title: string };
   strip: { pause: string };
   count: { start: string };
+  settings: { edit: string };
 }
 const M = (
   JSON.parse(readFileSync(new URL("../messages/en.json", import.meta.url), "utf8")) as {
@@ -266,6 +267,29 @@ for (const narrow of [false, true]) {
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const dlg = page.getByRole("dialog", { name: BOT.name });
     await expect(dlg.getByText("10×, isolated")).toBeVisible();
+    const overflowX = await dlg.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect.soft(overflowX, "drawer does not scroll sideways").toBeLessThanOrEqual(0);
+    expect.soft(await sideScroll(page), "page does not scroll sideways").toBeLessThanOrEqual(0);
+  });
+}
+
+// #469 phần 2: form Edit (5 ô, Markets, danh sách thay đổi) không cuộn ngang; nút Save as v{n} nằm trong khung nhìn.
+for (const narrow of [false, true]) {
+  test(`Mainnet Edit${narrow ? " at 390" : ""}: no side scroll, Save visible`, async ({
+    page,
+    baseURL,
+  }) => {
+    if (narrow) await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, baseURL);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: BOT.name });
+    await expect(settings.getByText("10×, isolated")).toBeVisible();
+    await settings.getByRole("button", { name: M.settings.edit, exact: true }).click();
+    const dlg = page.getByRole("dialog", { name: `Edit ${BOT.name}` });
+    await dlg.getByRole("radio", { name: "5×" }).click();
+    await expect(dlg.getByText("Leverage 10× → 5×")).toBeVisible();
+    const save = dlg.getByRole("button", { name: /^Save as v\d+$/ });
+    await expect(save).toBeInViewport();
     const overflowX = await dlg.evaluate((el) => el.scrollWidth - el.clientWidth);
     expect.soft(overflowX, "drawer does not scroll sideways").toBeLessThanOrEqual(0);
     expect.soft(await sideScroll(page), "page does not scroll sideways").toBeLessThanOrEqual(0);
