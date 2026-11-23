@@ -10,8 +10,13 @@ import { unitsOf } from "./preview";
 
 type Bot = Pick<BotSummary, "market" | "marketLabel" | "capital" | "capitalUnit">;
 
-export function botMarket(b: Bot, names: MarketNames): string {
-  return b.marketLabel ?? names.market(b.market);
+/**
+ * `multi`: nhãn cho bot nhiều market (`market` rỗng, ví dụ bot Signal Research `news_signal`), PM duyệt "Multi-market"
+ * (#472). Không bao giờ để trống.
+ */
+export function botMarket(b: Bot, names: MarketNames, multi: string): string {
+  if (b.marketLabel !== null) return b.marketLabel;
+  return b.market === "" ? multi : names.market(b.market);
 }
 
 /** "1,000.00 USDC" hoặc "0.5 ETH" (TWAP); null khi backend không trả vốn. */

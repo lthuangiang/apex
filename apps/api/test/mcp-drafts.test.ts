@@ -189,6 +189,37 @@ describe("MCP drafts", () => {
     expect((await u.client.request("GET", `/api/v1/drafts/${d.draftId}`)).statusCode).toBe(404);
   });
 
+  it("#472: refuses a change draft for a Signal Research news bot (changed in Signal Research only)", async () => {
+    const u = await person("draft-news@example.com");
+    const { rows: acc } = await env.pool.query<{ id: string }>(
+      "select id from sodex_accounts where user_id = $1 limit 1",
+      [u.userId],
+    );
+    const { rows } = await env.pool.query<{ id: string }>(
+      "insert into bots (id, user_id, sodex_account_id, strategy, market, engine, name, state, mode) values (gen_random_uuid(), $1, $2, 'news_signal', '', 'perps', 'Stock Monitor', 'running', 'live') returning id",
+      [u.userId, acc[0]?.id],
+    );
+    const botId = rows[0]?.id ?? "";
+    await env.pool.query(
+      "insert into bot_versions (id, bot_id, version, config, param_source, status, applied_at) values (gen_random_uuid(), $1, 1, '{}', 'manual', 'active', now())",
+      [botId],
+    );
+    const r = await post("/api/v1/mcp/me/drafts/change", u.token, {
+      botId,
+      changes: { sizeUsdc: "60" },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(errorOf(r.json())).toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: { reason: "not_supported" },
+    });
+    const { rows: drafts } = await env.pool.query<{ n: number }>(
+      "select count(*)::int as n from bot_drafts where bot_id = $1",
+      [botId],
+    );
+    expect(drafts[0]?.n).toBe(0);
+  });
+
   it("expires drafts after 24 hours", async () => {
     const u = await person("draft-expiry@example.com");
     const d = mcpDraftResultSchema.parse(

@@ -3278,7 +3278,7 @@ export class Engine {
     const markets = this.#marketsOf(bot.market, config);
     // Bot `news_signal` nạp lại (restart, đổi shard): rules của market các lệnh còn mở, để TP / SL / lệnh đóng làm tròn
     // đúng; market khác nạp lúc giao tín hiệu.
-    // Bot `news_signal`: state không phụ thuộc version (#469, DEC-TBD-news-version-apply: áp version mang nguyên state), nên
+    // Bot `news_signal`: state không phụ thuộc version (#469, DEC-377: áp version mang nguyên state), nên
     // state đã lưu luôn được dùng lại, kể cả khi version active đổi lúc bot dừng (sửa bot đã dừng còn lệnh mở, DEC-131):
     // không bao giờ quên lệnh đang mở.
     const savedState =
@@ -3447,7 +3447,7 @@ export class Engine {
       }
       return;
     }
-    // Bot `news_signal` (#469, DEC-TBD-news-version-apply): không huỷ lệnh nào khi áp version. TP / SL / lệnh đóng của
+    // Bot `news_signal` (#469, DEC-377): không huỷ lệnh nào khi áp version. TP / SL / lệnh đóng của
     // lệnh đang mở thuộc từng trade, giữ nguyên; config mới chỉ áp cho tín hiệu sau.
     const news = r.strategy === Strategy.newsSignal;
     const open = news

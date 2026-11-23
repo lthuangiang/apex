@@ -26,7 +26,7 @@ export const newsBotCreateBodySchema = z.object({
 export type NewsBotCreateBody = z.infer<typeof newsBotCreateBodySchema>;
 
 /**
- * Sửa bot thành version mới (#469, DEC-TBD-news-version-apply): config đầy đủ; chỉ 5 field sửa được (`NEWS_EDITABLE_FIELDS`),
+ * Sửa bot thành version mới (#469, DEC-377): config đầy đủ; chỉ 5 field sửa được (`NEWS_EDITABLE_FIELDS`),
  * field khác phải giữ như version đang chạy. 2FA như Start.
  */
 export const newsBotVersionBodySchema = z.object({

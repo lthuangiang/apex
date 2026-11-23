@@ -1,4 +1,7 @@
+import { newsSignalTrades } from "@drift/db";
 import {
+  newsSignalConfigSchema,
+  Strategy,
   type BotSummary,
   type McpBotDecisions,
   type McpBotSummary,
@@ -12,6 +15,7 @@ import {
   type TraderProfile,
   type TraderTab,
 } from "@drift/shared";
+import { and, count, eq, inArray } from "drizzle-orm";
 
 import { overview, risk, type AccountDeps } from "../account/service";
 import { aiDeskOn, botDetail, listBots } from "../bots/service";
@@ -37,7 +41,12 @@ const meta = (deps: UserToolDeps, source: string) => ({
   source,
 });
 
-export const mcpBot = (b: BotSummary): McpBotSummary => ({ ...b, name: { userText: b.name } });
+/** #472: bot nhiều market (`market` rỗng, ví dụ bot Signal Research) ghi "Multi-market", không để trống. */
+export const mcpBot = (b: BotSummary): McpBotSummary => ({
+  ...b,
+  name: { userText: b.name },
+  marketLabel: b.marketLabel ?? (b.market === "" ? "Multi-market" : null),
+});
 
 export async function mcpPortfolioSummary(
   deps: UserToolDeps,
@@ -113,6 +122,35 @@ export async function mcpGetBot(
     volumeMaker: d.volumeMaker,
     volumeFarm: d.volumeFarm,
     adaptiveDca: d.adaptiveDca,
+    newsSignal:
+      d.bot.strategy === Strategy.newsSignal
+        ? await newsSignalView(deps, botId, active?.config)
+        : null,
+  };
+}
+
+/** #472: phần riêng của bot Signal Research cho `get_bot`; config không đọc được → null (không đoán). */
+async function newsSignalView(deps: UserToolDeps, botId: string, raw: unknown) {
+  const c = newsSignalConfigSchema.safeParse(raw);
+  if (!c.success) return null;
+  const [row] = await deps.account.db
+    .select({ n: count() })
+    .from(newsSignalTrades)
+    .where(
+      and(eq(newsSignalTrades.botId, botId), inArray(newsSignalTrades.status, ["open", "closing"])),
+    );
+  return {
+    markets: {
+      mode: c.data.assets.mode,
+      markets: [...c.data.assets.markets],
+      crypto: c.data.assets.crypto,
+      stocks: c.data.assets.stocks,
+    },
+    leverage: c.data.leverage,
+    marginMode: "isolated" as const,
+    sizeUsdc: c.data.sizeUsdc,
+    maxOpenTrades: c.data.maxOpenTrades,
+    openTrades: row?.n ?? 0,
   };
 }
 

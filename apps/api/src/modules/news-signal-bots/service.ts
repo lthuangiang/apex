@@ -354,7 +354,7 @@ async function newsMarginCheck(
 }
 
 /**
- * Sửa bot `news_signal` thành version mới (#469, DEC-TBD-news-version-apply). Thứ tự: cờ → quyền Signal Research (route) →
+ * Sửa bot `news_signal` thành version mới (#469, DEC-377). Thứ tự: cờ → quyền Signal Research (route) →
  * chủ bot → 2FA như Start → trạng thái → schema (size ≤ 200, đòn bẩy 1 / 5 / 10 / 20) → chỉ thu hẹp version gốc → chỉ 5 field
  * sửa được (field khác 422 `locked`) → `leverage_conflict` (DEC-58) → ghi version (đang chờ áp thì 409 `applying`). Bot
  * đang chạy / pause: version `pending`, engine áp (không huỷ lệnh nào) rồi mới `active` ("Applying v{n}…", quy tắc 1.6).
@@ -441,11 +441,7 @@ export async function newNewsVersion(
   const balance =
     a === undefined
       ? { available: null, needed: "0", ok: false }
-      : await newsMarginCheck(
-          deps,
-          getAddress(a.address),
-          config,
-        );
+      : await newsMarginCheck(deps, getAddress(a.address), config);
   return {
     version: saved.version,
     status: saved.status === "active" ? "active" : "pending",

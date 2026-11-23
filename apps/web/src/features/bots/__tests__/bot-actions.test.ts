@@ -34,4 +34,26 @@ describe("botActions", () => {
     });
     expect(botActions(bot(BotState.stopped), t).more).toEqual([]);
   });
+
+  it("#472: news bots open in Signal Research instead of Edit / Continue", () => {
+    const news = (state: string) =>
+      ({ id: "b1", state, reasonCode: null, strategy: "news_signal" }) as Parameters<
+        typeof botActions
+      >[0];
+    const href = "/signal-research?bots=mainnet&bot=b1&settings=1";
+    const running = botActions(news(BotState.running), t, null, "Open in Signal Research");
+    expect(running.primary).toEqual({ href: "/agent/b1", label: "open" });
+    expect(running.more).toEqual([{ href, label: "Open in Signal Research" }]);
+    expect(botActions(news(BotState.draft), t, null, "Open in Signal Research")).toEqual({
+      primary: { href, label: "Open in Signal Research" },
+      more: [],
+    });
+    expect(
+      botActions(news(BotState.paused), t, null, "Open in Signal Research").more.map((m) => m.href),
+    ).toEqual([href]);
+    // Không có nhãn (gọi cũ) hay chiến lược khác: giữ Edit như trước.
+    expect(botActions(bot(BotState.running), t, null, "Open in Signal Research").more).toEqual([
+      { href: "/bots/b1/edit", label: "edit" },
+    ]);
+  });
 });

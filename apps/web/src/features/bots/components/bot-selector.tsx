@@ -124,7 +124,7 @@ function useBotText() {
       strategy: (b: Pick<BotSummary, "strategy">) => tf(`strategies.${b.strategy}.name`),
       // Như botMarket: nhãn rổ tài sản (Rebalancing, Copy nhiều market) thay cho market.
       market: (b: Pick<BotSummary, "market" | "marketLabel">) =>
-        b.marketLabel ?? names.market(b.market),
+        b.marketLabel ?? (b.market === "" ? tf("multiMarket") : names.market(b.market)),
       summary: (b: BotSummary) => b.summary ?? botCapital(b, names),
       asset: (market: string) => names.asset(baseOf(market)),
     }),
