@@ -77,7 +77,7 @@ import {
   type MmQuoteSnapshot,
 } from "@drift/shared/mm-quote";
 import { vbSignalSnapshotSchema, type VbSignalSnapshot } from "@drift/shared/vb-signal";
-import { isInsufficientMarginReject } from "@drift/sodex";
+import { isInsufficientMarginReject, isPositionNotFoundReject } from "@drift/sodex";
 import {
   applyFill,
   botCapitalOf,
@@ -1105,6 +1105,11 @@ export class Engine {
   readonly #fillQueues = new Map<string, Promise<void>>();
   /** Lần cuối đọc trade / vị thế cho Market Making, theo `account:market` (DEC-100). */
   readonly #makerBackfill = new Map<string, number>();
+  /**
+   * #497: lúc bắt đầu lần đọc lịch sử khớp (#backfillMaker) gần nhất đã xong của account + market; fill SoDEX báo tới lúc
+   * đó đã vào sổ cái. Market Making chỉ lấy vị thế SoDEX làm chuẩn khi mốc này sau fill gần nhất.
+   */
+  readonly #makerHistoryAt = new Map<string, number>();
   /** Lần cuối kiểm tra vị thế thật của account (POSITION_CHECK_MS). */
   readonly #positionCheckAt = new Map<string, number>();
   /** Độ lệch vị thế đang theo dõi, theo `bot:market`. */
@@ -4535,12 +4540,18 @@ export class Engine {
               r.marginRejectTimes.push(this.#d.now());
               marginRejected = { o: sent, message: res.message };
             }
+            // #497: lệnh reduce-only bị từ chối vì SoDEX không có vị thế: sổ cái Market Making có thể sai, đọc lại vị thế
+            // của account ở lượt kiểm tra kế tiếp (không chờ hết POSITION_CHECK_MS).
+            const noPosition = sent?.reduceOnly === true && isPositionNotFoundReject(res.message);
+            if (noPosition && r.strategy === Strategy.volumeMaker)
+              this.#positionCheckAt.delete(r.account.id);
             await this.#feed(r, {
               type: "orderReject",
               at,
               clOrdID: res.clOrdID,
               code: res.code,
               ...(margin ? { insufficientMargin: true } : {}),
+              ...(noPosition ? { positionNotFound: true } : {}),
               ...(res.message == null || res.message.trim() === ""
                 ? {}
                 : { message: res.message.trim() }),
@@ -6816,6 +6827,14 @@ export class Engine {
   }
 
   async #backfillMaker(r: Runner, now: number): Promise<void> {
+    const key = `${r.account.id}:${r.market}`;
+    const startedAt = this.#d.now();
+    await this.#backfillMakerRead(r, now);
+    // Chỉ khi đọc và ghi xong (lỗi thì ném ra, mốc giữ nguyên).
+    this.#makerHistoryAt.set(key, startedAt);
+  }
+
+  async #backfillMakerRead(r: Runner, now: number): Promise<void> {
     const sent = await this.#d.db
       .select()
       .from(orders)
@@ -7187,6 +7206,8 @@ export class Engine {
         const first = pairs[0];
         if (first === undefined) return;
         let positions: Map<string, { size: string; entryPrice: string }>;
+        // #497: lúc bắt đầu đọc; Market Making chỉ lấy số SoDEX làm chuẩn khi số này vừa đọc và không có fill xen giữa.
+        const readAt = this.#d.now();
         try {
           positions = await first.r.gateway.readPositions(first.r.account);
         } catch (error) {
@@ -7215,7 +7236,11 @@ export class Engine {
             if (r.strategy === Strategy.volumeMaker)
               await this.#feed(r, {
                 type: "positionSync",
-                at: now,
+                // #497: lúc đưa cho chiến lược (không phải lúc bắt đầu lượt kiểm tra), kèm lúc đọc và lần đọc lịch sử khớp
+                // gần nhất đã xong.
+                at: this.#d.now(),
+                readAt,
+                historyAt: this.#makerHistoryAt.get(`${accountId}:${m}`) ?? null,
                 market: m,
                 size: p?.size ?? "0",
                 entryPrice: p?.entryPrice ?? "0",

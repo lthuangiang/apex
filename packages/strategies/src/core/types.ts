@@ -79,6 +79,11 @@ export type StrategyEvent =
       code: string;
       /** SoDEX từ chối vì thiếu margin (`isInsufficientMarginReject` của engine); thiếu = không phải / không rõ. */
       insufficientMargin?: boolean;
+      /**
+       * #497: SoDEX từ chối lệnh reduce-only vì không có vị thế ("position not found", `isPositionNotFoundReject` của
+       * engine): sổ cái của bot có thể sai. Thiếu = không phải / không rõ.
+       */
+      positionNotFound?: boolean;
       /** Câu lỗi SoDEX trả kèm mã (nếu có), để Decisions ghi lý do bằng lời. */
       message?: string;
     }
@@ -106,8 +111,21 @@ export type StrategyEvent =
    * giá, nên `prices` mang giá mới nhất engine biết của từng market của bot (thiếu market nào là chưa có giá).
    */
   | { type: "resumed"; at: number; prices: Record<string, string> }
-  /** Vị thế thật trên SoDEX (Volume Maker đối soát với ledger, DEC-100). `size` có dấu: âm là short. */
-  | { type: "positionSync"; at: number; market: string; size: string; entryPrice: string }
+  /**
+   * Vị thế thật trên SoDEX (Volume Maker đối soát với ledger, DEC-100). `size` có dấu: âm là short. #497: `readAt` = lúc
+   * engine bắt đầu đọc account state cho số này; `historyAt` = lúc bắt đầu lần đọc lịch sử khớp (lưới an toàn fill của
+   * Market Making) gần nhất đã xong cho account + market, null khi chưa có. Thiếu (state / event cũ) thì chiến lược không
+   * lấy vị thế SoDEX làm chuẩn.
+   */
+  | {
+      type: "positionSync";
+      at: number;
+      market: string;
+      size: string;
+      entryPrice: string;
+      readAt?: number;
+      historyAt?: number | null;
+    }
   /**
    * Giá Binance quy đổi về SoDEX (Market Making, Smart quoting): giá giữa Binance futures của cùng coin chia cho chênh
    * lệch nền (trung vị 60 s), dùng làm giá hợp lý. `binanceAt`: giờ Binance của lần cập nhật.
