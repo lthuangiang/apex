@@ -188,7 +188,7 @@ export const VM_KEEP_DONE_MS = 600_000;
 /** Vị thế SoDEX lệch sổ của bot lâu ngần này thì lấy SoDEX làm chuẩn. */
 export const VM_DRIFT_ADOPT_MS = 30_000;
 /**
- * #497: điều kiện lấy vị thế SoDEX làm chuẩn (DEC-TBD-mm-resync-fresh).
+ * #497: điều kiện lấy vị thế SoDEX làm chuẩn (DEC-380).
  * - `freshMs`: số SoDEX phải được đọc trong chừng này ms trước lúc áp.
  * - `settleMs`: account state của SoDEX có thể chậm hơn luồng fill tới ~50 s (prod 2026-11-23: số đọc lúc 14:46:30 là vị
  *   thế của trước 14:45:40). Độ lệch chỉ bắt đầu được đếm từ lần đọc cách fill gần nhất ít nhất chừng này ms; fill nào
