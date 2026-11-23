@@ -54,10 +54,27 @@ function Harness({
   );
 }
 
+// Các test dưới bắt đầu với Smart quoting bật (bot đã bật, hoặc người dùng bật lên) để kiểm phần đổi theo công tắc; bot mới
+// mặc định tắt (#498), kiểm riêng ở "new bot default".
 const mmInit = (over: FormValues = {}): FormValues => ({
   ...emptyValues("volume_maker"),
   market: "BTC-USD",
+  smartQuoting: true,
   ...over,
+});
+
+describe("new bot default (#498)", () => {
+  it("starts with Smart quoting off, so Position loss limit is offered", () => {
+    render(
+      <Harness
+        strategy="volume_maker"
+        init={{ ...emptyValues("volume_maker"), market: "BTC-USD" }}
+      />,
+    );
+    expect(screen.getByRole("switch", { name: /Smart quoting/ })).not.toBeChecked();
+    expect(screen.getByTestId("loss-caps")).toHaveAttribute("data-smart", "off");
+    expect(screen.getByLabelText("Position loss limit (optional)")).toBeInTheDocument();
+  });
 });
 
 describe("Market Making form copy", () => {

@@ -28,6 +28,10 @@ const BOT_REASONS = [
   "BELOW_MIN_ORDER_SIZE",
   // #458: SL nằm sau giá thanh lý ước tính ở đòn bẩy của bot. Tín hiệu không kèm số đòn bẩy nên dùng câu không số.
   "SL_BEYOND_LIQUIDATION",
+  // #495: hai mã chiến lược news trả khi bỏ tín hiệu cùng câu chuyện; nhãn đã có (PM duyệt ở review #445) nhưng thiếu ở
+  // danh sách này nên trước đây rơi vào "Skipped ({code})".
+  "SAME_STORY",
+  "STORY_TOO_OLD",
 ] as const;
 type BotReason = (typeof BOT_REASONS)[number];
 const isBotReason = (r: string): r is BotReason => (BOT_REASONS as readonly string[]).includes(r);
