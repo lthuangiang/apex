@@ -2896,11 +2896,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "signalResearch.export.button",
-    "signalResearch.export.exporting",
-    "signalResearch.export.period",
-    "signalResearch.export.periods"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
