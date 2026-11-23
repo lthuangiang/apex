@@ -4972,7 +4972,9 @@ describe("engine", () => {
         gw.reject = null;
         const pnf = message.startsWith("position");
         expect(rejects.length).toBeGreaterThan(0);
-        expect(rejects.some((x) => x.type === "orderReject" && x.positionNotFound === true)).toBe(pnf);
+        expect(rejects.some((x) => x.type === "orderReject" && x.positionNotFound === true)).toBe(
+          pnf,
+        );
         // Chưa hết POSITION_CHECK_MS: chỉ "position not found" mới làm engine đọc lại ngay.
         clock += 1_000;
         await e.tick();

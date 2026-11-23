@@ -359,7 +359,6 @@ describe("Market Making 'position not found' on a reduce-only close (#497, PM co
     for (const o of closes) expect(o.reduceOnly).toBe(true);
     // Engine đọc lại ngay: SoDEX phẳng → sửa sổ cái, không chờ 30 s.
     const fixed = run(c, [sync(9_500, "0", { historyAt: 9_200 })], r.s);
-    console.log("DBG", JSON.stringify({ suspect: r.s.positionSuspectAt, last: r.s.lastFillAt, orders: Object.values(r.s.orders).map((o) => o.status), pos: r.s.ledger.position, acts: fixed.all }));
     expect(resynced(fixed.all)).toBe(true);
     expect(fixed.s.ledger.position).toBe("0");
     expect(fixed.s.positionSuspectAt).toBeNull();

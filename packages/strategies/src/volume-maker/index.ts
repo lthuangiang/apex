@@ -743,8 +743,7 @@ function quote(
       const grow = real.gt(0) ? "buy" : "sell";
       for (let i = places.length - 1; i >= 0; i -= 1) {
         const p = places[i];
-        if (p !== undefined && p.side === grow && !(closeIds.has(p.clOrdID) && p.reduceOnly))
-          places.splice(i, 1);
+        if (p?.side === grow && !(closeIds.has(p.clOrdID) && p.reduceOnly)) places.splice(i, 1);
       }
     }
   }
@@ -1518,8 +1517,7 @@ function stepCore(
         prev.ledger !== undefined &&
         dec(prev.ledger).eq(ours) &&
         (lastFill === null || prev.since >= lastFill + VM_DRIFT.settleMs);
-      const drift =
-        same && prev !== null ? prev : { size: e.size, since: readAt, ledger: s.ledger.position };
+      const drift = same ? prev : { size: e.size, since: readAt, ledger: s.ledger.position };
       const waiting: StepResult<VolumeMakerState> = { actions: [], state: { ...seen, drift } };
       // SoDEX đã báo không có vị thế (lệnh đóng reduce-only bị từ chối) và lần đọc SAU đó cũng phẳng: không cần chờ thêm
       // 30 s (hai bằng chứng độc lập cùng nói phẳng). Các điều kiện (a)–(c) dưới vẫn áp dụng.
