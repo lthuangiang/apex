@@ -372,6 +372,8 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 > **v2.17.1** (`docs/releases/v2.17.1.md`): chỉ đổi câu Decisions sang tên sản phẩm. Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.17.1`.
 
 > **v2.18.0** (`docs/releases/v2.18.0.md`): Settings / Edit cho bot `news_signal`, chặn archive khi còn lệnh mở (DEC-376), các luồng dùng chung. Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.18.0`. Sau deploy chạy câu SQL chỉ đọc trong release notes để xem có bot news nào đã lỡ archive khi còn lệnh mở (engine bản này tự quản lý lại).
+>
+> **v2.18.1** (`docs/releases/v2.18.1.md`): chỉ khu team: picker market + cột Avg trên Market hours, nút Export data của Signal Research. Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.18.1`.
 
 **3. Service cần pull lại:** cả 11 app. `infra/deploy/changed-apps.sh v2.12.0 <tag mới>` trả cả 11 vì `packages/**` đổi (shared, db). `build-push.sh --deploy-only <tag>` đã pull và `up -d` hết; không cần chọn tay.
 
