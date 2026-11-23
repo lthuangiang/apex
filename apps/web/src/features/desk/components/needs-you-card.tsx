@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useRef } from "react";
 import { z } from "zod";
 
+import { useReasonLabel } from "@/features/bots/stop-reason";
 import { api } from "@/lib/api";
 
 import { optionValues, plainNumber, plainUsd, shownFix } from "../bplus";
@@ -22,6 +23,9 @@ const factOf = (item: Item, name: string): string | null =>
   item.facts.find((f) => f.name === name)?.value ?? null;
 
 const snoozeSchema = z.object({ id: z.string(), snoozedUntil: z.string() });
+
+/** #472: việc "Needs attention" không có What-if (không tự bấm Compare, không hiện dòng so sánh). */
+const hasWhatif = (item: Item) => item.rule !== "bot_needs_attention";
 
 function useWhatif(item: Item, checkedAt: string) {
   const qc = useQueryClient();
@@ -43,7 +47,13 @@ function useWhatif(item: Item, checkedAt: string) {
   const askedFor = useRef<string | null>(null);
   const gaveUp = useRef(false);
   useEffect(() => {
-    if (item.whatif !== null || gaveUp.current || askedFor.current === checkedAt) return;
+    if (
+      !hasWhatif(item) ||
+      item.whatif !== null ||
+      gaveUp.current ||
+      askedFor.current === checkedAt
+    )
+      return;
     askedFor.current = checkedAt;
     mutate(undefined, {
       onError: () => {
@@ -76,6 +86,7 @@ function useWhatif(item: Item, checkedAt: string) {
 
 function Problem({ item }: { item: Item }) {
   const t = useTranslations("desk.rules");
+  const reasonLabel = useReasonLabel();
   const r = item.rule;
   const tag = t("tag", { tag: t(`${r}.tag`), bot: item.botName });
   let title: string;
@@ -102,6 +113,12 @@ function Problem({ item }: { item: Item }) {
     const [net, fees] = [factOf(item, "net"), factOf(item, "fees")];
     if (net !== null && fees !== null && net.startsWith("-"))
       body = t("max_loss_hit.body", { net: plainUsd(net), fees: plainUsd(fees) });
+  } else if (r === "bot_needs_attention") {
+    // #472: dòng lý do = nhãn reason code có sẵn; không có reason (hoặc mã chưa có nhãn) → câu dự phòng.
+    title = t("bot_needs_attention.title", { bot: item.botName });
+    const code = factOf(item, "reasonCode");
+    const label = code === null ? null : reasonLabel({ reasonCode: code, strategy: item.strategy });
+    body = label === null || label === code ? t("bot_needs_attention.body") : label;
   } else if (r === "taker_costly") {
     const share = factOf(item, "takerSharePct");
     title = t("taker_costly.title", { share: share === null ? "" : plainNumber(share) });
@@ -233,6 +250,7 @@ export function GoalLossCard({ item }: { item: Item }) {
 
 export function NeedsYouCard({ item, checkedAt }: { item: Item; checkedAt: string }) {
   const t = useTranslations("desk.whatif");
+  const tr = useTranslations("desk.rules");
   const qc = useQueryClient();
   const { w, failed, pending, retry } = useWhatif(item, checkedAt);
   const later = useRef(crypto.randomUUID());
@@ -253,9 +271,18 @@ export function NeedsYouCard({ item, checkedAt }: { item: Item; checkedAt: strin
       }`}
     >
       <Problem item={item} />
-      <WhatIfRows w={w} failed={failed} pending={pending} retry={retry} />
+      {hasWhatif(item) ? (
+        <WhatIfRows w={w} failed={failed} pending={pending} retry={retry} />
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        {w !== null && fixes >= 2 ? (
+        {!hasWhatif(item) && item.botId !== null ? (
+          <Link
+            href={`/agent/${item.botId}`}
+            className="inline-flex min-h-tap items-center rounded-[12px] bg-accent px-4 text-sm font-bold text-white hover:bg-accent-ink"
+          >
+            {tr("bot_needs_attention.open")}
+          </Link>
+        ) : w !== null && fixes >= 2 ? (
           <Link
             href={`/desk/compare/${w.id}`}
             className="inline-flex min-h-tap items-center rounded-[12px] bg-accent px-4 text-sm font-bold text-white hover:bg-accent-ink"

@@ -231,6 +231,11 @@ export async function startWhatif(
   itemId: string,
 ): Promise<WhatIfView> {
   const item = await ownItem(deps, userId, itemId);
+  // #472: việc "Needs attention" không có What-if (thẻ chỉ có "Open bot").
+  if (item.rule === "bot_needs_attention")
+    throw new AppError(ErrorCode.validationFailed, "This item has no what-if.", {
+      reason: "not_supported",
+    });
   const bot = await activeVersion(deps, item.botId);
   const now = deps.now();
   const [recent] = await deps.db

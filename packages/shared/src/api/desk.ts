@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { DESK_AI_FACT_KEYS } from "../desk/ai/facts";
+import { NEEDS_YOU_RULES } from "../desk/needs-you";
 import { decimalStringSchema, isoDateTimeSchema, uuidSchema } from "../schemas";
 
 import { botSummarySchema } from "./bots";
@@ -132,6 +133,7 @@ export const needsYouItemSchema = z.object({
     "max_loss_hit",
     "taker_costly",
     "better_review",
+    "bot_needs_attention",
   ]),
   severity: z.number().int(),
   facts: z.array(deskFactSchema),
@@ -153,7 +155,7 @@ export const needsYouViewSchema = z.object({
 export type NeedsYouView = z.infer<typeof needsYouViewSchema>;
 export const snoozeViewSchema = z.object({
   id: uuidSchema,
-  rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
+  rule: z.enum(NEEDS_YOU_RULES),
   snoozedUntil: isoDateTimeSchema,
 });
 
@@ -181,7 +183,7 @@ export const whatIfViewSchema = z.object({
   itemId: uuidSchema,
   botId: uuidSchema,
   bot: z.object({ name: z.string(), strategy: z.string(), market: z.string(), state: z.string() }),
-  rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
+  rule: z.enum(NEEDS_YOU_RULES),
   status: z.enum(["queued", "running", "done", "failed", "unavailable"]),
   /** `replay`: "Replayed on your real trades"; `backtest`: "Backtest on 5-minute candles". */
   source: z.enum(["replay", "backtest"]).nullable(),
@@ -233,7 +235,7 @@ export const deskRecordRowSchema = z.object({
   id: uuidSchema,
   botId: uuidSchema,
   botName: z.string(),
-  rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
+  rule: z.enum(NEEDS_YOU_RULES),
   option: z.enum(["lower_leverage", "tighter_stop", "review_settings"]),
   changes: z.array(
     z.object({ key: z.string(), from: z.string().nullable(), to: z.string().nullable() }),

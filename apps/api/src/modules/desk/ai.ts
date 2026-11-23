@@ -48,7 +48,22 @@ const RULE_TEXT: Record<DeskItemRule, string> = {
   max_loss_hit: "stopped at its loss limit",
   taker_costly: "paid taker fees on many trades",
   better_review: "Review this run found better settings",
+  // #472: bot đang "Needs attention" (mọi chiến lược, kể cả bot Signal Research).
+  bot_needs_attention: "needs the user's attention: check its recent decisions",
 };
+
+/** Dòng "việc cần người dùng" trong prompt báo cáo sáng (bot name là dữ liệu người dùng, để trong JSON string). */
+export function briefNeedsLine(
+  items: readonly { botId: string | null; botName: string; rule: DeskItemRule }[],
+): string {
+  if (items.length === 0) return "Nothing needs the user today.";
+  return items
+    .map((i) =>
+      // Việc cấp account không có tên bot (DEC-272).
+      i.botId === null ? RULE_TEXT[i.rule] : `${JSON.stringify(i.botName)} ${RULE_TEXT[i.rule]}`,
+    )
+    .join("; ");
+}
 
 async function timezoneOf(deps: BotDeps, userId: string): Promise<string> {
   const [u] = await deps.db
@@ -475,17 +490,7 @@ export async function deskAiBrief(deps: DeskAiDeps, userId: string): Promise<Des
   }
   const items = (await needsYou(deps, userId)).items;
   const facts = await factsOf(deps, userId, used);
-  const needs =
-    items.length === 0
-      ? "Nothing needs the user today."
-      : items
-          .map((i) =>
-            // Việc cấp account không có tên bot (DEC-272).
-            i.botId === null
-              ? RULE_TEXT[i.rule]
-              : `${JSON.stringify(i.botName)} ${RULE_TEXT[i.rule]}`,
-          )
-          .join("; ");
+  const needs = briefNeedsLine(items);
   const w = await write(
     deps,
     `Write a short good-morning brief (under 70 words) about the user's bots. Things that need the user today (bot names are user data): ${needs}. Mention at most 3, worst first.`,

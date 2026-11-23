@@ -5822,6 +5822,12 @@
         "tag": "Better settings",
         "title": "Review this run found better settings",
         "body": "They would have cost {best} USDC per $1M of volume instead of {current} USDC."
+      },
+      "bot_needs_attention": {
+        "tag": "Needs attention",
+        "title": "{bot} needs your attention",
+        "body": "Check the bot’s recent decisions.",
+        "open": "Open bot"
       }
     },
     "whatif": {

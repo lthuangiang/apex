@@ -48,6 +48,7 @@ import {
 import { and, desc, eq, gte, inArray, isNull, like, sql } from "drizzle-orm";
 
 import { analystBots, riskStatusOf } from "../account/service";
+import { needsAttentionOf } from "../bots/position-mismatch";
 import type { BotDeps } from "../bots/service";
 
 // AI Desk B+ M1 (DEC-164, DEC-166): gom dữ liệu thật thành `DeskBotFacts`, chạy 4 quy tắc (hàm thuần ở
@@ -317,6 +318,7 @@ export async function collectFacts(
               bestCostPerMillion: result?.best.costPerMillion ?? null,
             },
       analyst: note?.kind ?? "fine",
+      needsAttention: needsAttentionOf(b),
     });
   }
   return out;

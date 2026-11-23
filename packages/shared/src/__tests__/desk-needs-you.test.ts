@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   botHealth,
   evaluateBot,
+  ruleNeedsAttention,
   isSnoozed,
   liquidationDistance,
   maxLossReasonsOf,
@@ -57,6 +58,7 @@ const bot = (over: Partial<DeskBotFacts> = {}): DeskBotFacts => ({
   taker: null,
   review: null,
   analyst: "fine",
+  needsAttention: false,
   ...over,
 });
 
@@ -291,5 +293,46 @@ describe("health, ordering and snooze", () => {
     expect(isSnoozed({ ...c, badness: "200" }, stored, NOW)).toBe(false);
     expect(isSnoozed({ ...c, fingerprint: "new" }, stored, NOW)).toBe(false);
     expect(pickNeedsYou([c], [stored], NOW)).toEqual([]);
+  });
+});
+
+describe("rule 5: bot needs attention (#472)", () => {
+  it("any bot with Needs attention gets one item, with its state and reason as facts", () => {
+    const news = bot({
+      strategy: "news_signal",
+      market: "",
+      maxLoss: null,
+      state: "paused",
+      reasonCode: "SL_REJECTED",
+      needsAttention: true,
+      stoppedAt: 1_000,
+    });
+    const items = evaluateBot(news, NOW);
+    expect(items.map((c) => c.rule)).toEqual(["bot_needs_attention"]);
+    const c = items[0];
+    expect(c?.severity).toBe(2);
+    expect(c?.fingerprint).toBe("1000");
+    expect(c?.facts.map((f) => [f.name, f.value])).toEqual([
+      ["state", "paused"],
+      ["reasonCode", "SL_REJECTED"],
+    ]);
+  });
+
+  it("a new stop changes the fingerprint; no reason keeps only the state fact", () => {
+    const a = ruleNeedsAttention(bot({ needsAttention: true, stoppedAt: 1_000 }));
+    const b = ruleNeedsAttention(bot({ needsAttention: true, stoppedAt: 2_000 }));
+    expect(a?.fingerprint).not.toBe(b?.fingerprint);
+    expect(a?.facts.map((f) => f.name)).toEqual(["state"]);
+  });
+
+  it("no Needs attention, no item; a max-loss stop shows only the max-loss item", () => {
+    expect(ruleNeedsAttention(bot())).toBeNull();
+    const maxLoss = bot({
+      needsAttention: true,
+      state: "stopped",
+      reasonCode: "BOT_MAX_LOSS",
+      stoppedAt: 5,
+    });
+    expect(evaluateBot(maxLoss, NOW).map((c) => c.rule)).toEqual(["max_loss_hit"]);
   });
 });
