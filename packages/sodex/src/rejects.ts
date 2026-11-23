@@ -6,6 +6,16 @@
  * hoa thường, khoảng trắng thừa): mã -1 dùng chung cho nhiều lỗi khác ("position not found", "reduce only…").
  * Post-only bị từ chối (mã `PostOnly`, không có câu lỗi) không bao giờ khớp.
  */
+/**
+ * #497: SoDEX từ chối lệnh reduce-only vì account KHÔNG có vị thế ở market đó ("position not found: 2", mã -1 dùng chung).
+ * Đây là bằng chứng sổ cái của bot sai (bot tưởng có vị thế để đóng): engine đọc lại vị thế ngay, chiến lược không bao giờ
+ * chuyển sang lệnh đóng không reduce-only vì lý do này (lệnh đó sẽ MỞ vị thế thật).
+ */
+export function isPositionNotFoundReject(message: string | null | undefined): boolean {
+  if (message === null || message === undefined) return false;
+  return /\bposition\s+not\s+found\b/i.test(message);
+}
+
 export function isInsufficientMarginReject(
   code: string | number,
   message: string | null | undefined,

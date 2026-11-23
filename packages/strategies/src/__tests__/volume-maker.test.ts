@@ -574,17 +574,33 @@ describe("volume maker lifecycle (DEC-100)", () => {
     const r1 = volumeMaker.step(
       c,
       s,
-      { type: "positionSync", at: 1000, market: "BTC-USD", size: "0.005", entryPrice: "99990" },
+      {
+        type: "positionSync",
+        at: 1000,
+        readAt: 1000,
+        historyAt: 0,
+        market: "BTC-USD",
+        size: "0.005",
+        entryPrice: "99990",
+      },
       ctx,
     );
-    expect(r1.state.drift).toEqual({ size: "0.005", since: 1000 });
+    expect(r1.state.drift).toEqual({ size: "0.005", since: 1000, ledger: "0" });
     expect(r1.actions).toHaveLength(0);
     s = r1.state;
     // Second sync before 30 s: still not adopted.
     const r2 = volumeMaker.step(
       c,
       s,
-      { type: "positionSync", at: 15000, market: "BTC-USD", size: "0.005", entryPrice: "99990" },
+      {
+        type: "positionSync",
+        at: 15000,
+        readAt: 15000,
+        historyAt: 0,
+        market: "BTC-USD",
+        size: "0.005",
+        entryPrice: "99990",
+      },
       ctx,
     );
     expect(r2.state.drift).not.toBeNull();
@@ -594,7 +610,15 @@ describe("volume maker lifecycle (DEC-100)", () => {
     const r3 = volumeMaker.step(
       c,
       s,
-      { type: "positionSync", at: 31000, market: "BTC-USD", size: "0.005", entryPrice: "99990" },
+      {
+        type: "positionSync",
+        at: 31000,
+        readAt: 31000,
+        historyAt: 0,
+        market: "BTC-USD",
+        size: "0.005",
+        entryPrice: "99990",
+      },
       ctx,
     );
     expect(r3.state.ledger.position).toBe("0.005");

@@ -39,6 +39,7 @@ import {
   spotGridSchema,
   STRATEGIES,
   type OrderIntent,
+  type StrategyEvent,
 } from "@drift/strategies";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -4907,6 +4908,82 @@ describe("engine", () => {
     const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
     return rt?.state as MakerState;
   };
+
+  it("gives Market Making the read time and the last fill-history time with every SoDEX position (#497)", async () => {
+    const mod = STRATEGIES.volume_maker.module;
+    const real = mod.step.bind(mod);
+    const seen: StrategyEvent[] = [];
+    const spy = vi.spyOn(mod, "step").mockImplementation((config, state, event, ctx) => {
+      if (event.type === "positionSync") seen.push(event);
+      return real(config, state, event, ctx);
+    });
+    try {
+      const gw = new FakeGateway();
+      const { accountId } = await seedMaker();
+      const e = farmEngine(gw, "vm-sync-read-at");
+      await e.tick();
+      await e.onPrice("BTC-USD", "100000", clock);
+      clock += 30_000;
+      await e.tick();
+      const sync = seen.at(-1);
+      expect(sync?.type).toBe("positionSync");
+      if (sync?.type !== "positionSync") throw new Error("no positionSync");
+      expect(gw.readsBy).toContain(accountId);
+      // Lúc đọc ≤ lúc đưa cho chiến lược; lịch sử khớp (#backfillMaker) đã đọc ít nhất một lần.
+      expect(sync.readAt).toBeTypeOf("number");
+      expect(sync.readAt ?? Infinity).toBeLessThanOrEqual(sync.at);
+      expect(sync.historyAt).toBeTypeOf("number");
+      await e.stop();
+    } finally {
+      spy.mockRestore();
+      await stopMakerBots();
+    }
+  });
+
+  for (const message of ["position not found: 2", "reduce only order would increase position"])
+    it(`${message.startsWith("position") ? "re-reads the position at once" : "keeps the normal check interval"} after a reduce-only close is rejected with "${message}" (#497)`, async () => {
+      const mod = STRATEGIES.volume_maker.module;
+      const real = mod.step.bind(mod);
+      const rejects: StrategyEvent[] = [];
+      let injected = false;
+      const spy = vi.spyOn(mod, "step").mockImplementation((config, state, event, ctx) => {
+        if (event.type === "orderReject") rejects.push(event);
+        const r = real(config, state, event, ctx);
+        // Lệnh đóng reduce-only (ví dụ sau một lần sổ cái sai): một lần, ở lần báo giá kế tiếp.
+        if (!injected && r.actions.some((a) => a.type === "place")) {
+          injected = true;
+          return {
+            ...r,
+            actions: r.actions.map((a) =>
+              a.type === "place" ? { ...a, order: { ...a.order, reduceOnly: true } } : a,
+            ),
+          };
+        }
+        return r;
+      });
+      try {
+        const gw = new FakeGateway();
+        const { accountId } = await seedMaker();
+        const e = farmEngine(gw, `vm-pnf-${message.slice(0, 6)}`);
+        await e.tick();
+        const reads = gw.readsBy.filter((a) => a === accountId).length;
+        gw.reject = { code: "-1", message };
+        await e.onPrice("BTC-USD", "100000", clock);
+        gw.reject = null;
+        const pnf = message.startsWith("position");
+        expect(rejects.length).toBeGreaterThan(0);
+        expect(rejects.some((x) => x.type === "orderReject" && x.positionNotFound === true)).toBe(pnf);
+        // Chưa hết POSITION_CHECK_MS: chỉ "position not found" mới làm engine đọc lại ngay.
+        clock += 1_000;
+        await e.tick();
+        const after = gw.readsBy.filter((a) => a === accountId).length;
+        expect(after > reads).toBe(pnf);
+        await e.stop();
+      } finally {
+        spy.mockRestore();
+        await stopMakerBots();
+      }
+    });
 
   it("counts a missed fill on a cancelled Market Making quote exactly once (DEC-100)", async () => {
     const { eq } = await import("drizzle-orm");
