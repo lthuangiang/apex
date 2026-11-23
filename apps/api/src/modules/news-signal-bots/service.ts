@@ -441,11 +441,7 @@ export async function newNewsVersion(
   const balance =
     a === undefined
       ? { available: null, needed: "0", ok: false }
-      : await newsMarginCheck(
-          deps,
-          getAddress(a.address),
-          config,
-        );
+      : await newsMarginCheck(deps, getAddress(a.address), config);
   return {
     version: saved.version,
     status: saved.status === "active" ? "active" : "pending",
