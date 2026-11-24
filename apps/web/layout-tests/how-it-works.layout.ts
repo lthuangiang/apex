@@ -120,8 +120,8 @@ test("overview at 390: full-screen drawer, the diagram scrolls inside its own bo
     await page.screenshot({ path: `${shots}/overview-390.png` });
 });
 
-/** #395, #399: reader v5 chạy được 1 ngày (nhãn "New in v5"), reader v4 lên cùng Rules v4 2 ngày trước ("New in v4"). */
-function readerV5() {
+/** #395, #399, #505, #506: reader v6 (lên cùng Rules v5) chạy được 1 ngày: "New in v6" trên cả hai hộp; reader v4 cũ hơn. */
+function readerV6() {
   const [cur, old] = CLASSIFIERS.items;
   if (cur === undefined || old === undefined) throw new Error("fixture");
   return {
@@ -129,7 +129,7 @@ function readerV5() {
     items: [
       {
         ...cur,
-        classifierVersion: "news-classifier-v5",
+        classifierVersion: "news-classifier-v6",
         startedAt: new Date(Date.now() - 86_400_000).toISOString(),
       },
       {
@@ -147,11 +147,11 @@ for (const width of [1440, 390]) {
     baseURL,
   }, info) => {
     if (width === 390) await page.setViewportSize({ width: 390, height: 844 });
-    const dlg = await open(page, baseURL, readerV5());
+    const dlg = await open(page, baseURL, readerV6());
     await dlg.getByRole("tab", { name: "News types" }).click();
     await expect(dlg.getByRole("region", { name: /^Not counted/ })).toBeVisible();
-    await expect(dlg.getByText("New in v4")).toHaveCount(1);
-    await expect(dlg.getByText("New in v5")).toHaveCount(1);
+    await expect(dlg.getByText("New in v4")).toHaveCount(0);
+    await expect(dlg.getByText("New in v6")).toHaveCount(2);
     const m = await dlg.evaluate((el) => {
       const boxes = [...el.querySelectorAll<HTMLElement>("[role='tabpanel'] section")];
       return {
@@ -167,7 +167,7 @@ for (const width of [1440, 390]) {
     expect.soft(m.overflowX, "no horizontal scroll inside the drawer").toBeLessThanOrEqual(0);
     const shots = process.env.HIW_SHOTS;
     if (shots !== undefined && info.project.name === "w1440") {
-      await dlg.getByRole("region", { name: /^What Claude reader v5/ }).scrollIntoViewIfNeeded();
+      await dlg.getByRole("region", { name: /^What Claude reader v6/ }).scrollIntoViewIfNeeded();
       await page.screenshot({ path: `${shots}/news-types-${String(width)}.png` });
     }
   });

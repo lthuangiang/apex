@@ -11,14 +11,21 @@ import {
 } from "@drift/db";
 import { HyperliquidClient } from "@drift/hyperliquid";
 import { Lease, runAsLeader } from "@drift/runtime";
-import { AppError, ErrorCode, SR_MARKETS_KEY, srMarketsSnapshot } from "@drift/shared";
+import {
+  AppError,
+  ErrorCode,
+  SR_BOOK_REQUEST_SUBJECT,
+  SR_BOOK_REQUEST_TIMEOUT_MS,
+  SR_MARKETS_KEY,
+  srMarketsSnapshot,
+} from "@drift/shared";
 import {
   createSodexCallRecorder,
   loadSodexConfig,
   RedisRateLimitStore,
   SodexRestClient,
 } from "@drift/sodex";
-import { connect, type NatsConnection } from "@nats-io/transport-node";
+import { connect, RequestError, TimeoutError, type NatsConnection } from "@nats-io/transport-node";
 import { count, eq } from "drizzle-orm";
 import { Redis } from "ioredis";
 import pino from "pino";
@@ -44,6 +51,7 @@ import {
   type PerpsSymbolInfo,
 } from "./signal-research";
 import { NEWS_SIGNAL_SUBJECT } from "./signal-research/news-signals";
+import { requestRestBook } from "./signal-research/prices";
 import { runSnapshotRetention } from "./snapshot-retention";
 import { checkNewMarkets, outboxEmitter, redisSeenStore } from "./sr-new-markets";
 import { redisIncidentReadStore, teamIncidentRunner } from "./team-incidents";
@@ -353,6 +361,25 @@ const signals =
             log.warn({ err: error, signalId: id }, "news signal: NATS publish failed");
           }
         },
+        // #507: sổ lệnh REST một lần qua marketdata (lane không gọi SoDEX, DEC-322).
+        requestBook: (market) =>
+          requestRestBook(market, async (payload) => {
+            if (nats === null) return "unavailable";
+            try {
+              const m = await nats.request(SR_BOOK_REQUEST_SUBJECT, payload, {
+                timeout: SR_BOOK_REQUEST_TIMEOUT_MS,
+              });
+              return { reply: m.string() };
+            } catch (error) {
+              if (
+                error instanceof TimeoutError ||
+                (error instanceof Error && error.cause instanceof TimeoutError)
+              )
+                return "timeout";
+              if (error instanceof RequestError && error.isNoResponders()) return "unavailable";
+              throw error;
+            }
+          }),
       })
     : null;
 if (signals !== null && signalEnv.env !== null) {

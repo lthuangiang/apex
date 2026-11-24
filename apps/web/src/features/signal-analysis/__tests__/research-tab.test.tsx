@@ -13,6 +13,7 @@ import {
   RESEARCH_STATUSES,
   RESEARCH_TYPES,
   type ResearchSummary,
+  type ResearchTradeDetail,
   type ResearchTradesPage,
 } from "@drift/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -65,6 +66,8 @@ const state = vi.hoisted(
     summary: unknown;
     versions: unknown;
     bots: unknown[];
+    /** #511: lệnh đầu tiên đóng `max_hold_no_price` (danh sách và chi tiết). */
+    noPrice: boolean;
   } => ({
     mode: "ok",
     paths: [],
@@ -72,6 +75,7 @@ const state = vi.hoisted(
     summary: null,
     versions: null,
     bots: [],
+    noPrice: false,
   }),
 );
 
@@ -152,6 +156,21 @@ const NULL_TRADES: ResearchTradesPage = {
   nextCursor: null,
 };
 
+/** #511: lệnh đóng ở hạn giữ khi SoDEX không có giá: không có giá thoát, không có kết quả. */
+const NO_PRICE_DETAIL: ResearchTradeDetail = {
+  ...NEWS_DETAIL,
+  trade: {
+    ...NEWS_DETAIL.trade,
+    result: { pnl: null, unrealized: null, outcome: "maxHoldNoPrice", leftSecs: null },
+  },
+  steps: NEWS_DETAIL.steps.map((s) => ({
+    ...s,
+    facts: s.facts.map((f) =>
+      f.key === "exit" ? { ...f, price: null, outcome: "maxHoldNoPrice", usd: null, pct: null } : f,
+    ),
+  })),
+};
+
 vi.mock("@/lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/api")>();
   return {
@@ -223,11 +242,24 @@ vi.mock("@/lib/api", async (importOriginal) => {
           // #278: chỉ News live có dữ liệu; loại khác hoặc label=replay → trang rỗng.
           const q = new URL(path, "http://x").searchParams;
           const other = (q.get("type") ?? "news") !== "news" || q.get("label") === "replay";
+          const first = RESEARCH_TRADES.items[0];
+          const firstShown =
+            state.noPrice && first !== undefined
+              ? {
+                  ...first,
+                  result: {
+                    pnl: null,
+                    unrealized: null,
+                    outcome: "maxHoldNoPrice",
+                    leftSecs: null,
+                  },
+                }
+              : first;
           return Promise.resolve(
             schema.parse(
               other
                 ? { items: [], nextCursor: null }
-                : { items: [RESEARCH_TRADES.items[0], SKIPPED_TRADE], nextCursor: null },
+                : { items: [firstShown, SKIPPED_TRADE], nextCursor: null },
             ),
           );
         }
@@ -242,6 +274,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
         if (p.endsWith("/sr-0004"))
           return Promise.resolve(schema.parse({ ...NEWS_DETAIL, trade: RESEARCH_TRADES.items[3] }));
         if (m !== "news") return Promise.resolve(schema.parse(RESEARCH_DETAIL));
+        if (state.noPrice && !p.endsWith(SKIPPED_ID))
+          return Promise.resolve(schema.parse(NO_PRICE_DETAIL));
         return Promise.resolve(schema.parse(p.endsWith(SKIPPED_ID) ? SKIPPED_DETAIL : NEWS_DETAIL));
       }
       return Promise.reject(new real.ApiError("NOT_FOUND", 404));
@@ -293,6 +327,7 @@ function wrap() {
 }
 
 beforeEach(() => {
+  state.noPrice = false;
   state.mode = "ok";
   state.paths = [];
   state.classifiers = null;
@@ -570,6 +605,28 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
       "Not available",
     );
     await noViolations();
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("#511: a trade closed at the hold limit without a price says so; the result is Not available, never 0", async () => {
+    state.mode = "news";
+    state.noPrice = true;
+    wrap();
+    const tbl = await screen.findByRole("table", { name: "Signal research trades" });
+    const row = within(tbl).getByRole("row", { name: /SEC delays decision on SOL ETF/ });
+    expect(within(row).getByText("Max hold · no price")).toBeInTheDocument();
+    for (const z of ["$0", "$0.00", "+$0.00"]) expect(within(row).queryByText(z)).toBeNull();
+    await userEvent.click(
+      within(tbl).getByRole("button", { name: "SEC delays decision on SOL ETF" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByText(
+        "Closed at the hold limit. SoDEX had no price, so there is no result.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/Max hold · no price/).length).toBeGreaterThan(0);
+    for (const z of ["$0", "$0.00", "+$0.00"]) expect(within(dialog).queryByText(z)).toBeNull();
     expect(intlErrors).toEqual([]);
   });
 
@@ -1506,6 +1563,23 @@ function readerV4(startedAt: string) {
   };
 }
 
+/** #505: dòng v6 của hộp reader; câu còn ở `_pendingReview` nên đọc từ en.json (bỏ thẻ <b>). */
+const READER_V6_LINE = messages.signalAnalysis.research.rules.reader.types.replace(/<\/?b>/g, "");
+
+/** #505: Claude reader v6 hiện tại (bắt đầu `v6Start`), v5 đã retired, v4 cũ hơn (Rules v4, bắt đầu `v4Start`). */
+function readerV6(v6Start: string, v4Start: string) {
+  const base = readerV5(v6Start, v4Start);
+  const [cur, old] = base.items;
+  if (cur === undefined || old === undefined) throw new Error("fixture");
+  return {
+    ...base,
+    items: [
+      { ...cur, classifierVersion: "news-classifier-v6" },
+      { ...old, classifierVersion: "news-classifier-v4", startedAt: v4Start },
+    ],
+  };
+}
+
 /** #399: Claude reader v5 hiện tại (bắt đầu `v5Start`), v4 (lên cùng Rules v4, bắt đầu `v4Start`) đã retired. */
 function readerV5(v5Start: string, v4Start: string) {
   const base = readerV4(v5Start);
@@ -1530,7 +1604,7 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
     return dlg;
   }
 
-  it("News types: two new boxes, Not counted labelled New in v4 while v4 is under 14 days old", async () => {
+  it("News types: two boxes; without reader v6 (Rules v5, #506) neither box nor the chip is labelled new", async () => {
     state.classifiers = readerV4(new Date(Date.now() - 2 * DAY).toISOString());
     wrap();
     const dlg = await newsTypes();
@@ -1552,20 +1626,20 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
         .getAllByRole("listitem")
         .map((li) => li.textContent),
     ).toEqual([
+      READER_V6_LINE,
       "A company’s shares starting to trade is not a listing, and a fund buying a company’s shares is not a treasury buy.",
       "A bug report or a fixed vulnerability with no funds lost is not a hack.",
       "The coin that was stolen is never the hacked asset. In “$860M in ETH drained”, ETH only measures the loss.",
       "Moving or laundering funds from an earlier hack is not a new hack.",
       "An ETF listed on a smaller exchange for a coin that already has ETFs is not “ETF approved”.",
     ]);
-    // #399: "New in v4" chỉ còn ở hộp Not counted (Rules v4); hộp reader mang nhãn của reader v5.
-    expect(within(notCounted).getByText("New in v4")).toBeInTheDocument();
-    expect(within(dlg).getAllByText("New in v4")).toHaveLength(1);
-    expect(within(dlg).queryByText("New in v5")).not.toBeInTheDocument();
+    // #506: cả hai nhãn theo reader v6 (Rules v5 lên cùng reader v6); chưa có reader v6 thì không có nhãn nào.
+    expect(within(notCounted).queryByText(/^New in v/)).not.toBeInTheDocument();
+    expect(within(dlg).queryByText(/^New in v/)).not.toBeInTheDocument();
     expect(within(dlg).getByText(/Claude reader v4 · a starting guess/)).toHaveTextContent(
       "Rules v2 · Claude reader v4 · a starting guess that the results prove or drop",
     );
-    expect(within(dlg).getByText("v1 → v2")).toBeInTheDocument();
+    expect(within(dlg).queryByText("v1 → v2")).not.toBeInTheDocument();
     // Bố cục cũ giữ nguyên: bảng loại tin và dòng "Not signals" vẫn ở đó.
     expect(
       within(dlg).getByRole("table", { name: "News types, direction and max hold" }),
@@ -1587,8 +1661,8 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
     ).toBeInTheDocument();
   });
 
-  it("#399 reader v5: the reader box follows the current reader, New in v5 on it, New in v4 stays on Not counted", async () => {
-    state.classifiers = readerV5(
+  it("#505 reader v6: the reader box follows the current reader, the v6 line first; New in v6 on both boxes (Rules v5, #506)", async () => {
+    state.classifiers = readerV6(
       new Date(Date.now() - 1 * DAY).toISOString(),
       new Date(Date.now() - 2 * DAY).toISOString(),
     );
@@ -1596,16 +1670,19 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
     const dlg = await newsTypes();
     const notCounted = await within(dlg).findByRole("region", { name: /^Not counted/ });
     const reads = within(dlg).getByRole("region", {
-      name: /^What Claude reader v5 reads differently/,
+      name: /^What Claude reader v6 reads differently/,
     });
-    expect(within(reads).getByText("New in v5")).toBeInTheDocument();
-    expect(within(reads).getAllByRole("listitem")[0]).toHaveTextContent(
+    expect(within(reads).getByText("New in v6")).toBeInTheDocument();
+    expect(within(reads).getAllByRole("listitem")[0]).toHaveTextContent(READER_V6_LINE);
+    expect(within(reads).getAllByRole("listitem")[1]).toHaveTextContent(
       "A company’s shares starting to trade is not a listing, and a fund buying a company’s shares is not a treasury buy.",
     );
-    expect(within(reads).getAllByRole("listitem")).toHaveLength(5);
-    expect(within(notCounted).getByText("New in v4")).toBeInTheDocument();
-    expect(within(dlg).getByText(/Claude reader v5 · a starting guess/)).toBeInTheDocument();
-    // Chip của Rules vẫn theo mốc Rules v4 (reader v4 lên 2 ngày trước).
+    expect(within(reads).getAllByRole("listitem")).toHaveLength(6);
+    expect(within(notCounted).getByText("New in v6")).toBeInTheDocument();
+    expect(within(dlg).getAllByText("New in v6")).toHaveLength(2);
+    expect(within(dlg).queryByText("New in v4")).not.toBeInTheDocument();
+    expect(within(dlg).getByText(/Claude reader v6 · a starting guess/)).toBeInTheDocument();
+    // Chip của Rules theo mốc reader v6 (lên 1 ngày trước, cùng Rules v5).
     expect(within(dlg).getByText("v1 → v2")).toBeInTheDocument();
     await noViolations();
     expect(intlErrors).toEqual([]);

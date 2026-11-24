@@ -11,6 +11,7 @@ import {
   SOSO_OFFICIAL_CATEGORY,
   SOURCE_TIERS,
   SourceTier,
+  COIN_NAME_ALIASES,
   STOCK_BRAND_ALIASES,
   STOCK_MARKET_SET,
   STOCK_SYMBOL_ALIASES,
@@ -104,11 +105,13 @@ export function stripHtml(html: string): string {
  * Một cách viết của tài sản trong bài và cách khớp (review PM #301):
  * - `symbol`: ký hiệu, luôn phân biệt hoa thường (chỉ chữ HOA: "LINK" khớp, "link" không);
  * - `word`: tên một từ, phải viết hoa chữ đầu ("Near" / "NEAR" khớp, "near" không);
- * - `phrase`: tên ≥ 2 từ, khớp cả cụm, không phân biệt hoa thường ("taiwan semiconductor").
+ * - `phrase`: tên ≥ 2 từ, khớp cả cụm, không phân biệt hoa thường ("taiwan semiconductor");
+ * - `name` (#508): tên coin trong bảng tường minh `COIN_NAME_ALIASES`, không phân biệt hoa thường ("bitcoin").
+ * Tên (`word`, `phrase`, `name`) khớp cả dạng số nhiều thêm "s" ("2,223 bitcoins", "ethers"); ký hiệu thì không.
  */
 export interface AssetAlias {
   text: string;
-  match: "symbol" | "word" | "phrase";
+  match: "symbol" | "word" | "phrase" | "name";
 }
 
 /** Đuôi pháp lý / loại cổ phiếu bỏ khỏi tên ("ADVANCED MICRO DEVICES, INC." → "ADVANCED MICRO DEVICES"). */
@@ -145,10 +148,10 @@ export function assetAliases(
   matched: readonly MatchedCurrency[],
 ): AssetAlias[] {
   const out = new Map<string, AssetAlias>();
-  const add = (raw: string, symbol: boolean) => {
+  const add = (raw: string, symbol: boolean, coinName = false) => {
     const text = tidy(raw);
     if (text.length === 0) return;
-    const match = symbol ? "symbol" : wordsOf(text) >= 2 ? "phrase" : "word";
+    const match = symbol ? "symbol" : coinName ? "name" : wordsOf(text) >= 2 ? "phrase" : "word";
     const key = `${match}:${match === "symbol" ? text.toUpperCase() : text.toLowerCase()}`;
     if (!out.has(key))
       out.set(key, { text: match === "symbol" ? text.toUpperCase() : text, match });
@@ -168,6 +171,7 @@ export function assetAliases(
     if (short.length >= 2 && (!stock || wordsOf(short) >= 2)) add(short, false);
   }
   if (stock) for (const brand of STOCK_BRAND_ALIASES[candidate.market] ?? []) add(brand, false);
+  else for (const name of COIN_NAME_ALIASES[candidate.market] ?? []) add(name, false, true);
   return [...out.values()];
 }
 
@@ -181,9 +185,11 @@ const startsUpper = (s: string) => {
 export function mentionsAsset(text: string, aliases: readonly AssetAlias[]): boolean {
   const t = tidy(text);
   return aliases.some((a) => {
-    const body = `(?<![\\p{L}\\p{N}])${escapeRe(a.text)}(?![\\p{L}\\p{N}])`;
+    // Tên khớp cả dạng số nhiều ("bitcoins", "ethers"); ký hiệu thì không ("ETHs" không phải cách viết của ETH).
+    const plural = a.match === "symbol" ? "" : "s?";
+    const body = `(?<![\\p{L}\\p{N}])${escapeRe(a.text)}${plural}(?![\\p{L}\\p{N}])`;
     if (a.match === "symbol") return new RegExp(body, "u").test(t);
-    if (a.match === "phrase") return new RegExp(body, "iu").test(t);
+    if (a.match === "phrase" || a.match === "name") return new RegExp(body, "iu").test(t);
     return [...t.matchAll(new RegExp(body, "giu"))].some((m) => startsUpper(m[0]));
   });
 }
@@ -302,8 +308,11 @@ export function eventTooOld(eventDate: string | null, publishedAt: number): bool
 export interface Quote {
   bid: Decimal;
   ask: Decimal;
-  /** `book`: giá tốt nhất SoDEX từ marketdata; `last_spread`: giá gần nhất ± nửa spread đo theo giờ. */
-  source: "book" | "last_spread";
+  /**
+   * `book`: giá tốt nhất SoDEX từ marketdata (WS); `last_spread`: giá gần nhất ± nửa spread đo theo giờ; `rest_book`: sổ
+   * lệnh SoDEX đọc qua REST một lần khi thiếu sổ live / mẫu spread (#507).
+   */
+  source: "book" | "last_spread" | "rest_book";
   /**
    * Thời điểm (ms) của dữ liệu giá gốc: giờ nhận sổ (`book`) hoặc giờ của giá gần nhất (`last_spread`). `combineQuote`
    * của scheduler luôn điền; dùng để bỏ giá cũ khi tính lãi / lỗ chưa chốt (#308).

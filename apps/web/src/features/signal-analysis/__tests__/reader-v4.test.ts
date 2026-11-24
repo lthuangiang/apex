@@ -12,20 +12,29 @@ import { CLASSIFIERS } from "./versions-fixtures";
 const DAY = 86_400_000;
 const NOW = Date.parse("2026-12-01T00:00:00Z");
 const v4 = (startedAt: string | null) => [{ classifierVersion: "news-classifier-v4", startedAt }];
+// #506: Rules v5 lên cùng reader v6 nên nhãn của Rules theo mốc của reader v6 (`RULES_NEW_BADGE`).
+const v6 = (startedAt: string | null) => [{ classifierVersion: "news-classifier-v6", startedAt }];
 
 describe("New in vN labels (#399)", () => {
-  it("the reader label follows reader v5, the Rules label stays on v4", () => {
+  it("the reader label follows the current reader (v6, #505); the Rules label follows reader v6 too (Rules v5, #506)", () => {
     const rows = [
-      { classifierVersion: "news-classifier-v5", startedAt: new Date(NOW - 1 * DAY).toISOString() },
+      { classifierVersion: "news-classifier-v6", startedAt: new Date(NOW - 1 * DAY).toISOString() },
       {
         classifierVersion: "news-classifier-v4",
         startedAt: new Date(NOW - 20 * DAY).toISOString(),
       },
     ];
     expect(readerBadgeShown(rows, NOW)).toBe(true);
-    expect(rulesBadgeShown(rows, NOW)).toBe(false);
+    expect(rulesBadgeShown(rows, NOW)).toBe(true);
     expect(readerBadgeShown(v4(new Date(NOW - DAY).toISOString()), NOW)).toBe(false);
-    expect(rulesBadgeShown(v4(new Date(NOW - DAY).toISOString()), NOW)).toBe(true);
+    // v5 không còn là reader mới: nhãn chỉ theo v6.
+    expect(
+      readerBadgeShown(
+        [{ classifierVersion: "news-classifier-v5", startedAt: new Date(NOW - DAY).toISOString() }],
+        NOW,
+      ),
+    ).toBe(false);
+    expect(rulesBadgeShown(v4(new Date(NOW - DAY).toISOString()), NOW)).toBe(false);
   });
 
   it("v5 copy is PM-approved (not pending); the box title uses the reader name", () => {
@@ -48,16 +57,17 @@ describe("New in vN labels (#399)", () => {
   });
 });
 
-describe("New in v4 label (Rules v4)", () => {
-  it("shows while v4 is under 14 days old, hides from day 14", () => {
-    expect(rulesBadgeShown(v4(new Date(NOW - 13 * DAY).toISOString()), NOW)).toBe(true);
-    expect(rulesBadgeShown(v4(new Date(NOW - 14 * DAY + 1).toISOString()), NOW)).toBe(true);
-    expect(rulesBadgeShown(v4(new Date(NOW - 14 * DAY).toISOString()), NOW)).toBe(false);
-    expect(rulesBadgeShown(v4(new Date(NOW - 30 * DAY).toISOString()), NOW)).toBe(false);
+describe("New in label of the Rules (Rules v5 with reader v6, #506)", () => {
+  it("shows while reader v6 is under 14 days old, hides from day 14", () => {
+    expect(rulesBadgeShown(v6(new Date(NOW - 13 * DAY).toISOString()), NOW)).toBe(true);
+    expect(rulesBadgeShown(v6(new Date(NOW - 14 * DAY + 1).toISOString()), NOW)).toBe(true);
+    expect(rulesBadgeShown(v6(new Date(NOW - 14 * DAY).toISOString()), NOW)).toBe(false);
+    expect(rulesBadgeShown(v6(new Date(NOW - 30 * DAY).toISOString()), NOW)).toBe(false);
   });
 
-  it("v4 that has not run yet is still new; no list or no v4 row shows nothing", () => {
-    expect(rulesBadgeShown(v4(null), NOW)).toBe(true);
+  it("reader v6 that has not run yet is still new; no list or no v6 row shows nothing", () => {
+    expect(rulesBadgeShown(v6(null), NOW)).toBe(true);
+    expect(rulesBadgeShown(v4(null), NOW)).toBe(false);
     expect(rulesBadgeShown(undefined, NOW)).toBe(false);
     expect(
       rulesBadgeShown([{ classifierVersion: "news-classifier-v3", startedAt: null }], NOW),

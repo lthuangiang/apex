@@ -127,6 +127,49 @@ describe("asset must be written in the article (news-v3, #298)", () => {
     expect(assetInText("shiba inu burns tokens", null, coin("SHIB"), shib)).toBe(true);
   });
 
+  it("#508: bitcoin / ether names match lowercase and plural; other one-word names keep the capital rule", () => {
+    const btcM = [{ symbol: "BTC", name: "Bitcoin" }];
+    // Cùng một tin ngày 23/11: cả hai tiêu đề qua bước kiểm asset.
+    expect(assetInText("Abraxas Capital bought another 2,223 BTC", null, coin("BTC"), btcM)).toBe(
+      true,
+    );
+    expect(
+      assetInText(
+        "$141 million, Abraxas Capital buys another 2,223 bitcoins",
+        null,
+        coin("BTC"),
+        btcM,
+      ),
+    ).toBe(true);
+    // Không cần tag SoSoValue: tên coin trong bảng tường minh.
+    expect(assetInText("Fund buys 500 bitcoins", null, coin("BTC"), [])).toBe(true);
+    expect(assetInText("Treasury adds 1,000 ethers", null, coin("ETH"), [])).toBe(true);
+    expect(assetInText("ether staking grows", null, coin("ETH"), [])).toBe(true);
+    expect(assetInText("ethereum foundation sells", null, coin("ETH"), [])).toBe(true);
+    // Ranh giới từ vẫn giữ: Tether, Ethereal, bitcoinist không phải BTC / ETH.
+    expect(assetInText("Tether mints USDT", null, coin("ETH"), [])).toBe(false);
+    expect(assetInText("Ethereal raises funds", null, coin("ETH"), ethM)).toBe(false);
+    expect(assetInText("bitcoinist reports", null, coin("BTC"), [])).toBe(false);
+    // Ký hiệu không có dạng số nhiều.
+    expect(assetInText("Whales buy ETHs", null, coin("ETH"), [])).toBe(false);
+    // Tên một từ khác vẫn cần chữ hoa đầu (PM review #301), kể cả số nhiều.
+    const sol = [{ symbol: "SOL", name: "Solana" }];
+    expect(assetInText("solana etf filed", null, coin("SOL"), sol)).toBe(false);
+    expect(assetInText("Two Solanas ETFs filed", null, coin("SOL"), sol)).toBe(true);
+  });
+
+  it("#508: 'Binance-stolen funds' still does not name BNB", () => {
+    for (const m of [[{ symbol: "BNB", name: "BNB" }], [{ symbol: "BNB", name: "Binance Coin" }]])
+      expect(
+        assetInText(
+          "Approximately 96% of Binance-stolen funds flowing into NEAR Intents have been intercepted",
+          null,
+          coin("BNB"),
+          m,
+        ),
+      ).toBe(false);
+  });
+
   it("drops a coin that is only a SoSoValue tag (LINK case); Chainlink (LINK) passes", () => {
     const m = [{ symbol: "LINK", name: "CHAINLINK" }];
     expect(

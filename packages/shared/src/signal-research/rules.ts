@@ -120,6 +120,8 @@ export const SignalReason = {
   takeProfit: "TAKE_PROFIT",
   stopLoss: "STOP_LOSS",
   maxHold: "MAX_HOLD",
+  /** #511: quá hạn giữ + 1 giờ mà SoDEX vẫn không có giá: đóng, không có giá thoát / kết quả. */
+  maxHoldNoPrice: "MAX_HOLD_NO_PRICE",
   /** Đóng vì tin ngược chiều (version chọn Close at market). */
   oppositeNews: "OPPOSITE_NEWS",
   // bot `news_signal` mainnet, ghi theo từng bot (#419, DEC-360)
@@ -158,10 +160,26 @@ export const PaperExitReason = {
   takeProfit: "take_profit",
   stopLoss: "stop_loss",
   maxHold: "max_hold",
+  /**
+   * #511 (DEC-384): quá `SR_WATCH_REST.noPriceGraceMs` sau hạn giữ mà SoDEX vẫn không có giá (sổ live, giá gần nhất,
+   * sổ REST): đóng không có giá thoát, phí ra hay kết quả (null, quy tắc 1.8); loại khỏi lãi / lỗ và tỷ lệ thắng.
+   */
+  maxHoldNoPrice: "max_hold_no_price",
   /** Version chọn "Close at market" khi có tin ngược chiều (#303). */
   oppositeNews: "opposite_news",
 } as const;
 export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitReason];
+
+/**
+ * #511 (DEC-384, PM chốt): watcher lệnh giấy đọc sổ REST (qua marketdata) cho lệnh mở không có giá: mỗi market
+ * tối đa mỗi `everyMs`, tối đa `maxMarkets` lần đọc trong mỗi `everyMs`; quá hạn giữ thêm `noPriceGraceMs` mà vẫn không có
+ * giá thì đóng `max_hold_no_price`.
+ */
+export const SR_WATCH_REST = {
+  everyMs: 15_000,
+  maxMarkets: 10,
+  noPriceGraceMs: 3_600_000,
+} as const;
 
 /**
  * Quy tắc tin tức v3 (#269 Design v3.3 mục 1 + mục 7, v3.4; #298). Mọi con số là giả thuyết của nghiên cứu, không phải
@@ -176,8 +194,8 @@ export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitRea
  * Prompt `news-classifier-v5` (#399) chạy trên v4: chỉ đổi prompt nên không tăng version này.
  *
  * v5 so với v4 (#506): tin listing trên BTC / ETH không giao dịch (`LISTING_MAJOR_ASSET`): một sàn niêm yết thêm BTC hay
- * ETH không phải catalyst. Không đổi prompt. Bài v4 còn `collected` / `pending` lúc deploy được chuyển sang v5 như lần
- * trước; tổng kết, nhãn và cổng đếm lại từ 0, lệnh v4 là lịch sử.
+ * ETH không phải catalyst. Lên cùng prompt `news-classifier-v6` (#505) trong một hotfix, nên tổng kết, nhãn và cổng chỉ đếm
+ * lại từ 0 một lần. Bài v4 còn `collected` / `pending` lúc deploy được chuyển sang v5 như lần trước; lệnh v4 là lịch sử.
  */
 export const NEWS_RULES = {
   version: "news-v5",
@@ -343,12 +361,12 @@ export const SOURCE_TIERS: Readonly<Record<string, SourceTier>> = {
 export const SOSO_OFFICIAL_CATEGORY = 7;
 
 /**
- * Version của danh sách tài sản lane tin tức (#309): `STOCK_MARKET_SET`, `STOCK_SYMBOL_ALIASES`, `STOCK_BRAND_ALIASES`.
- * Đổi một trong ba bảng = đổi chuỗi này (dạng `assets-<ngày><chữ>`), **không** đổi `NEWS_RULES.version`: danh sách tài
+ * Version của danh sách tài sản lane tin tức (#309): `STOCK_MARKET_SET`, `STOCK_SYMBOL_ALIASES`, `STOCK_BRAND_ALIASES`,
+ * `COIN_NAME_ALIASES` (#508). Đổi một trong các bảng = đổi chuỗi này (dạng `assets-<ngày><chữ>`), **không** đổi `NEWS_RULES.version`: danh sách tài
  * sản chỉ mở rộng phạm vi, không đổi cách giao dịch một tín hiệu, nên không reset cổng. Ghi vào detail của event
  * normalize / understand và cột `asset_map_version` của lệnh giấy để truy được.
  */
-export const NEWS_ASSET_MAP_VERSION = "assets-2026-11-19a";
+export const NEWS_ASSET_MAP_VERSION = "assets-2026-11-24a";
 
 /**
  * Market cổ phiếu trên SoDEX (cổ phiếu niêm yết, ETF cổ phiếu, cổ phiếu pre-IPO): kind `stock`, nhãn "outside market
@@ -449,6 +467,16 @@ export const STOCK_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = 
   "ZHIPU-USD": ["Zhipu"],
 };
 
+/**
+ * #508: tên coin không bao giờ là từ thường, nên khớp cả khi viết thường và ở dạng số nhiều ("2,223 bitcoins", "ethers").
+ * Tên một từ khác của coin (lấy từ SoSoValue) vẫn phải viết hoa chữ đầu ("near" không khớp NEAR). Danh sách nhỏ, tường
+ * minh; thêm tên = đổi `NEWS_ASSET_MAP_VERSION`.
+ */
+export const COIN_NAME_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  "BTC-USD": ["Bitcoin"],
+  "ETH-USD": ["Ethereum", "Ether"],
+};
+
 export const SIGNAL_CATALYSTS = Object.keys(NEWS_RULES.catalysts) as SignalCatalyst[];
 export const NEWS_CATALYSTS: readonly NewsCatalyst[] = [...SIGNAL_CATALYSTS, NewsCatalyst.none];
 
@@ -464,7 +492,7 @@ export const NEWS_CLASSIFIER = {
    * 1 phút (`SIGNAL_NEWS_CYCLE_MINUTES`) vẫn giữ 1 giờ để giờ ít tin không làm cache hết hạn giữa hai lần gọi.
    */
   cacheTtl: "1h",
-  promptVersion: "news-classifier-v5",
+  promptVersion: "news-classifier-v6",
   maxTokens: 400,
   /** Tối đa ngần này ký tự nội dung bài gửi cho Claude. */
   maxContentChars: 4000,
@@ -482,15 +510,15 @@ export const NEWS_CLASSIFIER = {
  * hiện tới khi Claude reader này đã chạy đủ ngần này ngày, tính từ `signal_classifier_versions.started_at` (API
  * `/classifiers`). Reader chưa chạy lần nào (chưa có started_at) vẫn là mới. Đổi reader = đổi `classifierVersion` ở đây.
  */
-export const READER_NEW_BADGE = { classifierVersion: "news-classifier-v5", days: 14 } as const;
+export const READER_NEW_BADGE = { classifierVersion: "news-classifier-v6", days: 14 } as const;
 
 /**
- * Nhãn "New in v4" của hộp "Not counted" và chip "v{n-1} → v{n}" của dòng sub (luật cố định của Rules, #395). Rules v4 lên
+ * Nhãn "New in v{n}" của hộp "Not counted" và chip "v{n-1} → v{n}" của dòng sub (luật cố định của Rules, #395). Rules v4 lên
  * cùng lúc với Claude reader v4 nên mốc 14 ngày tính từ `started_at` của `news-classifier-v4`; reader v5 (#399) không đổi
- * Rules nên không làm hai nhãn này hiện lại. Đổi Rules = đổi mốc ở đây theo reader lên cùng Rules mới. Rules v5 (#506)
- * chưa có reader riêng trên main: giữ mốc v4; khi reader v6 (#505) đã merge thì chuyển mốc sang `news-classifier-v6`.
+ * Rules nên không làm hai nhãn này hiện lại. Đổi Rules = đổi mốc ở đây theo reader lên cùng Rules mới: Rules v5 (#506) lên
+ * cùng reader v6 (#505) trong một hotfix nên mốc là `news-classifier-v6`.
  */
-export const RULES_NEW_BADGE = { classifierVersion: "news-classifier-v4", days: 14 } as const;
+export const RULES_NEW_BADGE = { classifierVersion: "news-classifier-v6", days: 14 } as const;
 
 /**
  * Chu kỳ của lane tin tức (phút, #394): scheduler chạy Collect → Decide mỗi `SIGNAL_NEWS_CYCLE_MINUTES` phút (số nguyên
