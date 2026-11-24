@@ -1506,6 +1506,23 @@ function readerV4(startedAt: string) {
   };
 }
 
+/** #505: dòng v6 của hộp reader; câu còn ở `_pendingReview` nên đọc từ en.json (bỏ thẻ <b>). */
+const READER_V6_LINE = messages.signalAnalysis.research.rules.reader.types.replace(/<\/?b>/g, "");
+
+/** #505: Claude reader v6 hiện tại (bắt đầu `v6Start`), v5 đã retired, v4 cũ hơn (Rules v4, bắt đầu `v4Start`). */
+function readerV6(v6Start: string, v4Start: string) {
+  const base = readerV5(v6Start, v4Start);
+  const [cur, old] = base.items;
+  if (cur === undefined || old === undefined) throw new Error("fixture");
+  return {
+    ...base,
+    items: [
+      { ...cur, classifierVersion: "news-classifier-v6" },
+      { ...old, classifierVersion: "news-classifier-v4", startedAt: v4Start },
+    ],
+  };
+}
+
 /** #399: Claude reader v5 hiện tại (bắt đầu `v5Start`), v4 (lên cùng Rules v4, bắt đầu `v4Start`) đã retired. */
 function readerV5(v5Start: string, v4Start: string) {
   const base = readerV4(v5Start);
@@ -1551,13 +1568,14 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
         .getAllByRole("listitem")
         .map((li) => li.textContent),
     ).toEqual([
+      READER_V6_LINE,
       "A company’s shares starting to trade is not a listing, and a fund buying a company’s shares is not a treasury buy.",
       "A bug report or a fixed vulnerability with no funds lost is not a hack.",
       "The coin that was stolen is never the hacked asset. In “$860M in ETH drained”, ETH only measures the loss.",
       "Moving or laundering funds from an earlier hack is not a new hack.",
       "An ETF listed on a smaller exchange for a coin that already has ETFs is not “ETF approved”.",
     ]);
-    // #399: "New in v4" chỉ còn ở hộp Not counted (Rules v4); hộp reader mang nhãn của reader v5.
+    // #399: "New in v4" chỉ còn ở hộp Not counted (Rules v4); hộp reader mang nhãn của reader hiện tại (v6, #505).
     expect(within(notCounted).getByText("New in v4")).toBeInTheDocument();
     expect(within(dlg).getAllByText("New in v4")).toHaveLength(1);
     expect(within(dlg).queryByText("New in v5")).not.toBeInTheDocument();
@@ -1586,8 +1604,8 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
     ).toBeInTheDocument();
   });
 
-  it("#399 reader v5: the reader box follows the current reader, New in v5 on it, New in v4 stays on Not counted", async () => {
-    state.classifiers = readerV5(
+  it("#505 reader v6: the reader box follows the current reader, New in v6 on it, the v6 line first, New in v4 stays on Not counted", async () => {
+    state.classifiers = readerV6(
       new Date(Date.now() - 1 * DAY).toISOString(),
       new Date(Date.now() - 2 * DAY).toISOString(),
     );
@@ -1595,15 +1613,16 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
     const dlg = await newsTypes();
     const notCounted = await within(dlg).findByRole("region", { name: /^Not counted/ });
     const reads = within(dlg).getByRole("region", {
-      name: /^What Claude reader v5 reads differently/,
+      name: /^What Claude reader v6 reads differently/,
     });
-    expect(within(reads).getByText("New in v5")).toBeInTheDocument();
-    expect(within(reads).getAllByRole("listitem")[0]).toHaveTextContent(
+    expect(within(reads).getByText("New in v6")).toBeInTheDocument();
+    expect(within(reads).getAllByRole("listitem")[0]).toHaveTextContent(READER_V6_LINE);
+    expect(within(reads).getAllByRole("listitem")[1]).toHaveTextContent(
       "A company’s shares starting to trade is not a listing, and a fund buying a company’s shares is not a treasury buy.",
     );
-    expect(within(reads).getAllByRole("listitem")).toHaveLength(5);
+    expect(within(reads).getAllByRole("listitem")).toHaveLength(6);
     expect(within(notCounted).getByText("New in v4")).toBeInTheDocument();
-    expect(within(dlg).getByText(/Claude reader v5 · a starting guess/)).toBeInTheDocument();
+    expect(within(dlg).getByText(/Claude reader v6 · a starting guess/)).toBeInTheDocument();
     // Chip của Rules vẫn theo mốc Rules v4 (reader v4 lên 2 ngày trước).
     expect(within(dlg).getByText("v1 → v2")).toBeInTheDocument();
     await noViolations();
