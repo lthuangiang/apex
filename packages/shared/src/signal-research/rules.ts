@@ -332,12 +332,12 @@ export const SOURCE_TIERS: Readonly<Record<string, SourceTier>> = {
 export const SOSO_OFFICIAL_CATEGORY = 7;
 
 /**
- * Version của danh sách tài sản lane tin tức (#309): `STOCK_MARKET_SET`, `STOCK_SYMBOL_ALIASES`, `STOCK_BRAND_ALIASES`.
- * Đổi một trong ba bảng = đổi chuỗi này (dạng `assets-<ngày><chữ>`), **không** đổi `NEWS_RULES.version`: danh sách tài
+ * Version của danh sách tài sản lane tin tức (#309): `STOCK_MARKET_SET`, `STOCK_SYMBOL_ALIASES`, `STOCK_BRAND_ALIASES`,
+ * `COIN_NAME_ALIASES` (#508). Đổi một trong các bảng = đổi chuỗi này (dạng `assets-<ngày><chữ>`), **không** đổi `NEWS_RULES.version`: danh sách tài
  * sản chỉ mở rộng phạm vi, không đổi cách giao dịch một tín hiệu, nên không reset cổng. Ghi vào detail của event
  * normalize / understand và cột `asset_map_version` của lệnh giấy để truy được.
  */
-export const NEWS_ASSET_MAP_VERSION = "assets-2026-11-19a";
+export const NEWS_ASSET_MAP_VERSION = "assets-2026-11-24a";
 
 /**
  * Market cổ phiếu trên SoDEX (cổ phiếu niêm yết, ETF cổ phiếu, cổ phiếu pre-IPO): kind `stock`, nhãn "outside market
@@ -436,6 +436,16 @@ export const STOCK_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = 
   "TSM-USD": ["TSMC", "Taiwan Semiconductor"],
   "UNITREE-USD": ["Unitree"],
   "ZHIPU-USD": ["Zhipu"],
+};
+
+/**
+ * #508: tên coin không bao giờ là từ thường, nên khớp cả khi viết thường và ở dạng số nhiều ("2,223 bitcoins", "ethers").
+ * Tên một từ khác của coin (lấy từ SoSoValue) vẫn phải viết hoa chữ đầu ("near" không khớp NEAR). Danh sách nhỏ, tường
+ * minh; thêm tên = đổi `NEWS_ASSET_MAP_VERSION`.
+ */
+export const COIN_NAME_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  "BTC-USD": ["Bitcoin"],
+  "ETH-USD": ["Ethereum", "Ether"],
 };
 
 export const SIGNAL_CATALYSTS = Object.keys(NEWS_RULES.catalysts) as SignalCatalyst[];
