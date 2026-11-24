@@ -733,20 +733,26 @@ function Desktop({
                 key={h}
                 type="button"
                 aria-pressed={sel === h}
-                aria-label={
-                  m === undefined ? base : t("markerAria", { label: base, marker: label(m) })
-                }
                 onClick={() => {
                   setSel(h);
                 }}
-                className={`flex min-h-11 cursor-pointer flex-col items-center justify-end gap-1 rounded-lg border-0 py-1 text-xs font-extrabold ${sel === h ? "bg-accent-tint text-accent-ink" : "bg-transparent text-ink hover:bg-surface-2"}`}
+                className={`relative flex min-h-11 cursor-pointer flex-col items-center justify-end gap-1 rounded-lg border-0 py-1 text-xs font-extrabold ${sel === h ? "bg-accent-tint text-accent-ink" : "bg-transparent text-ink hover:bg-surface-2"}`}
               >
                 {tag === "" ? null : (
                   <span className="rounded-full bg-warn-bg px-1 text-[9px] leading-[14px] font-extrabold whitespace-nowrap text-warn">
                     {tag}
                   </span>
                 )}
-                {pad(h)}
+                {/* Khoảng trắng giữa các phần: tên truy cập đọc "07:00 07 Show …", không dính chữ. Text node chỉ có khoảng
+                    trắng giữa hai phần tử flex không được vẽ nên bố cục không đổi. */}
+                {tag === "" ? null : " "}
+                {pad(h)}{" "}
+                {/* #488 (axe label-content-name-mismatch, WCAG 2.5.3): tên truy cập lấy từ chữ hiển thị (mốc + giờ), câu
+                    giải thích chỉ dành cho trình đọc màn hình nối phía sau, không dùng aria-label thay chữ hiển thị. Nút
+                    `relative` để span sr-only (absolute) nằm trong hàng cuộn ngang, không kéo rộng cả trang. */}
+                <span className="sr-only">
+                  {m === undefined ? base : t("markerAria", { label: base, marker: label(m) })}
+                </span>
               </button>
             );
           })}

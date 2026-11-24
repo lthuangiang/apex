@@ -182,6 +182,31 @@ describe("Market hours page", { timeout: 30_000 }, () => {
     expect(screen.getByText(/Kept for 90 days\./)).toBeInTheDocument();
   });
 
+  it("#488: hour buttons take their accessible name from the visible text, the marker sentence after it", async () => {
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const hours = screen.getAllByRole("button", { name: /Show \d\d:00 in 5-minute steps/ });
+    expect(hours).toHaveLength(24);
+    const visible = (b: HTMLElement) =>
+      [...b.childNodes]
+        .filter((n) => !(n instanceof HTMLElement && n.classList.contains("sr-only")))
+        .map((n) => n.textContent)
+        .join(" ")
+        .trim();
+    for (const b of hours) {
+      // WCAG 2.5.3 (axe label-content-name-mismatch): không có aria-label thay chữ hiển thị; tên truy cập bắt đầu
+      // bằng đúng chữ hiển thị (mốc rồi giờ), câu giải thích nối sau.
+      expect(b).not.toHaveAttribute("aria-label");
+      const name = b.textContent.replace(/\s+/g, " ").trim();
+      expect(name.startsWith(visible(b).replace(/\s+/g, " "))).toBe(true);
+      expect(b).toHaveAccessibleName(name);
+    }
+    expect(hours.filter((b) => b.textContent.includes(". Marker: ")).length).toBeGreaterThan(0);
+    expect(hours.some((b) => /^\d\d Show \d\d:00 in 5-minute steps$/.test(b.textContent))).toBe(
+      true,
+    );
+  });
+
   it("hides leading days with no candles, says since when, and uses taller rows at 7 days", async () => {
     const day = (date: string, empty: boolean) => ({
       date,
