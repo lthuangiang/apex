@@ -155,7 +155,23 @@ describe("asset must be written in the article (news-v3, #298)", () => {
     // Tên một từ khác vẫn cần chữ hoa đầu (PM review #301), kể cả số nhiều.
     const sol = [{ symbol: "SOL", name: "Solana" }];
     expect(assetInText("solana etf filed", null, coin("SOL"), sol)).toBe(false);
-    expect(assetInText("Two Solanas ETFs filed", null, coin("SOL"), sol)).toBe(true);
+    expect(assetInText("Solana ETF filed", null, coin("SOL"), sol)).toBe(true);
+    // PM review #512: số nhiều chỉ cho tên coin trong COIN_NAME_ALIASES.
+    expect(assetInText("Two Solanas ETFs filed", null, coin("SOL"), sol)).toBe(false);
+  });
+
+  it("#508 (PM review #512): plural only for COIN_NAME_ALIASES, never for stock names", () => {
+    const aapl = stock("AAPL");
+    expect(
+      assetInText("Apples rally after earnings", null, aapl, [
+        { symbol: "AAPL", name: "Apple Inc." },
+      ]),
+    ).toBe(false);
+    expect(
+      assetInText("Apple beats estimates", null, aapl, [{ symbol: "AAPL", name: "Apple Inc." }]),
+    ).toBe(true);
+    expect(assetInText("Fund buys 2,223 bitcoins", null, coin("BTC"), [])).toBe(true);
+    expect(assetInText("Treasury adds 1,000 ethers", null, coin("ETH"), [])).toBe(true);
   });
 
   it("#508: 'Binance-stolen funds' still does not name BNB", () => {
