@@ -234,7 +234,7 @@ describe("Export data file (#489)", () => {
     );
     const f = srExportSchema.parse(raw);
     expect(f.meta).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       period: "24h",
       to: env.clock.now.toISOString(),
       rulesVersion: NEWS_RULES.version,
@@ -269,6 +269,8 @@ describe("Export data file (#489)", () => {
       side: "long",
       paperTradeId,
       claudeCalls: 1,
+      // #509: bài có tiêu đề không có đoạn trích.
+      excerpt: null,
     });
     expect(f.articles[0]?.claudeDoneAt).not.toBeNull();
   });
@@ -346,8 +348,47 @@ describe("Export data file (#489)", () => {
         expect(body.includes(s), `${p}: ${s}`).toBe(false);
       // Không có khoá của dữ liệu cấm ở bất kỳ tầng nào.
       expect(body, p).not.toMatch(
-        /"(email|userId|user_id|ownerUserId|createdBy|botId|bot_id|sodexAccountId|address|addresses|apiKey|token|signature|content|excerpt|url|lastError)"\s*:/,
+        /"(email|userId|user_id|ownerUserId|createdBy|botId|bot_id|sodexAccountId|address|addresses|apiKey|token|signature|content|url|lastError)"\s*:/,
       );
+    }
+  });
+
+  it("#509: untitled articles carry a short normalized excerpt; titled ones none; still no secrets", async () => {
+    const secretBody = [
+      "<p>LIT token unlock tomorrow: 12% of supply.",
+      URL_SECRET,
+      "contact leak@desk.test",
+      WALLET,
+      "sig",
+      "ab".repeat(40),
+      "</p>",
+      "y".repeat(400),
+    ].join(" ");
+    await env.pool.query(
+      `insert into signal_articles (id, source, url, title, content, published_at, collected_at, matched_currencies, candidates,
+         content_hash, status, rule_version)
+       values ('u1', 'X', null, null, $1, $2, $2, '[]', '[]', 'hash-u1', 'collected', $3)`,
+      [secretBody, ago(10), NEWS_RULES.version],
+    );
+    await env.pool.query(
+      `insert into signal_events (id, article_id, stage, outcome, rule_version, at) values (gen_random_uuid(), 'u1', 'collect', 'pass', $1, $2)`,
+      [NEWS_RULES.version, ago(10)],
+    );
+    try {
+      const r = await exportOf(team);
+      const f = srExportSchema.parse(r.json());
+      const u = f.articles.find((a) => a.id === "u1");
+      expect(u?.title).toBeNull();
+      expect(u?.excerpt).toMatch(/^LIT token unlock tomorrow: 12% of supply\. contact sig y+…$/);
+      expect(Array.from(u?.excerpt ?? "").length).toBeLessThanOrEqual(280);
+      expect(f.articles.find((a) => a.id === "e1")?.excerpt).toBeNull();
+      for (const s of [URL_SECRET, "SECRET123", "leak@desk.test", WALLET, "abab", BODY, "<p>"])
+        expect(r.body.includes(s), s).toBe(false);
+      expect(r.body).not.toMatch(/0x[0-9a-fA-F]{40}/);
+      expect(r.body).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+    } finally {
+      await env.pool.query("delete from signal_events where article_id = 'u1'");
+      await env.pool.query("delete from signal_articles where id = 'u1'");
     }
   });
 

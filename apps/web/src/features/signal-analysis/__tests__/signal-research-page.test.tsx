@@ -142,7 +142,7 @@ function exportFile(q: URLSearchParams) {
   const section = { rows: 0, total: 0, omitted: 0, truncated: false, limit: 5000 };
   return {
     meta: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       period: q.get("period"),
       from: "2026-11-22T10:00:00.000Z",
       to: "2026-11-23T10:00:00.000Z",
