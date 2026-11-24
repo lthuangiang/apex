@@ -428,9 +428,9 @@ describe("classifier answer", () => {
 });
 
 describe("classifier prompt news-classifier-v6 (#505)", () => {
-  it("ships with rules news-v4 (only the prompt changes)", () => {
+  it("ships with rules news-v5 (#506 adds a Score rule in the same hotfix)", () => {
     expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v6");
-    expect(NEWS_RULES.version).toBe("news-v4");
+    expect(NEWS_RULES.version).toBe("news-v5");
   });
   it("listing: a country or stock exchange opening crypto trading in general is not a listing", () => {
     expect(CLASSIFIER_SYSTEM).toContain(

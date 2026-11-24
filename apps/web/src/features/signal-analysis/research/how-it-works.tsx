@@ -484,8 +484,9 @@ function NewsSub({ rulesVersion }: { rulesVersion: number | null }) {
 
 /**
  * #395 (mockup docs/mockups/signal-research/reader-v4.html): hai hộp của tab News types. "Not counted" = luật cố định trong
- * code (`etfExcludedMarkets`, `treasuryExcludedMarkets`); hộp thứ hai = thay đổi trong prompt của Claude reader hiện tại
- * (#399: tên reader lấy từ classifier đang chạy; dòng của v6 (#505) đứng đầu, rồi dòng của v5, rồi các dòng của v4).
+ * code (`etfExcludedMarkets`, `treasuryExcludedMarkets`, `listingExcludedMarkets` #506); hộp thứ hai = thay đổi trong prompt
+ * của Claude reader hiện tại (#399: tên reader lấy từ classifier đang chạy; dòng của v6 (#505) đứng đầu, rồi dòng của v5,
+ * rồi các dòng của v4).
  */
 function NewsBoxes() {
   const tr = useTranslations("signalAnalysis.research.rules");
@@ -517,6 +518,7 @@ function NewsBoxes() {
         <ul className={list}>
           <li>{tr.rich("notCounted.etf", { b })}</li>
           <li>{tr.rich("notCounted.treasury", { b })}</li>
+          <li>{tr.rich("notCounted.listing", { b })}</li>
         </ul>
       </section>
       <section aria-labelledby="hiw-reader" className={`${box} border-border bg-surface-2`}>

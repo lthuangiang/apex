@@ -2,7 +2,13 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { dec, etfOnMajorAsset, NEWS_CLASSIFIER, treasuryOnMajorAsset } from "@drift/shared";
+import {
+  dec,
+  etfOnMajorAsset,
+  listingOnMajorAsset,
+  NEWS_CLASSIFIER,
+  treasuryOnMajorAsset,
+} from "@drift/shared";
 import { z } from "zod";
 
 import {
@@ -96,12 +102,13 @@ function text(o: ClassifyOutcome): string {
   return `${o.value.catalyst} · ${o.value.market ?? "NONE"}`;
 }
 
-/** Luật cố định của Rules v4 sau Claude (chỉ hai luật BTC / ETH; các kiểm khác của bước Score không chạy ở đây). */
+/** Luật cố định của Rules sau Claude (chỉ các luật BTC / ETH; các kiểm khác của bước Score không chạy ở đây). */
 function ruleOf(o: ClassifyOutcome): string | null {
   if (!o.ok || o.value.catalyst === "none" || o.value.market === null) return null;
   const c = o.value.catalyst;
   if (etfOnMajorAsset(c, o.value.market)) return "ETF_MAJOR_ASSET";
   if (treasuryOnMajorAsset(c, o.value.market)) return "TREASURY_MAJOR_ASSET";
+  if (listingOnMajorAsset(c, o.value.market)) return "LISTING_MAJOR_ASSET";
   return null;
 }
 

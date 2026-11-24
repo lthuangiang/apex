@@ -105,23 +105,23 @@ beforeAll(async () => {
     detail: { level: "low", tpPct: "0.1500", costPct: "0.2000", spreadPct: "0.0100" },
   });
   // Một event lạc của version khác trên cùng bài (ví dụ ghi sau khi đổi version): trace và feed không bao giờ đọc nó.
-  await event("h-v3-skip", "news-v4", DAY - 20 * MIN, "filter", "merge", {
+  await event("h-v3-skip", "news-v5", DAY - 20 * MIN, "filter", "merge", {
     reason: "SAME_STORY",
   });
 
   // Rules v4 · reader v4: bắt đầu 1 ngày trước; một bài mở lệnh, một bài bị bỏ ở Normalize.
-  await article("h-v4-trade", "news-v4", DAY - 10 * MIN, "news-classifier-v4");
-  await event("h-v4-trade", "news-v4", DAY - 10 * MIN, "collect", "pass");
-  await event("h-v4-trade", "news-v4", DAY - 11 * MIN, "normalize", "pass");
-  await event("h-v4-trade", "news-v4", DAY - 12 * MIN, "understand", "pass", {
+  await article("h-v4-trade", "news-v5", DAY - 10 * MIN, "news-classifier-v4");
+  await event("h-v4-trade", "news-v5", DAY - 10 * MIN, "collect", "pass");
+  await event("h-v4-trade", "news-v5", DAY - 11 * MIN, "normalize", "pass");
+  await event("h-v4-trade", "news-v5", DAY - 12 * MIN, "understand", "pass", {
     detail: { market: "BTC-USD", direction: "short", maxHoldHours: 24 },
   });
-  await trade(v4Trade, "h-v4-trade", "news-v4", DAY - 13 * MIN);
-  await event("h-v4-trade", "news-v4", DAY - 13 * MIN, "decide", "open", { tradeId: v4Trade });
+  await trade(v4Trade, "h-v4-trade", "news-v5", DAY - 13 * MIN);
+  await event("h-v4-trade", "news-v5", DAY - 13 * MIN, "decide", "open", { tradeId: v4Trade });
 
-  await article("h-v4-drop", "news-v4", 2 * 60 * MIN, null);
-  await event("h-v4-drop", "news-v4", 2 * 60 * MIN, "collect", "pass");
-  await event("h-v4-drop", "news-v4", 2 * 60 * MIN - MIN, "normalize", "drop", {
+  await article("h-v4-drop", "news-v5", 2 * 60 * MIN, null);
+  await event("h-v4-drop", "news-v5", 2 * 60 * MIN, "collect", "pass");
+  await event("h-v4-drop", "news-v5", 2 * 60 * MIN - MIN, "normalize", "drop", {
     reason: "NO_SODEX_MARKET",
   });
 });
@@ -134,8 +134,8 @@ describe("history across Rules versions (#413)", () => {
   it("the 30-day feed shows articles of every Rules version, each with its version and reader", async () => {
     const p = await get("/articles?range=30d&limit=100", researchArticlesPageSchema);
     expect(p.items.map((x) => [x.id, x.rulesVersion, x.readerVersion])).toEqual([
-      ["h-v4-drop", 4, null],
-      ["h-v4-trade", 4, "news-classifier-v4"],
+      ["h-v4-drop", 5, null],
+      ["h-v4-trade", 5, "news-classifier-v4"],
       ["h-v3-skip", 3, "news-classifier-v3"],
       ["h-v3-trade", 3, "news-classifier-v3"],
     ]);
@@ -153,7 +153,7 @@ describe("history across Rules versions (#413)", () => {
     expect(month.funnel?.days).toBe(30);
     expect(month.funnel?.rules).toEqual([
       { v: 3, articles: 2 },
-      { v: 4, articles: 2 },
+      { v: 5, articles: 2 },
     ]);
     // Số trên phễu khớp câu tóm tắt: 4 bài thu, 2 lệnh (1 short của v3, 1 short của v4).
     expect(month.funnel?.collected).toBe(4);
@@ -162,17 +162,17 @@ describe("history across Rules versions (#413)", () => {
     // Mốc bắt đầu từng version = event sớm nhất của version đó; reader = prompt của bài phân loại sớm nhất.
     expect(month.rulesHistory).toEqual([
       { v: 3, startedAt: ago(3 * DAY), reader: "news-classifier-v3" },
-      { v: 4, startedAt: ago(DAY - 10 * MIN), reader: "news-classifier-v4" },
+      { v: 5, startedAt: ago(DAY - 10 * MIN), reader: "news-classifier-v4" },
     ]);
     const day = await get("/summary?range=1d", researchSummarySchema);
-    expect(day.funnel?.rules).toEqual([{ v: 4, articles: 2 }]);
+    expect(day.funnel?.rules).toEqual([{ v: 5, articles: 2 }]);
     expect(day.funnel?.collected).toBe(2);
   });
 
   it("Is it working? and the counted rows stay on the current Rules version only", async () => {
     const s = await get("/summary?range=30d", researchSummarySchema);
-    expect(s.newsRulesVersion).toBe(4);
-    expect(s.rows[0]).toMatchObject({ rulesVersion: 4, opened: 1, closed: 1 });
+    expect(s.newsRulesVersion).toBe(5);
+    expect(s.rows[0]).toMatchObject({ rulesVersion: 5, opened: 1, closed: 1 });
     expect(s.olderRules).toEqual({ trades: 1, versions: [3] });
   });
 
@@ -197,10 +197,10 @@ describe("history across Rules versions (#413)", () => {
 
   it("Paper trades: Current rules by default, All rules adds the v3 trade with its version", async () => {
     const cur = await get("/trades?show=entered", researchTradesPageSchema);
-    expect(cur.items.map((x) => [x.id, x.rulesVersion])).toEqual([[v4Trade, 4]]);
+    expect(cur.items.map((x) => [x.id, x.rulesVersion])).toEqual([[v4Trade, 5]]);
     const all = await get("/trades?show=entered&olderRules=true", researchTradesPageSchema);
     expect(all.items.map((x) => [x.id, x.rulesVersion])).toEqual([
-      [v4Trade, 4],
+      [v4Trade, 5],
       [v3Trade, 3],
     ]);
   });

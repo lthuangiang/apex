@@ -716,12 +716,17 @@ function item(
 
 const ITEMS: SosoNewsItem[] = [
   item("n1", T0 - 2 * MIN, "Solana DeFi protocol exploited, Solana drained"),
-  item("n2", T0 - 3 * MIN, "Bitcoin listing on a new venue", "BTC", "Bitcoin"),
+  item("n2", T0 - 3 * MIN, "Court rules in favour of a Bitcoin fund", "BTC", "Bitcoin"),
   item("n3", T0 - 4 * MIN, "Solana unrelated promo"),
 ];
 const BY_TITLE: Record<string, Classification> = {
   "Solana DeFi protocol exploited, Solana drained": hack,
-  "Bitcoin listing on a new venue": { ...hack, catalyst: "listing", market: "BTC-USD" },
+  // #506: listing trên BTC bị LISTING_MAJOR_ASSET loại ở Score, nên tín hiệu Long BTC dùng favorable_ruling.
+  "Court rules in favour of a Bitcoin fund": {
+    ...hack,
+    catalyst: "favorable_ruling",
+    market: "BTC-USD",
+  },
 };
 
 function deps(capture: PipelineDeps["captureContext"]): PipelineDeps {
@@ -814,7 +819,7 @@ describe("pipeline step 4", () => {
     expect({ ...withCtx, contexts: 0 }).toEqual(without);
 
     const rows = await db.select().from(signalContexts).orderBy(asc(signalContexts.articleId));
-    // Chỉ tín hiệu qua Score (n1 hack SOL short, n2 listing BTC long); n3 bị loại ở Score nên không tới bước 4.
+    // Chỉ tín hiệu qua Score (n1 hack SOL short, n2 favorable_ruling BTC long); n3 bị loại ở Score nên không tới bước 4.
     expect(rows.map((r) => [r.articleId, r.market, r.direction, r.decidedAt.getTime()])).toEqual([
       ["n1", "SOL-USD", "short", T0],
       ["n2", "BTC-USD", "long", T0],

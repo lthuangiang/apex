@@ -34,12 +34,12 @@ beforeAll(async () => {
   await signIn(env, user, `sr-user-${randomUUID()}@drift.test`);
   await env.pool.query(
     `insert into signal_articles (id, source, title, published_at, collected_at, matched_currencies, candidates, content_hash, status, rule_version)
-     values ('art-1', 'Bloomberg', 'SEC delays SOL ETF', '2026-11-18T10:00:00Z', '2026-11-18T10:03:00Z', '[]', '[]', 'h', 'classified', 'news-v4')`,
+     values ('art-1', 'Bloomberg', 'SEC delays SOL ETF', '2026-11-18T10:00:00Z', '2026-11-18T10:03:00Z', '[]', '[]', 'h', 'classified', 'news-v5')`,
   );
   await env.pool.query(
     `insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry, later_level, outcome, locked, rule_version)
      values ($1, 'SOL-USD|etf_delayed_or_rejected', 'SOL-USD', 'etf_delayed_or_rejected', 'short', 'art-1', '2026-11-18T10:03:00Z',
-             '[{"name":"Bloomberg","tier":"top","articleId":"art-1","at":"2026-11-18T10:00:00.000Z"}]', 'medium', 'medium', 'entered', true, 'news-v4')`,
+             '[{"name":"Bloomberg","tier":"top","articleId":"art-1","at":"2026-11-18T10:00:00.000Z"}]', 'medium', 'medium', 'entered', true, 'news-v5')`,
     [storyId],
   );
   await env.pool.query(
@@ -49,7 +49,7 @@ beforeAll(async () => {
        exit_fee, result_usdc, result_pct, rule_version, classifier_version)
      values ($1, 'news', $2, 'art-1', 'SOL-USD', 'SOL', 'etf_delayed_or_rejected', 'short', 500, 3.5, 142.18, 142.2, 0.03, 0.05, 0.25, 1.33,
        2, 1, 139.34, 143.6, '2026-11-20T10:03:00Z', '2026-11-18T10:00:00Z', '2026-11-18T10:03:00Z', '2026-11-18T10:03:05Z', -0.6, 'medium',
-       '[{"name":"Bloomberg","tier":"top"}]', false, 'book', 'closed', 139.3, 'take_profit', '2026-11-19T09:12:00Z', 0.24, 9.5, 1.9, 'news-v4',
+       '[{"name":"Bloomberg","tier":"top"}]', false, 'book', 'closed', 139.3, 'take_profit', '2026-11-19T09:12:00Z', 0.24, 9.5, 1.9, 'news-v5',
        'cls-passed')`,
     [tradeId, storyId],
   );
@@ -112,7 +112,7 @@ describe("signal research (team only, read-only)", () => {
     expect(summary.rows[0]).toMatchObject({
       type: "news",
       label: "live",
-      rulesVersion: 4,
+      rulesVersion: 5,
       closed: 1,
       avgPct: 1.9,
       status: "collecting",
@@ -228,7 +228,7 @@ describe("signal research articles feed and trace (#291)", () => {
         u?.[4] ?? null,
         u === null ? null : NEWS_CLASSIFIER.model,
         u === null ? null : NEWS_CLASSIFIER.promptVersion,
-        a.ruleVersion ?? "news-v4",
+        a.ruleVersion ?? "news-v5",
       ],
     );
   }
@@ -241,7 +241,7 @@ describe("signal research articles feed and trace (#291)", () => {
   ) {
     await env.pool.query(
       `insert into signal_events (id, article_id, story_id, trade_id, stage, outcome, reason, detail, rule_version, at)
-       values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'news-v4', $8)`,
+       values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'news-v5', $8)`,
       [
         articleId,
         extra.storyId ?? null,
@@ -288,7 +288,7 @@ describe("signal research articles feed and trace (#291)", () => {
          outcome, locked, trade_id, rule_version)
        values ($1, 'ETH-USD|etf_approved', 'ETH-USD', 'etf_approved', 'long', 'a-trade', $2,
          '[{"name":"Reuters","tier":"top","articleId":"a-trade","at":"x"},{"name":"CoinDesk","tier":"top","articleId":"a-merged","at":"y"}]',
-         'medium', 'high', 'entered', true, $3, 'news-v4')`,
+         'medium', 'high', 'entered', true, $3, 'news-v5')`,
       [story1, ago(100), trade2],
     );
     await env.pool.query(
@@ -296,7 +296,7 @@ describe("signal research articles feed and trace (#291)", () => {
          spread_at_entry_pct, fee_pct, entry_fee, typical_move_pct, tp_pct, sl_pct, tp_price, sl_price, max_hold_until, event_at, seen_at, opened_at,
          moved_before_entry_pct, level_at_entry, sources_at_entry, outside_market_hours, price_source, status, rule_version)
        values ($1, 'news', $2, 'a-trade', 'ETH-USD', 'ETH', 'etf_approved', 'long', 500, 0.1465, 3412.5, 3412.3, 0.011, 0.05, 0.25, 1.07,
-         1.6, 0.8, 3467.1, 3385.2, $3, $4, $5, $5, 0.3, 'medium', '[{"name":"Reuters","tier":"top"}]', false, 'book', 'open', 'news-v4')`,
+         1.6, 0.8, 3467.1, 3385.2, $3, $4, $5, $5, 0.3, 'medium', '[{"name":"Reuters","tier":"top"}]', false, 'book', 'open', 'news-v5')`,
       [trade2, story1, ago(100 - 72 * 60), ago(104), ago(100)],
     );
     for (const id of ["a-trade", "a-merged"]) {
@@ -342,7 +342,7 @@ describe("signal research articles feed and trace (#291)", () => {
       `insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry, later_level,
          outcome, locked, rule_version)
        values ($1, 'SOL-USD|hack_exploit', 'SOL-USD', 'hack_exploit', 'short', 'a-filter', $2,
-         '[{"name":"Reuters","tier":"mid","articleId":"a-filter","at":"x"}]', 'low', 'low', 'skipped', false, 'news-v4')`,
+         '[{"name":"Reuters","tier":"mid","articleId":"a-filter","at":"x"}]', 'low', 'low', 'skipped', false, 'news-v5')`,
       [story2, ago(85)],
     );
     await event("a-filter", 85, "collect", "pass");
@@ -537,7 +537,7 @@ describe("signal research articles feed and trace (#291)", () => {
     expect(week.items.map((x) => x.id)).toContain("a-week");
     // #413: bài của version Rules cũ không bị ẩn; mang số version của chính nó.
     expect(week.items.find((x) => x.id === "a-v1")?.rulesVersion).toBe(1);
-    expect(week.items.find((x) => x.id === "a-week")?.rulesVersion).toBe(4);
+    expect(week.items.find((x) => x.id === "a-week")?.rulesVersion).toBe(5);
     expect(week.totalInRange).toBe(IN_DAY.length + 3);
     // Mặc định 1 ngày.
     expect((await feed("")).totalInRange).toBe(day.totalInRange);

@@ -70,7 +70,7 @@ async function signal(id: string) {
        claude_output_tokens, claude_model, claude_prompt_version, rule_version)
      values ($1, 'Reuters', null, $2, 'Body', $3, $3, '[{"symbol":"ETH","name":"Ethereum"}]',
        '[{"symbol":"ETH","market":"ETH-USD","kind":"crypto"}]', $4, 'classified', $3,
-       '{"catalyst":"etf_approved","market":"ETH-USD","relevance":"direct","promotional":false}', 1, 500, 0, 4000, 100, $5, $6, 'news-v4')`,
+       '{"catalyst":"etf_approved","market":"ETH-USD","relevance":"direct","promotional":false}', 1, 500, 0, 4000, 100, $5, $6, 'news-v5')`,
     [id, `Title ${id}`, ago(60), `hash-${id}`, NEWS_CLASSIFIER.model, CURRENT],
   );
   for (const [stage, detail] of [
@@ -83,7 +83,7 @@ async function signal(id: string) {
   ] as const)
     await env.pool.query(
       `insert into signal_events (id, article_id, stage, outcome, detail, rule_version, at)
-       values (gen_random_uuid(), $1, $2, 'pass', $3, 'news-v4', $4)`,
+       values (gen_random_uuid(), $1, $2, 'pass', $3, 'news-v5', $4)`,
       [id, stage, detail === null ? null : JSON.stringify(detail), ago(59)],
     );
 }
@@ -264,7 +264,7 @@ describe("My versions (#423)", () => {
       `insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry,
          later_level, outcome, locked, rule_version, version_id)
        values ($1, 'ETH-USD|etf_approved', 'ETH-USD', 'etf_approved', 'long', 'b1', $2,
-         '[{"name":"Reuters","tier":"top","articleId":"b1","at":"x"}]', 'medium', 'medium', 'entered', true, 'news-v4', $3)`,
+         '[{"name":"Reuters","tier":"top","articleId":"b1","at":"x"}]', 'medium', 'medium', 'entered', true, 'news-v5', $3)`,
       [story, ago(30), mine],
     );
     await env.pool.query(
@@ -273,7 +273,7 @@ describe("My versions (#423)", () => {
          event_at, seen_at, opened_at, level_at_entry, sources_at_entry, outside_market_hours, price_source, status, rule_version,
          classifier_version)
        values ($1, 'news', 'live', $2, $5, 'b1', 'ETH-USD', 'ETH', 'etf_approved', 'long', 500, 0.15, 3400, 3400, 0.01, 0.05, 0.25, 1, 1.6,
-         0.8, 3454, 3372, $3::timestamptz + interval '3 days', $3, $3, $3, 'medium', '[]', false, 'book', 'open', 'news-v4', $4)`,
+         0.8, 3454, 3372, $3::timestamptz + interval '3 days', $3, $3, $3, 'medium', '[]', false, 'book', 'open', 'news-v5', $4)`,
       [id, mine, ago(30), CURRENT, story],
     );
     expect((await tester.request("GET", `${base}/trades/${id}`)).statusCode).toBe(200);

@@ -8236,6 +8236,7 @@
           "assetNotInText": "asset not in article",
           "treasuryMajorAsset": "treasury on BTC / ETH",
           "etfMajorAsset": "ETF on BTC / ETH",
+          "listingMajorAsset": "listing on BTC / ETH",
           "newsTypeOff": "news type off",
           "assetNotInVersion": "asset not in version",
           "levelTooLow": "level too low",
@@ -8261,6 +8262,7 @@
           "assetNotInText": "Asset not in the article",
           "treasuryMajorAsset": "Treasury on BTC or ETH",
           "etfMajorAsset": "ETF on BTC or ETH",
+          "listingMajorAsset": "Listing on BTC or ETH",
           "newsTypeOff": "News type off",
           "assetNotInVersion": "Asset not in version",
           "levelTooLow": "Level too low",
@@ -8313,6 +8315,7 @@
           "assetNotInText": "the asset is not named in the title or text",
           "treasuryMajorAsset": "treasury news on BTC or ETH is not traded",
           "etfMajorAsset": "BTC and ETH already have many ETFs, so one more rarely moves the price. Rules v4 skip ETF news on these two coins.",
+          "listingMajorAsset": "BTC and ETH already trade on every major exchange, so one more listing does not move the price. Rules v5 skip listing news on these two coins.",
           "newsTypeOff": "this news type is off in the version",
           "assetNotInVersion": "the asset is not in the version",
           "levelTooLow": "level below the version’s lowest level to trade",
@@ -8491,6 +8494,7 @@
         "assetNotInText": "Asset not in the article",
         "treasuryMajorAsset": "Treasury news on BTC or ETH",
         "etfMajorAsset": "ETF on BTC or ETH",
+        "listingMajorAsset": "Listing on BTC or ETH",
         "newsTypeOff": "News type off in this version",
         "assetNotInVersion": "Asset not in this version",
         "levelTooLow": "Level below this version’s lowest",
@@ -8528,7 +8532,8 @@
         "notCounted": {
           "title": "Not counted",
           "etf": "<b>ETF news on BTC or ETH.</b> Both already have many ETFs, so one more rarely moves the price. Dropped at Score as “ETF on BTC or ETH”.",
-          "treasury": "<b>Treasury buys and sells of BTC or ETH.</b> Too small next to their market. Dropped at Score as “Treasury on BTC or ETH”."
+          "treasury": "<b>Treasury buys and sells of BTC or ETH.</b> Too small next to their market. Dropped at Score as “Treasury on BTC or ETH”.",
+          "listing": "<b>Listings of BTC or ETH.</b> Both already trade on every major exchange, so one more listing does not move the price. Dropped at Score as “Listing on BTC or ETH”."
         },
         "reader": {
           "title": "What Claude reader {name} reads differently",

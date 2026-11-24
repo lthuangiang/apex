@@ -92,6 +92,8 @@ export const RESEARCH_DROP_REASONS = [
   "treasuryMajorAsset",
   /** #395 (news-v4): tin ETF (approved / delayed or rejected) trên BTC / ETH không giao dịch (`ETF_MAJOR_ASSET`). */
   "etfMajorAsset",
+  /** #506 (news-v5): tin listing trên BTC / ETH không giao dịch (`LISTING_MAJOR_ASSET`). */
+  "listingMajorAsset",
   /** #303 (DEC-331), riêng từng News bot version: loại tin bị tắt trong version (`NEWS_TYPE_OFF`). */
   "newsTypeOff",
   /** Tài sản không thuộc danh sách / loại tài sản của version (`ASSET_NOT_IN_VERSION`). */

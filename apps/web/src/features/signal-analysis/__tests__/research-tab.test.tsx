@@ -1604,7 +1604,7 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
     return dlg;
   }
 
-  it("News types: two new boxes, Not counted labelled New in v4 while v4 is under 14 days old", async () => {
+  it("News types: two boxes; without reader v6 (Rules v5, #506) neither box nor the chip is labelled new", async () => {
     state.classifiers = readerV4(new Date(Date.now() - 2 * DAY).toISOString());
     wrap();
     const dlg = await newsTypes();
@@ -1616,6 +1616,7 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
     ).toEqual([
       "ETF news on BTC or ETH. Both already have many ETFs, so one more rarely moves the price. Dropped at Score as “ETF on BTC or ETH”.",
       "Treasury buys and sells of BTC or ETH. Too small next to their market. Dropped at Score as “Treasury on BTC or ETH”.",
+      "Listings of BTC or ETH. Both already trade on every major exchange, so one more listing does not move the price. Dropped at Score as “Listing on BTC or ETH”.",
     ]);
     const reads = within(dlg).getByRole("region", {
       name: /^What Claude reader v4 reads differently/,
@@ -1632,14 +1633,13 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
       "Moving or laundering funds from an earlier hack is not a new hack.",
       "An ETF listed on a smaller exchange for a coin that already has ETFs is not “ETF approved”.",
     ]);
-    // #399: "New in v4" chỉ còn ở hộp Not counted (Rules v4); hộp reader mang nhãn của reader hiện tại (v6, #505).
-    expect(within(notCounted).getByText("New in v4")).toBeInTheDocument();
-    expect(within(dlg).getAllByText("New in v4")).toHaveLength(1);
-    expect(within(dlg).queryByText("New in v5")).not.toBeInTheDocument();
+    // #506: cả hai nhãn theo reader v6 (Rules v5 lên cùng reader v6); chưa có reader v6 thì không có nhãn nào.
+    expect(within(notCounted).queryByText(/^New in v/)).not.toBeInTheDocument();
+    expect(within(dlg).queryByText(/^New in v/)).not.toBeInTheDocument();
     expect(within(dlg).getByText(/Claude reader v4 · a starting guess/)).toHaveTextContent(
       "Rules v2 · Claude reader v4 · a starting guess that the results prove or drop",
     );
-    expect(within(dlg).getByText("v1 → v2")).toBeInTheDocument();
+    expect(within(dlg).queryByText("v1 → v2")).not.toBeInTheDocument();
     // Bố cục cũ giữ nguyên: bảng loại tin và dòng "Not signals" vẫn ở đó.
     expect(
       within(dlg).getByRole("table", { name: "News types, direction and max hold" }),
@@ -1661,7 +1661,7 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
     ).toBeInTheDocument();
   });
 
-  it("#505 reader v6: the reader box follows the current reader, New in v6 on it, the v6 line first, New in v4 stays on Not counted", async () => {
+  it("#505 reader v6: the reader box follows the current reader, the v6 line first; New in v6 on both boxes (Rules v5, #506)", async () => {
     state.classifiers = readerV6(
       new Date(Date.now() - 1 * DAY).toISOString(),
       new Date(Date.now() - 2 * DAY).toISOString(),
@@ -1678,9 +1678,11 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
       "A company’s shares starting to trade is not a listing, and a fund buying a company’s shares is not a treasury buy.",
     );
     expect(within(reads).getAllByRole("listitem")).toHaveLength(6);
-    expect(within(notCounted).getByText("New in v4")).toBeInTheDocument();
+    expect(within(notCounted).getByText("New in v6")).toBeInTheDocument();
+    expect(within(dlg).getAllByText("New in v6")).toHaveLength(2);
+    expect(within(dlg).queryByText("New in v4")).not.toBeInTheDocument();
     expect(within(dlg).getByText(/Claude reader v6 · a starting guess/)).toBeInTheDocument();
-    // Chip của Rules vẫn theo mốc Rules v4 (reader v4 lên 2 ngày trước).
+    // Chip của Rules theo mốc reader v6 (lên 1 ngày trước, cùng Rules v5).
     expect(within(dlg).getByText("v1 → v2")).toBeInTheDocument();
     await noViolations();
     expect(intlErrors).toEqual([]);
