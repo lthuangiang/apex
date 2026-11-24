@@ -709,6 +709,132 @@ describe("review PR #278 fixes", () => {
     expect(t).toMatchObject({ articleId: "n2", priceSource: "rest_book" });
   });
 
+  describe("#511: open trades on a market without a live book or spread samples", () => {
+    /** Mở một lệnh bằng sổ REST (short SOL, tin hack) rồi trả watcher + điều khiển giờ / sổ REST. */
+    async function openOnRest(title: string) {
+      const claude = fakeClaude({ [title]: hack });
+      let now = T0;
+      let reply: RestBookResult = { ok: true, bid: "99.99", ask: "100.01", at: T0 };
+      const asked: { market: string; at: number }[] = [];
+      const s = setup({
+        items: () => [item(`r-${title}`, T0 - MIN, title, { author: "Bloomberg", category: 5 })],
+        claude,
+        now: () => now,
+        // Giá gần nhất luôn mới (như prod: có nến), nhưng không có sổ live / mẫu spread.
+        last: new Proxy({} as Record<string, { price: string; at: number }>, {
+          get: (_t, k) => (k === "SOL-USD" ? { price: "100", at: now - 2_000 } : undefined),
+        }),
+        requestBook: (market) => {
+          asked.push({ market, at: now });
+          return Promise.resolve({ ...reply, ...(reply.ok ? { at: now } : {}) } as RestBookResult);
+        },
+      });
+      await s.sr.runCycle();
+      const [t] = await db.select().from(signalPaperTrades);
+      if (t === undefined) throw new Error("no trade");
+      expect(t.priceSource).toBe("rest_book");
+      return {
+        sr: s.sr,
+        t,
+        asked,
+        set: (o: { now?: number; reply?: RestBookResult }) => {
+          if (o.now !== undefined) now = o.now;
+          if (o.reply !== undefined) reply = o.reply;
+        },
+      };
+    }
+    const tradeNow = async () => (await db.select().from(signalPaperTrades))[0];
+
+    it("SL hit on the REST book closes at the observed price; reads at most every 15 s per market", async () => {
+      const o = await openOnRest("SOL hack rest sl");
+      const sl = Number(o.t.slPrice);
+      // Short: SL chạm khi ask ≥ SL. Sổ REST báo giá trên SL.
+      const above = (sl + 0.5).toFixed(2);
+      o.asked.length = 0;
+      o.set({
+        now: T0 + 20_000,
+        reply: { ok: true, bid: (sl + 0.4).toFixed(2), ask: above, at: 0 },
+      });
+      // Lượt đầu chưa nạp lệnh: tick đọc REST và đóng.
+      expect(await o.sr.watcher.tick()).toBe(1);
+      const c = await tradeNow();
+      expect(c).toMatchObject({ status: "closed", exitReason: "stop_loss" });
+      expect(Number(c?.exitPrice)).toBe(Number(above));
+      expect(o.asked.map((a) => a.market)).toEqual(["SOL-USD"]);
+    });
+
+    it("no price at all: reads REST at most every 15 s; after the hold limit + 1 h closes max_hold_no_price with no result", async () => {
+      const o = await openOnRest("SOL hack rest none");
+      o.asked.length = 0;
+      o.set({ now: T0 + 20_000, reply: { ok: false, reason: "empty" } });
+      expect(await o.sr.watcher.tick()).toBe(0);
+      o.set({ now: T0 + 30_000 });
+      expect(await o.sr.watcher.tick()).toBe(0);
+      expect(o.asked).toHaveLength(1);
+      o.set({ now: T0 + 35_000 });
+      expect(await o.sr.watcher.tick()).toBe(0);
+      expect(o.asked).toHaveLength(2);
+      const holdEnd = o.t.maxHoldUntil.getTime();
+      // Đúng hạn giữ: đọc REST ngay (không chờ nhịp 15 s), vẫn không có giá → giữ mở.
+      o.set({ now: holdEnd + 1_000 });
+      expect(await o.sr.watcher.tick()).toBe(0);
+      o.set({ now: holdEnd + 3_000 });
+      const before = o.asked.length;
+      expect(await o.sr.watcher.tick()).toBe(0);
+      expect(o.asked).toHaveLength(before);
+      // Chưa đủ 1 giờ sau hạn giữ: vẫn mở.
+      o.set({ now: holdEnd + 3_600_000 - 1 });
+      expect(await o.sr.watcher.tick()).toBe(0);
+      expect((await tradeNow())?.status).toBe("open");
+      o.set({ now: holdEnd + 3_600_000 });
+      expect(await o.sr.watcher.tick()).toBe(1);
+      expect(await tradeNow()).toMatchObject({
+        status: "closed",
+        exitReason: "max_hold_no_price",
+        exitPrice: null,
+        exitFee: null,
+        resultUsdc: null,
+        resultPct: null,
+      });
+      const ev = (await db.select().from(signalEvents)).find(
+        (e) => e.reason === "MAX_HOLD_NO_PRICE",
+      );
+      expect(ev).toMatchObject({ stage: "watch", outcome: "close" });
+      expect(ev?.detail).toMatchObject({ exitPrice: null, resultUsdc: null });
+      // Không tính vào lãi / lỗ: tóm tắt đếm riêng.
+      const summary = await loadSignalResearchSummary(db, new Date(holdEnd + 3_600_000), {
+        sosoMonthlyLimit: 9500,
+        claudeDailyInputBudget: 2_000_000,
+      });
+      expect(summary.funnel?.outcomes).toMatchObject({ closed: 0, maxHold: 0, maxHoldNoPrice: 1 });
+      const page = await loadSignalResearchTrades(
+        db,
+        { limit: 50, show: "entered" },
+        new Date(holdEnd + 3_600_000),
+      );
+      expect(page.items[0]?.result).toMatchObject({ outcome: "maxHoldNoPrice", pnl: null });
+    });
+
+    it("hold limit with a REST price closes max_hold at that price", async () => {
+      const o = await openOnRest("SOL hack rest hold");
+      const holdEnd = o.t.maxHoldUntil.getTime();
+      o.set({ now: holdEnd + 1_000, reply: { ok: true, bid: "99.5", ask: "99.6", at: 0 } });
+      expect(await o.sr.watcher.tick()).toBe(1);
+      const c = await tradeNow();
+      expect(c).toMatchObject({ status: "closed", exitReason: "max_hold" });
+      expect(Number(c?.exitPrice)).toBe(99.6);
+    });
+
+    it("a market with a live book never reads REST", async () => {
+      const o = await openOnRest("SOL hack rest live");
+      o.asked.length = 0;
+      o.set({ now: T0 + 20_000 });
+      book(o.sr, "SOL-USD", "99.8", "99.9", T0 + 20_000);
+      await o.sr.watcher.tick();
+      expect(o.asked).toEqual([]);
+    });
+  });
+
   it("#507: a real but wide REST book (stock out of hours) is still blocked by the cost filter", async () => {
     const claude = fakeClaude({ "SOL hack wide": hack });
     const wide = setup({

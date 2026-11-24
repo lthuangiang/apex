@@ -229,32 +229,49 @@ export class QuoteSource {
       this.#diag.set(market, diag("not_tried"));
       return q;
     }
+    const r = await this.#readRest(restBook, market);
+    if ("why" in r) {
+      this.#diag.set(market, diag(r.why));
+      return q;
+    }
+    this.#diag.set(market, diag("ok"));
+    return r.quote;
+  }
+
+  /**
+   * #511: sổ REST một lần cho watcher lệnh mở không có giá (nhịp / trần do watcher giữ). null = không có sổ thật, hoặc
+   * không có bước REST.
+   */
+  async restQuote(market: string): Promise<Quote | null> {
+    const restBook = this.#deps.restBook;
+    if (restBook === undefined) return null;
+    const r = await this.#readRest(restBook, market);
+    return "why" in r ? null : r.quote;
+  }
+
+  /** Đọc sổ REST và kiểm: sổ thật (bid > 0, ask > bid) → quote `rest_book`; còn lại → vì sao không dùng được. */
+  async #readRest(
+    restBook: NonNullable<QuoteDeps["restBook"]>,
+    market: string,
+  ): Promise<{ quote: Quote } | { why: QuoteDiag["rest"] }> {
     let r: RestBookResult;
     try {
       r = await restBook(market);
     } catch {
-      r = { ok: false, reason: "error" };
+      return { why: "error" };
     }
-    if (!r.ok) {
-      this.#diag.set(market, diag(r.reason));
-      return q;
-    }
+    if (!r.ok) return { why: r.reason };
     let bid: Decimal;
     let ask: Decimal;
     try {
       bid = dec(r.bid);
       ask = dec(r.ask);
     } catch {
-      this.#diag.set(market, diag("error"));
-      return q;
+      return { why: "error" };
     }
     // Sổ chéo / rỗng một phía / giá 0: không phải giá giao dịch được, giữ lý do cũ (không bịa giá).
-    if (!bid.gt(0) || !ask.gt(bid)) {
-      this.#diag.set(market, diag("crossed"));
-      return q;
-    }
-    this.#diag.set(market, diag("ok"));
-    return { bid, ask, source: "rest_book", at: r.at };
+    if (!bid.gt(0) || !ask.gt(bid)) return { why: "crossed" };
+    return { quote: { bid, ask, source: "rest_book", at: r.at } };
   }
 
   /** Chẩn đoán của lần `decisionQuote(market)` gần nhất; undefined khi chưa hỏi. */

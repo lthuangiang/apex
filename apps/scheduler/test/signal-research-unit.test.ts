@@ -29,6 +29,7 @@ import {
   type RestBookResult,
 } from "../src/signal-research/prices";
 import { CLASSIFIER_SYSTEM } from "../src/signal-research/prompt";
+import { pickRestMarkets } from "../src/signal-research/watcher";
 import { sosoClient } from "../src/signal-research/soso";
 
 const MIN = 60_000;
@@ -278,6 +279,36 @@ describe("quotes from stored market data only", () => {
       });
       expect(JSON.parse(sent)).toEqual({ market: "TRX-USD" });
     });
+  });
+  it("#511: watcher REST reads: every 15 s per market, at most 10 per 15 s, overdue first, then least recently read", () => {
+    const need = new Map(
+      Array.from({ length: 14 }, (_, i) => [
+        `M${String(i)}-USD`,
+        { overdue: i === 13, holdEnd: i === 13 ? now - 1 : now + 3_600_000 },
+      ]),
+    );
+    const last = new Map<string, number>([
+      ["M0-USD", now - 1_000],
+      ["M1-USD", now - 15_000],
+      ["M2-USD", now - 40_000],
+    ]);
+    const picked = pickRestMarkets(need, last, 0, now);
+    expect(picked).toHaveLength(10);
+    // Quá hạn giữ trước, rồi chưa đọc lần nào, rồi đọc lâu nhất; M0 vừa đọc 1 s trước thì bỏ.
+    expect(picked[0]).toBe("M13-USD");
+    expect(picked).not.toContain("M0-USD");
+    // Thứ tự với ít market: quá hạn, chưa đọc, đọc lâu nhất.
+    const few = new Map(
+      [...need].filter(([m]) => ["M1-USD", "M2-USD", "M5-USD", "M13-USD"].includes(m)),
+    );
+    expect(pickRestMarkets(few, last, 0, now)).toEqual(["M13-USD", "M5-USD", "M2-USD", "M1-USD"]);
+    // Đã đọc 7 lần trong 15 s: chỉ còn 3.
+    expect(pickRestMarkets(need, last, 7, now)).toHaveLength(3);
+    expect(pickRestMarkets(need, last, 10, now)).toEqual([]);
+    // Lệnh vừa quá hạn giữ mà lần đọc cuối trước hạn: đọc ngay dù chưa đủ 15 s.
+    const overdue = new Map([["X-USD", { overdue: true, holdEnd: now - 500 }]]);
+    expect(pickRestMarkets(overdue, new Map([["X-USD", now - 1_000]]), 0, now)).toEqual(["X-USD"]);
+    expect(pickRestMarkets(overdue, new Map([["X-USD", now - 100]]), 0, now)).toEqual([]);
   });
   it("median ticks across hourly histograms", () => {
     expect(medianTicks([{ "1": 10, "2": 3 }, { "3": 5 }])).toEqual({ ticks: 1, samples: 18 });

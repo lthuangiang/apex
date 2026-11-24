@@ -441,9 +441,10 @@ async function start() {
       },
     });
   };
-  // #507: sổ REST một lần cho lane research (NATS request, queue group: một instance trả lời mỗi request).
+  // #507: sổ REST một lần cho lane research (NATS request, queue group: một instance trả lời mỗi request). Client nền
+  // (`priority: "background"`, #511 PM chốt): nhường hạn mức cho đường lệnh.
   const srBook = srBookResponder({
-    orderbook: (market) => bookRest.getOrderbook("perps", market, 5),
+    orderbook: (market) => rest.getOrderbook("perps", market, 5),
     tradable: (market) => perpsSymbols.includes(market),
     now: Date.now,
   });

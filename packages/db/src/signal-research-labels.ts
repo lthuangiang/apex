@@ -267,9 +267,11 @@ const outcomeOf = (r: string | null): ResearchLabelTradeResult["outcome"] =>
       ? "sl"
       : r === "max_hold"
         ? "maxHold"
-        : r === "opposite_news"
-          ? "opposite"
-          : "open";
+        : r === "max_hold_no_price"
+          ? "maxHoldNoPrice"
+          : r === "opposite_news"
+            ? "opposite"
+            : "open";
 
 /** Kết quả các lệnh thật (live) bài này đã mở, mọi News bot version. Chỉ trả sau khi đã lưu nhãn. */
 export async function loadLabelTradeResults(

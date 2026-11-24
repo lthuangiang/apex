@@ -211,6 +211,8 @@ export const researchFunnelSchema = z.object({
     tp: int,
     sl: int,
     maxHold: int,
+    /** #511: đóng ở hạn giữ khi SoDEX không có giá (không có kết quả, không tính vào lãi / lỗ). */
+    maxHoldNoPrice: int,
     /** #303: đóng vì tin ngược chiều (version chọn Close at market). */
     opposite: int,
     open: int,
@@ -665,7 +667,7 @@ export const researchSkipSchema = z.object({
   shadow: z
     .object({
       tradeId: z.uuid(),
-      outcome: z.enum(["tp", "sl", "maxHold", "opposite", "open"]),
+      outcome: z.enum(["tp", "sl", "maxHold", "maxHoldNoPrice", "opposite", "open"]),
       /** Kết quả sau phí khi đã đóng; null khi còn mở. */
       pnl: dec.nullable(),
     })
@@ -736,7 +738,7 @@ export const researchTradeSchema = z.object({
       pnl: dec.nullable(),
       /** #297: lệnh đang mở: lãi / lỗ nếu đóng ngay ở giá SoDEX gần nhất (sau phí); null khi đã đóng hoặc chưa có giá. */
       unrealized: dec.nullable(),
-      outcome: z.enum(["tp", "sl", "maxHold", "opposite", "open"]),
+      outcome: z.enum(["tp", "sl", "maxHold", "maxHoldNoPrice", "opposite", "open"]),
       leftSecs: int.nullable(),
     })
     .nullable(),
@@ -821,7 +823,7 @@ export const researchFactSchema = z.object({
   text: z.string().nullish(),
   status: sourceStatus.nullish(),
   side: side.nullish(),
-  outcome: z.enum(["tp", "sl", "maxHold", "opposite"]).nullish(),
+  outcome: z.enum(["tp", "sl", "maxHold", "maxHoldNoPrice", "opposite"]).nullish(),
   level: level.nullish(),
   source: z.enum(RESEARCH_SOURCES).nullish(),
   newsType: z.enum(RESEARCH_NEWS_TYPES).nullish(),
@@ -1188,7 +1190,7 @@ export const researchLabelTradeResultSchema = z.object({
   versionId: z.uuid().nullable(),
   side,
   status: z.enum(["open", "closed"]),
-  outcome: z.enum(["tp", "sl", "maxHold", "opposite", "open"]),
+  outcome: z.enum(["tp", "sl", "maxHold", "maxHoldNoPrice", "opposite", "open"]),
   resultPct: z.number().nullable(),
   resultUsdc: dec.nullable(),
 });

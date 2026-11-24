@@ -123,7 +123,7 @@ export const RESEARCH_SUMMARY: ResearchSummary = {
       { stage: "filter", outcome: "merged", reason: null, mergeReason: "sameStory", n: 12 },
       { stage: "decide", outcome: "traded", reason: null, mergeReason: null, n: 41 },
     ],
-    outcomes: { closed: 30, tp: 12, sl: 11, maxHold: 7, opposite: 0, open: 11 },
+    outcomes: { closed: 30, tp: 12, sl: 11, maxHold: 7, maxHoldNoPrice: 0, opposite: 0, open: 11 },
     context: null,
     rules: [{ v: 2, articles: 1240 }],
   },
