@@ -29,7 +29,6 @@ import {
   applyCommand,
   BotCommand,
   BotState,
-  byTime,
   change24hPct,
   dec,
   Decimal,
@@ -81,7 +80,7 @@ import type { TwoFactorDeps } from "../security/two-factor";
 
 import { builderFeeRows } from "./builder-fees";
 import { mcpStats } from "./mcp-stats";
-import { REALIZED_PAGE, sumRealized } from "./realized";
+import { cachedRealized, cachedSpark, overviewCache } from "./overview-cache";
 import { statsOverview } from "./stats-overview";
 import { requireTeam } from "./team";
 import { getWatchlist } from "./watchlist";
@@ -426,18 +425,12 @@ export async function overview(
   const step = Math.max(1, Math.ceil(points.length / 200));
   const curve = points.filter((_, i) => i % step === 0 || i === points.length - 1);
   let realized: string | null = null;
+  let realizedSince = since;
   try {
-    // Đọc nhiều trang: bot Market Making đóng hàng nghìn vị thế nhỏ mỗi ngày, một trang 1000 dòng không đủ.
-    const address = getAddress(a.address);
-    realized = await sumRealized(
-      (endTime) =>
-        deps.rest.getPositionsHistory(address, {
-          startTime: since,
-          ...(endTime === undefined ? {} : { endTime }),
-          limit: REALIZED_PAGE,
-        }),
-      since,
-    );
+    // Cache theo (account, period): 60 s, "All" 5 phút (#494, DEC-387). Con số đi cùng mốc `since` của lần đọc đó.
+    const got = await cachedRealized(overviewCache, deps.rest, a, periodDays, now);
+    realized = got.total;
+    realizedSince = got.since;
   } catch {
     realized = null;
   }
@@ -469,16 +462,9 @@ export async function overview(
       let spark: string[] = [];
       if (price !== null) {
         try {
-          // 24 nến 1h trong một request. SoDEX trả mới nhất trước: % 24h tính từ nến cũ nhất, sparkline theo thời
-          // gian tăng dần (trước đây lấy `k[0]` nên thực tế là % của khoảng một giờ).
-          const k = byTime(
-            await deps.rest.getKlines(engine, m, {
-              interval: "1h",
-              startTime: now - 24 * 3_600_000,
-              endTime: now,
-              limit: 24,
-            }),
-          );
+          // 24 nến 1h trong một request, cache 5 phút theo market (#494, DEC-387). % 24h tính từ nến cũ nhất,
+          // sparkline theo thời gian tăng dần (trước đây lấy `k[0]` nên thực tế là % của khoảng một giờ).
+          const k = await cachedSpark(overviewCache, deps.rest, engine, m, now);
           spark = k.map((c) => c.c);
           change = change24hPct(price, k);
         } catch {
@@ -492,7 +478,7 @@ export async function overview(
     portfolio: pf,
     equityCurve: curve,
     realizedPnl: realized,
-    realizedSince: since,
+    realizedSince,
     risk:
       r === null
         ? null

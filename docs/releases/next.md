@@ -10,7 +10,7 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-Chưa có thay đổi.
+- Overview cache Realized PnL (60 s, "All" 5 phút, theo account) và sparkline watchlist (5 phút, theo market) để giảm weight REST của SoDEX trên IP egress (#494 PR1, DEC-387; **chưa merge**).
 
 **Migration (chạy khi deploy):** không có.
 
