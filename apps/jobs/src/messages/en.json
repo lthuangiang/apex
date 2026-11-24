@@ -113,7 +113,8 @@
         "tick_slow": "Engine ticks slow",
         "reads_skipped": "Engine reads skipped by the reserve",
         "ws_closes": "User stream keeps closing",
-        "sodex_errors": "SoDEX errors spiking"
+        "sodex_errors": "SoDEX errors spiking",
+        "sodex_ws_lag": "SoDEX order updates delayed"
       },
       "bot": "bot {bot}",
       "links": {

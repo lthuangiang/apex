@@ -238,6 +238,8 @@ export const TEAM_INCIDENT_SEVERITY = {
   reads_skipped: "warning",
   ws_closes: "warning",
   sodex_errors: "warning",
+  /** Tin `accountOrderUpdate` của SoDEX tới trễ: E − T > 5 s ở ≥ 2 tin trong 5 phút (#518, DEC-386). */
+  sodex_ws_lag: "warning",
 } as const satisfies Record<string, "critical" | "warning" | "info">;
 export type TeamIncidentKind = keyof typeof TEAM_INCIDENT_SEVERITY;
 export type TeamIncidentSeverity = (typeof TEAM_INCIDENT_SEVERITY)[TeamIncidentKind];
@@ -271,6 +273,13 @@ export const TEAM_INCIDENT_RULES = {
   sodexWindowMs: 10 * 60_000,
   sodexMinCalls: 100,
   sodexMinPct: 10,
+  /**
+   * Luồng lệnh WS của SoDEX trễ (#518, DEC-386): trong 5 phút ≥ 2 tin `accountOrderUpdate` có E − T (event time − block
+   * time, cả hai do SoDEX gắn) > 5 s. Đếm theo tin (mỗi dòng `sodex_calls`), không theo item trong tin.
+   */
+  wsLagWindowMs: 5 * 60_000,
+  wsLagMs: 5_000,
+  wsLagMin: 2,
   /** Bộ đếm cho tin tổng hợp: theo giờ, giữ 3 ngày; tin gửi mỗi ngày từ 01:00 UTC (08:00 giờ Việt Nam). */
   countTtlMs: 3 * 24 * 60 * 60_000,
   digestHourUtc: 1,

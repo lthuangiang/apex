@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   groupOf,
+  TEAM_INCIDENT_RULES,
   TEAM_INCIDENT_SEVERITY,
   teamIncidentThrottle,
   teamOpsEventSchema,
@@ -59,6 +60,19 @@ describe("team incidents (#241)", () => {
     expect(teamIncidentThrottle({ kind: "position_mismatch", botId: bot })).toBeNull();
     expect(teamIncidentThrottle({ kind: "position_matched", botId: bot })).toBeNull();
     expect(TEAM_INCIDENT_SEVERITY.position_matched).toBe("info");
+  });
+
+  it("#518: the SoDEX order stream delay is a warning, throttled per type, with its rule (DEC-386)", () => {
+    expect(TEAM_INCIDENT_SEVERITY.sodex_ws_lag).toBe("warning");
+    expect(teamIncidentThrottle({ kind: "sodex_ws_lag" })).toEqual({
+      key: "team:incident:sodex_ws_lag",
+      ms: 1_800_000,
+    });
+    expect(TEAM_INCIDENT_RULES).toMatchObject({
+      wsLagWindowMs: 300_000,
+      wsLagMs: 5_000,
+      wsLagMin: 2,
+    });
   });
 
   it("rates the Volume Farm #239 incidents as PM decided (#248)", () => {

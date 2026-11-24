@@ -10,6 +10,7 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
+- Cảnh báo team `sodex_ws_lag` (#518, DEC-386, PR #521): scheduler báo "SoDEX order updates delayed" khi trong 5 phút có ≥ 2 tin `accountOrderUpdate` của SoDEX với E − T > 5 s, chỉ đếm tin NEW / REJECTED vì chưa rõ `T` là mốc sự kiện hay mốc tạo lệnh (đọc `sodex_calls`, chỉ chạy khi recorder ghi dòng WS `ok`). Không đổi hành vi bot, không thêm request SoDEX.
 - Overview cache Realized PnL (60 s, "All" 5 phút, theo account) và sparkline watchlist (5 phút, theo market) để giảm weight REST của SoDEX trên IP egress (#494 PR1, DEC-387; **chưa merge**).
 
 **Migration (chạy khi deploy):** không có.
