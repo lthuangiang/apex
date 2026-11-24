@@ -72,9 +72,8 @@ async function axe(page: Page) {
     };
     const r = await w.axe.run(document, {
       runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
-      // Có từ trước #486, ngoài phạm vi: nút giờ có mốc ở hàng tiêu đề (aria-label "Show 07:00 in 5-minute steps. Marker:
-      // …" không chứa nguyên chữ hiển thị "07:00 07"). Rule này chỉ chạy trong trình duyệt thật, không chạy trong jsdom.
-      rules: { "label-content-name-mismatch": { enabled: false } },
+      // #488: `label-content-name-mismatch` (tag wcag21a) chạy lại như mọi rule khác; rule này chỉ chạy trong trình duyệt
+      // thật, không chạy trong jsdom. Nút giờ có mốc lấy tên truy cập từ chữ hiển thị.
     });
     return r.violations.map((v) => `${v.id}: ${v.help}`);
   });
