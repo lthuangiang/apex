@@ -1,6 +1,6 @@
-# vTBD (sau v2.18.3)
+# vTBD (sau v2.18.4)
 
-PM đổi tên file theo tag khi người dùng gõ "release" (xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.18.3` (2026-11-24). Mục nào ghi **chưa merge** là việc đang làm: khi PR merge thì bỏ chữ đó và thêm số PR; PR không vào bản này thì xoá dòng.
+PM đổi tên file theo tag khi người dùng gõ "release" (xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.18.4` (2026-11-24). Mục nào ghi **chưa merge** là việc đang làm: khi PR merge thì bỏ chữ đó và thêm số PR; PR không vào bản này thì xoá dòng.
 
 ## Cho người dùng (English, dùng được cho GitHub Release)
 
@@ -10,8 +10,7 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-- Cảnh báo team `sodex_ws_lag` (#518, DEC-386, PR #521): scheduler báo "SoDEX order updates delayed" khi trong 5 phút có ≥ 2 tin `accountOrderUpdate` của SoDEX với E − T > 5 s, chỉ đếm tin NEW / REJECTED vì chưa rõ `T` là mốc sự kiện hay mốc tạo lệnh (đọc `sodex_calls`, chỉ chạy khi recorder ghi dòng WS `ok`). Không đổi hành vi bot, không thêm request SoDEX.
-- Overview cache Realized PnL (60 s, "All" 5 phút, theo account) và sparkline watchlist (5 phút, theo market) để giảm weight REST của SoDEX trên IP egress (#494 PR1, DEC-387; **chưa merge**).
+Chưa có thay đổi.
 
 **Migration (chạy khi deploy):** không có.
 
