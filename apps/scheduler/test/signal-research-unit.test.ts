@@ -240,13 +240,13 @@ describe("quotes from stored market data only", () => {
 
     it("requestRestBook reads marketdata's reply and refuses anything it can't trust", async () => {
       const ok = JSON.stringify({ ok: true, s: "TRX-USD", b: "0.29", a: "0.3", at: 5 });
-      expect(await requestRestBook("TRX-USD", () => Promise.resolve(ok))).toEqual({
+      expect(await requestRestBook("TRX-USD", () => Promise.resolve({ reply: ok }))).toEqual({
         ok: true,
         bid: "0.29",
         ask: "0.3",
         at: 5,
       });
-      expect(await requestRestBook("MON-USD", () => Promise.resolve(ok))).toEqual({
+      expect(await requestRestBook("MON-USD", () => Promise.resolve({ reply: ok }))).toEqual({
         ok: false,
         reason: "error",
       });
@@ -258,13 +258,13 @@ describe("quotes from stored market data only", () => {
         ok: false,
         reason: "unavailable",
       });
-      expect(await requestRestBook("TRX-USD", () => Promise.resolve("{bad"))).toEqual({
+      expect(await requestRestBook("TRX-USD", () => Promise.resolve({ reply: "{bad" }))).toEqual({
         ok: false,
         reason: "error",
       });
       expect(
         await requestRestBook("TRX-USD", () =>
-          Promise.resolve(JSON.stringify({ ok: false, reason: "empty" })),
+          Promise.resolve({ reply: JSON.stringify({ ok: false, reason: "empty" }) }),
         ),
       ).toEqual({ ok: false, reason: "empty" });
       expect(await requestRestBook("TRX-USD", () => Promise.reject(new Error("x")))).toEqual({

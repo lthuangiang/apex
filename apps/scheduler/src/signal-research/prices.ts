@@ -268,20 +268,21 @@ export function isQuote(q: Quote | SignalReason | undefined): q is Quote {
 }
 
 /**
- * Gửi request sổ REST cho marketdata (#507) và đọc câu trả lời. `send` trả chuỗi JSON của reply, hoặc `timeout` /
+ * Gửi request sổ REST cho marketdata (#507) và đọc câu trả lời. `send` trả `{ reply }` (chuỗi JSON), hoặc `timeout` /
  * `unavailable` (NATS chưa nối, không có marketdata trả lời). Reply không đọc được hay sai market → `error`.
  */
 export async function requestRestBook(
   market: string,
-  send: (payload: string) => Promise<string | "timeout" | "unavailable">,
+  send: (payload: string) => Promise<{ reply: string } | "timeout" | "unavailable">,
 ): Promise<RestBookResult> {
   let raw: string;
   try {
-    raw = await send(JSON.stringify({ market }));
+    const r = await send(JSON.stringify({ market }));
+    if (r === "timeout" || r === "unavailable") return { ok: false, reason: r };
+    raw = r.reply;
   } catch {
     return { ok: false, reason: "error" };
   }
-  if (raw === "timeout" || raw === "unavailable") return { ok: false, reason: raw };
   let json: unknown;
   try {
     json = JSON.parse(raw);

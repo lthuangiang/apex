@@ -79,8 +79,7 @@ export function parseSrQuotes(raw: string | null | undefined): ParsedSrQuotes {
 /** Giá còn mới không, theo ngưỡng fresh của nguồn (dùng lại ngưỡng của `combineQuote`). */
 export function srQuoteFresh(q: Pick<SrQuote, "source" | "at">, now: number): boolean {
   // Sổ lệnh (WS hay REST) dùng ngưỡng của sổ; giá gần nhất ± spread dùng ngưỡng của giá gần nhất.
-  const maxAge =
-    q.source === "last_spread" ? NEWS_RULES.lastPriceFreshMs : NEWS_RULES.bookFreshMs;
+  const maxAge = q.source === "last_spread" ? NEWS_RULES.lastPriceFreshMs : NEWS_RULES.bookFreshMs;
   return now - q.at <= maxAge;
 }
 

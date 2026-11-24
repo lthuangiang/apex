@@ -25,12 +25,7 @@ import {
   RedisRateLimitStore,
   SodexRestClient,
 } from "@drift/sodex";
-import {
-  connect,
-  RequestError,
-  TimeoutError,
-  type NatsConnection,
-} from "@nats-io/transport-node";
+import { connect, RequestError, TimeoutError, type NatsConnection } from "@nats-io/transport-node";
 import { count, eq } from "drizzle-orm";
 import { Redis } from "ioredis";
 import pino from "pino";
@@ -374,7 +369,7 @@ const signals =
               const m = await nats.request(SR_BOOK_REQUEST_SUBJECT, payload, {
                 timeout: SR_BOOK_REQUEST_TIMEOUT_MS,
               });
-              return m.string();
+              return { reply: m.string() };
             } catch (error) {
               if (
                 error instanceof TimeoutError ||
