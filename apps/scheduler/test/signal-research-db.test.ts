@@ -32,6 +32,7 @@ import {
   signalResearchEnvSchema,
   type Logger,
 } from "../src/signal-research/index";
+import type { RestBookResult } from "../src/signal-research/prices";
 import {
   SOSO_BASE_URL,
   SosoError,
@@ -193,6 +194,8 @@ function setup(input: {
   last?: Record<string, { price: string; at: number }>;
   perps?: () => typeof PERPS | null;
   soso?: SosoClient;
+  /** #507: sổ REST qua marketdata (NATS request) giả. */
+  requestBook?: (market: string) => Promise<RestBookResult>;
 }) {
   const errors: unknown[] = [];
   const soso = fakeSoso(input.items);
@@ -224,6 +227,7 @@ function setup(input: {
     now: input.now,
     soso: input.soso ?? soso,
     classifier: input.claude,
+    ...(input.requestBook === undefined ? {} : { requestBook: input.requestBook }),
   });
   return { sr, soso, errors, written };
 }
@@ -632,6 +636,99 @@ describe("review PR #278 fixes", () => {
     expect(summary.levels.find((l) => l.level === "high")?.signals).toBe(1);
     const page = await loadSignalResearchTrades(db, { limit: 50, show: "entered" }, new Date(now));
     expect(page.items[0]?.retry).toBe(true);
+  });
+
+  it("#507 D: NO_SODEX_PRICE records how old the book and the last price were (null when there is none)", async () => {
+    const claude = fakeClaude({ "SOL hack none": hack, "SOL hack stale": hack });
+    // Không có dữ liệu nào: cả hai null.
+    const none = setup({
+      items: () => [item("d1", T0 - 2 * MIN, "SOL hack none", { author: "Odaily" })],
+      claude,
+      now: () => T0,
+    });
+    await none.sr.runCycle();
+    const reasonOf = async (articleId: string) =>
+      (await db.select().from(signalEvents).where(eq(signalEvents.articleId, articleId))).find(
+        (e) => e.reason === "NO_SODEX_PRICE",
+      );
+    expect((await reasonOf("d1"))?.detail).toMatchObject({ bookAgeMs: null, lastAgeMs: null });
+    // Sổ lệnh và giá gần nhất đều cũ: ghi đúng tuổi của từng nguồn.
+    const now = T0 + 30 * MIN;
+    const stale = setup({
+      items: () => [item("d2", now - MIN, "SOL hack stale", { author: "Bloomberg", category: 5 })],
+      claude,
+      now: () => now,
+      last: { "SOL-USD": { price: "100", at: now - 40_000 } },
+    });
+    book(stale.sr, "SOL-USD", "99.99", "100.01", now - 25_000);
+    await stale.sr.runCycle();
+    expect((await reasonOf("d2"))?.detail).toMatchObject({ bookAgeMs: 25_000, lastAgeMs: 40_000 });
+  });
+
+  it("#507: last price but no live book and no spread samples → NO_BOOK_DATA saying what is missing; a real REST book trades as rest_book", async () => {
+    const claude = fakeClaude({ "SOL hack nobook": hack, "SOL hack restbook": hack });
+    const eventOf = async (articleId: string) =>
+      (await db.select().from(signalEvents).where(eq(signalEvents.articleId, articleId))).find(
+        (e) => e.reason === "NO_BOOK_DATA",
+      );
+    // Như TRX / MON / SPCX trên prod: có giá gần nhất, không có sổ live, không có mẫu spread theo giờ, REST không trả được.
+    const off = setup({
+      items: () => [item("n1", T0 - 2 * MIN, "SOL hack nobook", { author: "Odaily" })],
+      claude,
+      now: () => T0,
+      last: { "SOL-USD": { price: "100", at: T0 - 2_000 } },
+      requestBook: () => Promise.resolve({ ok: false, reason: "timeout" }),
+    });
+    await off.sr.runCycle();
+    expect((await eventOf("n1"))?.detail).toMatchObject({
+      bookAgeMs: null,
+      lastAgeMs: 2_000,
+      spreadSamples: null,
+      tickSize: true,
+      rest: "timeout",
+    });
+    expect(await db.select().from(signalPaperTrades)).toEqual([]);
+    // Cùng tình huống, marketdata trả sổ REST thật: vào lệnh với đúng giá mua / bán của sổ.
+    const now = T0 + 30 * MIN;
+    const asked: string[] = [];
+    const on = setup({
+      items: () => [
+        item("n2", now - MIN, "SOL hack restbook", { author: "Bloomberg", category: 5 }),
+      ],
+      claude,
+      now: () => now,
+      last: { "SOL-USD": { price: "100", at: now - 2_000 } },
+      requestBook: (m) => {
+        asked.push(m);
+        return Promise.resolve({ ok: true, bid: "99.99", ask: "100.01", at: now - 50 });
+      },
+    });
+    await on.sr.runCycle();
+    expect(asked).toContain("SOL-USD");
+    const [t] = await db.select().from(signalPaperTrades);
+    expect(t).toMatchObject({ articleId: "n2", priceSource: "rest_book" });
+  });
+
+  it("#507: a real but wide REST book (stock out of hours) is still blocked by the cost filter", async () => {
+    const claude = fakeClaude({ "SOL hack wide": hack });
+    const wide = setup({
+      items: () => [
+        item("w1", T0 - 2 * MIN, "SOL hack wide", { author: "Bloomberg", category: 5 }),
+      ],
+      claude,
+      now: () => T0,
+      last: { "SOL-USD": { price: "100", at: T0 - 2_000 } },
+      requestBook: () => Promise.resolve({ ok: true, bid: "90", ask: "110", at: T0 }),
+    });
+    await wide.sr.runCycle();
+    expect(await db.select().from(signalPaperTrades)).toEqual([]);
+    const reasons = (
+      await db.select().from(signalEvents).where(eq(signalEvents.articleId, "w1"))
+    ).map((e) => e.reason);
+    expect(reasons.some((r) => r === "MOVE_TOO_SMALL_FOR_COST" || r === "TOO_THIN_TO_TRADE")).toBe(
+      true,
+    );
+    expect(reasons).not.toContain("NO_BOOK_DATA");
   });
 
   it("R2: a follow-up 28 h after a story that never traded merges as too old and never trades", async () => {

@@ -15,6 +15,7 @@ import {
   AppError,
   coinIndex,
   ErrorCode,
+  SR_BOOK_REQUEST_SUBJECT,
   type CoinIndex,
   type LeaderFillMessage,
   type LeaderPositionMessage,
@@ -29,7 +30,7 @@ import {
   type WsCandle,
   WsUserStream,
 } from "@drift/sodex";
-import { connect } from "@nats-io/transport-node";
+import { connect, type Subscription } from "@nats-io/transport-node";
 import { sql } from "drizzle-orm";
 import { Redis } from "ioredis";
 import pino from "pino";
@@ -54,6 +55,7 @@ import {
 } from "./mm-cost-store";
 import { MmRawRecorder } from "./mm-raw";
 import { SodexBookRelay } from "./sodex-book";
+import { srBookResponder } from "./sr-book";
 import { CandleTracker, FundingTracker, marketSubject } from "./trackers";
 
 // marketdata: nơi duy nhất mở WS thị trường SoDEX (ARCHITECTURE.md mục 3.3.7). Một bản active nhờ
@@ -315,6 +317,8 @@ function onCandles(closed: WsCandle[]) {
 }
 
 let streams: MarketStream[] = [];
+/** #507: subscription `sr.book.request` của lần làm leader hiện tại. */
+let srBookSub: Subscription | null = null;
 let mmTimers: ReturnType<typeof setInterval>[] = [];
 /** Bộ lưu thô của lần làm leader hiện tại; ghi nốt phần đệm khi dừng. */
 let mmRawNow: MmRawRecorder | null = null;
@@ -437,6 +441,21 @@ async function start() {
       },
     });
   };
+  // #507: sổ REST một lần cho lane research (NATS request, queue group: một instance trả lời mỗi request).
+  const srBook = srBookResponder({
+    orderbook: (market) => bookRest.getOrderbook("perps", market, 5),
+    tradable: (market) => perpsSymbols.includes(market),
+    now: Date.now,
+  });
+  const sub = nc.subscribe(SR_BOOK_REQUEST_SUBJECT, { queue: "marketdata" });
+  srBookSub = sub;
+  void (async () => {
+    for await (const m of sub) {
+      void srBook(m.string()).then((reply) => {
+        m.respond(JSON.stringify(reply));
+      });
+    }
+  })();
   const perpsStream = make("perps", perpsSymbols);
   streams = [make("spot", spotSymbols), perpsStream];
   for (const s of streams) s.connect();
@@ -570,6 +589,8 @@ async function start() {
 
 function stop() {
   for (const s of streams) s.close();
+  srBookSub?.unsubscribe();
+  srBookSub = null;
   for (const t of mmTimers) clearInterval(t);
   mmTimers = [];
   // Ghi nốt phần đệm (không chờ: stop chạy đồng bộ khi mất leader).

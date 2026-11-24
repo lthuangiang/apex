@@ -4,6 +4,7 @@ import {
   mmBookMessageSchema,
   NEWS_RULES,
   SignalReason,
+  srBookReplySchema,
   type Quote,
 } from "@drift/shared";
 
@@ -12,6 +13,9 @@ import {
 // 2. Không có (1): giá gần nhất `md:last:<market>` (Redis, mọi market, ~2 s) ± nửa spread trung vị 2 giờ gần nhất của
 //    `mm_market_hourly.spread_ticks` (market top volume ∪ MM ∪ VF) × tick size (đọc lại từ danh sách market scheduler đã có).
 // Không có giá mới → NO_SODEX_PRICE; có giá mà không có dữ liệu sổ lệnh → NO_BOOK_DATA (không đoán spread).
+// 3. #507 (DEC-TBD-sr-noprice): chỉ ở bước quyết định (`decisionQuote`), khi (1)–(2) cho NO_BOOK_DATA / NO_SODEX_PRICE:
+//    hỏi marketdata đọc sổ lệnh REST SoDEX một lần qua NATS (lane vẫn không gọi SoDEX, DEC-322). Sổ thật (bid > 0,
+//    ask > bid) thì dùng đúng giá mua / bán tốt nhất (`rest_book`), không tính spread theo giờ; không có thì giữ lý do cũ.
 
 export interface BookTick {
   bid: Decimal;
@@ -99,6 +103,11 @@ export function combineQuote(input: {
   return { bid: price.sub(half), ask: price.add(half), source: "last_spread", at: last.at };
 }
 
+/** Kết quả đọc sổ REST qua marketdata; `timeout` / `unavailable` (NATS chưa nối) do phía lane đặt. */
+export type RestBookResult =
+  | { ok: true; bid: string; ask: string; at: number }
+  | { ok: false; reason: "empty" | "unknown_market" | "error" | "timeout" | "unavailable" };
+
 export interface QuoteDeps {
   now: () => number;
   books: Pick<LiveBooks, "get">;
@@ -110,6 +119,28 @@ export interface QuoteDeps {
     since: number,
   ) => Promise<Map<string, Readonly<Record<string, number>>[]>>;
   tickSize: (market: string) => string | null;
+  /** #507: sổ lệnh REST một lần qua marketdata (NATS request); thiếu = không có bước này. */
+  restBook?: (market: string) => Promise<RestBookResult>;
+}
+
+/**
+ * Tuổi dữ liệu giá của một market ở lần `quotes()` gần nhất (#507 phần D, chỉ để chẩn đoán `NO_SODEX_PRICE`): sổ lệnh
+ * live và giá gần nhất `md:last` cũ bao nhiêu ms; null = không có dữ liệu đó (chưa từng nhận / hết hạn / không đọc).
+ */
+export interface QuoteAges {
+  bookAgeMs: number | null;
+  lastAgeMs: number | null;
+}
+
+/**
+ * Chẩn đoán khi bước quyết định không có giá (#507 phần D, ghi vào `detail` của NO_SODEX_PRICE / NO_BOOK_DATA): tuổi sổ
+ * live và giá gần nhất, số mẫu spread theo giờ (null = không có), có tick size không, và kết quả đọc sổ REST.
+ */
+export interface QuoteDiag extends QuoteAges {
+  spreadSamples: number | null;
+  tickSize: boolean;
+  /** `not_tried`: đã có giá, lý do khác, hoặc không có bước REST; `ok`: dùng sổ REST; còn lại: vì sao không dùng được. */
+  rest: "not_tried" | "ok" | "crossed" | Extract<RestBookResult, { ok: false }>["reason"];
 }
 
 const SPREAD_CACHE_MS = 60_000;
@@ -121,6 +152,8 @@ export class QuoteSource {
     string,
     { at: number; v: { ticks: number; samples: number } | null }
   >();
+  readonly #ages = new Map<string, QuoteAges>();
+  readonly #diag = new Map<string, QuoteDiag>();
 
   constructor(deps: QuoteDeps) {
     this.#deps = deps;
@@ -147,21 +180,117 @@ export class QuoteSource {
       const hists = await this.#deps.spreadHists(stale, now - SPREAD_WINDOW_MS);
       for (const m of stale) this.#spreads.set(m, { at: now, v: medianTicks(hists.get(m) ?? []) });
     }
-    for (const m of uniq)
+    for (const m of uniq) {
+      const book = this.#deps.books.get(m);
+      const lastPrice = last.get(m);
+      // Sổ lệnh tươi thì không đọc `md:last` (lastAgeMs null); chỉ cần cho chẩn đoán khi không có giá.
+      this.#ages.set(m, {
+        bookAgeMs: book === undefined ? null : now - book.at,
+        lastAgeMs: lastPrice === undefined ? null : now - lastPrice.at,
+      });
       out.set(
         m,
         combineQuote({
           now,
-          book: this.#deps.books.get(m),
-          last: last.get(m),
+          book,
+          last: lastPrice,
           spread: this.#spreads.get(m)?.v ?? null,
           tickSize: this.#deps.tickSize(m),
         }),
       );
+    }
     return out;
+  }
+
+  /** Tuổi dữ liệu giá của `market` ở lần `quotes()` gần nhất; chưa hỏi market đó thì undefined. */
+  ages(market: string): QuoteAges | undefined {
+    return this.#ages.get(market);
+  }
+
+  /**
+   * Giá cho bước quyết định (Filter / Decide, context): như `quotes()`, rồi nếu không có giá vì thiếu sổ live / mẫu spread
+   * / giá gần nhất thì đọc sổ REST một lần (nếu có `restBook`). Watcher lệnh mở không dùng hàm này (không đọc REST mỗi nhịp).
+   */
+  async decisionQuote(market: string): Promise<Quote | SignalReason> {
+    const q = (await this.quotes([market])).get(market) ?? SignalReason.noPrice;
+    const ages = this.#ages.get(market) ?? { bookAgeMs: null, lastAgeMs: null };
+    const diag = (rest: QuoteDiag["rest"]): QuoteDiag => ({
+      ...ages,
+      spreadSamples: this.#spreads.get(market)?.v?.samples ?? null,
+      tickSize: this.#deps.tickSize(market) !== null,
+      rest,
+    });
+    const restBook = this.#deps.restBook;
+    if (
+      isQuote(q) ||
+      (q !== SignalReason.noBookData && q !== SignalReason.noPrice) ||
+      restBook === undefined
+    ) {
+      this.#diag.set(market, diag("not_tried"));
+      return q;
+    }
+    let r: RestBookResult;
+    try {
+      r = await restBook(market);
+    } catch {
+      r = { ok: false, reason: "error" };
+    }
+    if (!r.ok) {
+      this.#diag.set(market, diag(r.reason));
+      return q;
+    }
+    let bid: Decimal;
+    let ask: Decimal;
+    try {
+      bid = dec(r.bid);
+      ask = dec(r.ask);
+    } catch {
+      this.#diag.set(market, diag("error"));
+      return q;
+    }
+    // Sổ chéo / rỗng một phía / giá 0: không phải giá giao dịch được, giữ lý do cũ (không bịa giá).
+    if (!bid.gt(0) || !ask.gt(bid)) {
+      this.#diag.set(market, diag("crossed"));
+      return q;
+    }
+    this.#diag.set(market, diag("ok"));
+    return { bid, ask, source: "rest_book", at: r.at };
+  }
+
+  /** Chẩn đoán của lần `decisionQuote(market)` gần nhất; undefined khi chưa hỏi. */
+  diag(market: string): QuoteDiag | undefined {
+    return this.#diag.get(market);
   }
 }
 
 export function isQuote(q: Quote | SignalReason | undefined): q is Quote {
   return typeof q === "object";
+}
+
+/**
+ * Gửi request sổ REST cho marketdata (#507) và đọc câu trả lời. `send` trả chuỗi JSON của reply, hoặc `timeout` /
+ * `unavailable` (NATS chưa nối, không có marketdata trả lời). Reply không đọc được hay sai market → `error`.
+ */
+export async function requestRestBook(
+  market: string,
+  send: (payload: string) => Promise<string | "timeout" | "unavailable">,
+): Promise<RestBookResult> {
+  let raw: string;
+  try {
+    raw = await send(JSON.stringify({ market }));
+  } catch {
+    return { ok: false, reason: "error" };
+  }
+  if (raw === "timeout" || raw === "unavailable") return { ok: false, reason: raw };
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: "error" };
+  }
+  const r = srBookReplySchema.safeParse(json);
+  if (!r.success) return { ok: false, reason: "error" };
+  if (!r.data.ok) return { ok: false, reason: r.data.reason };
+  if (r.data.s !== market) return { ok: false, reason: "error" };
+  return { ok: true, bid: r.data.b, ask: r.data.a, at: r.data.at };
 }
