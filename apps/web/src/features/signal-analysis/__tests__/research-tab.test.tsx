@@ -13,6 +13,7 @@ import {
   RESEARCH_STATUSES,
   RESEARCH_TYPES,
   type ResearchSummary,
+  type ResearchTradeDetail,
   type ResearchTradesPage,
 } from "@drift/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -65,6 +66,8 @@ const state = vi.hoisted(
     summary: unknown;
     versions: unknown;
     bots: unknown[];
+    /** #511: lệnh đầu tiên đóng `max_hold_no_price` (danh sách và chi tiết). */
+    noPrice: boolean;
   } => ({
     mode: "ok",
     paths: [],
@@ -72,6 +75,7 @@ const state = vi.hoisted(
     summary: null,
     versions: null,
     bots: [],
+    noPrice: false,
   }),
 );
 
@@ -152,6 +156,21 @@ const NULL_TRADES: ResearchTradesPage = {
   nextCursor: null,
 };
 
+/** #511: lệnh đóng ở hạn giữ khi SoDEX không có giá: không có giá thoát, không có kết quả. */
+const NO_PRICE_DETAIL: ResearchTradeDetail = {
+  ...NEWS_DETAIL,
+  trade: {
+    ...NEWS_DETAIL.trade,
+    result: { pnl: null, unrealized: null, outcome: "maxHoldNoPrice", leftSecs: null },
+  },
+  steps: NEWS_DETAIL.steps.map((s) => ({
+    ...s,
+    facts: s.facts.map((f) =>
+      f.key === "exit" ? { ...f, price: null, outcome: "maxHoldNoPrice", usd: null, pct: null } : f,
+    ),
+  })),
+};
+
 vi.mock("@/lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/api")>();
   return {
@@ -223,11 +242,24 @@ vi.mock("@/lib/api", async (importOriginal) => {
           // #278: chỉ News live có dữ liệu; loại khác hoặc label=replay → trang rỗng.
           const q = new URL(path, "http://x").searchParams;
           const other = (q.get("type") ?? "news") !== "news" || q.get("label") === "replay";
+          const first = RESEARCH_TRADES.items[0];
+          const firstShown =
+            state.noPrice && first !== undefined
+              ? {
+                  ...first,
+                  result: {
+                    pnl: null,
+                    unrealized: null,
+                    outcome: "maxHoldNoPrice",
+                    leftSecs: null,
+                  },
+                }
+              : first;
           return Promise.resolve(
             schema.parse(
               other
                 ? { items: [], nextCursor: null }
-                : { items: [RESEARCH_TRADES.items[0], SKIPPED_TRADE], nextCursor: null },
+                : { items: [firstShown, SKIPPED_TRADE], nextCursor: null },
             ),
           );
         }
@@ -242,6 +274,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
         if (p.endsWith("/sr-0004"))
           return Promise.resolve(schema.parse({ ...NEWS_DETAIL, trade: RESEARCH_TRADES.items[3] }));
         if (m !== "news") return Promise.resolve(schema.parse(RESEARCH_DETAIL));
+        if (state.noPrice && !p.endsWith(SKIPPED_ID))
+          return Promise.resolve(schema.parse(NO_PRICE_DETAIL));
         return Promise.resolve(schema.parse(p.endsWith(SKIPPED_ID) ? SKIPPED_DETAIL : NEWS_DETAIL));
       }
       return Promise.reject(new real.ApiError("NOT_FOUND", 404));
@@ -293,6 +327,7 @@ function wrap() {
 }
 
 beforeEach(() => {
+  state.noPrice = false;
   state.mode = "ok";
   state.paths = [];
   state.classifiers = null;
@@ -570,6 +605,28 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
       "Not available",
     );
     await noViolations();
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("#511: a trade closed at the hold limit without a price says so; the result is Not available, never 0", async () => {
+    state.mode = "news";
+    state.noPrice = true;
+    wrap();
+    const tbl = await screen.findByRole("table", { name: "Signal research trades" });
+    const row = within(tbl).getByRole("row", { name: /SEC delays decision on SOL ETF/ });
+    expect(within(row).getByText("Max hold · no price")).toBeInTheDocument();
+    for (const z of ["$0", "$0.00", "+$0.00"]) expect(within(row).queryByText(z)).toBeNull();
+    await userEvent.click(
+      within(tbl).getByRole("button", { name: "SEC delays decision on SOL ETF" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByText(
+        "Closed at the hold limit. SoDEX had no price, so there is no result.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/Max hold · no price/).length).toBeGreaterThan(0);
+    for (const z of ["$0", "$0.00", "+$0.00"]) expect(within(dialog).queryByText(z)).toBeNull();
     expect(intlErrors).toEqual([]);
   });
 

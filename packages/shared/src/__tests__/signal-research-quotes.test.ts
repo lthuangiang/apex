@@ -41,6 +41,12 @@ describe("#308 exit price for unrealized PnL", () => {
     expect(srQuoteFresh({ source: "book", at }, NOW)).toBe(false);
   });
 
+  it("#507: a REST book quote ages like a book (bookFreshMs)", () => {
+    const at = NOW - NEWS_RULES.bookFreshMs;
+    expect(srQuoteFresh({ source: "rest_book", at }, NOW)).toBe(true);
+    expect(srQuoteFresh({ source: "rest_book", at: at - 1 }, NOW)).toBe(false);
+  });
+
   it("no quote or a broken book (ask < bid) → null", () => {
     expect(exitPriceOf("long", undefined, NOW)).toBeNull();
     expect(exitPriceOf("long", null, NOW)).toBeNull();

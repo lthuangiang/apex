@@ -19,9 +19,18 @@ import {
   signalResearchEnvSchema,
 } from "../src/signal-research/index";
 import { collectFloor } from "../src/signal-research/pipeline";
-import { combineQuote, LiveBooks, medianTicks } from "../src/signal-research/prices";
+import {
+  combineQuote,
+  LiveBooks,
+  medianTicks,
+  QuoteSource,
+  requestRestBook,
+  type QuoteDeps,
+  type RestBookResult,
+} from "../src/signal-research/prices";
 import { CLASSIFIER_SYSTEM } from "../src/signal-research/prompt";
 import { sosoClient } from "../src/signal-research/soso";
+import { pickRestMarkets } from "../src/signal-research/watcher";
 
 const MIN = 60_000;
 const cfg = {
@@ -105,6 +114,201 @@ describe("quotes from stored market data only", () => {
         tickSize: null,
       }),
     ).toBe("NO_BOOK_DATA");
+  });
+  it("#507 D: QuoteSource keeps the book and last price ages of the last read, null when missing", async () => {
+    const src = new QuoteSource({
+      now: () => now,
+      books: {
+        get: (m) =>
+          m === "BTC-USD"
+            ? { bid: new Decimal("1"), ask: new Decimal("2"), at: now - 7_000 }
+            : undefined,
+      },
+      lastPrices: (ms) =>
+        Promise.resolve(
+          new Map(
+            ms.filter((m) => m === "BTC-USD").map((m) => [m, { price: "1.5", at: now - 20_000 }]),
+          ),
+        ),
+      spreadHists: () => Promise.resolve(new Map()),
+      tickSize: () => "0.1",
+    });
+    expect(src.ages("BTC-USD")).toBeUndefined();
+    const q = await src.quotes(["BTC-USD", "ETH-USD"]);
+    expect(q.get("BTC-USD")).toBe("NO_SODEX_PRICE");
+    expect(q.get("ETH-USD")).toBe("NO_SODEX_PRICE");
+    expect(src.ages("BTC-USD")).toEqual({ bookAgeMs: 7_000, lastAgeMs: 20_000 });
+    expect(src.ages("ETH-USD")).toEqual({ bookAgeMs: null, lastAgeMs: null });
+  });
+  describe("#507 B1: REST book once through marketdata at the decision step", () => {
+    /** Market có giá gần nhất tươi nhưng không có sổ live và không có mẫu spread (đúng như TRX / MON / SPCX trên prod). */
+    function source(rest: QuoteDeps["restBook"], over: Partial<QuoteDeps> = {}) {
+      return new QuoteSource({
+        now: () => now,
+        books: { get: () => undefined },
+        lastPrices: (ms) =>
+          Promise.resolve(new Map(ms.map((m) => [m, { price: "0.3", at: now - 2_000 }]))),
+        spreadHists: () => Promise.resolve(new Map()),
+        tickSize: () => "0.0001",
+        ...(rest === undefined ? {} : { restBook: rest }),
+        ...over,
+      });
+    }
+
+    it("no spread samples + a real REST book → a rest_book quote from the book's best bid / ask", async () => {
+      const calls: string[] = [];
+      const src = source((m) => {
+        calls.push(m);
+        return Promise.resolve({ ok: true, bid: "0.2999", ask: "0.3002", at: now - 100 });
+      });
+      const q = await src.decisionQuote("TRX-USD");
+      expect(
+        typeof q === "object" ? [q.bid.toFixed(), q.ask.toFixed(), q.source, q.at] : q,
+      ).toEqual(["0.2999", "0.3002", "rest_book", now - 100]);
+      expect(calls).toEqual(["TRX-USD"]);
+      expect(src.diag("TRX-USD")).toMatchObject({
+        rest: "ok",
+        spreadSamples: null,
+        tickSize: true,
+      });
+    });
+
+    it("REST error / timeout / unavailable / empty / crossed / zero keeps NO_BOOK_DATA with the reason in the diagnosis", async () => {
+      const cases: [RestBookResult, string][] = [
+        [{ ok: false, reason: "error" }, "error"],
+        [{ ok: false, reason: "timeout" }, "timeout"],
+        [{ ok: false, reason: "unavailable" }, "unavailable"],
+        [{ ok: false, reason: "empty" }, "empty"],
+        [{ ok: true, bid: "0.3", ask: "0.3", at: now }, "crossed"],
+        [{ ok: true, bid: "0.31", ask: "0.3", at: now }, "crossed"],
+        [{ ok: true, bid: "0", ask: "0.3", at: now }, "crossed"],
+        [{ ok: true, bid: "x", ask: "0.3", at: now }, "error"],
+      ];
+      for (const [r, why] of cases) {
+        const src = source(() => Promise.resolve(r));
+        expect(await src.decisionQuote("MON-USD"), why).toBe("NO_BOOK_DATA");
+        expect(src.diag("MON-USD"), why).toEqual({
+          bookAgeMs: null,
+          lastAgeMs: 2_000,
+          spreadSamples: null,
+          tickSize: true,
+          rest: why,
+        });
+      }
+      const throwing = source(() => Promise.reject(new Error("boom")));
+      expect(await throwing.decisionQuote("MON-USD")).toBe("NO_BOOK_DATA");
+      expect(throwing.diag("MON-USD")?.rest).toBe("error");
+    });
+
+    it("a fresh live book never sends the request; without restBook the reason stays as before", async () => {
+      let calls = 0;
+      const live = source(
+        () => {
+          calls += 1;
+          return Promise.resolve({ ok: false, reason: "error" });
+        },
+        {
+          books: { get: () => ({ bid: new Decimal("1"), ask: new Decimal("2"), at: now - 1_000 }) },
+        },
+      );
+      const q = await live.decisionQuote("BTC-USD");
+      expect(typeof q === "object" && q.source).toBe("book");
+      expect(calls).toBe(0);
+      expect(live.diag("BTC-USD")?.rest).toBe("not_tried");
+      // Không có bước REST: như trước (#507 chỉ thêm khi main nối NATS).
+      const off = source(undefined);
+      expect(await off.decisionQuote("TRX-USD")).toBe("NO_BOOK_DATA");
+      expect(off.diag("TRX-USD")?.rest).toBe("not_tried");
+    });
+
+    it("also covers no recent last price (NO_SODEX_PRICE) and keeps that reason when REST has nothing", async () => {
+      const stale = { lastPrices: () => Promise.resolve(new Map()) };
+      const ok = source(() => Promise.resolve({ ok: true, bid: "1", ask: "1.01", at: now }), stale);
+      expect(typeof (await ok.decisionQuote("SPCX-USD"))).toBe("object");
+      const none = source(() => Promise.resolve({ ok: false, reason: "empty" }), stale);
+      expect(await none.decisionQuote("SPCX-USD")).toBe("NO_SODEX_PRICE");
+    });
+
+    it("the watcher path (quotes) never calls REST", async () => {
+      let calls = 0;
+      const src = source(() => {
+        calls += 1;
+        return Promise.resolve({ ok: true, bid: "1", ask: "2", at: now });
+      });
+      expect((await src.quotes(["TRX-USD"])).get("TRX-USD")).toBe("NO_BOOK_DATA");
+      expect(calls).toBe(0);
+    });
+
+    it("requestRestBook reads marketdata's reply and refuses anything it can't trust", async () => {
+      const ok = JSON.stringify({ ok: true, s: "TRX-USD", b: "0.29", a: "0.3", at: 5 });
+      expect(await requestRestBook("TRX-USD", () => Promise.resolve({ reply: ok }))).toEqual({
+        ok: true,
+        bid: "0.29",
+        ask: "0.3",
+        at: 5,
+      });
+      expect(await requestRestBook("MON-USD", () => Promise.resolve({ reply: ok }))).toEqual({
+        ok: false,
+        reason: "error",
+      });
+      expect(await requestRestBook("TRX-USD", () => Promise.resolve("timeout"))).toEqual({
+        ok: false,
+        reason: "timeout",
+      });
+      expect(await requestRestBook("TRX-USD", () => Promise.resolve("unavailable"))).toEqual({
+        ok: false,
+        reason: "unavailable",
+      });
+      expect(await requestRestBook("TRX-USD", () => Promise.resolve({ reply: "{bad" }))).toEqual({
+        ok: false,
+        reason: "error",
+      });
+      expect(
+        await requestRestBook("TRX-USD", () =>
+          Promise.resolve({ reply: JSON.stringify({ ok: false, reason: "empty" }) }),
+        ),
+      ).toEqual({ ok: false, reason: "empty" });
+      expect(await requestRestBook("TRX-USD", () => Promise.reject(new Error("x")))).toEqual({
+        ok: false,
+        reason: "error",
+      });
+      let sent = "";
+      await requestRestBook("TRX-USD", (p) => {
+        sent = p;
+        return Promise.resolve("timeout");
+      });
+      expect(JSON.parse(sent)).toEqual({ market: "TRX-USD" });
+    });
+  });
+  it("#511: watcher REST reads: every 15 s per market, at most 10 per 15 s, overdue first, then least recently read", () => {
+    const need = new Map(
+      Array.from({ length: 14 }, (_, i) => [
+        `M${String(i)}-USD`,
+        { overdue: i === 13, holdEnd: i === 13 ? now - 1 : now + 3_600_000 },
+      ]),
+    );
+    const last = new Map<string, number>([
+      ["M0-USD", now - 1_000],
+      ["M1-USD", now - 15_000],
+      ["M2-USD", now - 40_000],
+    ]);
+    const picked = pickRestMarkets(need, last, 0, now);
+    expect(picked).toHaveLength(10);
+    // Quá hạn giữ trước, rồi chưa đọc lần nào, rồi đọc lâu nhất; M0 vừa đọc 1 s trước thì bỏ.
+    expect(picked[0]).toBe("M13-USD");
+    expect(picked).not.toContain("M0-USD");
+    // Thứ tự với ít market: quá hạn, chưa đọc, đọc lâu nhất.
+    const few = new Map(
+      [...need].filter(([m]) => ["M1-USD", "M2-USD", "M5-USD", "M13-USD"].includes(m)),
+    );
+    expect(pickRestMarkets(few, last, 0, now)).toEqual(["M13-USD", "M5-USD", "M2-USD", "M1-USD"]);
+    // Đã đọc 7 lần trong 15 s: chỉ còn 3.
+    expect(pickRestMarkets(need, last, 7, now)).toHaveLength(3);
+    expect(pickRestMarkets(need, last, 10, now)).toEqual([]);
+    // Lệnh vừa quá hạn giữ mà lần đọc cuối trước hạn: đọc ngay dù chưa đủ 15 s.
+    const overdue = new Map([["X-USD", { overdue: true, holdEnd: now - 500 }]]);
+    expect(pickRestMarkets(overdue, new Map([["X-USD", now - 1_000]]), 0, now)).toEqual(["X-USD"]);
+    expect(pickRestMarkets(overdue, new Map([["X-USD", now - 100]]), 0, now)).toEqual([]);
   });
   it("median ticks across hourly histograms", () => {
     expect(medianTicks([{ "1": 10, "2": 3 }, { "3": 5 }])).toEqual({ ticks: 1, samples: 18 });

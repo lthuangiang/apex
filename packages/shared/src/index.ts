@@ -53,6 +53,7 @@ export * from "./signal-research/news-signal";
 export * from "./signal-research/experiments";
 export * from "./signal-research/labels";
 export * from "./signal-research/markets";
+export * from "./signal-research/book-request";
 export * from "./signal-research/lane";
 export * from "./signal-research/quotes";
 export * from "./signal-research/context";

@@ -8694,6 +8694,7 @@
           "tp": "Hit take profit",
           "sl": "Hit stop loss",
           "maxHold": "Closed at max hold",
+          "maxHoldNoPrice": "Max hold · no price",
           "opposite": "Closed: opposite news",
           "open": "Open · {left} left",
           "openNoLeft": "Open"
@@ -8702,6 +8703,7 @@
           "tp": "hit take profit",
           "sl": "hit stop loss",
           "maxHold": "closed at max hold",
+          "maxHoldNoPrice": "Max hold · no price",
           "opposite": "closed on opposite news",
           "open": "open"
         },
@@ -8738,11 +8740,13 @@
           "tp": "hit take profit after {held}",
           "sl": "hit stop loss after {held}",
           "maxHold": "closed at max hold after {held}",
+          "maxHoldNoPrice": "Max hold · no price",
           "opposite": "closed on opposite news after {held}",
           "open": "still open",
           "tpNoHeld": "hit take profit",
           "slNoHeld": "hit stop loss",
           "maxHoldNoHeld": "closed at max hold",
+          "maxHoldNoPriceNoHeld": "Max hold · no price",
           "oppositeNoHeld": "closed on opposite news"
         },
         "steps": {
@@ -8884,7 +8888,8 @@
           },
           "exit": {
             "label": "Exit",
-            "value": "{price} at {time} · {outcome, select, tp {take profit} sl {stop loss} opposite {opposite news} other {max hold}}"
+            "value": "{price} at {time} · {outcome, select, tp {take profit} sl {stop loss} opposite {opposite news} other {max hold}}",
+            "noPrice": "Closed at the hold limit. SoDEX had no price, so there is no result."
           },
           "priceMove": {
             "label": "Price move",

@@ -301,8 +301,11 @@ export function eventTooOld(eventDate: string | null, publishedAt: number): bool
 export interface Quote {
   bid: Decimal;
   ask: Decimal;
-  /** `book`: giá tốt nhất SoDEX từ marketdata; `last_spread`: giá gần nhất ± nửa spread đo theo giờ. */
-  source: "book" | "last_spread";
+  /**
+   * `book`: giá tốt nhất SoDEX từ marketdata (WS); `last_spread`: giá gần nhất ± nửa spread đo theo giờ; `rest_book`: sổ
+   * lệnh SoDEX đọc qua REST một lần khi thiếu sổ live / mẫu spread (#507).
+   */
+  source: "book" | "last_spread" | "rest_book";
   /**
    * Thời điểm (ms) của dữ liệu giá gốc: giờ nhận sổ (`book`) hoặc giờ của giá gần nhất (`last_spread`). `combineQuote`
    * của scheduler luôn điền; dùng để bỏ giá cũ khi tính lãi / lỗ chưa chốt (#308).

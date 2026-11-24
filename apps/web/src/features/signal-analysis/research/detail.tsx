@@ -81,6 +81,9 @@ function FactValue({ f, tz, trade }: { f: ResearchFact; tz: string; trade: Detai
     if (given(f.at)) return <>{monthDay(f.at, tz)}</>;
     return given(f.text) && YMD.test(f.text) ? <>{shortDate(f.text)}</> : <Na />;
   }
+  // #511: đóng ở hạn giữ khi SoDEX không có giá: không có giá thoát / kết quả, chỉ câu giải thích (không bao giờ 0).
+  if (f.key === "exit" && f.outcome === "maxHoldNoPrice")
+    return <>{t("detail.facts.exit.noPrice")}</>;
   if (REQUIRED[f.key].some((k) => !given(f[k]))) return <Na />;
   const pct =
     f.pct === null || f.pct === undefined

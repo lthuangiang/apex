@@ -118,6 +118,8 @@ export const SignalReason = {
   takeProfit: "TAKE_PROFIT",
   stopLoss: "STOP_LOSS",
   maxHold: "MAX_HOLD",
+  /** #511: quá hạn giữ + 1 giờ mà SoDEX vẫn không có giá: đóng, không có giá thoát / kết quả. */
+  maxHoldNoPrice: "MAX_HOLD_NO_PRICE",
   /** Đóng vì tin ngược chiều (version chọn Close at market). */
   oppositeNews: "OPPOSITE_NEWS",
   // bot `news_signal` mainnet, ghi theo từng bot (#419, DEC-360)
@@ -156,10 +158,26 @@ export const PaperExitReason = {
   takeProfit: "take_profit",
   stopLoss: "stop_loss",
   maxHold: "max_hold",
+  /**
+   * #511 (DEC-384): quá `SR_WATCH_REST.noPriceGraceMs` sau hạn giữ mà SoDEX vẫn không có giá (sổ live, giá gần nhất,
+   * sổ REST): đóng không có giá thoát, phí ra hay kết quả (null, quy tắc 1.8); loại khỏi lãi / lỗ và tỷ lệ thắng.
+   */
+  maxHoldNoPrice: "max_hold_no_price",
   /** Version chọn "Close at market" khi có tin ngược chiều (#303). */
   oppositeNews: "opposite_news",
 } as const;
 export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitReason];
+
+/**
+ * #511 (DEC-384, PM chốt): watcher lệnh giấy đọc sổ REST (qua marketdata) cho lệnh mở không có giá: mỗi market
+ * tối đa mỗi `everyMs`, tối đa `maxMarkets` lần đọc trong mỗi `everyMs`; quá hạn giữ thêm `noPriceGraceMs` mà vẫn không có
+ * giá thì đóng `max_hold_no_price`.
+ */
+export const SR_WATCH_REST = {
+  everyMs: 15_000,
+  maxMarkets: 10,
+  noPriceGraceMs: 3_600_000,
+} as const;
 
 /**
  * Quy tắc tin tức v3 (#269 Design v3.3 mục 1 + mục 7, v3.4; #298). Mọi con số là giả thuyết của nghiên cứu, không phải
