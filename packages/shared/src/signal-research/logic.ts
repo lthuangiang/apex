@@ -107,7 +107,8 @@ export function stripHtml(html: string): string {
  * - `word`: tên một từ, phải viết hoa chữ đầu ("Near" / "NEAR" khớp, "near" không);
  * - `phrase`: tên ≥ 2 từ, khớp cả cụm, không phân biệt hoa thường ("taiwan semiconductor");
  * - `name` (#508): tên coin trong bảng tường minh `COIN_NAME_ALIASES`, không phân biệt hoa thường ("bitcoin").
- * Tên (`word`, `phrase`, `name`) khớp cả dạng số nhiều thêm "s" ("2,223 bitcoins", "ethers"); ký hiệu thì không.
+ * Chỉ `name` khớp cả dạng số nhiều thêm "s" ("2,223 bitcoins", "ethers"); `symbol`, `word`, `phrase` thì không ("ETHs",
+ * "Apples", "Solanas" không khớp; PM review #512).
  */
 export interface AssetAlias {
   text: string;
@@ -185,8 +186,9 @@ const startsUpper = (s: string) => {
 export function mentionsAsset(text: string, aliases: readonly AssetAlias[]): boolean {
   const t = tidy(text);
   return aliases.some((a) => {
-    // Tên khớp cả dạng số nhiều ("bitcoins", "ethers"); ký hiệu thì không ("ETHs" không phải cách viết của ETH).
-    const plural = a.match === "symbol" ? "" : "s?";
+    // Chỉ tên coin của bảng tường minh khớp dạng số nhiều ("bitcoins", "ethers"); ký hiệu, tên cổ phiếu và tên một từ
+    // khác thì không ("ETHs", "Apples").
+    const plural = a.match === "name" ? "s?" : "";
     const body = `(?<![\\p{L}\\p{N}])${escapeRe(a.text)}${plural}(?![\\p{L}\\p{N}])`;
     if (a.match === "symbol") return new RegExp(body, "u").test(t);
     if (a.match === "phrase" || a.match === "name") return new RegExp(body, "iu").test(t);
