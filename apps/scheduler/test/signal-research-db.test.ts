@@ -721,9 +721,12 @@ describe("review PR #278 fixes", () => {
         claude,
         now: () => now,
         // Giá gần nhất luôn mới (như prod: có nến), nhưng không có sổ live / mẫu spread.
-        last: new Proxy({} as Record<string, { price: string; at: number }>, {
-          get: (_t, k) => (k === "SOL-USD" ? { price: "100", at: now - 2_000 } : undefined),
-        }),
+        last: new Proxy(
+          {},
+          {
+            get: (_t, k) => (k === "SOL-USD" ? { price: "100", at: now - 2_000 } : undefined),
+          },
+        ),
         requestBook: (market) => {
           asked.push({ market, at: now });
           return Promise.resolve({ ...reply, ...(reply.ok ? { at: now } : {}) } as RestBookResult);

@@ -29,8 +29,8 @@ import {
   type RestBookResult,
 } from "../src/signal-research/prices";
 import { CLASSIFIER_SYSTEM } from "../src/signal-research/prompt";
-import { pickRestMarkets } from "../src/signal-research/watcher";
 import { sosoClient } from "../src/signal-research/soso";
+import { pickRestMarkets } from "../src/signal-research/watcher";
 
 const MIN = 60_000;
 const cfg = {
