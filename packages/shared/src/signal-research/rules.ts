@@ -171,7 +171,7 @@ export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitRea
  *
  * v4 so với v3 (#395): tin ETF (etf_approved, etf_delayed_or_rejected) không giao dịch BTC / ETH (`ETF_MAJOR_ASSET`), ra
  * cùng prompt `news-classifier-v4`. Bài v3 còn `collected` / `pending` lúc deploy được chuyển sang v4 (`adoptInFlightArticles`).
- * Prompt `news-classifier-v5` (#399) chạy trên v4: chỉ đổi prompt nên không tăng version này.
+ * Prompt `news-classifier-v5` (#399) và `news-classifier-v6` (#505) chạy trên v4: chỉ đổi prompt nên không tăng version này.
  */
 export const NEWS_RULES = {
   version: "news-v4",
@@ -453,7 +453,7 @@ export const NEWS_CLASSIFIER = {
    * 1 phút (`SIGNAL_NEWS_CYCLE_MINUTES`) vẫn giữ 1 giờ để giờ ít tin không làm cache hết hạn giữa hai lần gọi.
    */
   cacheTtl: "1h",
-  promptVersion: "news-classifier-v5",
+  promptVersion: "news-classifier-v6",
   maxTokens: 400,
   /** Tối đa ngần này ký tự nội dung bài gửi cho Claude. */
   maxContentChars: 4000,
@@ -471,7 +471,7 @@ export const NEWS_CLASSIFIER = {
  * hiện tới khi Claude reader này đã chạy đủ ngần này ngày, tính từ `signal_classifier_versions.started_at` (API
  * `/classifiers`). Reader chưa chạy lần nào (chưa có started_at) vẫn là mới. Đổi reader = đổi `classifierVersion` ở đây.
  */
-export const READER_NEW_BADGE = { classifierVersion: "news-classifier-v5", days: 14 } as const;
+export const READER_NEW_BADGE = { classifierVersion: "news-classifier-v6", days: 14 } as const;
 
 /**
  * Nhãn "New in v4" của hộp "Not counted" và chip "v3 → v4" của dòng sub (luật cố định của Rules v4, #395). Rules v4 lên
