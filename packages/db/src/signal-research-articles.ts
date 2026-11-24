@@ -20,6 +20,7 @@ import {
   type ResearchTraceCheck,
   type ResearchTraceStep,
   type ResearchTraceStory,
+  srExportExcerpt,
 } from "@drift/shared";
 import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
@@ -909,6 +910,8 @@ export interface SignalArticleExportRow {
   catalyst: string | null;
   relevance: string | null;
   promotional: boolean | null;
+  /** #509: đoạn đầu nội dung đã chuẩn hoá, chỉ cho bài không có tiêu đề; null ở bài có tiêu đề. */
+  excerpt: string | null;
 }
 
 /**
@@ -951,6 +954,7 @@ export async function loadSignalResearchArticlesExport(
         catalyst: cls.catalyst ?? null,
         relevance: cls.relevance ?? null,
         promotional: cls.promotional ?? null,
+        excerpt: a.title === null ? srExportExcerpt(a.content) : null,
       },
     ];
   });

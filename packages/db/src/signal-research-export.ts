@@ -30,7 +30,8 @@ import { loadSignalResearchArticlesExport } from "./signal-research-articles";
 
 // File "Export data" của Signal Research (#489; hợp đồng `srExportSchema` trong packages/shared). Chỉ đọc; nơi gọi bọc trong
 // transaction chỉ đọc. Chỉ chọn những cột được phép xuất: KHÔNG đọc email, user id (`created_by`, `owner_user_id` chỉ dùng
-// để tách team / riêng, không xuất), địa chỉ ví H1, id bot / tài khoản mainnet, nội dung / URL bài, `last_error` của nguồn
+// để tách team / riêng, không xuất), địa chỉ ví H1, id bot / tài khoản mainnet, nội dung / URL bài (trừ `excerpt` ngắn đã
+// chuẩn hoá của bài không có tiêu đề, #509), `last_error` của nguồn
 // (chuỗi lỗi thô có thể chứa URL / tham số). Mainnet chỉ có số gộp (DEC-361). Thiếu số → null, không bao giờ 0.
 
 type Q = Db | DbTx;
@@ -97,6 +98,7 @@ export async function loadSignalResearchExport(
     source: a.source,
     tier: a.tier,
     title: a.title,
+    excerpt: x.excerpt,
     tagged: a.tagged,
     candidates: a.candidates,
     market: a.asset,

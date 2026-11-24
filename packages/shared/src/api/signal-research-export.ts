@@ -12,10 +12,46 @@ import {
 
 // File "Export data" của Signal Research (#489): một file JSON cho PM phân tích hằng ngày, chỉ role team, chỉ đọc.
 // KHÔNG BAO GIỜ chứa email, user id, địa chỉ ví (kể cả ví H1), API key, token, payload đã ký, id bot / tài khoản mainnet.
-// Mainnet chỉ có số gộp (DEC-361). Bài báo chỉ có tiêu đề và metadata, không có nội dung / đoạn trích / URL. Số không có
-// trong DB là null, không bao giờ 0 (quy tắc 1.8).
+// Mainnet chỉ có số gộp (DEC-361). Bài báo chỉ có tiêu đề và metadata, không có nội dung / URL; riêng bài không có tiêu đề
+// (bài mạng xã hội) có một đoạn đầu ngắn đã chuẩn hoá (`excerpt`, #509). Số không có trong DB là null, không bao giờ 0
+// (quy tắc 1.8).
 
-export const SR_EXPORT_SCHEMA_VERSION = 1;
+/** 2: thêm `articles[].excerpt` (#509). */
+export const SR_EXPORT_SCHEMA_VERSION = 2;
+/** Độ dài tối đa của `excerpt` (ký tự Unicode, gồm cả dấu "…" khi bị cắt). */
+export const SR_EXPORT_EXCERPT_CHARS = 280;
+
+const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+/** Địa chỉ ví EVM, và mọi chuỗi hex dài (khoá, chữ ký, hash). */
+const HEX_RE = /\b(?:0x)?[0-9a-fA-F]{32,}\b/g;
+/** Địa chỉ ví dạng base58 (Solana, Bitcoin…): một từ 32–44 ký tự base58. */
+const BASE58_RE = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+const TAG_RE = /<[^>]*>/g;
+
+/**
+ * Đoạn đầu nội dung của bài không có tiêu đề (#509): bỏ thẻ HTML, URL, email, địa chỉ ví, chuỗi hex dài; gộp khoảng trắng;
+ * tối đa `SR_EXPORT_EXCERPT_CHARS` ký tự Unicode, thêm "…" khi bị cắt. Không còn chữ nào → null. Chỉ là đoạn ngắn để kiểm
+ * reader, không bao giờ là nguyên bài.
+ */
+export function srExportExcerpt(content: string | null): string | null {
+  if (content === null) return null;
+  const text = content
+    .replace(TAG_RE, " ")
+    .replace(URL_RE, " ")
+    .replace(EMAIL_RE, " ")
+    .replace(HEX_RE, " ")
+    .replace(BASE58_RE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text === "") return null;
+  const chars = Array.from(text);
+  if (chars.length <= SR_EXPORT_EXCERPT_CHARS) return text;
+  return `${chars
+    .slice(0, SR_EXPORT_EXCERPT_CHARS - 1)
+    .join("")
+    .trimEnd()}…`;
+}
 export const SR_EXPORT_PERIODS = ["24h", "7d", "30d"] as const;
 export type SrExportPeriod = (typeof SR_EXPORT_PERIODS)[number];
 /** Số giờ của mỗi kỳ; kỳ tối đa 30 ngày. */
@@ -85,6 +121,11 @@ export const srExportArticleSchema = z.object({
   source: z.string(),
   tier: z.enum(RESEARCH_SOURCE_TIERS).nullable(),
   title: z.string().nullable(),
+  /** Bài không có tiêu đề: đoạn đầu nội dung đã chuẩn hoá (`srExportExcerpt`); bài có tiêu đề → null. */
+  excerpt: z
+    .string()
+    .refine((v) => Array.from(v).length <= SR_EXPORT_EXCERPT_CHARS, "Excerpt too long")
+    .nullable(),
   tagged: z.array(z.string()),
   candidates: z.array(z.string()),
   market: z.string().nullable(),
