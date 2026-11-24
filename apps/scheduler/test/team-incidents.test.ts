@@ -367,6 +367,28 @@ describe("SoDEX order stream lag (#518)", () => {
     );
   });
 
+  it("ignores filled / cancelled / replaced updates of orders that rested on the book, still counts late NEW / REJECTED", async () => {
+    // Chưa rõ `T` là mốc sự kiện hay mốc tạo lệnh (review PM #521): lệnh nằm sổ 30 s rồi khớp / bị huỷ không được báo.
+    await msg({ data: update(30_000, { X: "FILLED", x: "TRADE", z: "0.01", v: "30" }) });
+    await msg({ data: update(30_000, { X: "CANCELED", x: "CANCELED" }) });
+    await msg({ data: update(30_000, { X: "PARTIALLY_FILLED", x: "PARTIALLY_FILLED" }) });
+    // Như ví dụ trong tài liệu SoDEX: lệnh thay giá vẫn NEW nhưng x = REPLACED.
+    await msg({ data: update(30_000, { X: "NEW", x: "REPLACED" }) });
+    await msg({ data: update(30_000, { X: "EXPIRED" }) });
+    expect(await checkTeamIncidents(db, memStore(), NOW)).toEqual([]);
+    // Một tin trộn: item FILLED trễ không tính, item NEW đúng giờ → tin không trễ.
+    await msg({ data: [update(30_000, { X: "FILLED" }), update(40, { X: "NEW", x: "NEW" })] });
+    expect(await checkTeamIncidents(db, memStore(), NOW)).toEqual([]);
+    // NEW / REJECTED trễ vẫn báo, kể cả khi có x tương ứng.
+    await msg({ data: update(21_000, { X: "NEW", x: "NEW" }) });
+    await msg({ data: update(20_000, { X: "REJECTED", x: "REJECTED" }) });
+    expect(await checkTeamIncidents(db, memStore(), NOW)).toEqual(["sodex_ws_lag"]);
+    const [e] = await queued();
+    expect(e?.detail).toBe(
+      "2 order updates arrived over 5 s late in the last 5 min (max 21.0 s) · accounts: 0x3e9a…11fd",
+    );
+  });
+
   it("stays quiet with one late update, at exactly 5 s, or when the two are more than 5 minutes apart", async () => {
     await msg({ data: update(20_000) });
     await msg({ data: update(5_000) });

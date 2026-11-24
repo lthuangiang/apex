@@ -174,6 +174,9 @@ export async function wsClosesIncident(db: Db, now: number): Promise<Incident | 
  * giờ máy ta không ảnh hưởng. Đọc `response_body` của dòng WS trong `sodex_calls`: chỉ có dữ liệu khi recorder ghi dòng
  * WS `ok` (SoDEX Debugger bật, hàng đợi không đầy). Body bị cắt / không phải JSON, item thiếu `T` bị bỏ, không làm truy
  * vấn lỗi. Đếm theo tin (mỗi dòng), lấy E − T lớn nhất trong các item của tin. Account chỉ ở dạng che, tối đa 3.
+ * Chỉ item tạo lệnh / bị từ chối ngay (`X` và `x` là NEW / REJECTED; `x` thiếu thì theo `X`): chưa rõ `T` là mốc của sự
+ * kiện hay mốc tạo lệnh (review PM #521). Nếu là mốc tạo lệnh, tin FILLED / CANCELED / REPLACED của lệnh nằm sổ lâu có
+ * E − T lớn mà luồng không trễ; ví dụ trong tài liệu SoDEX có tin NEW · REPLACED và PARTIALLY_FILLED với E − T ≈ 531 s.
  */
 export async function wsLagIncident(db: Db, now: number): Promise<Incident | null> {
   const R = TEAM_INCIDENT_RULES;
@@ -190,6 +193,8 @@ export async function wsLagIncident(db: Db, now: number): Promise<Incident | nul
                            else '[]'::jsonb
                          end) as it
                  where jsonb_typeof(it) = 'object'
+                   and (it->>'X') in ('NEW', 'REJECTED')
+                   and coalesce(it->>'x', it->>'X') in ('NEW', 'REJECTED')
                    and (it->>'E') ~ '^[0-9]{1,15}$'
                    and (it->>'T') ~ '^[0-9]{1,15}$') as lag_ms
           from sodex_calls c
