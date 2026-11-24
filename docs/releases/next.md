@@ -10,7 +10,7 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-Chưa có thay đổi.
+- Cảnh báo team `sodex_ws_lag` (#518, DEC-386; **chưa merge**): scheduler báo "SoDEX order updates delayed" khi trong 5 phút có ≥ 2 tin `accountOrderUpdate` của SoDEX với E − T > 5 s (đọc `sodex_calls`, chỉ chạy khi recorder ghi dòng WS `ok`). Không đổi hành vi bot, không thêm request SoDEX.
 
 **Migration (chạy khi deploy):** không có.
 

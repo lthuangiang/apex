@@ -168,6 +168,62 @@ export async function wsClosesIncident(db: Db, now: number): Promise<Incident | 
   };
 }
 
+/**
+ * Luồng lệnh WS của SoDEX trễ (#518, DEC-386): trong `wsLagWindowMs` có ≥ `wsLagMin` tin `accountOrderUpdate` mà E − T
+ * > `wsLagMs`. E (event time) và T (block time) đều do SoDEX gắn vào tin (packages/sodex/src/ws/schemas.ts), nên lệch
+ * giờ máy ta không ảnh hưởng. Đọc `response_body` của dòng WS trong `sodex_calls`: chỉ có dữ liệu khi recorder ghi dòng
+ * WS `ok` (SoDEX Debugger bật, hàng đợi không đầy). Body bị cắt / không phải JSON, item thiếu `T` bị bỏ, không làm truy
+ * vấn lỗi. Đếm theo tin (mỗi dòng), lấy E − T lớn nhất trong các item của tin. Account chỉ ở dạng che, tối đa 3.
+ */
+export async function wsLagIncident(db: Db, now: number): Promise<Incident | null> {
+  const R = TEAM_INCIDENT_RULES;
+  const r = await readOnly<{ address: string | null; late: number; max_ms: string }>(
+    db,
+    sql`
+      with msgs as (
+        select c.account_address as address,
+               (select max((it->>'E')::bigint - (it->>'T')::bigint)
+                  from jsonb_array_elements(
+                         case jsonb_typeof(b.body->'data')
+                           when 'array' then b.body->'data'
+                           when 'object' then jsonb_build_array(b.body->'data')
+                           else '[]'::jsonb
+                         end) as it
+                 where jsonb_typeof(it) = 'object'
+                   and (it->>'E') ~ '^[0-9]{1,15}$'
+                   and (it->>'T') ~ '^[0-9]{1,15}$') as lag_ms
+          from sodex_calls c
+          cross join lateral (
+            select case when pg_input_is_valid(c.response_body, 'jsonb') then c.response_body::jsonb end as body
+          ) b
+          where c.at >= ${new Date(now - R.wsLagWindowMs)} and c.at <= ${new Date(now)}
+            and c.kind = 'ws' and c.method = 'MSG' and c.endpoint = 'accountOrderUpdate'
+            and c.outcome = 'ok' and not c.response_truncated and c.response_body is not null
+      )
+      select address, count(*)::int as late, max(lag_ms)::text as max_ms
+        from msgs
+        where lag_ms > ${R.wsLagMs}
+        group by address
+        order by count(*) desc, max(lag_ms) desc`,
+  );
+  const late = r.reduce((n, x) => n + x.late, 0);
+  if (late < R.wsLagMin) return null;
+  const maxMs = Math.max(...r.map((x) => Number(x.max_ms)));
+  const accounts = r
+    .filter((x): x is typeof x & { address: string } => x.address !== null)
+    .slice(0, 3)
+    .map((x) => teamMaskAddress(x.address));
+  return {
+    type: "team_incident",
+    kind: "sodex_ws_lag",
+    detail:
+      `${String(late)} order updates arrived over ${String(R.wsLagMs / 1000)} s late in the last ${minutes(R.wsLagWindowMs)} min (max ${(maxMs / 1000).toFixed(1)} s)${accounts.length === 0 ? "" : ` · accounts: ${accounts.join(", ")}`}`.slice(
+        0,
+        200,
+      ),
+  };
+}
+
 /** Tin tổng hợp ngày: một lần mỗi ngày từ 01:00 UTC (08:00 giờ Việt Nam), đếm 24 giờ qua theo loại. */
 export async function digestIncident(
   store: IncidentReadStore,
@@ -217,12 +273,18 @@ export async function checkTeamIncidents(
       return empty;
     }
   };
-  const [health, sodex, ws] = await Promise.all([
+  const [health, sodex, ws, lag] = await Promise.all([
     safe("engine_health", () => engineHealthIncidents(store, now), [] as Incident[]),
     safe("sodex_errors", () => sodexErrorIncident(db, now), null),
     opts.ws === false ? null : safe("ws_closes", () => wsClosesIncident(db, now), null),
+    safe("sodex_ws_lag", () => wsLagIncident(db, now), null),
   ]);
-  const found = [...health, ...(sodex === null ? [] : [sodex]), ...(ws === null ? [] : [ws])];
+  const found = [
+    ...health,
+    ...(sodex === null ? [] : [sodex]),
+    ...(ws === null ? [] : [ws]),
+    ...(lag === null ? [] : [lag]),
+  ];
   const sent: string[] = [];
   for (const e of found) {
     // Điều kiện còn đúng thì không ghi lại mỗi phút: một dòng / loại / (30 phút + 1 phút). Thêm 1 phút để khoá chặn lặp

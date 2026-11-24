@@ -224,12 +224,14 @@ Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegr
 | warning | `reads_skipped` | Đọc nền bị phần dự trữ chặn ≥ 100 lời gọi trong một phút (xét 5 phút) | bộ đếm Redis → scheduler |
 | warning | `ws_closes` | WS user stream đóng > 10 lần / giờ ở một account | `sodex_calls` → scheduler |
 | warning | `sodex_errors` | ≥ 100 lời gọi REST trong 10 phút và ≥ 10% timeout / network / unreadable / HTTP 5xx | `sodex_calls` → scheduler |
+| warning | `sodex_ws_lag` | ≥ 2 tin `accountOrderUpdate` có E − T > 5 s trong 5 phút (DEC-386); chỉ chạy khi recorder ghi dòng WS `ok` | `sodex_calls` (`response_body` của dòng WS) → scheduler |
 
 - Chỉ bot tiền thật. Engine không chờ thêm I/O nào: dòng outbox nằm trong transaction đang có; bộ đếm Redis tăng không chờ, lỗi thì bỏ qua.
 - **Chặn lặp** (jobs, Redis `SET NX PX`): critical 1 tin / (loại, bot, market) / 10 phút; warning 1 tin / loại / 30 phút. `position_mismatch` / `position_matched` không bao giờ bị chặn lặp (engine phát mỗi lần chuyển một lần). Redis lỗi thì vẫn gửi.
 - Scheduler: truy vấn `sodex_calls` có `SET LOCAL statement_timeout` 5 s; các lượt không chạy chồng; WS close chỉ kiểm tra mỗi 5 phút.
+- `sodex_ws_lag` (#518, DEC-386): E (event time) và T (block time) đều do SoDEX gắn vào tin, nên lệch giờ máy ta không ảnh hưởng. Đếm theo tin (mỗi dòng `sodex_calls`), không theo item. **Chỉ chạy khi recorder ghi dòng WS `ok`** (SoDEX Debugger bật, `SODEX_DEBUGGER` khác `off`, hàng đợi recorder không đầy); không có dòng thì cảnh báo im lặng, không có nghĩa là luồng lệnh ổn. Chi tiết: "{n} order updates arrived over 5 s late in the last 5 min (max {max} s) · accounts: {masked}", account che, tối đa 3. Nút mở SoDEX Debugger không lọc (tin trễ là dòng `ok`, bộ lọc lỗi không hiện).
 - **Tin tổng hợp:** mỗi ngày từ 01:00 UTC (08:00 giờ Việt Nam), số lần 24 giờ qua theo loại (kể cả lần bị chặn lặp), nặng nhất trước; không có gì thì "No incidents in the last 24 h.".
-- **Nội dung:** mức độ + loại, chiến lược · market · `bot ··1a2b3c4d`, số liệu, link User page (`/admin/users/:userId`, chủ bot; team không mở được trang bot của user) / SoDEX Debugger (lọc theo bot) / Bot Monitor. Câu chữ PM duyệt (PR #243). Nút: Bot Monitor; `sodex_errors` / `ws_closes` mở SoDEX Debugger lọc lỗi. Không bao giờ email, ví đầy đủ, key, tên bot; account chỉ ở dạng che.
+- **Nội dung:** mức độ + loại, chiến lược · market · `bot ··1a2b3c4d`, số liệu, link User page (`/admin/users/:userId`, chủ bot; team không mở được trang bot của user) / SoDEX Debugger (lọc theo bot) / Bot Monitor. Câu chữ PM duyệt (PR #243). Nút: Bot Monitor; `sodex_errors` / `ws_closes` mở SoDEX Debugger lọc lỗi; `sodex_ws_lag` mở SoDEX Debugger không lọc. Không bao giờ email, ví đầy đủ, key, tên bot; account chỉ ở dạng che.
 - Ví dụ:
   ```
   🚨 CRITICAL · Position doesn't match

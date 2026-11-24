@@ -173,9 +173,13 @@ const uuidOf = (v: unknown): string | null => {
 };
 const incidentBot = (data: Record<string, unknown>): string | null => uuidOf(data.botId);
 
-/** Nút của tin sự cố: lỗi SoDEX / WS → SoDEX Debugger lọc lỗi; còn lại → Bot Monitor. */
+/**
+ * Nút của tin sự cố: lỗi SoDEX / WS → SoDEX Debugger lọc lỗi; luồng lệnh WS trễ → SoDEX Debugger không lọc (các tin trễ
+ * là dòng `ok`, bộ lọc lỗi không hiện, #518); còn lại → Bot Monitor.
+ */
 function incidentTarget(data: Record<string, unknown>): { path: string; label: string } {
   const kind = incidentKind(data);
+  if (kind === "sodex_ws_lag") return { path: "/admin/sodex-debugger", label: M.buttons.debugger };
   return kind === "sodex_errors" || kind === "ws_closes"
     ? { path: "/admin/sodex-debugger?show=errors", label: M.buttons.debugger }
     : { path: "/admin/bot-monitor", label: M.buttons.botMonitor };

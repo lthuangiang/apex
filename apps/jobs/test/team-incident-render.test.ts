@@ -69,6 +69,37 @@ describe("team incident message", () => {
     expect(r.button.url).toBe("https://desklabs.test/admin/sodex-debugger?show=errors");
   });
 
+  it("#518: writes the SoDEX order stream delay and opens the SoDEX Debugger without the errors filter", () => {
+    const r = renderTelegram(
+      [
+        incident({
+          kind: "sodex_ws_lag",
+          severity: "warning",
+          detail:
+            "2 order updates arrived over 5 s late in the last 5 min (max 22.0 s) · accounts: 0x3e9a…11fd",
+        }),
+      ],
+      BASE,
+    );
+    expect(r.text).toBe(
+      [
+        "⚠️ WARNING · <b>SoDEX order updates delayed</b>",
+        "2 order updates arrived over 5 s late in the last 5 min (max 22.0 s) · accounts: 0x3e9a…11fd",
+        '<a href="https://desklabs.test/admin/bot-monitor">Bot Monitor</a>',
+      ].join("\n"),
+    );
+    expect(r.button).toEqual({
+      text: "Open SoDEX Debugger",
+      url: "https://desklabs.test/admin/sodex-debugger",
+    });
+    expect(
+      renderTelegram(
+        [{ type: "team_incident_digest", data: { sodex_ws_lag: 4 }, botName: null }],
+        BASE,
+      ).text,
+    ).toBe("📋 <b>Daily incidents · last 24 h</b>\n• 4 × SoDEX order updates delayed (warning)");
+  });
+
   it("never links the user's bot page, which the team can't open", () => {
     const r = renderTelegram(
       [incident({ kind: "close_failed", botId: BOT, userId: "not-a-uuid", detail: "x" })],
