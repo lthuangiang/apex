@@ -376,6 +376,8 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 > **v2.18.1** (`docs/releases/v2.18.1.md`): chỉ khu team: picker market + cột Avg trên Market hours, nút Export data của Signal Research. Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.18.1`.
 >
 > **v2.18.2** (`docs/releases/v2.18.2.md`): sửa hai lỗi tiền thật (đòn bẩy `unknown` của bot news, Market Making re-sync theo vị thế cũ, DEC-380), hết báo động giả "SoDEX errors spiking", Smart quoting tắt mặc định. Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.18.2`. Bot Market Making đang chạy nên Stop trước khi deploy rồi Start lại.
+>
+> **v2.18.3** (`docs/releases/v2.18.3.md`): hotfix Signal Research: Claude reader v6 (DEC-382), Rules v5 bỏ listing trên BTC / ETH (DEC-383), sổ lệnh REST một lần qua marketdata khi market không có sổ live (DEC-384), đoạn trích trong export (DEC-385). Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.18.3`. `marketdata` và `scheduler` phải lên cùng bản (subject NATS mới `sr.book.request`); lệnh deploy trên đã làm vậy. Sau deploy, số nhãn, số lệnh và cổng 50 nhãn của Signal Research đếm lại từ 0 (một lần).
 
 **3. Service cần pull lại:** cả 11 app. `infra/deploy/changed-apps.sh v2.12.0 <tag mới>` trả cả 11 vì `packages/**` đổi (shared, db). `build-push.sh --deploy-only <tag>` đã pull và `up -d` hết; không cần chọn tay.
 
