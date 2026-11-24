@@ -50,7 +50,7 @@ async function article(
        status, classification, claude_calls, claude_input_tokens, claude_cache_write_tokens, claude_cache_read_tokens, claude_output_tokens,
        claude_model, claude_prompt_version, rule_version)
      values ($1, 'Reuters', $2, $3, $4, $5, $5, '[{"symbol":"ETH","name":"Ethereum"}]', '[{"symbol":"ETH","market":"ETH-USD","kind":"crypto"}]',
-       $6, 'classified', $7, 1, 500, 0, 4000, 100, $8, $9, 'news-v4')`,
+       $6, 'classified', $7, 1, 500, 0, 4000, 100, $8, $9, 'news-v5')`,
     [
       id,
       `https://example.test/${id}`,
@@ -73,7 +73,7 @@ async function event(
 ) {
   await env.pool.query(
     `insert into signal_events (id, article_id, story_id, trade_id, stage, outcome, reason, detail, rule_version, at)
-     values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'news-v4', $8)`,
+     values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'news-v5', $8)`,
     [
       articleId,
       extra.storyId ?? null,
@@ -105,7 +105,7 @@ async function trade(id: string, o: { articleId: string; classifier: string | nu
        exit_fee, result_usdc, result_pct, rule_version, classifier_version)
      values ($1, 'news', $2, $3, 'ETH-USD', 'ETH', 'etf_approved', 'long', 500, 0.15, 3400, 3400, 0.01, 0.05, 0.25, 1,
        1.6, 0.8, 3454, 3372, $4, $5, $5, $5, 0.1, 'medium', '[{"name":"Reuters","tier":"top"}]', false, 'book', 'closed', 3450,
-       'take_profit', $6, 0.25, $7, $8, 'news-v4', $9)`,
+       'take_profit', $6, 0.25, $7, $8, 'news-v5', $9)`,
     [
       id,
       storyId,
@@ -162,7 +162,7 @@ beforeAll(async () => {
     `insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry, later_level,
        outcome, locked, rule_version)
      values ($1, 'ETH-USD|etf_approved', 'ETH-USD', 'etf_approved', 'long', 's1', $2, '[{"name":"Reuters","tier":"top","articleId":"s1","at":"x"}]',
-       'medium', 'medium', 'entered', true, 'news-v4')`,
+       'medium', 'medium', 'entered', true, 'news-v5')`,
     [storyId, ago(60)],
   );
   // Ba tín hiệu của classifier hiện tại; s1 đã mở một lệnh (đã đóng, kết quả +1.2%).

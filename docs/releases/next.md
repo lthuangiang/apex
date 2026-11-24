@@ -10,7 +10,7 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-Chưa có thay đổi.
+- Rules `news-v5` (#506, `DEC-TBD-sr-listing-major-asset`; **chưa merge**): tin listing trên BTC / ETH bị loại ở Score với `LISTING_MAJOR_ASSET` ("Listing on BTC or ETH"). Số nhãn, số lệnh và cổng đếm lại từ 0; lệnh v4 là lịch sử. Bài v4 còn `collected` / `pending` lúc deploy chuyển sang v5 ở chu kỳ đầu. Không đổi prompt.
 
 **Migration (chạy khi deploy):** không có.
 

@@ -49,6 +49,7 @@ import {
   stripHtml,
   TradeDirection,
   etfOnMajorAsset,
+  listingOnMajorAsset,
   treasuryOnMajorAsset,
   versionHoldHours,
   type Candidate,
@@ -511,6 +512,9 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       reason = SignalReason.treasuryMajorAsset;
     // news-v4 (#395): tin ETF trên BTC / ETH không giao dịch.
     else if (etfOnMajorAsset(c.catalyst, candidate.market)) reason = SignalReason.etfMajorAsset;
+    // news-v5 (#506): tin listing trên BTC / ETH không giao dịch.
+    else if (listingOnMajorAsset(c.catalyst, candidate.market))
+      reason = SignalReason.listingMajorAsset;
     else if (eventTooOld(c.eventDate, a.publishedAt.getTime())) reason = SignalReason.eventTooOld;
     const signal: Signal | null =
       candidate === undefined || c.catalyst === "none"

@@ -19,6 +19,7 @@ import {
   sourceTierOf,
   spreadPctOf,
   etfOnMajorAsset,
+  listingOnMajorAsset,
   storyKey,
   treasuryOnMajorAsset,
   typicalMovePct,
@@ -60,11 +61,12 @@ describe("rules v3", () => {
     });
     expect(catalystRule("token_unlock")).toMatchObject({ direction: "short", maxHoldHours: 48 });
     expect(SIGNAL_CATALYSTS).toHaveLength(12);
-    expect(NEWS_RULES.version).toBe("news-v4");
-    expect(NEWS_RULES.versionNumber).toBe(4);
+    expect(NEWS_RULES.version).toBe("news-v5");
+    expect(NEWS_RULES.versionNumber).toBe(5);
     expect(SignalReason.assetNotInText).toBe("ASSET_NOT_IN_TEXT");
     expect(SignalReason.treasuryMajorAsset).toBe("TREASURY_MAJOR_ASSET");
     expect(SignalReason.etfMajorAsset).toBe("ETF_MAJOR_ASSET");
+    expect(SignalReason.listingMajorAsset).toBe("LISTING_MAJOR_ASSET");
   });
 });
 
@@ -223,6 +225,25 @@ describe("ETF rules (news-v4, #395)", () => {
     expect(etfOnMajorAsset("hack_exploit", "ETH-USD")).toBe(false);
     expect(etfOnMajorAsset("treasury_buy", "BTC-USD")).toBe(false);
     expect(etfOnMajorAsset("listing", "BTC-USD")).toBe(false);
+  });
+});
+
+describe("listing rules (news-v5, #506)", () => {
+  it("never trades listing news on BTC or ETH", () => {
+    expect(listingOnMajorAsset("listing", "BTC-USD")).toBe(true);
+    expect(listingOnMajorAsset("listing", "ETH-USD")).toBe(true);
+    expect(NEWS_RULES.listingExcludedMarkets).toEqual(["BTC-USD", "ETH-USD"]);
+  });
+
+  it("keeps listing news on other coins, delisting on BTC / ETH and other news types", () => {
+    expect(listingOnMajorAsset("listing", "SOL-USD")).toBe(false);
+    expect(listingOnMajorAsset("listing", "ENA-USD")).toBe(false);
+    expect(listingOnMajorAsset("listing", "1000PEPE-USD")).toBe(false);
+    expect(listingOnMajorAsset("delisting", "BTC-USD")).toBe(false);
+    expect(listingOnMajorAsset("delisting", "ETH-USD")).toBe(false);
+    expect(listingOnMajorAsset("hack_exploit", "BTC-USD")).toBe(false);
+    expect(listingOnMajorAsset("etf_approved", "ETH-USD")).toBe(false);
+    expect(listingOnMajorAsset("treasury_buy", "BTC-USD")).toBe(false);
   });
 });
 

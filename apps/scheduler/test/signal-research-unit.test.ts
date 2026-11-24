@@ -224,9 +224,9 @@ describe("classifier answer", () => {
 });
 
 describe("classifier prompt news-classifier-v5 (#399)", () => {
-  it("ships with rules news-v4 (only the prompt changes)", () => {
+  it("runs on rules news-v5 (#506 adds a rule, the prompt is unchanged)", () => {
     expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v5");
-    expect(NEWS_RULES.version).toBe("news-v4");
+    expect(NEWS_RULES.version).toBe("news-v5");
   });
   it("stock: a company's stock market debut is not a listing, a comparison name is not the subject", () => {
     expect(CLASSIFIER_SYSTEM).toMatch(

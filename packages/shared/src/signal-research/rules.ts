@@ -92,6 +92,8 @@ export const SignalReason = {
   treasuryMajorAsset: "TREASURY_MAJOR_ASSET",
   /** news-v4 (#395): etf_approved / etf_delayed_or_rejected trên BTC hoặc ETH không bao giờ giao dịch. */
   etfMajorAsset: "ETF_MAJOR_ASSET",
+  /** news-v5 (#506): listing trên BTC hoặc ETH không bao giờ giao dịch. */
+  listingMajorAsset: "LISTING_MAJOR_ASSET",
   // filter
   sameStory: "SAME_STORY",
   /** Câu chuyện chưa vào lệnh nhưng bài đầu tiên đã quá `retryWindowMinutes`: gộp, không vào lệnh. */
@@ -172,11 +174,15 @@ export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitRea
  * v4 so với v3 (#395): tin ETF (etf_approved, etf_delayed_or_rejected) không giao dịch BTC / ETH (`ETF_MAJOR_ASSET`), ra
  * cùng prompt `news-classifier-v4`. Bài v3 còn `collected` / `pending` lúc deploy được chuyển sang v4 (`adoptInFlightArticles`).
  * Prompt `news-classifier-v5` (#399) chạy trên v4: chỉ đổi prompt nên không tăng version này.
+ *
+ * v5 so với v4 (#506): tin listing trên BTC / ETH không giao dịch (`LISTING_MAJOR_ASSET`): một sàn niêm yết thêm BTC hay
+ * ETH không phải catalyst. Không đổi prompt. Bài v4 còn `collected` / `pending` lúc deploy được chuyển sang v5 như lần
+ * trước; tổng kết, nhãn và cổng đếm lại từ 0, lệnh v4 là lịch sử.
  */
 export const NEWS_RULES = {
-  version: "news-v4",
+  version: "news-v5",
   /** Số version (API hiện dạng số). */
-  versionNumber: 4,
+  versionNumber: 5,
   lane: "news",
   /** Bảng loại tin → chiều + giữ tối đa. Chiều do loại tin quyết định, Claude chỉ gọi tên loại tin và tài sản. */
   catalysts: {
@@ -235,6 +241,11 @@ export const NEWS_RULES = {
    * rất nhiều ETF, thêm một ETF hiếm khi làm giá đổi. Coin khác vẫn giữ.
    */
   etfExcludedMarkets: ["BTC-USD", "ETH-USD"],
+  /**
+   * Tin listing trên các market này không bao giờ giao dịch (news-v5, #506): BTC và ETH đã niêm yết ở mọi sàn lớn, thêm
+   * một sàn không làm giá đổi. Coin khác vẫn giữ. Delisting không nằm trong luật này.
+   */
+  listingExcludedMarkets: ["BTC-USD", "ETH-USD"],
   /** Cỡ lệnh paper cố định (USDC). */
   sizeUsdc: "500",
   /** TP / SL = bội số của biến động thường gặp trong khoảng giữ tối đa. */
@@ -474,9 +485,10 @@ export const NEWS_CLASSIFIER = {
 export const READER_NEW_BADGE = { classifierVersion: "news-classifier-v5", days: 14 } as const;
 
 /**
- * Nhãn "New in v4" của hộp "Not counted" và chip "v3 → v4" của dòng sub (luật cố định của Rules v4, #395). Rules v4 lên
+ * Nhãn "New in v4" của hộp "Not counted" và chip "v{n-1} → v{n}" của dòng sub (luật cố định của Rules, #395). Rules v4 lên
  * cùng lúc với Claude reader v4 nên mốc 14 ngày tính từ `started_at` của `news-classifier-v4`; reader v5 (#399) không đổi
- * Rules nên không làm hai nhãn này hiện lại. Đổi Rules = đổi mốc ở đây theo reader lên cùng Rules mới.
+ * Rules nên không làm hai nhãn này hiện lại. Đổi Rules = đổi mốc ở đây theo reader lên cùng Rules mới. Rules v5 (#506)
+ * chưa có reader riêng trên main: giữ mốc v4; khi reader v6 (#505) đã merge thì chuyển mốc sang `news-classifier-v6`.
  */
 export const RULES_NEW_BADGE = { classifierVersion: "news-classifier-v4", days: 14 } as const;
 

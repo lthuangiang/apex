@@ -214,6 +214,13 @@ export function etfOnMajorAsset(catalyst: SignalCatalyst, market: string): boole
   return isEtf(catalyst) && ETF_EXCLUDED.has(market);
 }
 
+const LISTING_EXCLUDED: ReadonlySet<string> = new Set(NEWS_RULES.listingExcludedMarkets);
+
+/** news-v5 (#506): tin listing trên BTC / ETH không bao giờ giao dịch (`LISTING_MAJOR_ASSET`); delisting vẫn giữ. */
+export function listingOnMajorAsset(catalyst: SignalCatalyst, market: string): boolean {
+  return catalyst === "listing" && LISTING_EXCLUDED.has(market);
+}
+
 /**
  * Cờ "small treasury?" (#298): tin treasury mà Claude không trích được số tiền (thiếu, rỗng hoặc "unknown"). Chỉ để phân
  * tích sau, không chặn lệnh; không bao giờ tự đoán số tiền.
