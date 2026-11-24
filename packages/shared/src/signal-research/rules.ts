@@ -159,7 +159,7 @@ export const PaperExitReason = {
   stopLoss: "stop_loss",
   maxHold: "max_hold",
   /**
-   * #511 (DEC-TBD-sr-noprice): quá `SR_WATCH_REST.noPriceGraceMs` sau hạn giữ mà SoDEX vẫn không có giá (sổ live, giá gần nhất,
+   * #511 (DEC-384): quá `SR_WATCH_REST.noPriceGraceMs` sau hạn giữ mà SoDEX vẫn không có giá (sổ live, giá gần nhất,
    * sổ REST): đóng không có giá thoát, phí ra hay kết quả (null, quy tắc 1.8); loại khỏi lãi / lỗ và tỷ lệ thắng.
    */
   maxHoldNoPrice: "max_hold_no_price",
@@ -169,7 +169,7 @@ export const PaperExitReason = {
 export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitReason];
 
 /**
- * #511 (DEC-TBD-sr-noprice, PM chốt): watcher lệnh giấy đọc sổ REST (qua marketdata) cho lệnh mở không có giá: mỗi market
+ * #511 (DEC-384, PM chốt): watcher lệnh giấy đọc sổ REST (qua marketdata) cho lệnh mở không có giá: mỗi market
  * tối đa mỗi `everyMs`, tối đa `maxMarkets` lần đọc trong mỗi `everyMs`; quá hạn giữ thêm `noPriceGraceMs` mà vẫn không có
  * giá thì đóng `max_hold_no_price`.
  */

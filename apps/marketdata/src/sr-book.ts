@@ -1,6 +1,6 @@
 import { srBookRequestSchema, type SrBookReply } from "@drift/shared";
 
-// #507 (DEC-TBD-sr-noprice): trả lời NATS request `sr.book.request` của lane research. Lane không gọi SoDEX (DEC-322):
+// #507 (DEC-384): trả lời NATS request `sr.book.request` của lane research. Lane không gọi SoDEX (DEC-322):
 // marketdata đọc sổ lệnh REST một lần cho market perps đang giao dịch và trả giá mua / bán tốt nhất. Kết quả giữ ngắn
 // (`cacheMs`) và các request cùng market lúc đang đọc dùng chung một lần đọc, để không tốn hạn mức SoDEX.
 

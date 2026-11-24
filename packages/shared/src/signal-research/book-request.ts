@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// #507 (DEC-TBD-sr-noprice): sổ lệnh REST một lần cho lane research khi thiếu sổ live hoặc thiếu mẫu spread theo giờ. Lane
+// #507 (DEC-384): sổ lệnh REST một lần cho lane research khi thiếu sổ live hoặc thiếu mẫu spread theo giờ. Lane
 // không gọi SoDEX (DEC-322): scheduler gửi NATS request, marketdata đọc `GET /perps/markets/{symbol}/orderbook` và trả giá
 // mua / bán tốt nhất. Không có sổ thật (lỗi, rỗng, giá chéo) thì không có giá: lane giữ lý do bỏ như cũ.
 

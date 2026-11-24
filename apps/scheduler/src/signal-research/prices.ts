@@ -13,7 +13,7 @@ import {
 // 2. Không có (1): giá gần nhất `md:last:<market>` (Redis, mọi market, ~2 s) ± nửa spread trung vị 2 giờ gần nhất của
 //    `mm_market_hourly.spread_ticks` (market top volume ∪ MM ∪ VF) × tick size (đọc lại từ danh sách market scheduler đã có).
 // Không có giá mới → NO_SODEX_PRICE; có giá mà không có dữ liệu sổ lệnh → NO_BOOK_DATA (không đoán spread).
-// 3. #507 (DEC-TBD-sr-noprice): chỉ ở bước quyết định (`decisionQuote`), khi (1)–(2) cho NO_BOOK_DATA / NO_SODEX_PRICE:
+// 3. #507 (DEC-384): chỉ ở bước quyết định (`decisionQuote`), khi (1)–(2) cho NO_BOOK_DATA / NO_SODEX_PRICE:
 //    hỏi marketdata đọc sổ lệnh REST SoDEX một lần qua NATS (lane vẫn không gọi SoDEX, DEC-322). Sổ thật (bid > 0,
 //    ask > bid) thì dùng đúng giá mua / bán tốt nhất (`rest_book`), không tính spread theo giờ; không có thì giữ lý do cũ.
 

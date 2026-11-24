@@ -364,6 +364,7 @@ describe("news pipeline end to end", () => {
       tp: 1,
       sl: 0,
       maxHold: 0,
+      maxHoldNoPrice: 0,
       opposite: 0,
       open: 0,
     });
@@ -1247,6 +1248,7 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
       tp: 0,
       sl: 0,
       maxHold: 0,
+      maxHoldNoPrice: 0,
       opposite: 0,
       open: 0,
     });

@@ -25,7 +25,7 @@ import { markSource, recordEvents } from "./store";
 // Bước 6 (#271): mỗi 1–2 s kiểm lệnh giấy đang mở theo bid / ask SoDEX (chỉ dữ liệu marketdata). Long đóng theo bid,
 // short theo ask; chạm TP / SL hoặc hết giữ tối đa thì đóng. Không có giá → chờ, kiểm lại khi có giá. Lệnh của mọi News bot
 // version, kể cả lệnh shadow (#303); đóng vì tin ngược chiều do pipeline làm (cập nhật có điều kiện `status = 'open'`).
-// #511 (DEC-TBD-sr-noprice): lệnh mở trên market không có giá (không sổ live, không mẫu spread) đọc sổ REST qua marketdata
+// #511 (DEC-384): lệnh mở trên market không có giá (không sổ live, không mẫu spread) đọc sổ REST qua marketdata
 // theo `SR_WATCH_REST` (mỗi market tối đa mỗi 15 s, tối đa 10 lần đọc mỗi 15 s, ưu tiên lệnh đã quá hạn giữ). Quá hạn giữ
 // thêm 1 giờ mà vẫn không có giá: đóng `max_hold_no_price`, không có giá thoát / phí ra / kết quả (null, quy tắc 1.8).
 
