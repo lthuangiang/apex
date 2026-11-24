@@ -105,6 +105,7 @@ describe("signal research (team only, read-only)", () => {
       tp: 1,
       sl: 0,
       maxHold: 0,
+      maxHoldNoPrice: 0,
       opposite: 0,
       open: 0,
     });

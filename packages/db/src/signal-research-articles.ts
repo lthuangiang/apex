@@ -793,7 +793,8 @@ function stepsOf(input: {
             ),
             maxHoldUntil: iso(trade.maxHoldUntil),
             priceSource:
-              trade.priceSource === "book"
+              // #507: sổ lệnh SoDEX đọc qua REST vẫn là giá từ sổ lệnh (API giữ hai nhãn, không thêm câu chữ mới).
+              trade.priceSource === "book" || trade.priceSource === "rest_book"
                 ? "book"
                 : trade.priceSource === "last_spread"
                   ? "lastSpread"

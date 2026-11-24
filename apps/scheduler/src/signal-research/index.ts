@@ -18,7 +18,7 @@ import { z } from "zod";
 import { anthropicClassifier, type NewsClassifier } from "./classifier";
 import { runContextBackfill } from "./context-backfill";
 import { runNewsCycle, type MarketInfo, type PipelineConfig } from "./pipeline";
-import { LiveBooks, QuoteSource } from "./prices";
+import { LiveBooks, QuoteSource, type RestBookResult } from "./prices";
 import { sosoClient, SosoRateLimiter, type SosoClient } from "./soso";
 import { spreadHists } from "./store";
 import { PaperWatcher } from "./watcher";
@@ -235,6 +235,11 @@ export function createSignalResearch(input: {
   classifier?: NewsClassifier;
   /** Phát chuông `sr.signal.new` (main nối NATS); lỗi chỉ log. Thiếu = không phát (engine vẫn đọc bảng). */
   notifySignal?: (id: string) => void;
+  /**
+   * #507: sổ lệnh REST một lần qua marketdata (main nối NATS request `sr.book.request`) cho bước quyết định khi thiếu sổ
+   * live / mẫu spread. Thiếu = không có bước này (giữ NO_BOOK_DATA / NO_SODEX_PRICE như trước).
+   */
+  requestBook?: (market: string) => Promise<RestBookResult>;
 }) {
   const now = input.now ?? Date.now;
   const books = new LiveBooks();
@@ -252,6 +257,7 @@ export function createSignalResearch(input: {
     lastPrices: (m) => readLastPrices(input.redis, m),
     spreadHists: (m, since) => spreadHists(input.db, m, since),
     tickSize: (m) => tickSizes().get(m) ?? null,
+    ...(input.requestBook === undefined ? {} : { restBook: input.requestBook }),
   });
   const redisSet = input.redis.set?.bind(input.redis);
   const watcher = new PaperWatcher({

@@ -25,7 +25,7 @@ const positiveDecimal = z.string().refine((s) => DECIMAL_RE.test(s) && /[1-9]/.t
 export const srQuoteSchema = z.object({
   bid: positiveDecimal,
   ask: positiveDecimal,
-  source: z.enum(["book", "last_spread"]),
+  source: z.enum(["book", "last_spread", "rest_book"]),
   /** Thời điểm (ms) của dữ liệu giá gốc, không phải lúc ghi. */
   at: z.number().int().nonnegative(),
 });
@@ -78,7 +78,8 @@ export function parseSrQuotes(raw: string | null | undefined): ParsedSrQuotes {
 
 /** Giá còn mới không, theo ngưỡng fresh của nguồn (dùng lại ngưỡng của `combineQuote`). */
 export function srQuoteFresh(q: Pick<SrQuote, "source" | "at">, now: number): boolean {
-  const maxAge = q.source === "book" ? NEWS_RULES.bookFreshMs : NEWS_RULES.lastPriceFreshMs;
+  // Sổ lệnh (WS hay REST) dùng ngưỡng của sổ; giá gần nhất ± spread dùng ngưỡng của giá gần nhất.
+  const maxAge = q.source === "last_spread" ? NEWS_RULES.lastPriceFreshMs : NEWS_RULES.bookFreshMs;
   return now - q.at <= maxAge;
 }
 

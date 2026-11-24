@@ -356,11 +356,11 @@ describe("version service", () => {
   });
 });
 
-describe("a new classifier starts a new classifier segment (#320; v5 since #399)", () => {
-  it("trades classified by v5 count from v5's start, and v4 labels do not open the v5 gate", async () => {
-    const prev = "news-classifier-v4";
-    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v5");
-    // v4 chạy trước (mốc cũ hơn), rồi deploy v5: chu kỳ đầu của v5 ghi mốc của nó.
+describe("a new classifier starts a new classifier segment (#320; v6 since #505)", () => {
+  it("trades classified by v6 count from v6's start, and v5 labels do not open the v6 gate", async () => {
+    const prev = "news-classifier-v5";
+    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v6");
+    // v5 chạy trước (mốc cũ hơn), rồi deploy v6: chu kỳ đầu của v6 ghi mốc của nó.
     await db
       .insert(signalClassifierVersions)
       .values({ promptVersion: prev, model: "m", startedAt: new Date(T0 - 48 * HOUR) })
@@ -373,24 +373,24 @@ describe("a new classifier starts a new classifier segment (#320; v5 since #399)
     book("SOL-USD", "99.99", "100.01", T0);
     await sr.runCycle();
     const [t] = await tradesOf(baselineId);
-    expect(t?.classifierVersion).toBe("news-classifier-v5");
+    expect(t?.classifierVersion).toBe("news-classifier-v6");
     const rows = await db.select().from(signalClassifierVersions);
     const startOf = (v: string) => rows.find((r) => r.promptVersion === v)?.startedAt;
-    const v5Start = startOf("news-classifier-v5");
-    expect(v5Start).toBeDefined();
-    expect(v5Start?.getTime()).toBeGreaterThan(startOf(prev)?.getTime() ?? Infinity);
-    // Version lưu trước cả v4: đoạn đếm hiện tại bắt đầu ở mốc v5, không phải mốc v4.
+    const v6Start = startOf("news-classifier-v6");
+    expect(v6Start).toBeDefined();
+    expect(v6Start?.getTime()).toBeGreaterThan(startOf(prev)?.getTime() ?? Infinity);
+    // Version lưu trước cả v5: đoạn đếm hiện tại bắt đầu ở mốc v6, không phải mốc v5.
     const savedAt = new Date(T0 - 72 * HOUR);
     expect(
       await versionSegmentStart(db, {
         versionCreatedAt: savedAt,
-        promptVersion: "news-classifier-v5",
+        promptVersion: "news-classifier-v6",
       }),
-    ).toEqual(v5Start);
+    ).toEqual(v6Start);
     expect(
       await versionSegmentStart(db, { versionCreatedAt: savedAt, promptVersion: prev }),
     ).toEqual(startOf(prev));
-    // 50 nhãn Right của v4 mở cổng của v4, không mở cổng của v5: lệnh v5 chưa được tính.
+    // 50 nhãn Right của v5 mở cổng của v5, không mở cổng của v6: lệnh v6 chưa được tính.
     const [u] = await db
       .insert(users)
       .values({ email: "labeler-320@example.com" })
@@ -409,7 +409,7 @@ describe("a new classifier starts a new classifier segment (#320; v5 since #399)
     try {
       const gates = await loadClassifierGates(db);
       expect(classifierStatusOf(gates, prev)).toBe("passed");
-      expect(gates.has("news-classifier-v5")).toBe(false);
+      expect(gates.has("news-classifier-v6")).toBe(false);
       expect(classifierStatusOf(gates, t?.classifierVersion ?? null)).toBe("needsLabels");
     } finally {
       await db

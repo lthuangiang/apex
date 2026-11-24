@@ -70,6 +70,7 @@ import {
 } from "./classifier";
 import { captureSignalContext, type ContextSignal } from "./context";
 import { publishNewsSignals } from "./news-signals";
+import type { QuoteDiag } from "./prices";
 import {
   isSosoRateLimited,
   SOSO_PAGE_SIZE,
@@ -136,7 +137,13 @@ export interface PipelineDeps {
   db: Db;
   soso: SosoClient;
   classifier: NewsClassifier;
-  quotes: { quotes: (markets: readonly string[]) => Promise<Map<string, Quote | SignalReason>> };
+  quotes: {
+    quotes: (markets: readonly string[]) => Promise<Map<string, Quote | SignalReason>>;
+    /** #507: giá cho bước quyết định (thêm sổ REST qua marketdata); thiếu thì dùng `quotes`. */
+    decisionQuote?: (market: string) => Promise<Quote | SignalReason>;
+    /** #507 phần D: chẩn đoán của lần `decisionQuote` gần nhất, ghi vào `detail` khi không có giá. */
+    diag?: (market: string) => QuoteDiag | undefined;
+  };
   /** Danh sách perps SoDEX đang giao dịch; null = chưa biết (chỉ Collect). */
   markets: () => MarketInfo[] | null;
   now: () => number;
@@ -897,7 +904,9 @@ function cycleContext(
     quote: (market) => {
       let q = quotes.get(market);
       if (q === undefined) {
-        q = deps.quotes.quotes([market]).then((m) => m.get(market) ?? SignalReason.noPrice);
+        q =
+          deps.quotes.decisionQuote?.(market) ??
+          deps.quotes.quotes([market]).then((m) => m.get(market) ?? SignalReason.noPrice);
         quotes.set(market, q);
       }
       return q;
@@ -1188,7 +1197,18 @@ async function decideStory(
     return fail(SignalReason.sourceLate, { delayMinutes: Math.round(delayMin) });
   // SoDEX có giá (chỉ từ marketdata).
   const quote = await ctx.quote(market);
-  if (typeof quote === "string") return fail(quote);
+  if (typeof quote === "string") {
+    // #507 phần D: không có giá → ghi thiếu gì (tuổi sổ / giá gần nhất, mẫu spread, tick size, kết quả sổ REST).
+    if (quote !== SignalReason.noPrice && quote !== SignalReason.noBookData) return fail(quote);
+    const d = ctx.deps.quotes.diag?.(market);
+    return fail(quote, {
+      bookAgeMs: d?.bookAgeMs ?? null,
+      lastAgeMs: d?.lastAgeMs ?? null,
+      spreadSamples: d?.spreadSamples ?? null,
+      tickSize: d?.tickSize ?? null,
+      rest: d?.rest ?? null,
+    });
+  }
 
   // Lệnh đang mở của version trên token này (thật và shadow). Tin ngược chiều → kết quả đóng giả định, Close → đóng.
   const openRows = await db

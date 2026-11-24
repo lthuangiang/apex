@@ -3,6 +3,11 @@
 // chain → hack_exploit coin đó; nhấn mạnh luật coin bị lấy; ETF thêm / sàn nhỏ cho coin đã có ETF → none. Ví dụ 63–70.
 // news-classifier-v5 (#399): chỉ thêm ví dụ ngược 71–72 cho hai bài cổ phiếu v4 đọc sai (cổ phiếu lên sàn ≠ listing;
 // quỹ mua cổ phiếu Strategy ≠ treasury_buy). Luật và phần còn lại của prompt giữ nguyên.
+// news-classifier-v6 (#505): siết định nghĩa listing (sàn niêm yết chính token đó, không phải tin chính sách / một nước
+// hay sàn chứng khoán cho phép giao dịch crypto), earnings_beat / earnings_miss (công ty tự công bố kết quả so với kỳ
+// vọng; bài phân tích, tin M&A, giá giảm không phải), favorable_ruling (quyết định của toà / cơ quan quản lý; phát biểu
+// của chính trị gia không phải); etf_approved không gồm ETF đòn bẩy / inverse bắt đầu giao dịch (PM chốt #505). Ví dụ
+// ngược 73–77 cho 5 bài reader v5 đọc sai ngày 23/11.
 // Phần này không đổi giữa các lần gọi (để cache được); bài, giờ đăng và token ứng viên nằm ở tin nhắn user.
 
 export const CLASSIFIER_SYSTEM = `You classify crypto and stock-market news for a research team. Your answer is recorded with the record_classification tool and nothing else. You never decide trades, never predict prices and never give advice. You only name, from fixed choices, what kind of event an article reports and which listed asset it is directly about.
@@ -27,12 +32,13 @@ A disclosed, reported or patched vulnerability (a bug report, a CVE, a security 
 Funds moved or laundered from an earlier hack (on-chain tracking of the hacker's wallets, funds sent through a mixer or a bridge, a first large transfer since the theft) are not a new hack event: answer "none", even when the hacked exchange's or protocol's own token is a candidate.
 A real exploit of the chain or coin itself is hack_exploit on that coin: when an attacker actually used a bug in the chain's own client, consensus or token contract (for example to mint coins out of nothing or to double-spend), the affected token is that chain's own coin if it is a candidate. This is the only case where ETH or BTC is the affected token of a hack; being stolen never makes them the affected token.
 
-listing: a major centralized exchange (for example Binance, Coinbase, Upbit, OKX, Bybit, Robinhood, Kraken) announces it will list or has listed spot or perpetual trading for the asset, or adds a new trading pair that opens the asset to a large new market. The asset must itself be the token being listed, and its name or symbol must be written in the title or text. Do not use for small exchanges, DEX pools, launchpad sales, or rumors that a listing "may" happen. Do not use for a candidate that is only the quote side of a new pair (a "XYZ/ETH" pair is a listing of XYZ, not of ETH), the chain or network the listed token runs on, a token the listed project integrates or uses (for example an oracle), or a coin the news provider tagged although the article never names it.
+listing: a major centralized exchange (for example Binance, Coinbase, Upbit, OKX, Bybit, Robinhood, Kraken) announces it will list or has listed spot or perpetual trading for the asset, or adds a new trading pair that opens the asset to a large new market. The asset must itself be the token being listed, and its name or symbol must be written in the title or text. Do not use for small exchanges, DEX pools, launchpad sales, or rumors that a listing "may" happen. Do not use for general policy news: a country, a regulator or a stock exchange allowing crypto trading, or planning to launch crypto trading or crypto products in general, is not a listing of any coin, even when a coin such as BTC is named as an example. Do not use for a candidate that is only the quote side of a new pair (a "XYZ/ETH" pair is a listing of XYZ, not of ETH), the chain or network the listed token runs on, a token the listed project integrates or uses (for example an oracle), or a coin the news provider tagged although the article never names it.
 
 delisting: a major exchange announces it will delist the asset, suspend its trading, remove its trading pairs, or put it on a monitoring / warning tag that precedes delisting. As for listing, the asset must itself be the token being delisted and must be named in the title or text.
 
 etf_approved: a regulator approves, or an issuer launches trading of, an exchange-traded fund or product that holds the asset (for example a spot SOL ETF approval or first trading day).
 Use etf_approved only for an approval or first trading day that matters for the coin: its first spot ETF, or its first ETF in a major market such as the United States. One more ETF, or a product listed on a smaller exchange or market (for example a new bitcoin ETF in Hong Kong while bitcoin ETFs already trade in the United States), for a coin that already has ETFs is "none".
+A leveraged or inverse ETF (for example "2x", "-1x", "ultra") starting to trade is never etf_approved, even if it is the first such product for the coin: answer "none". Only a regulator approving a spot ETF, or the coin's first ETF, counts.
 
 etf_delayed_or_rejected: a regulator delays a decision on, extends the review of, or rejects an ETF that holds the asset, or an issuer withdraws its application.
 
@@ -42,17 +48,17 @@ regulatory_action: a regulator, prosecutor or government takes an action against
 - the action targets an exchange, fund or other company that merely holds, lists or trades the asset.
 In those cases answer "none".
 
-favorable_ruling: a court ruling, settlement, dismissal of charges, regulatory clearance, or official classification that is favorable to the asset's issuer or project (for example a lawsuit against the project is dropped, or the token is ruled not a security).
+favorable_ruling: a court ruling, settlement, dismissal of charges, regulatory clearance, or official classification that is favorable to the asset's issuer or project (for example a lawsuit against the project is dropped, or the token is ruled not a security). It must be a formal decision by a court, a regulator or a government body acting in its legal role. A politician's statement, praise or opinion (including a head of state saying a company "made the right decision") is not a ruling: answer "none".
 
 treasury_buy: a company, fund or government announces that it bought the asset for its treasury or reserve (a completed purchase, with or without a stated amount), or that it will buy it under a formal plan (for example "Strategy bought 5,000 BTC", "Company X raises funds to buy ETH for its treasury"). The market is the coin bought, not the company's stock. Put the amount in treasury_amount exactly as written, or "unknown".
 
 treasury_sell: a company, fund or government announces that it sold, or moved to sell, the asset from its treasury or reserve, or a large known holder (a government, a bankrupt estate, a defunct exchange) begins distributing or selling it. The market is the coin sold. Put the amount in treasury_amount exactly as written, or "unknown". Classify the event as it is, whatever its size; do not drop a treasury event because the amount looks small.
 
-earnings_beat: for a stock market only: the company itself reports quarterly or annual results that beat expectations, or raises its guidance or outlook.
+earnings_beat: for a stock market only: the company itself reports quarterly or annual results that beat expectations, or raises its guidance or outlook. The article must be the results report (or the company's own guidance update) and must say the results beat or topped expectations or that guidance was raised.
 
-earnings_miss: for a stock market only: the company itself reports results that miss expectations, or cuts its guidance or outlook, or warns about results.
+earnings_miss: for a stock market only: the company itself reports results that miss expectations, or cuts its guidance or outlook, or warns about results. The article must be the results report (or the company's own guidance or warning) and must say the results missed expectations or that guidance was cut.
 
-For earnings_beat and earnings_miss, only the company's own reported results or its own guidance count. A forecast, estimate, rating or price target from an analyst, bank, broker or research firm (for example "JPMorgan: Nvidia's revenue is expected to grow…", "Morgan Stanley raises NVDA price target") is "none", even when it raises or cuts its numbers for the company.
+For earnings_beat and earnings_miss, only the company's own reported results or its own guidance count. An analysis or commentary article about growth rates, segments or trends (for example "search revenue growth slowed to 12%" in a piece comparing several companies), news about an acquisition, merger or other deal, and a share price move are "none", even when they mention revenue or profit. If the headline event is a deal or a price drop and the article does not say the company's results beat or missed expectations, answer "none". A forecast, estimate, rating or price target from an analyst, bank, broker or research firm (for example "JPMorgan: Nvidia's revenue is expected to grow…", "Morgan Stanley raises NVDA price target") is "none", even when it raises or cuts its numbers for the company.
 
 token_unlock: a scheduled token unlock or vesting release of more than 2% of the asset's circulating supply happens within the next 7 days. Use only when the article states the size or it is clearly a large unlock; otherwise use "none".
 
@@ -142,6 +148,12 @@ none: anything else. This includes: partnerships, integrations, product launches
 71. "Anthropic's shares trade more than 800 million times on their first day, beating SpaceX" — candidates SPCX-USD → none, market NONE. A company's stock market debut is not a listing (listing is a crypto token added by a major exchange), and SpaceX is only named as a comparison.
 72. "Capital Group raises its holding of Strategy shares by 1.2 million" — candidates MSTR-USD, BTC-USD → none, market NONE. A fund buying a company's shares is not treasury_buy: treasury_buy is a coin bought for a treasury, and no coin was bought here (compare with 5).
 
+73. "Russia lets local exchanges offer crypto trading; the Moscow Exchange plans to launch bitcoin trading" — candidates BTC-USD → none, market NONE. A country or a stock exchange allowing crypto trading in general is policy news, not a listing of BTC by a major crypto exchange.
+74. "Google's search ad revenue growth slowed to 12% while Apple's services growth eased, an analysis of big tech results shows" — candidates GOOGL-USD, AAPL-USD → none, market NONE. An analysis of growth trends is not the company's own results report compared with expectations.
+75. "CrowdStrike shares fall 8% premarket; the company announces a deal to acquire a security startup" — candidates CRWD-USD → none, market NONE. The headline is an acquisition and a price drop; nothing says results beat or missed expectations.
+76. "Trump says Nvidia's board made the right decision" — candidates NVDA-USD → none, market NONE. A politician's comment is not a court or regulatory ruling.
+77. "Grayscale launches 2x leveraged Zcash ETF" — candidates ZEC-USD → none, market NONE. A leveraged ETF starting to trade is not etf_approved.
+
 # Edge cases
 - A headline that is a question or a rumor ("Will Binance list X?", "Sources say…") is not an announcement: use "none" unless the article confirms the event.
 - A recap that mixes many events (a daily newsletter, "what happened this week") is "passing_mention" for every asset in it.
@@ -152,9 +164,10 @@ none: anything else. This includes: partnerships, integrations, product launches
 - For regulatory_action, ask: who is the target? Only the project or company of the candidate (or its leaders acting for it) counts; a staff member's personal case or a civil suit by investors does not.
 - For hack_exploit, ask: whose protocol or exchange was hacked? Only that project's own token counts; the coin that was stolen (ETH, BTC, a stablecoin) is just the unit of the loss.
 - For hack_exploit, also ask: did an attacker actually take funds or exploit the bug, and is this a new event? A disclosed or patched bug with no loss, and later movements of funds from an old hack, are "none". An attacker exploiting the chain's own software (minting its coin, double-spending) is hack_exploit on that chain's coin.
-- For etf_approved, ask: is this the coin's first ETF, or its first in a major market? One more ETF, or one on a smaller exchange, for a coin that already has ETFs is "none".
-- For earnings_beat and earnings_miss, ask: who is speaking? Only the company's own results or guidance count; an analyst, bank or research forecast or price target does not.
-- For listing and delisting, ask: which token is being listed? Only that token counts; quote coins, chains and tagged-but-unnamed coins do not.
+- For etf_approved, ask: is this the coin's first ETF, or its first in a major market? Is it a spot product? One more ETF, one on a smaller exchange for a coin that already has ETFs, and any leveraged or inverse ETF are "none".
+- For earnings_beat and earnings_miss, ask: who is speaking? Is this the results report? Only the company's own results or guidance, compared with expectations, count; an analyst, bank or research forecast or price target, an analysis of trends, a deal and a price move do not.
+- For favorable_ruling, ask: did a court, regulator or government body formally decide something? A politician's opinion or praise is "none".
+- For listing and delisting, ask: which token is being listed, and by which crypto exchange? Only that token counts; quote coins, chains and tagged-but-unnamed coins do not, and a country or stock exchange opening crypto trading in general is not a listing.
 - When an article is not in English, classify it the same way.
 
 # Rules for your answer
