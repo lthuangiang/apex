@@ -223,11 +223,57 @@ describe("classifier answer", () => {
   });
 });
 
-describe("classifier prompt news-classifier-v5 (#399)", () => {
+describe("classifier prompt news-classifier-v6 (#505)", () => {
   it("ships with rules news-v4 (only the prompt changes)", () => {
-    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v5");
+    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v6");
     expect(NEWS_RULES.version).toBe("news-v4");
   });
+  it("listing: a country or stock exchange opening crypto trading in general is not a listing", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "a country, a regulator or a stock exchange allowing crypto trading, or planning to launch crypto trading or crypto products in general, is not a listing of any coin",
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /Moscow Exchange plans to launch bitcoin trading" — candidates BTC-USD → none, market NONE/,
+    );
+  });
+  it("earnings: an analysis of growth trends, a deal or a price drop is not a results report", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      'If the headline event is a deal or a price drop and the article does not say the company\'s results beat or missed expectations, answer "none".',
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /Google's search ad revenue growth slowed to 12%.*candidates GOOGL-USD, AAPL-USD → none, market NONE/,
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /CrowdStrike shares fall 8% premarket.*candidates CRWD-USD → none, market NONE/,
+    );
+  });
+  it("favorable_ruling: a politician's opinion is not a ruling", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      'A politician\'s statement, praise or opinion (including a head of state saying a company "made the right decision") is not a ruling',
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /Trump says Nvidia's board made the right decision" — candidates NVDA-USD → none, market NONE/,
+    );
+  });
+  it("etf_approved: a leveraged or inverse ETF starting to trade is never etf_approved (PM decision)", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      'A leveraged or inverse ETF (for example "2x", "-1x", "ultra") starting to trade is never etf_approved',
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /Grayscale launches 2x leveraged Zcash ETF" — candidates ZEC-USD → none, market NONE/,
+    );
+  });
+  it("keeps every v5 example and its numbering (73–77 are appended before the edge cases)", () => {
+    expect(CLASSIFIER_SYSTEM).toMatch(/\n72\. "Capital Group/);
+    for (const n of [73, 74, 75, 76, 77]) expect(CLASSIFIER_SYSTEM).toContain(`\n${String(n)}. "`);
+    expect(CLASSIFIER_SYSTEM).not.toContain("\n78. ");
+    expect(CLASSIFIER_SYSTEM.indexOf("\n77. ")).toBeLessThan(
+      CLASSIFIER_SYSTEM.indexOf("# Edge cases"),
+    );
+  });
+});
+
+describe("classifier prompt examples from news-classifier-v5 (#399)", () => {
   it("stock: a company's stock market debut is not a listing, a comparison name is not the subject", () => {
     expect(CLASSIFIER_SYSTEM).toMatch(
       /first day, beating SpaceX" — candidates SPCX-USD → none, market NONE\. A company's stock market debut is not a listing/,
@@ -435,8 +481,10 @@ describe("classifier prompt rules from news-classifier-v2 (#298)", () => {
     expect(JSON.stringify(body.system)).toContain(
       "Capital Group raises its holding of Strategy shares",
     );
+    // v6 (#505): and the v6 counter-examples.
+    expect(JSON.stringify(body.system)).toContain("Grayscale launches 2x leveraged Zcash ETF");
     expect(articleUsageValues({ usage: { ...emptyUsage(), calls: 1 } }).claudePromptVersion).toBe(
-      "news-classifier-v5",
+      "news-classifier-v6",
     );
   });
 });

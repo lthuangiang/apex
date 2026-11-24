@@ -8533,6 +8533,7 @@
         "reader": {
           "title": "What Claude reader {name} reads differently",
           "titleAny": "What the Claude reader reads differently",
+          "types": "<b>Policy news, trend analysis, deals and politicians’ comments</b> are not listings, earnings or rulings, and <b>a leveraged ETF starting to trade</b> is not “ETF approved”.",
           "stocks": "<b>A company’s shares starting to trade</b> is not a listing, and <b>a fund buying a company’s shares</b> is not a treasury buy.",
           "bug": "<b>A bug report or a fixed vulnerability</b> with no funds lost is not a hack.",
           "stolen": "<b>The coin that was stolen</b> is never the hacked asset. In “$860M in ETH drained”, ETH only measures the loss.",

@@ -14,9 +14,9 @@ const NOW = Date.parse("2026-12-01T00:00:00Z");
 const v4 = (startedAt: string | null) => [{ classifierVersion: "news-classifier-v4", startedAt }];
 
 describe("New in vN labels (#399)", () => {
-  it("the reader label follows reader v5, the Rules label stays on v4", () => {
+  it("the reader label follows the current reader (v6, #505), the Rules label stays on v4", () => {
     const rows = [
-      { classifierVersion: "news-classifier-v5", startedAt: new Date(NOW - 1 * DAY).toISOString() },
+      { classifierVersion: "news-classifier-v6", startedAt: new Date(NOW - 1 * DAY).toISOString() },
       {
         classifierVersion: "news-classifier-v4",
         startedAt: new Date(NOW - 20 * DAY).toISOString(),
@@ -25,6 +25,13 @@ describe("New in vN labels (#399)", () => {
     expect(readerBadgeShown(rows, NOW)).toBe(true);
     expect(rulesBadgeShown(rows, NOW)).toBe(false);
     expect(readerBadgeShown(v4(new Date(NOW - DAY).toISOString()), NOW)).toBe(false);
+    // v5 không còn là reader mới: nhãn chỉ theo v6.
+    expect(
+      readerBadgeShown(
+        [{ classifierVersion: "news-classifier-v5", startedAt: new Date(NOW - DAY).toISOString() }],
+        NOW,
+      ),
+    ).toBe(false);
     expect(rulesBadgeShown(v4(new Date(NOW - DAY).toISOString()), NOW)).toBe(true);
   });
 
