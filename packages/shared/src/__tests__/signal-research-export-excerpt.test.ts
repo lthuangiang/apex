@@ -17,10 +17,14 @@ describe("srExportExcerpt", () => {
   });
 
   it("cuts at 280 Unicode characters including the ellipsis", () => {
-    const long = "token unlock ".repeat(40);
+    const long = "x".repeat(400);
     const out = srExportExcerpt(long) ?? "";
     expect(Array.from(out)).toHaveLength(SR_EXPORT_EXCERPT_CHARS);
     expect(out.endsWith("…")).toBe(true);
+    // Cắt ngay sau một từ: bỏ khoảng trắng cuối trước "…", không bao giờ quá 280.
+    const words = srExportExcerpt("token unlock ".repeat(40)) ?? "";
+    expect(Array.from(words).length).toBeLessThanOrEqual(SR_EXPORT_EXCERPT_CHARS);
+    expect(words).toMatch(/\S…$/);
     // Đúng 280 ký tự: không cắt, không thêm "…".
     const exact = `${"word ".repeat(55)}word`;
     expect(Array.from(exact)).toHaveLength(279);
@@ -34,7 +38,7 @@ describe("srExportExcerpt", () => {
 
   it("removes URLs, emails, wallet addresses, long hex and HTML tags", () => {
     const raw =
-      '<p>Unlock <b>LIT</b> https://example.test/a?apikey=SECRET123 www.foo.test/x mail me@desk.test ' +
+      "<p>Unlock <b>LIT</b> https://example.test/a?apikey=SECRET123 www.foo.test/x mail me@desk.test " +
       "wallet 0x4E1e4796c10C637EDAB56461450BD8D02EFb29Db sig " +
       `${"ab".repeat(40)} sol 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU done</p>`;
     const out = srExportExcerpt(raw) ?? "";
