@@ -11,6 +11,7 @@ Not financial advice. Past results are not a forecast.
 ## Kỹ thuật
 
 - Nền cho "một sự kiện nhiều coin, chia cỡ lệnh" (#530 PR1, DEC-392; **chưa merge**): `news_signals.event_key` / `event_coins` (mặc định 1), engine đưa vào tín hiệu, bot news chia min(`sizeUsdc`, trần 200 USDC) cho `event_coins` (làm tròn xuống tới cent; tổng của sự kiện không vượt 200, vd 500 / 3 → 66.66 mỗi coin). Không đổi hành vi: scheduler chưa ghi các cột này nên mọi tín hiệu vẫn là một coin. **Điều kiện thứ tự:** bản này phải được release và deploy trước khi merge #530 PR2 (scheduler ghi nhiều coin); nếu không, engine cũ mở đủ cỡ lệnh cho mỗi coin.
+- Market Making: bot MỚI mặc định "Where to quote" = 2 thay cho 0 (#536, DEC-395; **chưa merge**). Chỉ lúc tạo mới (form Create, `POST /bots`, MCP `draft_new_bot`, dry run); config đã lưu và màn Edit của bot cũ không đổi. Không migration.
 
 **Migration (chạy khi deploy):** `0061_news_event_coins` (#530 PR1): thêm hai cột vào `news_signals` (`event_key` text null, `event_coins` int not null default 1). Chỉ thêm cột, không backfill.
 
