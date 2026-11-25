@@ -1225,7 +1225,7 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
          '[{"name":"Bloomberg","tier":"top"}]', false, 'book', 'closed', 139.3, 'take_profit', '2026-11-18T09:12:00Z', 0.24, 9.5, 1.9, 'news-v2')`,
       [tradeId, storyId],
     );
-    expect(NEWS_RULES.version).toBe("news-v5");
+    expect(NEWS_RULES.version).toBe("news-v6");
     // Một chu kỳ của version hiện tại (bài không phải tín hiệu) để lane có dữ liệu của version hiện tại.
     const { sr } = setup({
       items: () => [item("now-1", T0 - MIN, "SOL market recap")],
@@ -1320,7 +1320,7 @@ describe("#309: company tags use the SoDEX market list, asset map version", () =
       ]),
     );
     // Đổi danh sách tài sản không đổi version quy tắc (không reset cổng).
-    expect(NEWS_RULES.version).toBe("news-v5");
+    expect(NEWS_RULES.version).toBe("news-v6");
     expect(NEWS_ASSET_MAP_VERSION).toMatch(/^assets-\d{4}-\d{2}-\d{2}[a-z]$/);
     expect(drops.some((d) => d.articleId === "spx" && d.reason !== null)).toBe(false);
   });
@@ -1711,7 +1711,7 @@ describe("news-v5 (#506): listing on BTC / ETH", () => {
     expect(by.get("l1")).toMatchObject({
       outcome: "drop",
       reason: "LISTING_MAJOR_ASSET",
-      ruleVersion: "news-v5",
+      ruleVersion: NEWS_RULES.version,
     });
     expect(by.get("l2")).toMatchObject({ outcome: "drop", reason: "LISTING_MAJOR_ASSET" });
     expect(by.get("l3")).toMatchObject({ outcome: "pass", reason: null });

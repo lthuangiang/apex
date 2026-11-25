@@ -357,7 +357,7 @@ export async function insertSignalContext(db: Exec, values: ContextValues): Prom
   const rows = await db
     .insert(signalContexts)
     .values(values)
-    .onConflictDoNothing({ target: signalContexts.articleId })
+    .onConflictDoNothing({ target: [signalContexts.articleId, signalContexts.market] })
     .returning({ id: signalContexts.id });
   return rows.length > 0;
 }

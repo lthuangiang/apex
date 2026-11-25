@@ -2238,7 +2238,8 @@ export const signalContexts = pgTable(
     createdAt: tstz("created_at").notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("signal_contexts_article_uq").on(t.articleId),
+    // #530 (news-v6): một snapshot cho mỗi coin của bài (bài nêu nhiều coin có nhiều dòng).
+    uniqueIndex("signal_contexts_article_market_uq").on(t.articleId, t.market),
     index("signal_contexts_decided_idx").on(t.decidedAt),
     check("signal_contexts_source_ck", sql`${t.source} in ('live', 'backfilled')`),
     check("signal_contexts_direction_ck", sql`${t.direction} in ('long', 'short')`),

@@ -195,6 +195,10 @@ export interface PerpsSymbolInfo {
   status: string;
   tickSize: string;
   takerFee?: string | undefined;
+  /** #530: lot / min size / min notional (kiểm cỡ tối thiểu của phần chia trong sự kiện nhiều coin). */
+  stepSize?: string | undefined;
+  minQuantity?: string | undefined;
+  minNotional?: string | undefined;
 }
 
 const lastSchema = z.object({ price: z.string(), at: z.number() });
@@ -248,7 +252,14 @@ export function createSignalResearch(input: {
     if (perps === null) return null;
     return perps
       .filter((p) => p.status === "TRADING")
-      .map((p) => ({ name: p.name, tickSize: p.tickSize, takerFee: p.takerFee ?? null }));
+      .map((p) => ({
+        name: p.name,
+        tickSize: p.tickSize,
+        takerFee: p.takerFee ?? null,
+        stepSize: p.stepSize ?? null,
+        minQuantity: p.minQuantity ?? null,
+        minNotional: p.minNotional ?? null,
+      }));
   };
   const tickSizes = () => new Map((input.perps() ?? []).map((p) => [p.name, p.tickSize] as const));
   const quotes = new QuoteSource({

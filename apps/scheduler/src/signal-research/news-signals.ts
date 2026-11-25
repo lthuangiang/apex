@@ -36,6 +36,15 @@ export interface NewsSignalArticle {
   collectedAt: number;
   candidate: { market: string; kind: AssetKind };
   catalyst: SignalCatalyst;
+  /**
+   * #530 (news-v6): sự kiện nhiều coin. `eventKey` null / thiếu = một coin; `eventCoins` = số coin (bot chia cỡ lệnh);
+   * `sameEvent` = bài đăng lại của sự kiện đã xét: không ghi tín hiệu.
+   */
+  eventKey?: string | null;
+  eventCoins?: number;
+  sameEvent?: boolean;
+  /** #530: bài đăng lại mà coin này được thử lại (trong cửa sổ thử lại, đã qua Understand ở bài đầu): vẫn ghi tín hiệu. */
+  retryable?: boolean;
 }
 
 export interface NewsSignalPublishDeps {
@@ -100,6 +109,10 @@ export async function publishNewsSignals(
   for (const [key, group] of groups) {
     const first = group[0];
     if (first === undefined) continue;
+    // #530: bài đăng lại của một sự kiện nhiều coin đã xét không mở lệnh mới trên bot mainnet, trừ lần thử lại của coin đã
+    // qua Understand ở bài đầu, trong cửa sổ thử lại (cùng `event_key`, `event_coins` = k của bài đầu).
+    if (first.sameEvent === true && first.retryable !== true) continue;
+    if ((first.eventCoins ?? 1) < 1) continue;
     try {
       const market = first.candidate.market;
       const typicalByHoldHours: Record<string, string | null> = {};
@@ -132,6 +145,9 @@ export async function publishNewsSignals(
         classifierVersion: NEWS_CLASSIFIER.promptVersion,
         assetMapVersion: NEWS_ASSET_MAP_VERSION,
         ruleVersion: NEWS_RULES.version,
+        // #530: mỗi coin của sự kiện một dòng, cùng `event_key`; engine chia cỡ lệnh cho `event_coins` (PR1).
+        eventKey: first.eventKey ?? null,
+        eventCoins: first.eventCoins ?? 1,
       });
       if (!r.created) continue;
       created += 1;

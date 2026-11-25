@@ -29,7 +29,7 @@ import {
   type ResearchContextSummary,
   type ResearchSignalContext,
 } from "@drift/shared";
-import { and, count, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, sql } from "drizzle-orm";
 
 import type { Db } from "./client";
 import type { DbTx } from "./read-only";
@@ -199,7 +199,7 @@ export async function loadMarketSplit(
   let volNa = 0;
   for (const t of closed) {
     if (t.resultPct === null) continue;
-    const c = t.articleId === null ? undefined : ctx.get(t.articleId);
+    const c = contextFor(ctx, t.articleId, t.market);
     const m = c?.source === source ? marketStateOf(c) : null;
     if (m === null) {
       notRecorded += 1;
@@ -228,15 +228,38 @@ export async function loadMarketSplit(
   };
 }
 
-/** Snapshot theo id bài (một dòng mỗi bài). */
+/**
+ * Snapshot theo bài. Từ #530 (news-v6) một bài nêu nhiều coin có một snapshot cho MỖI coin: khoá `"<id bài>|<market>"`
+ * cho từng coin, và khoá `"<id bài>"` cho snapshot đầu tiên của bài (coin đầu theo thứ tự ghi; bài một coin: đúng dòng
+ * duy nhất như trước). Chỗ biết market (lệnh) dùng `contextFor`.
+ */
 export async function loadSignalContexts(
   q: Q,
   articleIds: readonly string[],
 ): Promise<Map<string, ContextRow>> {
   const ids = [...new Set(articleIds)];
   if (ids.length === 0) return new Map();
-  const rows = await q.select().from(signalContexts).where(inArray(signalContexts.articleId, ids));
-  return new Map(rows.map((r) => [r.articleId, r]));
+  const rows = await q
+    .select()
+    .from(signalContexts)
+    .where(inArray(signalContexts.articleId, ids))
+    .orderBy(asc(signalContexts.createdAt), asc(signalContexts.id));
+  const out = new Map<string, ContextRow>();
+  for (const r of rows) {
+    out.set(`${r.articleId}|${r.market}`, r);
+    if (!out.has(r.articleId)) out.set(r.articleId, r);
+  }
+  return out;
+}
+
+/** #530: snapshot của đúng coin (bài × market); không có thì snapshot đầu của bài (dòng trước #530). */
+export function contextFor(
+  map: ReadonlyMap<string, ContextRow>,
+  articleId: string | null,
+  market: string | null,
+): ContextRow | undefined {
+  if (articleId === null) return undefined;
+  return (market === null ? undefined : map.get(`${articleId}|${market}`)) ?? map.get(articleId);
 }
 
 const KEYS = ["h1", "h2", "h3"] as const;
@@ -265,7 +288,7 @@ export async function loadContextSummary(
   };
   let missing = 0;
   for (const t of closed) {
-    const c = t.articleId === null ? undefined : ctx.get(t.articleId);
+    const c = contextFor(ctx, t.articleId, t.market);
     if (c?.source !== source || t.resultPct === null) {
       missing += 1;
       continue;

@@ -76,6 +76,7 @@ import { loadArticleStops, rangeSince } from "./signal-research-articles";
 import {
   loadContextSummary,
   loadMarketSplit,
+  contextFor,
   loadSignalContexts,
   marketStateOf,
 } from "./signal-research-context";
@@ -1035,9 +1036,12 @@ async function contextOf(
   };
 }
 
-/** #376: trạng thái thị trường lúc quyết định của bài (cột "Market at entry"); null = không có / trước #376. */
-const marketAt = (articleId: string | null, ctx: Ctx) =>
-  marketStateOf(articleId === null ? undefined : ctx.contexts.get(articleId));
+/**
+ * #376: trạng thái thị trường lúc quyết định của bài (cột "Market at entry"); null = không có / trước #376. #530: theo đúng
+ * coin (bài × market) khi bài nêu nhiều coin.
+ */
+const marketAt = (articleId: string | null, market: string | null, ctx: Ctx) =>
+  marketStateOf(contextFor(ctx.contexts, articleId, market));
 
 const SHADOW_REASON: ReadonlyMap<string, "limitOpen" | "limitDay" | "noBalance"> = new Map([
   ["LIMIT_OPEN", "limitOpen"],
@@ -1138,7 +1142,7 @@ function tradeItem(t: TradeRow, ctx: Ctx, now: number, px: SrQuotesSnapshot = {}
     shadow: shadowOf(t, ctx),
     opposite: oppositeOf(t),
     rulesVersion: versionNumberOf(t.ruleVersion),
-    marketState: marketAt(t.articleId, ctx),
+    marketState: marketAt(t.articleId, t.market, ctx),
   };
 }
 
@@ -1199,7 +1203,7 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
     shadow: null,
     opposite: null,
     rulesVersion: versionNumberOf(e.ruleVersion),
-    marketState: marketAt(e.articleId, ctx),
+    marketState: marketAt(e.articleId, story.market, ctx),
   };
 }
 

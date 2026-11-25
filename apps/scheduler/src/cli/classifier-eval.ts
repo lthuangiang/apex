@@ -96,10 +96,15 @@ interface Row {
   nextRule: string | null;
 }
 
-/** "etf_approved · BTC-USD" / "none · NONE" / lỗi. */
+/**
+ * "etf_approved · BTC-USD" / "none · NONE" / lỗi. #530 (reader v7): sự kiện nhiều coin ghi mọi market theo thứ tự trả về
+ * ("listing · AAVE-USD + LINK-USD + UNI-USD"), để eval thấy bài nào đổi số coin.
+ */
 function text(o: ClassifyOutcome): string {
   if (!o.ok) return `error (${o.error})`;
-  return `${o.value.catalyst} · ${o.value.market ?? "NONE"}`;
+  const markets = o.value.markets ?? [];
+  const m = markets.length > 1 ? markets.join(" + ") : (o.value.market ?? "NONE");
+  return `${o.value.catalyst} · ${m}`;
 }
 
 /** Luật cố định của Rules sau Claude (chỉ các luật BTC / ETH; các kiểm khác của bước Score không chạy ở đây). */

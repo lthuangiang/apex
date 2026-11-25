@@ -26,6 +26,11 @@ export interface Classification {
   catalyst: NewsCatalyst;
   /** Market ứng viên, hoặc null khi Claude trả "NONE". */
   market: string | null;
+  /**
+   * #530 (news-classifier-v7): mọi market của MỘT sự kiện, theo thứ tự bài nêu: `market` trước rồi `other_markets` (chỉ
+   * ứng viên của bài, bỏ trùng). Rỗng khi `market` null. Thiếu ở bài phân loại trước v7 = chỉ `market`.
+   */
+  markets?: string[];
   relevance: "direct" | "passing_mention";
   promotional: boolean;
   eventDate: string | null;
@@ -130,6 +135,7 @@ const answerSchema = z.object({
   promotional: z.boolean(),
   event_date: z.string().regex(/^(\d{4}-\d{2}-\d{2}|unknown)$/),
   treasury_amount: z.string().optional(),
+  other_markets: z.array(z.string()).optional(),
 });
 
 /** Số tiền treasury như bài viết; rỗng / "unknown" / thiếu → null. Cắt ngắn để không lưu cả đoạn văn. */
@@ -149,11 +155,24 @@ export function parseAnswer(
   const a = p.data;
   if (a.market !== "NONE" && !candidates.some((c) => c.market === a.market))
     return { ok: false, error: "market_not_candidate" };
+  const market = a.market === "NONE" ? null : a.market;
+  // #530: coin khác của cùng sự kiện. Market không thuộc ứng viên thì bỏ riêng market đó (không làm hỏng cả câu trả lời):
+  // market chính vẫn giữ.
+  const markets =
+    market === null
+      ? []
+      : [
+          ...new Set([
+            market,
+            ...(a.other_markets ?? []).filter((m) => candidates.some((c) => c.market === m)),
+          ]),
+        ];
   return {
     ok: true,
     value: {
       catalyst: a.catalyst,
-      market: a.market === "NONE" ? null : a.market,
+      market,
+      markets,
       relevance: a.relevance,
       promotional: a.promotional,
       eventDate: a.event_date === "unknown" ? null : a.event_date,
@@ -185,6 +204,12 @@ export function classifierTool(universe: readonly string[]): Anthropic.Tool {
         event_date: {
           type: "string",
           description: "UTC date YYYY-MM-DD when the event happened, or unknown.",
+        },
+        other_markets: {
+          type: "array",
+          items: { type: "string", enum: [...universe].sort() },
+          description:
+            "Other candidate markets the same single event is directly about, in the order the article names them. Empty when the event is about one asset.",
         },
         treasury_amount: {
           type: "string",

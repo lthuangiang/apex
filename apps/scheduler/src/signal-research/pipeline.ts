@@ -50,6 +50,9 @@ import {
   TradeDirection,
   etfOnMajorAsset,
   listingOnMajorAsset,
+  marketsByMention,
+  meetsMinOrder,
+  paperEventShare,
   treasuryOnMajorAsset,
   versionHoldHours,
   type Candidate,
@@ -114,6 +117,13 @@ export interface MarketInfo {
   tickSize: string | null;
   /** `takerFee` (tỷ lệ thô) của market; null = dùng phí mặc định. */
   takerFee: string | null;
+  /**
+   * #530: lot / min size / min notional của market SoDEX (cùng nguồn với bot mainnet), cho kiểm cỡ tối thiểu của phần chia
+   * trong sự kiện nhiều coin. Thiếu (null / không có) = không biết: sự kiện nhiều coin bỏ coin đó (không mở lệnh).
+   */
+  stepSize?: string | null;
+  minQuantity?: string | null;
+  minNotional?: string | null;
 }
 
 export interface PipelineConfig {
@@ -220,6 +230,89 @@ interface Signal {
   title: string | null;
   candidate: Candidate;
   catalyst: SignalCatalyst;
+  /**
+   * #530 (news-v6): sự kiện nhiều coin. `eventKey` null = tín hiệu một coin; `eventCoins` = số coin của sự kiện qua các
+   * kiểm tất định ở Understand (lệnh giấy và bot mainnet chia cỡ lệnh cho số này). `sameEvent` = bài đăng lại của một sự
+   * kiện nhiều coin đã xét: không bao giờ mở câu chuyện mới (`SAME_EVENT`), không ghi tín hiệu mainnet.
+   */
+  eventKey: string | null;
+  eventCoins: number;
+  sameEvent: boolean;
+  /**
+   * #530: coin của bài đăng lại đã qua Understand ở bài đầu của sự kiện và bài đăng lại còn trong `retryWindowMinutes` tính
+   * từ bài đầu: tín hiệu mainnet được ghi (lần thử lại, cùng `eventKey` / `eventCoins` = k của bài đầu). Lệnh giấy thử lại
+   * theo đúng luật câu chuyện (cần lần thử trước của version); cờ này không dùng ở đó.
+   */
+  retryable: boolean;
+}
+
+/** #530: kiểm tất định của một coin sau Claude (loại tài sản, có trong bài, luật BTC / ETH); null = qua. */
+function coinCheck(
+  catalyst: SignalCatalyst,
+  c: Candidate,
+  title: string | null,
+  content: string | null,
+  matched: ReturnType<typeof matchedOf>,
+): SignalReason | null {
+  if (!catalystRule(catalyst).kinds.includes(c.kind)) return SignalReason.wrongAssetKind;
+  // news-v3 (#298): tài sản phải được viết trong bài (tag SoSoValue thôi chưa đủ); treasury trên BTC / ETH không giao dịch.
+  if (!assetInText(title, content, c, matched)) return SignalReason.assetNotInText;
+  if (treasuryOnMajorAsset(catalyst, c.market)) return SignalReason.treasuryMajorAsset;
+  // news-v4 (#395): tin ETF trên BTC / ETH không giao dịch.
+  if (etfOnMajorAsset(catalyst, c.market)) return SignalReason.etfMajorAsset;
+  // news-v5 (#506): tin listing trên BTC / ETH không giao dịch.
+  if (listingOnMajorAsset(catalyst, c.market)) return SignalReason.listingMajorAsset;
+  return null;
+}
+
+/**
+ * #530: sự kiện nhiều coin đã xét trong `sameEventWindowHours` có cùng loại tin và ít nhất một coin trùng với `markets`;
+ * trả khoá sự kiện, hoặc null. Chỉ bài mở sự kiện (có `classification.event`, nêu ≥ 2 coin) được tính; sự kiện một coin đi
+ * theo luật câu chuyện như trước (`SAME_STORY`, thử lại trong `retryWindowMinutes`).
+ */
+async function sameEventOf(
+  db: Db,
+  articleId: string,
+  catalyst: SignalCatalyst,
+  markets: readonly string[],
+  now: number,
+): Promise<{ key: string; coins: number; markets: string[]; firstAt: number } | null> {
+  if (markets.length === 0) return null;
+  const since = new Date(now - NEWS_RULES.sameEventWindowHours * HOUR_MS);
+  const list = sql.join(
+    markets.map((m) => sql`${m}`),
+    sql`, `,
+  );
+  const rows = await db.execute<{
+    key: string;
+    coins: string | number | null;
+    markets: unknown;
+    first_at: Date | string;
+  }>(sql`
+    select a.classification->'event'->>'key' as key, a.classification->>'eventCoins' as coins,
+           a.classification->'eventMarkets' as markets, a.published_at as first_at
+      from signal_articles a
+     where a.rule_version = ${NEWS_RULES.version}
+       and a.id <> ${articleId}
+       and a.classified_at >= ${since}
+       and a.classification->'event'->>'catalyst' = ${catalyst}
+       and exists (
+         select 1 from jsonb_array_elements_text(a.classification->'event'->'markets') m
+          where m in (${list}))
+     order by a.classified_at, a.id
+     limit 1`);
+  const r = rows.rows[0];
+  if (r === undefined) return null;
+  const coins = Number(r.coins);
+  return {
+    key: r.key,
+    // k của bài đầu (số coin qua Understand); bài đầu mà mọi coin đều rớt có k = 0, không bao giờ mở lệnh (an toàn).
+    coins: Number.isInteger(coins) && coins >= 1 ? coins : 0,
+    markets: Array.isArray(r.markets)
+      ? r.markets.filter((m): m is string => typeof m === "string")
+      : [],
+    firstAt: r.first_at instanceof Date ? r.first_at.getTime() : Date.parse(r.first_at),
+  };
 }
 
 const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -504,49 +597,113 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       ...(small ? { smallTreasury: true } : {}),
     };
     const candidate = candidates.find((x) => x.market === c.market);
+    // Kiểm cấp bài (một lần cho cả bài, theo market chính như trước).
     let reason: SignalReason | null = null;
     if (c.catalyst === "none") reason = SignalReason.notSignalType;
     else if (candidate === undefined || c.relevance === "passing_mention")
       reason = SignalReason.passingMention;
     else if (c.promotional) reason = SignalReason.promotional;
-    else if (!catalystRule(c.catalyst).kinds.includes(candidate.kind))
-      reason = SignalReason.wrongAssetKind;
-    // news-v3 (#298): kiểm tất định sau Claude. Tài sản phải được viết trong bài (tag SoSoValue thôi chưa đủ);
-    // treasury trên BTC / ETH không giao dịch.
-    else if (!assetInText(a.title, a.content, candidate, matchedOf(a.matchedCurrencies)))
-      reason = SignalReason.assetNotInText;
-    else if (treasuryOnMajorAsset(c.catalyst, candidate.market))
-      reason = SignalReason.treasuryMajorAsset;
-    // news-v4 (#395): tin ETF trên BTC / ETH không giao dịch.
-    else if (etfOnMajorAsset(c.catalyst, candidate.market)) reason = SignalReason.etfMajorAsset;
-    // news-v5 (#506): tin listing trên BTC / ETH không giao dịch.
-    else if (listingOnMajorAsset(c.catalyst, candidate.market))
-      reason = SignalReason.listingMajorAsset;
     else if (eventTooOld(c.eventDate, a.publishedAt.getTime())) reason = SignalReason.eventTooOld;
-    const signal: Signal | null =
-      candidate === undefined || c.catalyst === "none"
-        ? null
-        : {
-            articleId: a.id,
-            source: a.source,
-            tier: sourceTierOf(a.source, a.category),
-            publishedAt: a.publishedAt.getTime(),
-            collectedAt: a.collectedAt.getTime(),
-            title: a.title,
-            candidate,
-            catalyst: c.catalyst,
-          };
-    if (reason !== null || signal === null) {
+    if (reason !== null || candidate === undefined || c.catalyst === "none") {
       // Lỗi của BÀI (quảng cáo, nhắc qua, không thuộc danh sách, sự kiện cũ…): chỉ ghi event. Không tạo story, không thêm
       // nguồn, không khoá key (review PR #278 R1).
       await drop(reason ?? SignalReason.notSignalType, classification);
       continue;
     }
-    const rule = catalystRule(signal.catalyst);
+    const catalyst: SignalCatalyst = c.catalyst;
+    const matched = matchedOf(a.matchedCurrencies);
+    // #530 (news-v6): mọi coin của sự kiện (reader v7 trả `markets`; bài trước v7 chỉ có `market`), xếp theo thứ tự bài
+    // nêu. Bài nêu hơn `eventMaxCoins` coin là bài tổng hợp: cả bài `PASSING_MENTION`, không cắt lấy vài coin đầu.
+    const listed = marketsByMention(
+      a.title,
+      a.content,
+      (c.markets ?? [candidate.market]).flatMap((m) => {
+        const x = candidates.find((y) => y.market === m);
+        return x === undefined ? [] : [x];
+      }),
+      matched,
+    );
+    if (listed.length > NEWS_RULES.eventMaxCoins) {
+      await drop(SignalReason.passingMention, {
+        ...classification,
+        eventCoinsListed: listed.length,
+      });
+      continue;
+    }
+    // Kiểm tất định từng coin; coin rớt không tính vào số coin của sự kiện (k), ghi vào `eventDropped`.
+    const checked = listed.map((x) => ({
+      c: x,
+      reason: coinCheck(catalyst, x, a.title, a.content, matched),
+    }));
+    const passed = checked.filter((x) => x.reason === null).map((x) => x.c);
+    const eventDropped = checked.flatMap((x) =>
+      x.reason === null ? [] : [{ market: x.c.market, reason: x.reason }],
+    );
+    // Bài đăng lại của một sự kiện nhiều coin đã xét (cùng loại tin, trong 24 giờ, có ít nhất một coin trùng): mọi coin
+    // của bài là `SAME_EVENT`, kể cả coin mới.
+    const earlierEvent = await sameEventOf(
+      db,
+      a.id,
+      catalyst,
+      listed.map((x) => x.market),
+      now,
+    );
+    // Bài mở sự kiện nhiều coin (nêu ≥ 2 coin, kể cả coin rớt ở kiểm từng coin): ghi để nhận ra bài đăng lại.
+    const event =
+      earlierEvent === null && listed.length >= 2
+        ? { key: `evt:${a.id}`, catalyst, markets: listed.map((x) => x.market) }
+        : null;
+    const eventInfo = {
+      ...(event === null ? {} : { event }),
+      ...(listed.length >= 2 || earlierEvent !== null
+        ? {
+            eventMarkets: passed.map((x) => x.market),
+            eventCoins: passed.length,
+            ...(eventDropped.length > 0 ? { eventDropped } : {}),
+            ...(earlierEvent === null ? {} : { sameEventOf: earlierEvent.key }),
+          }
+        : {}),
+    };
+    if (passed.length === 0) {
+      // Mọi coin rớt ở kiểm từng coin: lý do của coin đầu (một coin: đúng như trước).
+      await drop(eventDropped[0]?.reason ?? SignalReason.notSignalType, {
+        ...classification,
+        ...eventInfo,
+      });
+      continue;
+    }
+    const k = passed.length;
+    const eventKey = earlierEvent?.key ?? (k >= 2 ? (event?.key ?? null) : null);
+    // Bài đăng lại dùng lại k của bài đầu (lần thử lại chia đúng phần của sự kiện, không lấy đủ cỡ).
+    const coinsOf = earlierEvent === null ? k : earlierEvent.coins;
+    const inRetry =
+      earlierEvent !== null && now - earlierEvent.firstAt <= NEWS_RULES.retryWindowMinutes * MIN_MS;
+    const made: Signal[] = passed.map((x) => ({
+      articleId: a.id,
+      source: a.source,
+      tier: sourceTierOf(a.source, a.category),
+      publishedAt: a.publishedAt.getTime(),
+      collectedAt: a.collectedAt.getTime(),
+      title: a.title,
+      candidate: x,
+      catalyst,
+      eventKey,
+      eventCoins: coinsOf,
+      sameEvent: earlierEvent !== null,
+      retryable: inRetry && earlierEvent.markets.includes(x.market),
+    }));
+    const first = made[0];
+    if (first === undefined) continue;
+    const rule = catalystRule(catalyst);
     await db.transaction(async (tx) => {
       await tx
         .update(signalArticles)
-        .set({ status: "classified", classification, classifiedAt: new Date(now), ...claude })
+        .set({
+          status: "classified",
+          classification: { ...classification, ...eventInfo },
+          classifiedAt: new Date(now),
+          ...claude,
+        })
         .where(eq(signalArticles.id, a.id));
       await recordEvents(tx, [
         {
@@ -554,18 +711,20 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
           stage: SignalStage.understand,
           outcome: SignalOutcome.pass,
           detail: {
-            market: signal.candidate.market,
-            catalyst: signal.catalyst,
+            market: first.candidate.market,
+            catalyst,
             direction: rule.direction,
             maxHoldHours: rule.maxHoldHours,
             ...(small ? { smallTreasury: true } : {}),
+            ...eventInfo,
+            ...(eventKey === null ? {} : { eventKey }),
             assetMapVersion: NEWS_ASSET_MAP_VERSION,
           },
           at: now,
         },
       ]);
     });
-    signals.push(signal);
+    signals.push(...made);
   }
   report.signals = signals.length;
 
@@ -1121,6 +1280,22 @@ async function decideStory(
   }
 
   const earlier = await earlierAttempts(db, v.id, key, now);
+  // #530 (news-v6): bài đăng lại của một sự kiện nhiều coin đã xét lẽ ra mở câu chuyện MỚI cho coin này (không có câu chuyện
+  // khoá, không có lần thử trước): bỏ ở Filter với `SAME_EVENT` (không tạo story), không vào lệnh. Có lần thử trước (coin bị bỏ ở Filter của bài đầu, câu
+  // chuyện đã tạo) thì đi đúng luật thử lại hiện có: thử lại trong `retryWindowMinutes`, quá thì `STORY_TOO_OLD`.
+  // k của bài đầu = 0 (mọi coin của bài đầu rớt ở Understand) thì không có phần nào để chia: cũng bỏ, không vào lệnh.
+  if (first.sameEvent && (earlier.length === 0 || first.eventCoins < 1)) {
+    await recordEvents(
+      db,
+      group.map((s) =>
+        ev(s, SignalStage.filter, SignalOutcome.drop, {
+          reason: SignalReason.sameEvent,
+          detail: { eventKey: s.eventKey },
+        }),
+      ),
+    );
+    return { ...none, skipped: group.map(() => SignalReason.sameEvent) };
+  }
   // #312: mốc bắt đầu story; H3 của bước 4 dùng cùng hàm (`storyStartOf`) nên cùng con số với `moved_before_entry`.
   const { start: storyStart, retry } = storyStartOf(
     earlier.flatMap((e) => e.sources.map((x) => Date.parse(x.at))),
@@ -1276,12 +1451,14 @@ async function decideStory(
   const fee = oneWayFeePct(info.get(market)?.takerFee ?? null, NEWS_RULES.builderFeeRate);
   const spread = spreadPctOf(quote);
   const cost = roundTripCost(fee, spread);
+  // #530 (news-v6): sự kiện nhiều coin chia cỡ lệnh của version cho số coin (k), làm tròn xuống tới cent; một coin như cũ.
+  const share = paperEventShare(cfg.sizeUsdc, first.eventCoins);
   const plan = planTrade({
     direction,
     quote,
     typicalMovePct: typical,
     oneWayFeePct: fee,
-    sizeUsdc: cfg.sizeUsdc,
+    sizeUsdc: share.toFixed(),
     tpMultiple: cfg.tpMultiple,
     slMultiple: cfg.slMultiple,
   });
@@ -1296,10 +1473,26 @@ async function decideStory(
     spreadPct: spread.toFixed(4),
   };
   if (costFail !== null) return fail(costFail, costDetail);
+  // #530: phần chia của một coin dưới cỡ lệnh tối thiểu của market SoDEX → bỏ coin đó (không dồn phần sang coin khác).
+  // Chỉ sự kiện nhiều coin (một coin giữ đúng hành vi cũ). Không biết lot / min của market thì cũng bỏ (không mở lệnh).
+  if (first.eventCoins > 1) {
+    const mi = info.get(market);
+    const rules =
+      mi?.stepSize != null && mi.minQuantity != null && mi.minNotional != null
+        ? { stepSize: mi.stepSize, minQuantity: mi.minQuantity, minNotional: mi.minNotional }
+        : null;
+    if (rules === null || !meetsMinOrder(plan.entryPrice, share, rules))
+      return fail(SignalReason.belowMinSize, {
+        ...costDetail,
+        sizeUsdc: share.toFixed(),
+        eventCoins: first.eventCoins,
+        ...(rules === null ? { rulesUnknown: true } : {}),
+      });
+  }
 
-  // Giới hạn của version: chặn thì chỉ theo dõi giả định (shadow), ngoài balance.
+  // Giới hạn của version: chặn thì chỉ theo dõi giả định (shadow), ngoài balance. Số dư so với phần chia của coin này.
   const book = await versionBook(db, v.id, now);
-  const blocked = limitBlock({ cfg, ...book });
+  const blocked = limitBlock({ cfg: { ...cfg, sizeUsdc: share.toFixed() }, ...book });
   if (blocked !== null && openShadow !== undefined)
     // Đã có lệnh shadow đang mở trên token này: không mở thêm (một lệnh mỗi version × token, kể cả shadow).
     // #304: mang giới hạn của version để API hiện "Limit: N open" / "Limit: N per day".

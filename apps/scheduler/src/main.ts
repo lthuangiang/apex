@@ -268,6 +268,9 @@ async function loadPerps() {
     status: m.status,
     tickSize: m.tickSize,
     takerFee: m.takerFee,
+    stepSize: m.stepSize,
+    minQuantity: m.minQuantity,
+    minNotional: m.minNotional,
   }));
   try {
     await redis.set(SR_MARKETS_KEY, JSON.stringify(srMarketsSnapshot(symbols, new Date())));

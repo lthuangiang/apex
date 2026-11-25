@@ -98,6 +98,11 @@ export const SignalReason = {
   sameStory: "SAME_STORY",
   /** Câu chuyện chưa vào lệnh nhưng bài đầu tiên đã quá `retryWindowMinutes`: gộp, không vào lệnh. */
   storyTooOld: "STORY_TOO_OLD",
+  /**
+   * #530: bài đăng lại của một sự kiện đã xét (cùng loại tin, trong `sameEventWindowHours`, có coin trùng) lẽ ra mở câu
+   * chuyện mới cho một coin: bỏ ở Filter (drop, không có story), không vào lệnh.
+   */
+  sameEvent: "SAME_EVENT",
   sourceLate: "SOURCE_LATE",
   noPrice: "NO_SODEX_PRICE",
   noBookData: "NO_BOOK_DATA",
@@ -196,11 +201,15 @@ export const SR_WATCH_REST = {
  * v5 so với v4 (#506): tin listing trên BTC / ETH không giao dịch (`LISTING_MAJOR_ASSET`): một sàn niêm yết thêm BTC hay
  * ETH không phải catalyst. Lên cùng prompt `news-classifier-v6` (#505) trong một hotfix, nên tổng kết, nhãn và cổng chỉ đếm
  * lại từ 0 một lần. Bài v4 còn `collected` / `pending` lúc deploy được chuyển sang v5 như lần trước; lệnh v4 là lịch sử.
+ *
+ * v6 so với v5 (#530, DEC-TBD-news-event-split): một sự kiện tin nêu nhiều coin mở lệnh cho mọi coin ngay ở bài đầu và
+ * chia cỡ lệnh (`eventMaxCoins`, `sameEventWindowHours`, `SAME_EVENT`, `BELOW_MIN_ORDER_SIZE` cho lệnh giấy), cùng prompt
+ * `news-classifier-v7` (reader trả thêm các coin khác của sự kiện).
  */
 export const NEWS_RULES = {
-  version: "news-v5",
+  version: "news-v6",
   /** Số version (API hiện dạng số). */
-  versionNumber: 5,
+  versionNumber: 6,
   lane: "news",
   /** Bảng loại tin → chiều + giữ tối đa. Chiều do loại tin quyết định, Claude chỉ gọi tên loại tin và tài sản. */
   catalysts: {
@@ -282,6 +291,17 @@ export const NEWS_RULES = {
    * nhanh); quá thì bài sau gộp vào với lý do `STORY_TOO_OLD`, không vào lệnh.
    */
   retryWindowMinutes: 120,
+  /**
+   * #530: một sự kiện tin mở lệnh cho tối đa ngần này coin (coin qua các kiểm tất định ở Understand). Bài nêu nhiều hơn là
+   * bài tổng hợp: cả bài `PASSING_MENTION`, không cắt lấy vài coin đầu.
+   */
+  eventMaxCoins: 5,
+  /**
+   * #530: bài đăng lại cùng loại tin trong chừng này giờ mà có ít nhất một coin đã được xét ở bài đầu của một sự kiện thì
+   * mọi coin của bài là `SAME_EVENT` (bỏ ở Filter khi lẽ ra mở câu chuyện mới; câu chuyện đã có thì vẫn `SAME_STORY` /
+   * thử lại như cũ).
+   */
+  sameEventWindowHours: 24,
   /** Story key (token + loại tin) đã có trong ngần này ngày → gộp, không bao giờ mở lại. */
   storyWindowDays: 7,
   /** Bài tới tay DeskLabs trễ hơn ngần này sau giờ đăng → nguồn không đúng giờ. */
@@ -492,7 +512,7 @@ export const NEWS_CLASSIFIER = {
    * 1 phút (`SIGNAL_NEWS_CYCLE_MINUTES`) vẫn giữ 1 giờ để giờ ít tin không làm cache hết hạn giữa hai lần gọi.
    */
   cacheTtl: "1h",
-  promptVersion: "news-classifier-v6",
+  promptVersion: "news-classifier-v7",
   maxTokens: 400,
   /** Tối đa ngần này ký tự nội dung bài gửi cho Claude. */
   maxContentChars: 4000,

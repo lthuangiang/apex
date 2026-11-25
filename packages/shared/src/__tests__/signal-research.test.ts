@@ -19,7 +19,11 @@ import {
   sourceTierOf,
   spreadPctOf,
   etfOnMajorAsset,
+  firstMentionAt,
   listingOnMajorAsset,
+  marketsByMention,
+  meetsMinOrder,
+  paperEventShare,
   storyKey,
   treasuryOnMajorAsset,
   typicalMovePct,
@@ -61,8 +65,8 @@ describe("rules v3", () => {
     });
     expect(catalystRule("token_unlock")).toMatchObject({ direction: "short", maxHoldHours: 48 });
     expect(SIGNAL_CATALYSTS).toHaveLength(12);
-    expect(NEWS_RULES.version).toBe("news-v5");
-    expect(NEWS_RULES.versionNumber).toBe(5);
+    expect(NEWS_RULES.version).toBe("news-v6");
+    expect(NEWS_RULES.versionNumber).toBe(6);
     expect(SignalReason.assetNotInText).toBe("ASSET_NOT_IN_TEXT");
     expect(SignalReason.treasuryMajorAsset).toBe("TREASURY_MAJOR_ASSET");
     expect(SignalReason.etfMajorAsset).toBe("ETF_MAJOR_ASSET");
@@ -649,5 +653,49 @@ describe("report", () => {
     expect(tradesNeeded(summarizeByDay(obs((i) => (i % 2 === 0 ? "1" : "1.1"), 10, 1)))).toBe(100);
     expect(tradesNeeded(summarizeByDay(obs(() => "-1", 10, 1)))).toBeNull();
     expect(tradesNeeded(null)).toBeNull();
+  });
+});
+
+describe("event split (news-v6, #530)", () => {
+  it("v6 keeps at most 5 coins per event and a 24 h same-event window", () => {
+    expect(NEWS_RULES.eventMaxCoins).toBe(5);
+    expect(NEWS_RULES.sameEventWindowHours).toBe(24);
+    expect(SignalReason.sameEvent).toBe("SAME_EVENT");
+    expect(SignalReason.belowMinSize).toBe("BELOW_MIN_ORDER_SIZE");
+  });
+
+  it("splits the paper size by the event's coin count, rounded down to the cent", () => {
+    expect(paperEventShare("100", 3).toFixed()).toBe("33.33");
+    expect(paperEventShare("100", 2).toFixed()).toBe("50");
+    expect(paperEventShare("10", 3).toFixed()).toBe("3.33");
+    // One coin (or no count) keeps the full size, not rounded.
+    expect(paperEventShare("100.555", 1).toFixed()).toBe("100.555");
+    expect(paperEventShare("100.555", undefined).toFixed()).toBe("100.555");
+    expect(paperEventShare("100", 0).toFixed()).toBe("100");
+  });
+
+  it("checks a share against the market's lot, min quantity and min notional", () => {
+    const rules = { stepSize: "0.1", minQuantity: "0.1", minNotional: "5" };
+    expect(meetsMinOrder("10", "33.33", rules)).toBe(true);
+    // 4 USDC at 10 → 0.4 qty, notional 4 < 5.
+    expect(meetsMinOrder("10", "4", rules)).toBe(false);
+    // 0.9 USDC at 10 → 0.09 qty floors to 0.
+    expect(meetsMinOrder("10", "0.9", { ...rules, minNotional: "0" })).toBe(false);
+    expect(meetsMinOrder("0", "100", rules)).toBe(false);
+  });
+
+  it("orders an event's coins by first mention in the article", () => {
+    const c = (symbol: string) => ({ symbol, market: `${symbol}-USD`, kind: "crypto" as const });
+    const title = "Robinhood lists AAVE, LINK and UNI";
+    expect(firstMentionAt(title, [{ text: "LINK", match: "symbol" }])).toBe(title.indexOf("LINK"));
+    expect(firstMentionAt(title, [{ text: "SOL", match: "symbol" }])).toBeNull();
+    const out = marketsByMention(
+      title,
+      "Body mentions COMP too.",
+      [c("UNI"), c("COMP"), c("ETH"), c("AAVE"), c("LINK")],
+      [],
+    );
+    // ETH is not in the text: kept after the coins found, in reader order.
+    expect(out.map((x) => x.symbol)).toEqual(["AAVE", "LINK", "UNI", "COMP", "ETH"]);
   });
 });

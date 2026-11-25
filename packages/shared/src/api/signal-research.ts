@@ -108,6 +108,16 @@ export const RESEARCH_DROP_REASONS = [
   "noBalance",
   /** Tin ngược chiều trên lệnh đang mở của version (`OPPOSITE_NEWS`): không mở lệnh mới, không đảo chiều. */
   "oppositeNews",
+  /**
+   * #530 (news-v6): phần cỡ lệnh của coin trong một sự kiện nhiều coin dưới cỡ lệnh tối thiểu của market SoDEX
+   * (`BELOW_MIN_ORDER_SIZE`): bỏ coin đó, không dồn phần sang coin khác.
+   */
+  "belowMinSize",
+  /**
+   * #530 (news-v6): bài đăng lại của một sự kiện nhiều coin đã xét lẽ ra mở câu chuyện MỚI cho một coin (`SAME_EVENT`):
+   * bỏ ở Filter, không vào lệnh (câu chuyện đã có thì vẫn gộp `sameStory` / thử lại như cũ).
+   */
+  "sameEvent",
 ] as const;
 export const RESEARCH_NEWS_TYPES = [
   "hack",
@@ -882,6 +892,7 @@ export const RESEARCH_ARTICLE_SHOWS = ["all", "traded", "dropped", "claude"] as 
  */
 export const RESEARCH_ARTICLE_OUTCOMES = ["traded", "dropped", "merged", "waiting"] as const;
 export const RESEARCH_MERGE_REASONS = ["sameStory", "storyTooOld"] as const;
+export type ResearchMergeReason = (typeof RESEARCH_MERGE_REASONS)[number];
 export const RESEARCH_SOURCE_TIERS = ["top", "mid", "low"] as const;
 export const RESEARCH_STEP_STATUSES = ["pass", "drop", "merge", "notReached"] as const;
 export const RESEARCH_TRACE_CHECKS = [
