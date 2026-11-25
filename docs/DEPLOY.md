@@ -380,6 +380,8 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 > **v2.18.3** (`docs/releases/v2.18.3.md`): hotfix Signal Research: Claude reader v6 (DEC-382), Rules v5 bỏ listing trên BTC / ETH (DEC-383), sổ lệnh REST một lần qua marketdata khi market không có sổ live (DEC-384), đoạn trích trong export (DEC-385). Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.18.3`. `marketdata` và `scheduler` phải lên cùng bản (subject NATS mới `sr.book.request`); lệnh deploy trên đã làm vậy. Sau deploy, số nhãn, số lệnh và cổng 50 nhãn của Signal Research đếm lại từ 0 (một lần).
 >
 > **v2.18.4** (`docs/releases/v2.18.4.md`): cache Realized PnL và sparkline của Overview (DEC-387), cảnh báo team "SoDEX order updates delayed" (DEC-386), sửa a11y trang Market hours. Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.18.4`. Không đổi engine, không cần Stop bot. Sau deploy chạy lại `reports/sodex-ratelimit-a.sql` để đo mức giảm weight của `positions/history`.
+>
+> **v2.18.5** (`docs/releases/v2.18.5.md`): Market Making báo giá theo sổ WS (DEC-389) và giữ lệnh đóng rc tối đa 10 s khi giá không đổi (DEC-390). **Đổi engine của bot tiền thật.** Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.18.5`. Stop bot Market Making trước khi deploy, Start lại sau; chạy thử cỡ lệnh nhỏ 1–2 giờ, rồi chạy lại `reports/mm-517-cost.sql` để so với số đo trước.
 
 **3. Service cần pull lại:** cả 11 app. `infra/deploy/changed-apps.sh v2.12.0 <tag mới>` trả cả 11 vì `packages/**` đổi (shared, db). `build-push.sh --deploy-only <tag>` đã pull và `up -d` hết; không cần chọn tay.
 
