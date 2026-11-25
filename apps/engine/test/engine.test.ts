@@ -1510,6 +1510,8 @@ describe("engine", () => {
     });
     const e = makeEngine(gw, "w-stop-race");
     await e.tick();
+    // Bot báo giá theo sổ chỉ đặt lệnh mở khi có sổ còn mới (DEC-389): giá WS trước giá khớp đầu tiên.
+    await e.onMmBook({ s: "BTC-USD", b: "99999.9", a: "100000", E: clock, at: clock }, clock);
     await e.onPrice("BTC-USD", "100000", clock);
     const bid = gw.received.filter((o) => o.side === "buy").at(-1);
     expect(bid).toBeDefined();
@@ -1550,6 +1552,10 @@ describe("engine", () => {
       const quoted = () => gw.received.some((o) => o.side === "buy");
       for (let i = 0; i < 40 && !quoted(); i += 1) {
         await e.tick();
+        // Sổ còn mới trước giá khớp (DEC-389): Smart quoting nhận qua `onMmBook`, bot thường qua bản WS engine giữ.
+        const top = { s: "BTC-USD", b: "99999.9", a: "100000", E: clock, at: clock };
+        if (smart) await e.onMmBook(top, clock);
+        else e.onFarmBook(top, clock);
         await e.onPrice("BTC-USD", "100000", clock);
         if (!quoted()) await new Promise((r) => setTimeout(r, 50));
       }
@@ -1572,6 +1578,80 @@ describe("engine", () => {
       await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
       await e.stop();
     }
+  });
+
+  /** Bot MM báo giá theo sổ, không Smart quoting; chờ tới khi engine này giữ shard của bot và báo giá lần đầu. */
+  async function liveBookMm(worker: string) {
+    const { eq } = await import("drizzle-orm");
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.strategy, "volume_maker"));
+    const gw = new FakeGateway();
+    const base = mmSmart(false);
+    const seeded = await seedBot("running", { ...base, config: { ...base.config, quoteLevel: 0 } });
+    const e = makeEngine(gw, worker);
+    return { gw, e, ...seeded };
+  }
+
+  it("quotes a Market Making bot without Smart quoting from the live SoDEX book (#517, DEC-389)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const { gw, e, botId } = await liveBookMm("w-live-book");
+    // Không có sổ (REST trả null trong test, chưa có tin WS): không đặt lệnh mở nào.
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    expect(gw.received.filter((o) => !o.reduceOnly)).toEqual([]);
+    // Có giá WS (engine giữ trong bộ nhớ): lần báo giá kế tiếp đứng đúng giá tốt nhất của sổ WS, không phải giá khớp.
+    const quoted = () => gw.received.some((o) => o.side === "buy");
+    for (let i = 0; i < 40 && !quoted(); i += 1) {
+      // Nhịp đồng hồ mới (quá `refreshSeconds`), tin WS vừa tới.
+      clock += 3_000;
+      e.onFarmBook({ s: "BTC-USD", b: "99990", a: "99990.1", E: clock, at: clock }, clock);
+      await e.tick();
+      if (!quoted()) await new Promise((r) => setTimeout(r, 50));
+    }
+    const bid = gw.received.filter((o) => o.side === "buy").at(-1);
+    const ask = gw.received.filter((o) => o.side === "sell").at(-1);
+    expect(bid?.price).toBe("99990");
+    expect(ask?.price).toBe("99990.1");
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+    await e.stop();
+  });
+
+  it("still blocks a self-trade on the live-book path (#517, DEC-389)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const { gw, e, botId, accountId } = await liveBookMm("w-live-self");
+    // Lệnh bán đang mở của chính account ở 99999.8: bid 99999.9 của bot sẽ khớp với nó.
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: "own-sell-99999.8",
+      market: "BTC-USD",
+      engine: "perps",
+      side: "sell",
+      type: "limit",
+      timeInForce: "GTC",
+      price: "99999.8",
+      size: "0.001",
+      status: "open",
+      reduceOnly: false,
+      tag: "other",
+      epoch: 1,
+    });
+    const tried = async () =>
+      (await db.select().from(orders).where(eq(orders.botId, botId))).filter(
+        (o) => o.side === "buy" && o.tag.startsWith("vm:"),
+      );
+    for (let i = 0; i < 40 && (await tried()).length === 0; i += 1) {
+      await e.tick();
+      e.onFarmBook({ s: "BTC-USD", b: "99999.9", a: "100000", E: clock, at: clock }, clock);
+      await e.onPrice("BTC-USD", "100000", clock);
+      if ((await tried()).length === 0) await new Promise((r) => setTimeout(r, 50));
+    }
+    const buys = await tried();
+    expect(buys.map((o) => [String(Number(o.price)), o.rejectCode])).toEqual([
+      ["99999.9", "SELF_TRADE_BLOCKED"],
+    ]);
+    expect(gw.received.some((o) => o.side === "buy")).toBe(false);
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+    await e.stop();
   });
 
   it("keeps the open orders of a paused Market Making bot when the Binance price moves (DOMAIN 7.2)", async () => {

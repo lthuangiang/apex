@@ -648,8 +648,9 @@ describe("volume maker — quotes by order book level (DEC-135)", () => {
     }) as const;
   const quoted = (c: VolumeMakerConfig, bid: string, ask: string) => {
     const r = run(c, [...firstQuote(), book(bid, ask)]);
-    // Lần báo giá thứ hai: mỗi phía đặt lại sau khi SoDEX xác nhận huỷ lệnh cũ (DEC-257).
-    const p = places(r.all).slice(2);
+    // Lần báo giá theo sổ (lúc 3 s). Bot báo giá theo sổ không đặt lệnh mở trước khi có sổ (DEC-389); config cũ theo bp
+    // đặt ngay ở lần đầu rồi đặt lại sau khi SoDEX xác nhận huỷ (DEC-257).
+    const p = places(r.all).slice(c.quoteLevel === undefined ? 2 : 0);
     return {
       bid: p.findLast((o) => o.side === "buy")?.price,
       ask: p.findLast((o) => o.side === "sell")?.price,
@@ -813,13 +814,16 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     });
   });
 
-  it("ignores the live book when Smart quoting is off (DEC-248)", () => {
+  it("takes the live book without re-quoting when Smart quoting is off (DEC-248, DEC-389)", () => {
     const off = cfg({ quoteLevel: 0 });
     let st = run(off, [...firstQuote(), snap(7000)]).s;
     const x = volumeMaker.step(off, st, bookAt(8100, "100000.9", "100001"), ctx);
     st = x.state;
+    // Không đặt lại ngay (vẫn theo nhịp `refreshSeconds`), nhưng sổ và giờ đọc là của tin WS.
     expect(x.actions).toHaveLength(0);
-    expect(st.book?.bid).toBe("99999.9");
+    expect(st.book?.bid).toBe("100000.9");
+    expect(st.bookAt).toBe(8100);
+    expect(st.bookStreamAt).toBe(8100);
   });
 
   const fairAt = (at: number, fair: string) =>
@@ -1321,8 +1325,8 @@ describe("volume maker — any SoDEX perp (DEC-157)", () => {
           all.push(...x.actions);
         }
     }
-    // Lần báo giá thứ hai (sau hai lệnh của lần đầu).
-    return places(all).slice(2);
+    // Lần báo giá theo sổ lúc 3 s: lần đầu (chưa có sổ) không đặt lệnh mở (DEC-389).
+    return places(all);
   };
 
   it("accepts any market name, not only BTC / ETH", () => {
@@ -1365,6 +1369,9 @@ describe("volume maker — close only at your entry price or better (DEC-227)", 
     }) as const;
   const close = (a: StrategyAction[]) => places(a).find((o) => o.reduceOnly);
   const logs = (a: StrategyAction[]) => a.flatMap((x) => (x.type === "log" ? [x.decision] : []));
+  // Có sổ lúc 0 rồi mới có giá: lần báo giá đầu đặt `vm:1:bid` / `vm:1:ask` theo sổ (không có sổ thì không đặt, DEC-389).
+  const firstQuote = () =>
+    [timer(0), { type: "tick", at: 0, market: "BTC-USD", price: "100000" }] as const;
 
   it("is off by default and closes at the best price", () => {
     const c = cfg({ quoteLevel: 0 });
@@ -2131,10 +2138,10 @@ describe("volume maker — quote snapshot on quoting decisions (#230)", () => {
       fair: { price: null, ageMs: null, used: false, clampBp: null, clamps: 0 },
       smart: { on: true, sig: expect.stringMatching(/^buy:\d+\|sell:\d+$/) as string },
     });
-    // Huỷ rồi mới đặt (DEC-257): bước này huỷ hai lệnh cũ; lệnh mới được đặt khi SoDEX xác nhận huỷ.
+    // Lần đầu (lúc 0, chưa có sổ) không đặt lệnh mở (DEC-389), nên bước này đặt thẳng hai lệnh mới, không có gì để huỷ.
     expect(q.orders.map((o) => [o.side, o.st, o.price])).toEqual([
-      ["buy", "cancel", "99999.9"],
-      ["sell", "cancel", "100000.1"],
+      ["buy", "new", "99979.9"],
+      ["sell", "new", "100020"],
     ]);
     expect(
       places(r.all)
@@ -2595,6 +2602,7 @@ describe("volume maker keeps the reduce-only close when its price does not chang
 
   /** Chế độ sổ lệnh (Smart quoting tắt): lệnh đóng đứng ở giá tốt nhất phía đóng, không phụ thuộc khối lượng vị thế. */
   const bookCfg = () => cfg({ quoteLevel: 0 });
+  /** Sổ REST đọc đúng lúc nhịp đồng hồ (`bookAt` = `at`, DEC-389: tuổi sổ là tuổi thật). */
   const book = (at: number, bid = "99999.9", ask = "100000") =>
     ({
       type: "timer",
@@ -2603,11 +2611,12 @@ describe("volume maker keeps the reduce-only close when its price does not chang
         market: "BTC-USD",
         candles: [],
         book: { bid, ask, bidNotional: "100000", askNotional: "100000" },
+        bookAt: at,
       },
     }) as const;
   function bookLongWithClose(c: VolumeMakerConfig) {
-    let s = volumeMaker.step(c, volumeMaker.initialState(c), tick(0, "100000"), ctx).state;
-    let r = stepConfirmed(c, s, book(T(1)));
+    let s = volumeMaker.step(c, volumeMaker.initialState(c), book(T(1)), ctx).state;
+    let r = stepConfirmed(c, s, tick(T(1), "100000"));
     const bid = Object.entries(r.state.orders).find(
       ([, o]) => o.status === "live" && o.side === "buy",
     );
@@ -2631,6 +2640,52 @@ describe("volume maker keeps the reduce-only close when its price does not chang
     expect(rc).toMatchObject({ side: "sell", price: "100000", quantity: "0.005" });
     return { s: r.state, rc: rc?.clOrdID ?? "" };
   }
+
+  it("a stale book (DEC-389) drops new opening orders but never cancels or drops the kept close", () => {
+    const c = bookCfg();
+    const base = bookLongWithClose(c);
+    // Nhịp 7 s không có sổ mới (sổ đọc lúc 4 s, quá VM_BOOK_MAX_AGE_MS): giá đích theo giá khớp gần nhất (100000.1) khác
+    // giá lệnh đóng (100000), nhưng không có giá mới để so nên lệnh đóng được giữ.
+    const r = stepConfirmed(c, base.s, timer(T(7)));
+    expect(rcActions(r.actions, base.rc)).toEqual({ cancels: [], closes: [] });
+    expect(r.state.orders[base.rc]).toMatchObject({
+      status: "live",
+      role: "close",
+      price: "100000",
+    });
+    // Không có lệnh mở mới nào (sổ cũ chỉ còn lệnh đóng, #524); lệnh mua đang nằm vẫn bị huỷ như thường.
+    expect(places(r.actions).filter((o) => !o.reduceOnly)).toEqual([]);
+    expect(r.actions.some((a) => a.type === "cancel" && a.clOrdID !== base.rc)).toBe(true);
+    // Quá tuổi thì vẫn huỷ, kể cả khi sổ cũ (đường đối soát như trước).
+    const old = volumeMaker.step(c, r.state, timer(T(4) + VM_RC_KEEP_MAX_MS), ctx);
+    expect(rcActions(old.actions, base.rc).cancels).toHaveLength(1);
+  });
+
+  it("the kept close is not treated as an opening order (open-side filters never drop or cancel it)", () => {
+    const c = bookCfg();
+    const base = bookLongWithClose(c);
+    // Một lệnh mở phía bán đang huỷ chưa được SoDEX xác nhận: phía bán không được đặt lệnh mở mới (DEC-253). Lệnh đóng
+    // (cũng phía bán) không bị bộ lọc lệnh mở đụng tới: vẫn được giữ.
+    const s: VolumeMakerState = {
+      ...base.s,
+      orders: {
+        ...base.s.orders,
+        "open-sell-cancelling": {
+          side: "sell",
+          role: "open",
+          price: "100000.5",
+          qty: "0.005",
+          filled: "0",
+          status: "cancelling",
+          since: T(4),
+        },
+      },
+    };
+    const r = volumeMaker.step(c, s, book(T(7)), ctx);
+    expect(rcActions(r.actions, base.rc)).toEqual({ cancels: [], closes: [] });
+    expect(r.state.orders[base.rc]).toMatchObject({ status: "live", role: "close" });
+    expect(places(r.actions).filter((o) => o.side === "sell" && !o.reduceOnly)).toEqual([]);
+  });
 
   it("keeps the close after a partial fill: its rest still equals the position", () => {
     const c = bookCfg();
@@ -2737,5 +2792,160 @@ describe("volume maker keeps the reduce-only close when its price does not chang
     expect(places(r.actions).filter((o) => o.side === "buy")).toEqual([]);
     expect(rcActions(r.actions, base.rc).cancels).toEqual([]);
     expect(r.state.orders[base.rc]?.status).toBe("live");
+  });
+});
+
+describe("volume maker — live SoDEX book for every bot, real book age (#517, DEC-389)", () => {
+  // Tick 0.1. Sổ lúc đầu 99999.9 / 100000; sau đó chạy xuống đúng một tick: 99999.8 / 99999.9.
+  const rest = (at: number, readAt: number | undefined, bid = "99999.9", ask = "100000") =>
+    ({
+      type: "timer",
+      at,
+      market: {
+        market: "BTC-USD",
+        candles: [],
+        book: { bid, ask, bidNotional: "100000", askNotional: "100000" },
+        ...(readAt === undefined ? {} : { bookAt: readAt }),
+      },
+    }) as const;
+  const ws = (at: number, bid: string, ask: string) =>
+    ({ type: "book", at, market: "BTC-USD", bid, ask }) as const;
+  const tick = (at: number) => ({ type: "tick", at, market: "BTC-USD", price: "100000" }) as const;
+  const fill = (at: number) =>
+    ({
+      type: "fill",
+      at,
+      clOrdID: id("vm:1:bid"),
+      price: "99999.9",
+      quantity: "0.005",
+      fee: "0",
+    }) as const;
+  const c = cfg({ quoteLevel: 0 });
+  /** Chạy tiếp từ `s`; SoDEX xác nhận ngay mọi lệnh huỷ (như `run`). */
+  const from = (
+    conf: VolumeMakerConfig,
+    s: VolumeMakerState,
+    events: readonly StrategyEvent[],
+    sctx: StepContext = ctx,
+  ) => {
+    let st = s;
+    const all: StrategyAction[] = [];
+    const feed = (e: StrategyEvent) => {
+      const x = volumeMaker.step(conf, st, e, sctx);
+      st = x.state;
+      all.push(...x.actions);
+      for (const a of x.actions)
+        if (a.type === "cancel" && st.orders[a.clOrdID]?.status === "cancelling")
+          feed({ type: "orderDone", at: e.at, clOrdID: a.clOrdID });
+    };
+    for (const e of events) feed(e);
+    return { s: st, all };
+  };
+  const opened = (conf = c) => from(conf, volumeMaker.initialState(conf), [rest(0, 0), tick(0)]);
+  const buys = (a: StrategyAction[]) => places(a).filter((o) => o.side === "buy" && !o.reduceOnly);
+
+  it("quotes from a fresh book at the start (both sides at the best price)", () => {
+    expect(places(opened().all).map((o) => [o.side, o.price])).toEqual([
+      ["buy", "99999.9"],
+      ["sell", "100000"],
+    ]);
+  });
+
+  it("repro: the book moves one tick between two beats; the old timing posts a bid on the new ask, the new one does not", () => {
+    // Cách cũ: bản REST đọc lúc 1,2 s được coi là đọc lúc 3 s (không có `bookAt`), giá WS bị bỏ qua → bid 99999.9 = ask
+    // hiện tại của SoDEX (99999.9) → SoDEX từ chối PostOnly.
+    const old = from(c, opened().s, [rest(3000, undefined)]);
+    expect(buys(old.all).at(-1)?.price).toBe("99999.9");
+    // Cách mới: engine đưa giá WS (1,7 s) vào trước bước; bản REST đọc lúc 1,2 s cũ hơn nên chỉ góp độ dày.
+    const fresh = from(c, opened().s, [ws(1700, "99999.8", "99999.9"), rest(3000, 1200)]);
+    const bid = buys(fresh.all).at(-1);
+    expect(bid?.price).toBe("99999.8");
+    expect(Number(bid?.price)).toBeLessThan(99999.9);
+    expect(fresh.s.bookAt).toBe(1700);
+    // Không có WS, chỉ bản REST đọc 1,8 s trước nhịp: sổ cũ → không đặt lệnh mở (lệnh đang nằm vẫn bị huỷ).
+    const stale = from(c, opened().s, [rest(3000, 1200)]);
+    expect(places(stale.all)).toEqual([]);
+    expect(stale.all.filter((a) => a.type === "cancel")).toHaveLength(2);
+  });
+
+  it("the book event alone never sends anything when Smart quoting is off", () => {
+    const x = volumeMaker.step(c, opened().s, ws(1700, "99999.8", "99999.9"), ctx);
+    expect(x.actions).toEqual([]);
+  });
+
+  it("with a stale book still places the reduce-only close, but no opening order", () => {
+    const long = from(c, opened().s, [fill(100)]).s;
+    expect(long.ledger.position).toBe("0.005");
+    // WS im từ lúc 0, bản REST đọc 2 s trước nhịp.
+    const p = places(from(c, long, [rest(5000, 3000)]).all);
+    expect(p.map((o) => [o.side, o.reduceOnly])).toEqual([["sell", true]]);
+    expect(p[0]?.tag).toMatch(/:rc$/);
+    // Nhịp không có sổ nào (marketdata ngừng): vẫn chỉ lệnh đóng.
+    const p2 = places(from(c, long, [{ type: "timer", at: 9000 }]).all);
+    expect(p2.map((o) => [o.side, o.reduceOnly])).toEqual([["sell", true]]);
+  });
+
+  it("records the real book age in the order context (bookAgeMs)", () => {
+    const pctx: StepContext = { ...ctx, decisionPayload: true };
+    const s0 = from(c, volumeMaker.initialState(c), [tick(0)], pctx).s;
+    // Bản REST đọc lúc 2,9 s, đưa vào nhịp 3 s: tuổi 100 ms (cách cũ ghi 0).
+    const r = from(c, s0, [rest(3000, 2900)], pctx);
+    const ages = r.all.flatMap((a) =>
+      a.type === "place" && a.context ? [a.context.bookAgeMs] : [],
+    );
+    expect(ages).toEqual([100, 100]);
+    // Giá WS nhận lúc 5,6 s mới hơn bản REST (4 s): lệnh đặt ở nhịp 6 s mang tuổi của tin WS (400 ms).
+    const r2 = from(c, r.s, [ws(5600, "99999.8", "99999.9"), rest(6000, 4000)], pctx);
+    const ages2 = r2.all.flatMap((a) =>
+      a.type === "place" && a.context ? [a.context.bookAgeMs] : [],
+    );
+    expect(ages2.length).toBeGreaterThan(0);
+    for (const x of ages2) expect(x).toBe(400);
+  });
+
+  it("keeps the Max open position cap on the live-book path", () => {
+    const capped = cfg({ quoteLevel: 0, maxInventory: "500.5" });
+    const long = from(capped, opened(capped).s, [fill(100)]).s;
+    const r = from(capped, long, [ws(2900, "99999.8", "99999.9"), rest(3000, 2950)]);
+    // Đã giữ một order size (gần chạm 500.5 USDC): không lệnh mua nào làm tăng vị thế, chỉ lệnh đóng.
+    expect(buys(r.all)).toEqual([]);
+    expect(places(r.all).length).toBeGreaterThan(0);
+    expect(places(r.all).every((o) => o.side === "sell" && o.reduceOnly)).toBe(true);
+  });
+
+  it("logs one Waiting line per stale-book wait, with the Volume Builder wording, and a new one after a fresh book", () => {
+    const waits = (a: StrategyAction[]) =>
+      a.flatMap((x) => (x.type === "log" && x.decision === "Waiting" ? [x.why] : []));
+    // Đợt 1: ba nhịp liền chỉ có bản REST cũ 2 s → một dòng.
+    const w1 = from(c, opened().s, [rest(3000, 1000), rest(6000, 4000), rest(9000, 7000)]);
+    expect(waits(w1.all)).toEqual([
+      "Waiting for a fresh SoDEX price before placing a post-only order.",
+    ]);
+    expect(buys(w1.all)).toEqual([]);
+    expect(w1.s.staleWait).toBe(true);
+    // Sổ mới trở lại: báo giá lại, đợt chờ kết thúc, không dòng mới.
+    const back = from(c, w1.s, [rest(12000, 11900)]);
+    expect(waits(back.all)).toEqual([]);
+    expect(buys(back.all)).not.toEqual([]);
+    expect(back.s.staleWait).toBe(false);
+    // Đợt 2: sổ lại cũ → thêm đúng một dòng.
+    const w2 = from(c, back.s, [rest(15000, 13000), rest(18000, 16000)]);
+    expect(waits(w2.all)).toEqual([
+      "Waiting for a fresh SoDEX price before placing a post-only order.",
+    ]);
+    // Kiểm ngược: sổ luôn mới thì không có dòng "Waiting".
+    const ok = from(c, opened().s, [rest(3000, 2900), rest(6000, 5900)]);
+    expect(waits([...opened().all, ...ok.all])).toEqual([]);
+  });
+
+  it("keeps the fresh SoDEX position cap (#497, DEC-380) on the live-book path", () => {
+    // SoDEX vừa đọc: long 0.02 BTC (2000 USDC = Max open position) dù sổ cái phẳng.
+    const synced: VolumeMakerState = { ...opened().s, sodexPosition: { size: "0.02", at: 2900 } };
+    const r = from(c, synced, [ws(2900, "99999.8", "99999.9"), rest(3000, 2950)]);
+    expect(buys(r.all)).toEqual([]);
+    // Kiểm ngược: không có số SoDEX thì cùng chuỗi có lệnh mua.
+    expect(
+      buys(from(c, opened().s, [ws(2900, "99999.8", "99999.9"), rest(3000, 2950)]).all),
+    ).not.toEqual([]);
   });
 });

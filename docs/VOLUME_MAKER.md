@@ -12,7 +12,7 @@
 - API lệnh có `timeInForce`: `GTC=1`, `IOC=3`, `GTX=4` (post-only); `FOK` chưa hỗ trợ. Có `reduceOnly` (perps), `clOrdID` (`^[0-9a-zA-Z_-]{1,36}$`, duy nhất theo account). **Không có field self-trade prevention**.
 - Fill có `isMaker`, `fee`, `builderFee`. `makerFeeRate` có thể âm (rebate).
 - Rate limit: mỗi API key 20 lệnh/giây và 600 lệnh/phút; giới hạn theo địa chỉ ví là 1 request trên mỗi 1 USDC đã giao dịch luỹ kế, cộng sẵn 10.000 request ban đầu; khi bị giới hạn thì chỉ được 1 request mỗi 10 giây. Tối đa 1.000 lệnh mở (spot + perps).
-- Order book (DEC-157): engine đọc REST `getOrderbook` mỗi 3 s cho **mỗi market khác nhau** đang có bot Market Making (cache theo market, không theo bot). Mở cho mọi perp nên weight theo IP tăng theo số market đang dùng; xem giới hạn 1200 weight/phút/IP ở `docs/OPEN_QUESTIONS.md`.
+- Order book (DEC-157): engine đọc REST `getOrderbook` mỗi 3 s cho **mỗi market khác nhau** đang có bot Market Making (cache theo market, không theo bot). Mở cho mọi perp nên weight theo IP tăng theo số market đang dùng; xem giới hạn 1200 weight/phút/IP ở `docs/OPEN_QUESTIONS.md`. Từ DEC-389, giá tốt nhất để báo giá lấy từ sổ WS (`md.<market>.book`) cho mọi bot; bản REST chỉ góp độ dày sổ và làm nguồn giá khi WS im. Sổ cũ quá 1,5 s (theo giờ đọc thật) thì bot báo giá theo sổ không đặt lệnh mở, chỉ còn lệnh đóng reduce-only.
 
 Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/layer-1-season), [Season 1](https://sodex.com/documentation/sopoints/season-1), [API rate limits](https://sodex.com/documentation/for-developers/developers/trading/api-rate-limits), [REST schema](https://sodex.com/documentation/for-developers/api-reference/trading-api/rest-v1/schema).
 
@@ -111,7 +111,8 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - **Giữ lệnh đóng cùng giá** (DEC-390): ở lần báo giá đầy đủ, lệnh đóng rc reduce-only đang nằm có đúng giá đích mới, đặt chưa quá 10 s
   (`VM_RC_KEEP_MAX_MS`, để lệnh đã chết mà tin WS trễ vẫn được huỷ và đối soát) và tổng phần chưa khớp không vượt khối lượng cần đóng thì được giữ nguyên (không huỷ, không đặt lại); vị thế tăng thì chỉ
   đặt thêm phần còn thiếu. Giá đổi, phần chưa khớp vượt vị thế, lệnh đóng không reduce-only, hoặc bot đang giữ lệnh
-  (#497) thì huỷ rồi mới đặt như cũ. Áp cho cả bot bật và tắt Smart quoting.
+  (#497) thì huỷ rồi mới đặt như cũ. Sổ cũ (DEC-389) thì không so giá: lệnh đóng đang được giữ vẫn nằm. Áp cho cả bot
+  bật và tắt Smart quoting.
 - **Dọn lệnh cũ không chặn báo giá** (DEC-251): nhịp đồng hồ dọn lệnh đã xong quá `VM_KEEP_DONE_MS` rồi báo giá luôn trong
   cùng nhịp.
 - **Định giá theo Binance** (một phần của **Smart quoting**; DEC-242, thay "Binance guard" của DEC-241):

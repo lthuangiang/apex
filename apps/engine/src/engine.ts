@@ -3844,7 +3844,14 @@ export class Engine {
         : null;
     // Volume Farm: giá tốt nhất SoDEX mới nhất (bộ nhớ) vào state trước bước này, giữ đúng giờ nhận để tuổi sổ là tuổi
     // thật. Chỉ đổi state trong bộ nhớ; được ghi DB cùng bước này nếu bước có gì để ghi (DEC-298).
-    if (r.strategy === Strategy.volumeFarm && !accounting) {
+    // Market Making không Smart quoting cũng vậy (DEC-389): bước `book` của nó chỉ cập nhật sổ, không sinh lệnh. Bot bật
+    // Smart quoting đã nhận từng tin qua `onMmBook` (bước đó có thể đặt lại lệnh), nên không đi đường này.
+    if (
+      !accounting &&
+      (r.strategy === Strategy.volumeFarm ||
+        (r.strategy === Strategy.volumeMaker &&
+          (r.config as { smartQuoting?: boolean }).smartQuoting !== true))
+    ) {
       const live = this.#farmBooks.get(r.market);
       if (live !== undefined && live.at > (this.#farmBookFed.get(r) ?? -Infinity)) {
         this.#farmBookFed.set(r, live.at);
