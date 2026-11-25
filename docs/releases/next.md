@@ -10,7 +10,7 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-Chưa có thay đổi.
+- Market Making: mọi bot báo giá theo sổ WS của SoDEX (như Volume Builder), tuổi sổ là tuổi thật, sổ cũ quá 1,5 s thì không đặt lệnh mở mới, lệnh đóng reduce-only vẫn đặt; giảm lệnh bị từ chối PostOnly (#517 PR A, DEC-389; **chưa merge**).
 
 **Migration (chạy khi deploy):** không có.
 
