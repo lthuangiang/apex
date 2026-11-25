@@ -69,7 +69,7 @@ afterAll(async () => {
 
 describe("older rules and cost of a trade (#321, #344)", () => {
   it("cost of a trade: null until a v3 signal reaches the cost check, then from that check, then from v3 trades", async () => {
-    await article("v3-first", "news-v5", "2026-11-18T08:00:00Z");
+    await article("v3-first", "news-v6", "2026-11-18T08:00:00Z");
     let s = await summary();
     expect(s.newsRulesSince).toBe("2026-11-18T08:00:00.000Z");
     expect(s.costPct).toBeNull();
@@ -78,11 +78,11 @@ describe("older rules and cost of a trade (#321, #344)", () => {
     expect(s.funnel?.context).toBeNull();
 
     // Một tín hiệu v3 bị bỏ ở bước kiểm TP vs chi phí (event Filter mang `costPct`).
-    await article("v3-skip", "news-v5", "2026-11-18T09:00:00Z");
+    await article("v3-skip", "news-v6", "2026-11-18T09:00:00Z");
     await env.pool.query(
       `insert into signal_events (id, article_id, stage, outcome, reason, detail, rule_version, at)
        values (gen_random_uuid(), 'v3-skip', 'filter', 'drop', 'MOVE_TOO_SMALL_FOR_COST',
-               '{"level":"medium","tpPct":"0.1500","costPct":"0.1200","spreadPct":"0.0200"}', 'news-v5', '2026-11-18T09:00:05Z')`,
+               '{"level":"medium","tpPct":"0.1500","costPct":"0.1200","spreadPct":"0.0200"}', 'news-v6', '2026-11-18T09:00:05Z')`,
     );
     // Event của quy tắc cũ không bao giờ vào chi phí của v3.
     await article("v2-skip", "news-v2", "2026-11-17T09:00:00Z");
@@ -95,8 +95,8 @@ describe("older rules and cost of a trade (#321, #344)", () => {
     expect(s.costPct).toBe(0.12);
 
     // Lệnh v3 đầu tiên: chi phí thật của lệnh (phí 0.05% × 2 + spread 0.03%).
-    await article("v3-trade", "news-v5", "2026-11-18T10:00:00Z");
-    await trade(v3Trade, "v3-trade", "news-v5", "2026-11-18T10:00:05Z");
+    await article("v3-trade", "news-v6", "2026-11-18T10:00:00Z");
+    await trade(v3Trade, "v3-trade", "news-v6", "2026-11-18T10:00:05Z");
     s = await summary();
     expect(s.costPct).toBe(0.13);
   });
@@ -106,21 +106,21 @@ describe("older rules and cost of a trade (#321, #344)", () => {
     await trade(v2Trade, "v2-trade", "news-v2", "2026-11-17T10:00:05Z");
 
     const s = await summary();
-    expect(s.newsRulesVersion).toBe(5);
+    expect(s.newsRulesVersion).toBe(6);
     expect(s.olderRules).toEqual({ trades: 1, versions: [2] });
     // Lệnh v2 không bao giờ vào tổng kết.
-    expect(s.rows[0]).toMatchObject({ rulesVersion: 5, opened: 1 });
+    expect(s.rows[0]).toMatchObject({ rulesVersion: 6, opened: 1 });
 
     const def = await trades("show=all");
     expect(ids(def)).toContain(v3Trade);
     expect(ids(def)).not.toContain(v2Trade);
     // Tín hiệu bị bỏ của v2 cũng chỉ hiện khi bật.
-    expect(def.items.every((i) => i.rulesVersion === 5)).toBe(true);
+    expect(def.items.every((i) => i.rulesVersion === 6)).toBe(true);
     expect(ids(await trades("show=entered&olderRules=false"))).not.toContain(v2Trade);
 
     const all = await trades("show=entered&olderRules=true");
     expect(all.items.map((i) => [i.id, i.rulesVersion])).toEqual([
-      [v3Trade, 5],
+      [v3Trade, 6],
       [v2Trade, 2],
     ]);
 

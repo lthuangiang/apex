@@ -196,6 +196,80 @@ export function mentionsAsset(text: string, aliases: readonly AssetAlias[]): boo
   });
 }
 
+/**
+ * #530: vị trí (chỉ số ký tự) lần đầu bài nêu tài sản, cùng cách khớp với `mentionsAsset`; không nêu = null. Dùng để xếp
+ * các coin của một sự kiện theo thứ tự xuất hiện trong bài (thứ tự xét giới hạn của version).
+ */
+export function firstMentionAt(text: string, aliases: readonly AssetAlias[]): number | null {
+  const t = tidy(text);
+  let best: number | null = null;
+  for (const a of aliases) {
+    const plural = a.match === "name" ? "s?" : "";
+    const body = `(?<![\\p{L}\\p{N}])${escapeRe(a.text)}${plural}(?![\\p{L}\\p{N}])`;
+    const flags = a.match === "symbol" ? "gu" : "giu";
+    for (const m of t.matchAll(new RegExp(body, flags))) {
+      if (a.match === "word" && !startsUpper(m[0])) continue;
+      if (best === null || m.index < best) best = m.index;
+      break;
+    }
+  }
+  return best;
+}
+
+/**
+ * #530: xếp các market của một sự kiện theo thứ tự bài nêu (tiêu đề rồi nội dung). Market không tìm thấy trong bài giữ
+ * thứ tự reader trả, xếp sau. Sắp xếp ổn định.
+ */
+export function marketsByMention(
+  title: string | null,
+  content: string | null,
+  markets: readonly Candidate[],
+  matched: readonly MatchedCurrency[],
+): Candidate[] {
+  const text = `${title ?? ""}\n${content ?? ""}`;
+  const at = markets.map((c, i) => ({ c, i, p: firstMentionAt(text, assetAliases(c, matched)) }));
+  return at
+    .sort(
+      (x, y) => (x.p ?? Number.MAX_SAFE_INTEGER) - (y.p ?? Number.MAX_SAFE_INTEGER) || x.i - y.i,
+    )
+    .map((x) => x.c);
+}
+
+/**
+ * #530 (DEC-393): cỡ lệnh giấy của một coin trong sự kiện `eventCoins` coin = `sizeUsdc` ÷ số coin, làm
+ * tròn xuống tới cent. Một coin (1, thiếu, không hợp lệ) = đúng `sizeUsdc`, không làm tròn (như trước). Cùng quy tắc chia
+ * với bot mainnet (`newsEventShare`), không có trần mainnet (lệnh giấy của version không có trần đó).
+ */
+export function paperEventShare(sizeUsdc: DecimalInput, eventCoins: number | undefined): Decimal {
+  const n = eventCoins ?? 1;
+  if (!Number.isInteger(n) || n <= 1) return dec(sizeUsdc);
+  return dec(sizeUsdc).div(n).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+}
+
+/** Lot / min size / min notional của một market SoDEX (cùng nguồn `GET /perps/markets/symbols` với bot mainnet). */
+export interface MinOrderRules {
+  stepSize: string;
+  minQuantity: string;
+  minNotional: string;
+}
+
+/**
+ * #530: lệnh `sizeUsdc` ở `price` có đạt cỡ tối thiểu của market không, cùng cách kiểm với bot mainnet: khối lượng làm tròn
+ * xuống theo lot, rồi ≥ min quantity, giá × khối lượng ≥ min notional, và > 0.
+ */
+export function meetsMinOrder(
+  price: DecimalInput,
+  sizeUsdc: DecimalInput,
+  rules: MinOrderRules,
+): boolean {
+  const p = dec(price);
+  if (!p.gt(0)) return false;
+  const step = dec(rules.stepSize);
+  const raw = dec(sizeUsdc).div(p);
+  const qty = step.gt(0) ? raw.div(step).floor().mul(step) : raw;
+  return qty.gt(0) && qty.gte(rules.minQuantity) && p.mul(qty).gte(rules.minNotional);
+}
+
 /** Tài sản Claude chọn phải có trong tiêu đề hoặc nội dung bài (news-v3, #298); không thì `ASSET_NOT_IN_TEXT`. */
 export function assetInText(
   title: string | null,

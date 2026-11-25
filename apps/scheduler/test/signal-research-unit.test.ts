@@ -366,6 +366,27 @@ describe("classifier answer", () => {
       error: "invalid_answer",
     });
   });
+  it("other_markets (#530): kept in order after market, only candidates, no duplicates; empty when NONE", () => {
+    const three = [
+      { symbol: "AAVE", market: "AAVE-USD", kind: "crypto" as const },
+      { symbol: "LINK", market: "LINK-USD", kind: "crypto" as const },
+      { symbol: "UNI", market: "UNI-USD", kind: "crypto" as const },
+    ];
+    const a = { ...ok, market: "AAVE-USD" };
+    expect(parseAnswer({ ...a, other_markets: ["LINK-USD", "UNI-USD"] }, three)).toMatchObject({
+      ok: true,
+      value: { market: "AAVE-USD", markets: ["AAVE-USD", "LINK-USD", "UNI-USD"] },
+    });
+    // A market outside the candidates is dropped on its own; a repeat of market is dropped.
+    expect(
+      parseAnswer({ ...a, other_markets: ["BTC-USD", "AAVE-USD", "UNI-USD"] }, three),
+    ).toMatchObject({ ok: true, value: { markets: ["AAVE-USD", "UNI-USD"] } });
+    // Missing (answers before v7) = market only.
+    expect(parseAnswer(a, three)).toMatchObject({ ok: true, value: { markets: ["AAVE-USD"] } });
+    expect(parseAnswer({ ...a, market: "NONE", other_markets: ["LINK-USD"] }, three)).toMatchObject(
+      { ok: true, value: { market: null, markets: [] } },
+    );
+  });
   it("treasury amount: copied as written, unknown / blank / missing → null, never invented", () => {
     const t = { ...ok, catalyst: "treasury_buy" };
     expect(parseAnswer({ ...t, treasury_amount: " $40M " }, cands)).toMatchObject({
@@ -388,6 +409,10 @@ describe("classifier answer", () => {
       required: string[];
     };
     expect(schema.properties.treasury_amount).toMatchObject({ type: "string" });
+    expect(schema.properties.other_markets).toMatchObject({
+      type: "array",
+      items: { type: "string", enum: ["SOL-USD"] },
+    });
     expect(schema.required).toEqual([
       "catalyst",
       "market",
@@ -427,10 +452,20 @@ describe("classifier answer", () => {
   });
 });
 
-describe("classifier prompt news-classifier-v6 (#505)", () => {
-  it("ships with rules news-v5 (#506 adds a Score rule in the same hotfix)", () => {
-    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v6");
-    expect(NEWS_RULES.version).toBe("news-v5");
+describe("classifier prompt news-classifier-v7 (#530)", () => {
+  it("ships with rules news-v6 (event split)", () => {
+    expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v7");
+    expect(NEWS_RULES.version).toBe("news-v6");
+  });
+  it("one event about several coins: market first, the others in other_markets; never for recaps", () => {
+    expect(CLASSIFIER_SYSTEM).toContain(
+      "other_markets: the other candidate markets that the SAME single event",
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(
+      /A major broker adds trading for AAVE, LINK and UNI" — candidates AAVE-USD, LINK-USD, UNI-USD → listing, market AAVE-USD, other_markets LINK-USD, UNI-USD/,
+    );
+    expect(CLASSIFIER_SYSTEM).toMatch(/Top gainers today: .* other_markets empty/);
+    expect(CLASSIFIER_SYSTEM).toMatch(/Daily brief: .* other_markets empty/);
   });
   it("listing: a country or stock exchange opening crypto trading in general is not a listing", () => {
     expect(CLASSIFIER_SYSTEM).toContain(
@@ -470,8 +505,11 @@ describe("classifier prompt news-classifier-v6 (#505)", () => {
   it("keeps every v5 example and its numbering (73–77 are appended before the edge cases)", () => {
     expect(CLASSIFIER_SYSTEM).toMatch(/\n72\. "Capital Group/);
     for (const n of [73, 74, 75, 76, 77]) expect(CLASSIFIER_SYSTEM).toContain(`\n${String(n)}. "`);
-    expect(CLASSIFIER_SYSTEM).not.toContain("\n78. ");
-    expect(CLASSIFIER_SYSTEM.indexOf("\n77. ")).toBeLessThan(
+    // v7 (#530) appends 78–80 after 77, still before the edge cases.
+    for (const n of [78, 79, 80]) expect(CLASSIFIER_SYSTEM).toContain(`\n${String(n)}. "`);
+    expect(CLASSIFIER_SYSTEM).not.toContain("\n81. ");
+    expect(CLASSIFIER_SYSTEM.indexOf("\n77. ")).toBeLessThan(CLASSIFIER_SYSTEM.indexOf("\n78. "));
+    expect(CLASSIFIER_SYSTEM.indexOf("\n80. ")).toBeLessThan(
       CLASSIFIER_SYSTEM.indexOf("# Edge cases"),
     );
   });
@@ -688,7 +726,11 @@ describe("classifier prompt rules from news-classifier-v2 (#298)", () => {
     // v6 (#505): and the v6 counter-examples.
     expect(JSON.stringify(body.system)).toContain("Grayscale launches 2x leveraged Zcash ETF");
     expect(articleUsageValues({ usage: { ...emptyUsage(), calls: 1 } }).claudePromptVersion).toBe(
-      "news-classifier-v6",
+      "news-classifier-v7",
+    );
+    // v7 (#530): and the multi-coin example.
+    expect(JSON.stringify(body.system)).toContain(
+      "A major broker adds trading for AAVE, LINK and UNI",
     );
   });
 });
@@ -816,6 +858,26 @@ describe("per-article Claude usage (#290)", () => {
 });
 
 describe("feature flag and env", () => {
+  it("#530 PR2: SIGNAL_NEWS_EVENT_SPLIT_ENABLED is off when missing or false, on only for true / 1", () => {
+    const base = { SIGNAL_RESEARCH_ENABLED: "true", SOSO_API_KEY: "k", DESK_AI_API_KEY: "c" };
+    expect(signalResearchEnvSchema.parse(base).SIGNAL_NEWS_EVENT_SPLIT_ENABLED).toBe(false);
+    for (const v of ["false", "0", "", "no", "off"])
+      expect(
+        signalResearchEnvSchema.parse({ ...base, SIGNAL_NEWS_EVENT_SPLIT_ENABLED: v })
+          .SIGNAL_NEWS_EVENT_SPLIT_ENABLED,
+      ).toBe(false);
+    for (const v of ["true", "1", " TRUE "])
+      expect(
+        signalResearchEnvSchema.parse({ ...base, SIGNAL_NEWS_EVENT_SPLIT_ENABLED: v })
+          .SIGNAL_NEWS_EVENT_SPLIT_ENABLED,
+      ).toBe(true);
+    // Đi qua parseSignalEnv (đường scheduler đọc env thật): thiếu biến → tắt.
+    expect(parseSignalEnv(base).env?.SIGNAL_NEWS_EVENT_SPLIT_ENABLED).toBe(false);
+    expect(
+      parseSignalEnv({ ...base, SIGNAL_NEWS_EVENT_SPLIT_ENABLED: "true" }).env
+        ?.SIGNAL_NEWS_EVENT_SPLIT_ENABLED,
+    ).toBe(true);
+  });
   it("is off by default and needs both keys", () => {
     expect(disabledReason(signalResearchEnvSchema.parse({}))).toMatch(/SIGNAL_RESEARCH_ENABLED/);
     expect(

@@ -342,6 +342,7 @@ Gom mọi việc cho lần release đầu tiên có Signal research: **v2.13.0**
 | `MCP_PUBLIC_URL`, `MCP_INTROSPECT_SECRET` | api | Không mới (DEC-167, mục 2.9), nhưng mẫu compose trước đây thiếu ở `api`. Gốc URL của `apps/mcp` và secret introspect nội bộ (người dùng tự điền); secret trống = MCP tắt |
 | `SIGNAL_RESEARCH_WALLETS_K` | scheduler | Số ví nghiên cứu K (top-K tab Top của leaderboard) cho H1 context-v2 (#353 / #365): mặc định `30`, tối đa `40`, `0` = tắt; giá trị sai thì dùng `30`. Chỉ `scheduler` đọc biến này (scheduler chụp bộ ví vào DB theo phiên bản; marketdata poll theo bộ đã lưu), nên compose chỉ cần biến ở `scheduler` |
 | `SIGNAL_NEWS_PUBLISH_ENABLED` | scheduler | **Mới (#419 PR 4).** Ghi tín hiệu dùng chung cho bot `news_signal` mainnet vào `news_signals` (migration `0059`), rồi phát chuông NATS `sr.signal.new` (payload `{ "id" }`). Mặc định `false`; chỉ có tác dụng khi lane chạy (`SIGNAL_RESEARCH_ENABLED`). Không đổi gì của research versions / My versions. NATS lỗi thì chỉ log (engine vẫn đọc bảng). Chưa có engine nối tín hiệu (PR engine sau), nên bật lúc này chỉ ghi bảng |
+| `SIGNAL_NEWS_EVENT_SPLIT_ENABLED` | scheduler | **Mới (#530 PR2, DEC-393).** Tín hiệu mainnet một dòng mỗi coin của sự kiện nhiều coin. Mặc định `false` (một dòng cho coin chính, `event_coins` 1). Chỉ bật sau khi mọi service lên bản mới; rollback về trước v2.18.8 thì tắt trước (mục 2.20). Migration `0062` chỉ thêm bảng, rollback không cần làm gì với bảng (mục 2.21) |
 
 Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod env của `scheduler`, `api`, `marketdata`, `engine`). `DESK_AI_API_KEY`, `MCP_PUBLIC_URL`, `MCP_INTROSPECT_SECRET` của `api` là biến cũ; kiểm chúng đã có trong khối `api` của compose trên VPS.
 
@@ -460,6 +461,23 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
   - **Đòn bẩy (#458, DEC-373):** bot chọn 1 / 5 / 10 / 20× isolated; trần 200 USDC là giá trị vị thế ở mọi mức. Market có đòn bẩy tối đa thấp hơn, SoDEX từ chối, hoặc vị thế sẵn có với thiết lập khác → tín hiệu `LEVERAGE_NOT_SET`. Khoảng thanh lý ước tính (DEC-172) < 1.5 × khoảng SL → `SL_BEYOND_LIQUIDATION` (ở 10–20× sẽ bỏ nhiều tín hiệu hơn, đó là chủ ý). SoDEX không trả `marginTiers` của market thì dùng MMR dự phòng 5% và log warn `news_signal liquidation check uses the fallback maintenance margin rate` (một lần mỗi market mỗi lần engine chạy). Start check: margin isolated ≥ size × Max open trades ÷ đòn bẩy. Không có migration (đòn bẩy nằm trong config của bot; bot cũ không có trường là 1×).
   - **Bật công tắc** chỉ khi người dùng đã tự thử một lệnh nhỏ thật trên mainnet (DEPLOY trên); engine A, B1, B2 đã đủ. Lệnh nhỏ thật có đòn bẩy do người dùng tự chạy sau deploy.
   - Kiểm tra sau khi bật: `select outcome, reason, count(*) from news_signal_deliveries where created_at > now() - interval '1 hour' group by 1, 2;` và log `news signal opening order not sent` (phải không có trong vận hành bình thường).
+
+### 2.20 Chia sự kiện nhiều coin cho bot mainnet: cờ `SIGNAL_NEWS_EVENT_SPLIT_ENABLED` (#530 PR2, DEC-393)
+
+- Biến của service `scheduler`, mặc định **`false`**. Mẫu `deploy/server/docker-compose.yml` có dòng `SIGNAL_NEWS_EVENT_SPLIT_ENABLED: ${SIGNAL_NEWS_EVENT_SPLIT_ENABLED:-false}`; `.env.example` có mẫu.
+- **Tắt:** mỗi bài chỉ ghi một dòng `news_signals` cho coin chính, `event_key` null, `event_coins` 1, như bot mainnet trước PR1. Paper / research vẫn chia (không đọc cờ). Bài đăng lại cùng sự kiện vẫn bị chặn (`SAME_EVENT`), nên Mainnet chỉ có ít lệnh hơn trước.
+- **Bật:** một dòng mỗi coin của sự kiện, cùng `event_key`, `event_coins` = số coin; engine chia cỡ lệnh (PR1).
+- **Thứ tự bắt buộc:** deploy MỌI service (engine, api, scheduler) lên bản mới trước, rồi mới bật cờ (`SIGNAL_NEWS_EVENT_SPLIT_ENABLED=true` trong `.env`, rồi `docker compose up -d scheduler`). Nếu cờ bật mà engine chưa hiểu `event_coins` (bản trước PR1), mỗi coin được mở đủ cỡ lệnh, và **không có cách tự phát hiện**.
+- **Rollback về bản trước PR1 (trước v2.18.8):** đặt cờ `false` và `docker compose up -d scheduler` TRƯỚC, rồi mới rollback các service.
+- Kiểm tra sau khi bật: `select event_key, event_coins, count(*) from news_signals where decided_at > now() - interval '1 day' group by 1, 2 order by 3 desc;` (chỉ đọc).
+
+### 2.21 Migration `0062_sr_context_coins` (#530 PR2, DEC-393): rollback không cần làm gì với bảng
+
+- Migration chỉ THÊM bảng `signal_context_coins` (cùng cột với `signal_contexts`, unique `(article_id, market)`, trigger chặn UPDATE dùng lại hàm `signal_contexts_immutable`). Bảng này giữ snapshot ngữ cảnh của các coin KHÁC coin chính trong một bài nêu nhiều coin.
+- `signal_contexts` **không đổi**: vẫn unique theo `article_id`, vẫn một dòng mỗi bài (coin chính). Câu ghi của bản cũ (`insertSignalContext`, `ON CONFLICT (article_id) DO NOTHING`) vẫn chạy.
+- **Cửa sổ deploy** (migrate xong, scheduler cũ còn chạy): không lỗi. Scheduler cũ ghi ngữ cảnh như trước; chưa có dòng nào ở bảng mới.
+- **Rollback scheduler / api về bản trước PR này** (kể cả v2.18.8): không cần chạy lệnh nào với bảng. Bản cũ không đọc `signal_context_coins`; dữ liệu ở đó giữ nguyên và được bản mới đọc lại khi lên lại. Trong thời gian chạy bản cũ, coin khác của bài nhiều coin không có snapshot (bản cũ chỉ ghi một tín hiệu mỗi bài).
+- Không bao giờ cần `DROP TABLE signal_context_coins` để rollback. Nếu muốn dọn hẳn (chỉ khi đã bỏ hẳn PR này): `DROP TABLE signal_context_coins;` (mất snapshot của các coin khác, không ảnh hưởng lệnh, câu chuyện hay `signal_contexts`).
 
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.

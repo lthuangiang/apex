@@ -20,6 +20,7 @@ import {
   newsSignalTrades,
   signalBotVersions,
   signalClassifierVersions,
+  signalContextCoins,
   signalContexts,
   signalPaperTrades,
   signalResearchUsage,
@@ -121,49 +122,63 @@ export async function loadSignalResearchExport(
   }));
 
   // ── Bối cảnh (H1 chỉ số đếm, không địa chỉ ví) ──
-  const ctxWhere = gte(signalContexts.decidedAt, since);
-  const [ctxCount] = await q.select({ n: count() }).from(signalContexts).where(ctxWhere);
-  const ctxRows = await q
-    .select({
-      articleId: signalContexts.articleId,
-      market: signalContexts.market,
-      direction: signalContexts.direction,
-      decidedAt: signalContexts.decidedAt,
-      source: signalContexts.source,
-      contextVersion: signalContexts.contextVersion,
-      ruleVersion: signalContexts.ruleVersion,
-      h1Status: signalContexts.h1Status,
-      h1WalletsChecked: signalContexts.h1WalletsChecked,
-      h1AssetOnHyperliquid: signalContexts.h1AssetOnHyperliquid,
-      h1WalletSetVersion: signalContexts.h1WalletSetVersion,
-      h1WalletSetSize: signalContexts.h1WalletSetSize,
-      h1AgreeingWallets: signalContexts.h1AgreeingWallets,
-      h1OpposingWallets: signalContexts.h1OpposingWallets,
-      h1AgreeingUsdc: signalContexts.h1AgreeingUsdc,
-      h1FirstAt: signalContexts.h1FirstAt,
-      h2Status: signalContexts.h2Status,
-      h2FundingRate: signalContexts.h2FundingRate,
-      h2FundingTime: signalContexts.h2FundingTime,
-      h2Percentile: signalContexts.h2Percentile,
-      h2Samples: signalContexts.h2Samples,
-      h2Payer: signalContexts.h2Payer,
-      h2IntervalHours: signalContexts.h2IntervalHours,
-      h3Status: signalContexts.h3Status,
-      h3MovedPct: signalContexts.h3MovedPct,
-      h3TypicalMovePct: signalContexts.h3TypicalMovePct,
-      volumeVs24h: signalContexts.volumeVs24h,
-      rangeBreakout: signalContexts.rangeBreakout,
-      marketVersion: signalContexts.marketVersion,
-      marketBtcChange24hPct: signalContexts.marketBtcChange24hPct,
-      marketBtcTrend: signalContexts.marketBtcTrend,
-      marketVol4hPct: signalContexts.marketVol4hPct,
-      marketVolPercentile: signalContexts.marketVolPercentile,
-      marketVolatility: signalContexts.marketVolatility,
-    })
-    .from(signalContexts)
-    .where(ctxWhere)
-    .orderBy(desc(signalContexts.decidedAt), desc(signalContexts.articleId))
-    .limit(SR_EXPORT_ROW_LIMITS.context);
+  // #530 PR2: snapshot của coin chính (`signal_contexts`) và của coin khác trong sự kiện nhiều coin (`signal_context_coins`).
+  const ctxTables = [signalContexts, signalContextCoins] as const;
+  let ctxTotal = 0;
+  for (const t of ctxTables) {
+    const [c] = await q.select({ n: count() }).from(t).where(gte(t.decidedAt, since));
+    ctxTotal += c?.n ?? 0;
+  }
+  const ctxOf = (t: (typeof ctxTables)[number]) =>
+    q
+      .select({
+        articleId: t.articleId,
+        market: t.market,
+        direction: t.direction,
+        decidedAt: t.decidedAt,
+        source: t.source,
+        contextVersion: t.contextVersion,
+        ruleVersion: t.ruleVersion,
+        h1Status: t.h1Status,
+        h1WalletsChecked: t.h1WalletsChecked,
+        h1AssetOnHyperliquid: t.h1AssetOnHyperliquid,
+        h1WalletSetVersion: t.h1WalletSetVersion,
+        h1WalletSetSize: t.h1WalletSetSize,
+        h1AgreeingWallets: t.h1AgreeingWallets,
+        h1OpposingWallets: t.h1OpposingWallets,
+        h1AgreeingUsdc: t.h1AgreeingUsdc,
+        h1FirstAt: t.h1FirstAt,
+        h2Status: t.h2Status,
+        h2FundingRate: t.h2FundingRate,
+        h2FundingTime: t.h2FundingTime,
+        h2Percentile: t.h2Percentile,
+        h2Samples: t.h2Samples,
+        h2Payer: t.h2Payer,
+        h2IntervalHours: t.h2IntervalHours,
+        h3Status: t.h3Status,
+        h3MovedPct: t.h3MovedPct,
+        h3TypicalMovePct: t.h3TypicalMovePct,
+        volumeVs24h: t.volumeVs24h,
+        rangeBreakout: t.rangeBreakout,
+        marketVersion: t.marketVersion,
+        marketBtcChange24hPct: t.marketBtcChange24hPct,
+        marketBtcTrend: t.marketBtcTrend,
+        marketVol4hPct: t.marketVol4hPct,
+        marketVolPercentile: t.marketVolPercentile,
+        marketVolatility: t.marketVolatility,
+      })
+      .from(t)
+      .where(gte(t.decidedAt, since))
+      .orderBy(desc(t.decidedAt), desc(t.articleId))
+      .limit(SR_EXPORT_ROW_LIMITS.context);
+  const ctxRows = [...(await ctxOf(signalContexts)), ...(await ctxOf(signalContextCoins))]
+    .sort(
+      (x, y) =>
+        y.decidedAt.getTime() - x.decidedAt.getTime() ||
+        (x.articleId < y.articleId ? 1 : x.articleId > y.articleId ? -1 : 0) ||
+        (x.market < y.market ? -1 : x.market > y.market ? 1 : 0),
+    )
+    .slice(0, SR_EXPORT_ROW_LIMITS.context);
   check();
   const context: SrExport["context"] = ctxRows.map((c) => ({
     articleId: c.articleId,
@@ -358,7 +373,7 @@ export async function loadSignalResearchExport(
   check();
 
   const artSection = section(articles.length, arts.total, SR_EXPORT_ROW_LIMITS.articles);
-  const ctxSection = section(context.length, ctxCount?.n ?? 0, SR_EXPORT_ROW_LIMITS.context);
+  const ctxSection = section(context.length, ctxTotal, SR_EXPORT_ROW_LIMITS.context);
   const tradeSection = section(paperItems.length, teamTrades, SR_EXPORT_ROW_LIMITS.paperTrades);
   return {
     meta: {

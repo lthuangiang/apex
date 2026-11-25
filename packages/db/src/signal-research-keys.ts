@@ -68,6 +68,10 @@ export const DROP: ReadonlyMap<string, ResearchDropReason> = new Map<string, Res
   ["LIMIT_DAY", "limitDay"],
   ["NO_BALANCE", "noBalance"],
   ["OPPOSITE_NEWS", "oppositeNews"],
+  // #530 (news-v6): phần chia của coin trong sự kiện nhiều coin dưới cỡ lệnh tối thiểu của market SoDEX.
+  ["BELOW_MIN_ORDER_SIZE", "belowMinSize"],
+  // #530: bài đăng lại của sự kiện nhiều coin đã xét, lẽ ra mở câu chuyện mới cho coin: bỏ ở Filter (không có story).
+  ["SAME_EVENT", "sameEvent"],
 ]);
 
 /**

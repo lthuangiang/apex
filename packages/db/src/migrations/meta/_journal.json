@@ -435,6 +435,13 @@
       "when": 1795580506409,
       "tag": "0061_news_event_coins",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1795599590612,
+      "tag": "0062_sr_context_coins",
+      "breakpoints": true
     }
   ]
 }

@@ -95,6 +95,13 @@ export const signalResearchEnvSchema = z.object({
    * Mặc định tắt. Chỉ có tác dụng khi lane chạy (`SIGNAL_RESEARCH_ENABLED`); không đổi gì của research versions.
    */
   SIGNAL_NEWS_PUBLISH_ENABLED: flag,
+  /**
+   * #530 PR2 (DEC-393): tín hiệu mainnet của sự kiện nhiều coin. Mặc định TẮT: mỗi bài chỉ ghi một dòng `news_signals` cho
+   * coin chính (coin đầu bài nêu trong các coin qua Understand), `event_key` null, `event_coins` 1, như bot mainnet trước
+   * PR1. BẬT (chỉ sau khi mọi service đã lên bản có PR1): một dòng mỗi coin, cùng `event_key`, `event_coins` = k. Lệnh giấy
+   * / research không đọc cờ này. Bật mà engine chưa hiểu `event_coins` thì mỗi coin mở đủ cỡ lệnh (không tự phát hiện).
+   */
+  SIGNAL_NEWS_EVENT_SPLIT_ENABLED: flag,
 });
 export type SignalResearchEnv = z.infer<typeof signalResearchEnvSchema>;
 
@@ -195,6 +202,10 @@ export interface PerpsSymbolInfo {
   status: string;
   tickSize: string;
   takerFee?: string | undefined;
+  /** #530: lot / min size / min notional (kiểm cỡ tối thiểu của phần chia trong sự kiện nhiều coin). */
+  stepSize?: string | undefined;
+  minQuantity?: string | undefined;
+  minNotional?: string | undefined;
 }
 
 const lastSchema = z.object({ price: z.string(), at: z.number() });
@@ -248,7 +259,14 @@ export function createSignalResearch(input: {
     if (perps === null) return null;
     return perps
       .filter((p) => p.status === "TRADING")
-      .map((p) => ({ name: p.name, tickSize: p.tickSize, takerFee: p.takerFee ?? null }));
+      .map((p) => ({
+        name: p.name,
+        tickSize: p.tickSize,
+        takerFee: p.takerFee ?? null,
+        stepSize: p.stepSize ?? null,
+        minQuantity: p.minQuantity ?? null,
+        minNotional: p.minNotional ?? null,
+      }));
   };
   const tickSizes = () => new Map((input.perps() ?? []).map((p) => [p.name, p.tickSize] as const));
   const quotes = new QuoteSource({
@@ -327,7 +345,10 @@ export function createSignalResearch(input: {
             watcher.invalidate();
           },
           newsSignals: input.env.SIGNAL_NEWS_PUBLISH_ENABLED
-            ? { notify: (id) => input.notifySignal?.(id) }
+            ? {
+                notify: (id) => input.notifySignal?.(id),
+                eventSplit: input.env.SIGNAL_NEWS_EVENT_SPLIT_ENABLED,
+              }
             : null,
         });
       } catch (e) {

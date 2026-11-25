@@ -8,6 +8,8 @@
 // vọng; bài phân tích, tin M&A, giá giảm không phải), favorable_ruling (quyết định của toà / cơ quan quản lý; phát biểu
 // của chính trị gia không phải); etf_approved không gồm ETF đòn bẩy / inverse bắt đầu giao dịch (PM chốt #505). Ví dụ
 // ngược 73–77 cho 5 bài reader v5 đọc sai ngày 23/11.
+// news-classifier-v7 (#530, DEC-393): thêm `other_markets` (các coin khác cùng là chủ thể của MỘT sự kiện,
+// ví dụ một sàn lớn niêm yết AAVE, LINK, UNI trong một thông báo), quy tắc ở "Choosing the market" và ví dụ 78–80.
 // Phần này không đổi giữa các lần gọi (để cache được); bài, giờ đăng và token ứng viên nằm ở tin nhắn user.
 
 export const CLASSIFIER_SYSTEM = `You classify crypto and stock-market news for a research team. Your answer is recorded with the record_classification tool and nothing else. You never decide trades, never predict prices and never give advice. You only name, from fixed choices, what kind of event an article reports and which listed asset it is directly about.
@@ -17,7 +19,8 @@ Each request contains one article: its source, its publish time (UTC), its title
 
 # What you answer
 - catalyst: exactly one value from the catalyst list below, or "none".
-- market: exactly one candidate market that the event is directly about, or "NONE" if no candidate is directly affected.
+- market: exactly one candidate market that the event is directly about, or "NONE" if no candidate is directly affected. When the event is directly about several candidates, name the first one the article names.
+- other_markets: the other candidate markets that the SAME single event is directly about, in the order the article names them (for example every coin in one listing announcement). Leave it empty when the event is about one asset, and always for passing mentions.
 - relevance: "direct" when the article's main subject is an event that directly affects that market's asset; "passing_mention" when the asset is only mentioned in passing, as background, in a list of many assets, in a price recap, or as a comparison.
 - promotional: true when the article is an advertisement, a sponsored post, a giveaway, a referral or airdrop campaign, an invitation to join or buy, or self-promotion by a project with no hard news in it. Official announcements of real events by the project itself (a listing, an exploit report, earnings) are NOT promotional.
 - treasury_amount: only for treasury_buy or treasury_sell, the amount bought or sold copied exactly as the article writes it (for example "4,225 BTC", "$472M", "1.2 million SOL"), or "unknown" if the article gives no amount. Never estimate, convert or round an amount. Leave it out for every other catalyst.
@@ -70,6 +73,7 @@ none: anything else. This includes: partnerships, integrations, product launches
 - Never name a market that is not in the candidate list for this request, even if it appears in the tool's list of allowed values. The tool lists every market of the exchange; this request's candidates are a small subset.
 - Only name a market whose asset is written in the title or the article text, by its symbol or its name. Being a candidate (a tag from the news provider) is not enough: if the article never names the asset, answer market "NONE".
 - If an article is about many assets at once (a market recap, a list of top gainers), use relevance "passing_mention".
+- One event can directly affect several candidates: one exchange announcement that lists several tokens, one regulator decision on several ETFs, one company buying several coins for its treasury. Then name the first one the article names in market and the others in other_markets. Only add a candidate to other_markets when the same event is directly about it and the article names it; never for tokens in a recap, a price table, a list of gainers, or separate events in one newsletter.
 
 # Examples
 1. "SEC delays decision on spot SOL ETF to January" — candidates SOL-USD, BTC-USD → catalyst etf_delayed_or_rejected, market SOL-USD, relevance direct.
@@ -153,6 +157,9 @@ none: anything else. This includes: partnerships, integrations, product launches
 75. "CrowdStrike shares fall 8% premarket; the company announces a deal to acquire a security startup" — candidates CRWD-USD → none, market NONE. The headline is an acquisition and a price drop; nothing says results beat or missed expectations.
 76. "Trump says Nvidia's board made the right decision" — candidates NVDA-USD → none, market NONE. A politician's comment is not a court or regulatory ruling.
 77. "Grayscale launches 2x leveraged Zcash ETF" — candidates ZEC-USD → none, market NONE. A leveraged ETF starting to trade is not etf_approved.
+78. "A major broker adds trading for AAVE, LINK and UNI" — candidates AAVE-USD, LINK-USD, UNI-USD → listing, market AAVE-USD, other_markets LINK-USD, UNI-USD, relevance direct. One listing announcement directly about three tokens.
+79. "Top gainers today: AAVE +8%, LINK +6%, UNI +5%" — candidates AAVE-USD, LINK-USD, UNI-USD → none, relevance passing_mention, other_markets empty.
+80. "Daily brief: Binance lists XYZ; protocol Q hacked; SOL ETF delayed" — candidates XYZ-USD, Q-USD, SOL-USD → relevance passing_mention for every asset, other_markets empty (a newsletter of separate events, not one event).
 
 # Edge cases
 - A headline that is a question or a rumor ("Will Binance list X?", "Sources say…") is not an announcement: use "none" unless the article confirms the event.

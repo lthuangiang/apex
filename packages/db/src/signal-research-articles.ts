@@ -14,6 +14,7 @@ import {
   type ResearchNewArticlesQuery,
   type ResearchClaudeUsage,
   type ResearchDropReason,
+  type ResearchMergeReason,
   type ResearchMyLabel,
   type ResearchRange,
   type ResearchStage,
@@ -192,7 +193,7 @@ interface StateRow extends Record<string, unknown> {
   stage: ResearchStage;
   outcome: ResearchArticle["outcome"];
   reason: ResearchDropReason | null;
-  merge_reason: "sameStory" | "storyTooOld" | null;
+  merge_reason: ResearchMergeReason | null;
   code: string | null;
   trade_id: string | null;
   u_detail: unknown;
@@ -212,7 +213,7 @@ export async function loadArticleStops(
     stage: ResearchStage;
     outcome: ResearchArticle["outcome"];
     reason: ResearchDropReason | null;
-    merge_reason: "sameStory" | "storyTooOld" | null;
+    merge_reason: ResearchMergeReason | null;
     n: string | number;
   }>(sql`${stateCte(since, null, scope, allRules)}
     select stage, outcome, reason, merge_reason, count(*) as n from st

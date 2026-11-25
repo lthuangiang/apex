@@ -393,6 +393,31 @@ describe("entry", () => {
     ).toMatchObject({ outcome: "accepted" });
   });
 
+  it("event split (#530 PR2): a bot takes only the coins in its market list, each at 1/k, with no reallocation", () => {
+    const solOnly = cfg({ assets: { mode: "only", markets: [SOL], crypto: true, stocks: true } });
+    // Sự kiện AAVE / LINK / SOL: hai coin ngoài danh sách bị bỏ ASSET_NOT_IN_BOT.
+    for (const m of ["AAVE-USD", "LINK-USD"]) {
+      const o = outcome(
+        newsSignal.step(
+          solOnly,
+          initialNewsSignalState(),
+          signalEv(sig({ market: m, eventCoins: 3, eventKey: "evt:a1" })),
+          ctx,
+        ).actions,
+      );
+      expect(o).toMatchObject({ outcome: "dropped", reason: SignalReason.assetNotInBot });
+    }
+    // Coin trong danh sách vẫn chỉ lấy phần 1/3 của sự kiện (phần của hai coin bị bỏ không dồn sang).
+    const r = newsSignal.step(
+      solOnly,
+      initialNewsSignalState(),
+      signalEv(sig({ eventCoins: 3, eventKey: "evt:a1" })),
+      ctx,
+    );
+    expect(outcome(r.actions)).toMatchObject({ outcome: "accepted" });
+    expect(Object.values(r.state.trades)[0]?.sizeUsdc).toBe("66.66");
+  });
+
   it("an entry the engine blocked before sending records the block code, not ENTRY_NOT_FILLED, and never says SoDEX rejected it (#419 B1)", () => {
     for (const code of [
       "NEWS_ORDER_INVALID",

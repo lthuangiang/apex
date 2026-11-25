@@ -167,6 +167,9 @@ describe("news_signals from the news cycle", () => {
       classifierVersion: NEWS_CLASSIFIER.promptVersion,
       assetMapVersion: NEWS_ASSET_MAP_VERSION,
       ruleVersion: NEWS_RULES.version,
+      // #530 PR2: tin một coin giữ đường cũ (không event key, một coin).
+      eventKey: null,
+      eventCoins: 1,
     });
     expect(s?.cycleAt.getTime()).toBe(T0);
     expect(s?.firstPublishedAt.getTime()).toBe(T0 - 2 * MIN);

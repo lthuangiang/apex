@@ -110,7 +110,7 @@ async function trades(
      select gen_random_uuid(), 'news', 'live', $1, md5($2 || '-' || g)::uuid, 'a-' || $2 || '-' || g, 'ETH-USD', 'ETH',
        'etf_approved', 'long', 500, 0.15, 3400, 3400, 0.01, 0.05, 0.25, 1, 1.6, 0.8, 3454, 3372, t + interval '3 days', t, t, t,
        'medium', '[]', false, 'book', 'closed', 3450, 'take_profit', t + interval '30 minutes', 0.25, $3::numeric * 5, $3::numeric, 0,
-       'news-v5', $4
+       'news-v6', $4
      from (select g, $5::timestamptz + (g * interval '3 hours') as t from generate_series($7::int, $7::int + $6::int - 1) g) s`,
     [
       versionId,
