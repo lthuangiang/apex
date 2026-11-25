@@ -201,6 +201,12 @@ export interface NewsSignalInput {
   quote: { bid: string; ask: string; mid: string; at: number } | null;
   /** Biến động thường gặp (%) theo số giờ giữ; null = thiếu nến. */
   typicalByHoldHours: Readonly<Record<string, string | null>>;
+  /**
+   * #530 (DEC-392): khoá của sự kiện tin nêu nhiều coin; null / thiếu = tín hiệu một coin.
+   */
+  eventKey?: string | null;
+  /** #530: số coin của sự kiện; bot chia `sizeUsdc` cho số này. Thiếu / không hợp lệ = 1 (như trước). */
+  eventCoins?: number;
 }
 
 /** Lệnh Edit TP/SL / Close now. `signalId` xác định lệnh (mỗi bot một lệnh mỗi tín hiệu). */

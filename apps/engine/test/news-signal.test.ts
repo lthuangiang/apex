@@ -87,6 +87,8 @@ describe("news rows", () => {
       quoteMid: null,
       quoteAt: null,
       typicalByHoldHours: { "24": "3", "48": null },
+      eventKey: null,
+      eventCoins: 1,
     } as unknown as NewsSignalRow;
     expect(newsSignalInput(row)).toEqual({
       id: "s1",
@@ -102,7 +104,16 @@ describe("news rows", () => {
       expiresAt: 123_000,
       quote: null,
       typicalByHoldHours: { "24": "3", "48": null },
+      eventKey: null,
+      eventCoins: 1,
     });
+    // #530: sự kiện nhiều coin mang khoá và số coin; số coin không hợp lệ (dòng lạ) về 1.
+    expect(newsSignalInput({ ...row, eventKey: "evt-1", eventCoins: 3 })).toMatchObject({
+      eventKey: "evt-1",
+      eventCoins: 3,
+    });
+    for (const bad of [0, -1, 2.5])
+      expect(newsSignalInput({ ...row, eventCoins: bad }).eventCoins).toBe(1);
   });
 
   it("builds a trade row: no fill = no entry price (never 0), closed carries its reason", () => {
