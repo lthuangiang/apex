@@ -645,6 +645,8 @@ export async function listNewsBotSignals(
     level: s.level === "high" ? "high" : s.level === "medium" ? "medium" : "low",
     decidedAt: iso(s.decidedAt),
     expiresAt: iso(s.expiresAt),
+    eventKey: s.eventKey,
+    eventCoins: s.eventCoins,
     outcome: d === null ? null : d.outcome === "accepted" ? "accepted" : "dropped",
     reason: d?.reason ?? null,
   }));

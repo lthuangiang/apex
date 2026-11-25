@@ -21,6 +21,7 @@ import {
   closeTitle,
   initialNewsSignalState,
   NEWS_SIGNAL,
+  newsEventShare,
   newsSignal,
   newsTag,
   type NewsSignalState,
@@ -310,6 +311,81 @@ describe("entry", () => {
     );
     expect(Number(o?.price) * Number(o?.quantity)).toBeLessThanOrEqual(200);
     expect(o?.quantity).toBe("1.99");
+  });
+
+  // #530 PR1 (DEC-TBD-news-event-coins): sự kiện nêu nhiều coin chia cỡ lệnh cho số coin; một coin giữ nguyên như trước.
+  it("event of one coin (missing, 1, invalid) sizes exactly as before", () => {
+    const base = places(
+      newsSignal.step(cfg(), initialNewsSignalState(), signalEv(sig({ id: "same" })), ctx).actions,
+    );
+    for (const eventCoins of [undefined, 1, 0, -2, 1.5]) {
+      const r = newsSignal.step(
+        cfg(),
+        initialNewsSignalState(),
+        signalEv(sig({ id: "same", ...(eventCoins === undefined ? {} : { eventCoins }) })),
+        ctx,
+      );
+      expect(places(r.actions)).toEqual(base);
+      expect(Object.values(r.state.trades)[0]?.sizeUsdc).toBe("200");
+    }
+    expect(newsEventShare("50.555", 1).toString()).toBe("50.555");
+    expect(newsEventShare("50.555", undefined).toString()).toBe("50.555");
+  });
+
+  it("event of 3 coins: one third of the size, rounded down to the cent; the 200 cap still applies", () => {
+    expect(newsEventShare("200", 3).toString()).toBe("66.66");
+    expect(newsEventShare("100", 3).toString()).toBe("33.33");
+    const r = newsSignal.step(
+      cfg(),
+      initialNewsSignalState(),
+      signalEv(sig({ eventCoins: 3, eventKey: "evt-1" })),
+      ctx,
+    );
+    const [o] = places(r.actions);
+    // 66.66 / 100.30 = 0.664… → 0.66 (bước 0.01).
+    expect(o?.quantity).toBe("0.66");
+    expect(Object.values(r.state.trades)[0]?.sizeUsdc).toBe("66.66");
+    // Cỡ cấu hình vượt trần (500): phần chia 166.66 dưới trần 200 nên giữ 166.66; 2 coin → 250 → trần 200.
+    const raw3 = { ...cfg(), sizeUsdc: "500" };
+    const r3 = newsSignal.step(
+      raw3,
+      initialNewsSignalState(),
+      signalEv(sig({ eventCoins: 3 })),
+      ctx,
+    );
+    expect(Object.values(r3.state.trades)[0]?.sizeUsdc).toBe("166.66");
+    const r2 = newsSignal.step(
+      raw3,
+      initialNewsSignalState(),
+      signalEv(sig({ eventCoins: 2 })),
+      ctx,
+    );
+    expect(Object.values(r2.state.trades)[0]?.sizeUsdc).toBe("200");
+    expect(
+      Number(places(r2.actions)[0]?.price) * Number(places(r2.actions)[0]?.quantity),
+    ).toBeLessThanOrEqual(200);
+  });
+
+  it("a share below the minimum order size is dropped with BELOW_MIN_ORDER_SIZE", () => {
+    const dropReason = (c: NewsSignalConfig, st: NewsSignalState, e: StrategyEvent) => {
+      const o = outcome(newsSignal.step(c, st, e, ctx).actions);
+      return o?.type === "signalOutcome" ? o.reason : undefined;
+    };
+    // 12 USDC / 3 = 4 USDC < minNotional 5.
+    expect(
+      dropReason(
+        cfg({ sizeUsdc: "12" }),
+        initialNewsSignalState(),
+        signalEv(sig({ eventCoins: 3 })),
+      ),
+    ).toBe(SignalReason.belowMinSize);
+    // Một coin cùng cỡ thì vẫn vào lệnh.
+    expect(
+      outcome(
+        newsSignal.step(cfg({ sizeUsdc: "12" }), initialNewsSignalState(), signalEv(sig()), ctx)
+          .actions,
+      ),
+    ).toMatchObject({ outcome: "accepted" });
   });
 
   it("an entry the engine blocked before sending records the block code, not ENTRY_NOT_FILLED, and never says SoDEX rejected it (#419 B1)", () => {

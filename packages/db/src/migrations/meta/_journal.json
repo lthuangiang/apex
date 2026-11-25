@@ -428,6 +428,13 @@
       "when": 1795336085099,
       "tag": "0060_news_trade_leverage",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1795580506409,
+      "tag": "0061_news_event_coins",
+      "breakpoints": true
     }
   ]
 }

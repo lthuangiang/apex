@@ -50,6 +50,9 @@ export function newsSignalInput(row: NewsSignalRow): NewsSignalInput {
     expiresAt: row.expiresAt.getTime(),
     quote,
     typicalByHoldHours: row.typicalByHoldHours,
+    // #530: sự kiện nhiều coin; dòng cũ / lạ thì một coin (cỡ lệnh như trước).
+    eventKey: row.eventKey,
+    eventCoins: Number.isInteger(row.eventCoins) && row.eventCoins >= 1 ? row.eventCoins : 1,
   };
 }
 

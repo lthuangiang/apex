@@ -2308,6 +2308,13 @@ export const newsSignals = pgTable(
     classifierVersion: text("classifier_version").notNull(),
     assetMapVersion: text("asset_map_version").notNull(),
     ruleVersion: text("rule_version").notNull(),
+    /**
+     * #530 (DEC-TBD-news-event-coins): khoá của sự kiện tin nêu nhiều coin; các dòng cùng sự kiện có cùng khoá. null =
+     * tín hiệu một coin (mọi dòng trước #530).
+     */
+    eventKey: text("event_key"),
+    /** #530: số coin của sự kiện được mở lệnh; bot chia `sizeUsdc` cho số này. 1 = như trước. */
+    eventCoins: integer("event_coins").notNull().default(1),
     createdAt: tstz("created_at").notNull().defaultNow(),
   },
   (t) => [

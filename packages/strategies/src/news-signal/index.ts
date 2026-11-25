@@ -178,6 +178,17 @@ type R = StepResult<NewsSignalState>;
 const none = (s: NewsSignalState): R => ({ actions: [], state: s });
 const utcDay = (at: number) => new Date(at).toISOString().slice(0, 10);
 const position = (t: NewsTrade): Decimal => dec(t.filled).sub(t.exited);
+
+/**
+ * #530 (DEC-TBD-news-event-coins): phần cỡ lệnh của một coin trong sự kiện tin nêu `eventCoins` coin = `sizeUsdc` ÷ số coin,
+ * làm tròn xuống tới cent (không bao giờ vượt tổng cỡ lệnh của sự kiện). Một coin (thiếu, 1, hoặc giá trị không hợp lệ)
+ * trả đúng `sizeUsdc` như trước, không làm tròn. Trần mainnet áp sau đó, ở chỗ gọi.
+ */
+export function newsEventShare(sizeUsdc: string, eventCoins: number | undefined): Decimal {
+  const n = eventCoins ?? 1;
+  if (!Number.isInteger(n) || n <= 1) return dec(sizeUsdc);
+  return dec(sizeUsdc).div(n).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+}
 const exitSide = (t: NewsTrade): "buy" | "sell" => (t.side === "long" ? "sell" : "buy");
 const log = (decision: string, why: string): StrategyAction => ({ type: "log", decision, why });
 const dropped = (
@@ -423,7 +434,10 @@ function onSignal(
     tickSize: rules.tickSize,
   });
   if (limit === null) return drop(SignalReason.noBookData);
-  const size = Decimal.min(dec(c.sizeUsdc), dec(NEWS_SIGNAL_LIVE_MAX_USDC));
+  const size = Decimal.min(
+    newsEventShare(c.sizeUsdc, sig.eventCoins),
+    dec(NEWS_SIGNAL_LIVE_MAX_USDC),
+  );
   const qty = roundQty(size.div(limit), rules);
   // Phòng thủ: giá trần × khối lượng không bao giờ vượt trần mainnet (DEC-360 mục 2).
   if (limit.mul(qty).gt(NEWS_SIGNAL_LIVE_MAX_USDC)) return drop(SignalReason.newsCapExceeded);

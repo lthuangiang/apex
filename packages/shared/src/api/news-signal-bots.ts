@@ -142,6 +142,12 @@ export const newsBotSignalSchema = z.object({
   level: z.enum(["high", "medium", "low"]),
   decidedAt: iso,
   expiresAt: iso,
+  /**
+   * #530 (DEC-TBD-news-event-coins): khoá của sự kiện tin nêu nhiều coin (null = tín hiệu một coin) và số coin của sự
+   * kiện (bot chia cỡ lệnh cho số này; 1 = như trước).
+   */
+  eventKey: z.string().nullable().default(null),
+  eventCoins: z.number().int().positive().default(1),
   outcome: z.enum(["accepted", "dropped"]).nullable(),
   reason: z.string().nullable(),
 });

@@ -164,6 +164,19 @@ describe("news_signals", () => {
     expect(next.signal.id).not.toBe(first.signal.id);
   });
 
+  it("#530: event_coins defaults to 1 and event_key to null; a multi-coin event row keeps both", async () => {
+    const { signal: one } = await insertNewsSignal(db, signal());
+    expect(one.eventCoins).toBe(1);
+    expect(one.eventKey).toBeNull();
+    const { signal: many } = await insertNewsSignal(db, {
+      ...signal(),
+      cycleAt: new Date(T0 + 120_000),
+      eventKey: "evt-1",
+      eventCoins: 3,
+    });
+    expect(many).toMatchObject({ eventKey: "evt-1", eventCoins: 3 });
+  });
+
   it("rejects a plain duplicate insert with the unique index", async () => {
     const s = signal();
     await insertNewsSignal(db, s);
