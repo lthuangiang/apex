@@ -12,6 +12,7 @@ import { requirementOf } from "../requirements";
 import {
   costPerMillion,
   VM_KEEP_DONE_MS,
+  VM_RC_KEEP_MAX_MS,
   VM_STALE_CANCEL_MS,
   VOLUME_MAKER_STOPPED,
   volumeMaker,
@@ -2522,6 +2523,56 @@ describe("volume maker keeps the reduce-only close when its price does not chang
     const r = stepConfirmed(c, s, timer(T(14)));
     expect(r.actions.some((a) => a.type === "cancel" && a.clOrdID !== rc)).toBe(true);
     expect(places(r.actions).some((o) => o.side === "buy" && !o.reduceOnly)).toBe(true);
+  });
+
+  it("stops keeping the close once it is VM_RC_KEEP_MAX_MS old: cancels, then re-places after SoDEX confirms", () => {
+    // Lệnh được giữ không bị huỷ nên engine không tra nó; nếu nó đã chết trên SoDEX mà tin WS trễ, chỉ lần huỷ mới mở
+    // đường đối soát. Quá tuổi thì quay về cách cũ.
+    expect(VM_RC_KEEP_MAX_MS).toBe(10_000);
+    const c = cfg();
+    const base = longWithClose(c);
+    const placedAt = base.s.orders[base.rc]?.since ?? 0;
+    // Còn dưới 10 s: giữ.
+    const young = stepConfirmed(c, base.s, timer(placedAt + VM_RC_KEEP_MAX_MS - 1));
+    expect(rcActions(young.actions, base.rc)).toEqual({ cancels: [], closes: [] });
+    // Đủ 10 s: huỷ, chưa đặt lệnh đóng mới tới khi SoDEX xác nhận.
+    const old = volumeMaker.step(c, base.s, timer(placedAt + VM_RC_KEEP_MAX_MS), ctx);
+    expect(rcActions(old.actions, base.rc).cancels).toHaveLength(1);
+    expect(rcActions(old.actions, base.rc).closes).toEqual([]);
+    const done = volumeMaker.step(
+      c,
+      old.state,
+      { type: "orderDone", at: placedAt + VM_RC_KEEP_MAX_MS + 100, clOrdID: base.rc },
+      ctx,
+    ).state;
+    const again = stepConfirmed(c, done, timer(placedAt + VM_RC_KEEP_MAX_MS + 3000));
+    const close = places(again.actions).find((o) => o.reduceOnly);
+    expect(close).toMatchObject({ side: "sell", quantity: "0.005", reduceOnly: true });
+    // Lệnh đóng mới lại được giữ ở nhịp sau (tuổi tính lại từ lúc đặt).
+    const next = stepConfirmed(c, again.state, timer(placedAt + VM_RC_KEEP_MAX_MS + 6000));
+    expect(rcActions(next.actions, close?.clOrdID ?? "")).toEqual({ cancels: [], closes: [] });
+  });
+
+  it("a partial fill does not reset the close's age", () => {
+    const c = bookCfg();
+    const base = bookLongWithClose(c);
+    const placedAt = base.s.orders[base.rc]?.since ?? 0;
+    const s = volumeMaker.step(
+      c,
+      base.s,
+      {
+        type: "fill",
+        at: placedAt + 8000,
+        clOrdID: base.rc,
+        price: "100000",
+        quantity: "0.002",
+        fee: "0",
+      },
+      ctx,
+    ).state;
+    expect(s.orders[base.rc]?.since).toBe(placedAt);
+    const r = volumeMaker.step(c, s, book(placedAt + VM_RC_KEEP_MAX_MS), ctx);
+    expect(rcActions(r.actions, base.rc).cancels).toHaveLength(1);
   });
 
   it("cancels first and places the new close only after SoDEX confirms when the price moves (DEC-257)", () => {

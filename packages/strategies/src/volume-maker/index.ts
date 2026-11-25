@@ -212,6 +212,15 @@ export const VM_DRIFT = {
   quietMs: 5_000,
   capFreshMs: 45_000,
 } as const;
+/**
+ * DEC-390: lệnh đóng rc chỉ được giữ nguyên khi đặt chưa quá chừng này ms. Lệnh được giữ không bị huỷ nên engine không
+ * tra nó trên SoDEX (chỉ lệnh đang huỷ mới được đối soát); nếu nó đã chết trên SoDEX mà tin WS tới trễ (#498: 20–41 s)
+ * hoặc mất, bot chỉ biết khi huỷ nó. Quá tuổi này thì huỷ rồi đặt lại như trước DEC-390, mở lại đường đối soát
+ * (`OrderNotFound` → tra lệnh). 10 s: phần lớn lệnh rc khớp nhanh khớp trong 10 s (prod #517: 35–55% vòng đóng trong
+ * ≤ 10 s), số lần huỷ / đặt lại rc giảm khoảng 3 lần ở nhịp làm mới 3 s, và lúc lệnh đã chết thì vị thế nằm không có
+ * lệnh đóng lâu hơn trước tối đa khoảng 10 s, không bao giờ vô hạn.
+ */
+export const VM_RC_KEEP_MAX_MS = 10_000;
 /** Lệnh đóng reduce-only bị từ chối liên tiếp ngần này lần thì gửi lệnh đóng chỉ post-only. */
 export const VM_CLOSE_REJECTS_FALLBACK = 2;
 
@@ -469,6 +478,7 @@ function pendingClose(s: VolumeMakerState, closingSide: "buy" | "sell"): Decimal
 /**
  * DEC-390: các lệnh đóng rc được giữ nguyên qua lần báo giá này (rỗng = không giữ lệnh nào). Chỉ khi:
  * - không phải lần đặt lại riêng một phía (`only`: lệnh đóng đã luôn được giữ ở đó) và bot không đang giữ lệnh (#497);
+ * - mọi lệnh đó đặt chưa quá `VM_RC_KEEP_MAX_MS` (lệnh đã chết mà tin WS trễ / mất thì vẫn được huỷ và đối soát);
  * - bot vẫn đang gửi lệnh đóng reduce-only, và mọi lệnh đóng đang sống ở phía đóng đều là lệnh rc limit gửi kèm
  *   reduce-only (không bao giờ làm tăng vị thế, nên chốt Max open position và chốt vị thế SoDEX của DEC-380 không cần
  *   huỷ chúng), giá đúng bằng giá đích mới;
@@ -486,6 +496,7 @@ function keptCloses(
   pos: Decimal,
   rules: MarketRules,
   only: ReadonlySet<"buy" | "sell"> | undefined,
+  at: number,
 ): string[] {
   if (only !== undefined || s.positionStuck === true || !s.closeReduceOnly) return [];
   const live = Object.entries(s.orders).filter(
@@ -493,7 +504,11 @@ function keptCloses(
   );
   if (live.length === 0) return [];
   const priced = live.every(
-    ([, o]) => o.reduceOnly === true && dec(o.price).gt(0) && dec(o.price).eq(closePrice),
+    ([, o]) =>
+      o.reduceOnly === true &&
+      at - o.since < VM_RC_KEEP_MAX_MS &&
+      dec(o.price).gt(0) &&
+      dec(o.price).eq(closePrice),
   );
   if (!priced) return [];
   const rest = live.reduce((n, [, o]) => n.add(remaining(o)), new Decimal(0));
@@ -718,7 +733,7 @@ function quote(
     // DEC-390: lệnh đóng rc đang nằm đúng giá đích mới, tổng phần chưa khớp không vượt khối lượng cần đóng thì giữ nguyên
     // (không huỷ, không đặt lại): huỷ rồi chờ SoDEX xác nhận mới đặt lại làm vị thế nằm không có lệnh đóng mỗi nhịp
     // (prod: 3.8–5.4 lần đặt rc cho mỗi lần khớp khi Smart quoting tắt). Giá đổi thì vẫn huỷ rồi mới đặt (DEC-257).
-    for (const id of keptCloses(s, next, closeSide, closePrice, pos, rules, only)) {
+    for (const id of keptCloses(s, next, closeSide, closePrice, pos, rules, only, at)) {
       const o = s.orders[id];
       if (o === undefined) continue;
       kept.add(id);
