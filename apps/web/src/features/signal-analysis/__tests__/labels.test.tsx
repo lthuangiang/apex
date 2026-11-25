@@ -272,6 +272,7 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
   });
 
   it("random signal: the trade result stays hidden until the label is saved", async () => {
+    const user = userEvent.setup({ delay: null });
     render(
       <Providers>
         <SignalAnalysisPage />
@@ -282,7 +283,7 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
       { name: "Is Claude reading news right?" },
       { timeout: 5_000 },
     );
-    await userEvent.click(within(block).getByRole("button", { name: "Label signals" }));
+    await user.click(within(block).getByRole("button", { name: "Label signals" }));
     const card = await within(block).findByRole("article", { name: "Claude said" });
     expect(within(card).getByText(/A former Google software engineer/)).toBeInTheDocument();
     expect(within(card).getByText(/^News type/)).toHaveTextContent(
@@ -302,23 +303,22 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
 
     const save = within(card).getByRole("button", { name: "Save label" });
     expect(save).toBeDisabled();
-    await userEvent.click(within(card).getByRole("button", { name: "Wrong" }));
+    await user.click(within(card).getByRole("button", { name: "Wrong" }));
     expect(within(card).getByRole("button", { name: "Wrong" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
     // Wrong cần lý do.
     expect(save).toBeDisabled();
-    await userEvent.selectOptions(
+    await user.selectOptions(
       within(card).getByRole("combobox", { name: "What is wrong" }),
       "person_not_company",
     );
-    await userEvent.type(
-      within(card).getByRole("textbox", { name: "Note (optional)" }),
-      "Charges against an ex-employee, not Alphabet",
-    );
+    // Dán cả câu ghi chú: một lần render thay vì một lần mỗi ký tự (test không kiểm từng phím, #540).
+    await user.click(within(card).getByRole("textbox", { name: "Note (optional)" }));
+    await user.paste("Charges against an ex-employee, not Alphabet");
     await noViolations();
-    await userEvent.click(save);
+    await user.click(save);
     await waitFor(() => {
       expect(puts()).toHaveLength(1);
     });
@@ -342,14 +342,14 @@ describe("Classifier quality and Label a random signal", { timeout: 20_000 }, ()
       ),
     ).toBeInTheDocument();
     // Sửa sau khi lưu: không gửi lại token (đã dùng).
-    await userEvent.clear(within(card).getByRole("textbox", { name: "Note (optional)" }));
-    await userEvent.click(within(card).getByRole("button", { name: "Save label" }));
+    await user.clear(within(card).getByRole("textbox", { name: "Note (optional)" }));
+    await user.click(within(card).getByRole("button", { name: "Save label" }));
     await waitFor(() => {
       expect(puts()).toHaveLength(2);
     });
     expect(puts()[1]?.body).toEqual({ verdict: "wrong", reason: "person_not_company", note: null });
     // Bài tiếp theo: đọc lại labels/next.
-    await userEvent.click(within(block).getByRole("button", { name: "Label another" }));
+    await user.click(within(block).getByRole("button", { name: "Label another" }));
     await waitFor(() => {
       expect(state.next).toBe(2);
     });

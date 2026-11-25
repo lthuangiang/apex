@@ -7,7 +7,7 @@ import {
 } from "@drift/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 import axe from "axe-core";
 import { NextIntlClientProvider, useTranslations } from "next-intl";
 import { useState, type ReactNode } from "react";
@@ -184,8 +184,9 @@ afterEach(() => {
   cleanup();
 });
 
-async function noViolations() {
-  const r = await axe.run(document.body, {
+/** Mặc định quét cả trang; truyền một phần tử khi chỉ phần đó đổi từ lần quét cả trang trước (#540). */
+async function noViolations(root: HTMLElement = document.body) {
+  const r = await axe.run(root, {
     runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
     rules: { "color-contrast": { enabled: false } },
   });
@@ -421,59 +422,96 @@ describe("News bot versions: cards, gate and table", { timeout: 20_000 }, () => 
   });
 });
 
-// Nhiều thao tác gõ phím: chậm khi máy bận (CI chạy song song).
+// Sheet dài, cả trang Signal Analysis render lại sau mỗi phím (#540): gõ không chờ timer giữa các phím
+// (`delay: null`), dán câu giả thuyết dài thay vì gõ từng ký tự (không test nào kiểm hành vi từng phím của ô này),
+// lần axe thứ hai chỉ quét phần mới (khối cảnh báo), và luồng dài được tách làm hai test.
 describe("New version sheet", { timeout: 20_000 }, () => {
-  it("validation: dot decimals, TP vs cost at least 1, then the exact payload with one key", async () => {
-    wrap();
+  let user: UserEvent;
+  beforeEach(() => {
+    user = userEvent.setup({ delay: null });
+  });
+  /** Ô giả thuyết (#377): dán cả câu, một lần render thay vì một lần mỗi ký tự. */
+  async function pasteHypothesis(dlg: HTMLElement) {
+    await user.click(within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" }));
+    await user.paste(HYP);
+  }
+  async function openNew(): Promise<HTMLElement> {
     await card("News bot v3 · Baseline");
-    await userEvent.click(newVersion());
-    const dlg = await screen.findByRole("dialog", { name: "New version" });
+    await user.click(newVersion());
+    return screen.findByRole("dialog", { name: "New version" });
+  }
+
+  it("validation: dot decimals, TP vs cost at least 1, Name and hypothesis required", async () => {
+    wrap();
+    const dlg = await openNew();
     expect(within(dlg).getByText("Saving creates v7.")).toBeInTheDocument();
     expect(
       within(dlg).getByText("Running 2 of 3 · saving starts v7 now · written to the audit log"),
     ).toBeInTheDocument();
 
     const tp = within(dlg).getByRole("textbox", { name: "Take profit" });
-    await userEvent.clear(tp);
-    await userEvent.type(tp, "1,5");
+    await user.clear(tp);
+    await user.type(tp, "1,5");
     expect(
       within(dlg).getByText("Use a number like 1.5, with a dot for decimals."),
     ).toBeInTheDocument();
     const minTp = within(dlg).getByRole("textbox", { name: "Skip if take profit is under" });
-    await userEvent.clear(minTp);
-    await userEvent.type(minTp, "0.5");
+    await user.clear(minTp);
+    await user.type(minTp, "0.5");
     expect(
       within(dlg).getAllByText("At least 1. Below 1 the fees are bigger than the take profit."),
     ).toHaveLength(2);
-    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await user.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     expect(within(dlg).getByRole("alert")).toHaveTextContent("Fix the fields marked above.");
     expect(within(dlg).getByRole("textbox", { name: "Name" })).toHaveAccessibleDescription(
       "Required.",
     );
     expect(posts()).toHaveLength(0);
 
-    await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "High only");
-    await userEvent.clear(tp);
-    await userEvent.type(tp, "1.5");
-    await userEvent.clear(minTp);
-    await userEvent.type(minTp, "2");
-    await userEvent.selectOptions(
-      within(dlg).getByRole("combobox", { name: "Lowest level to trade" }),
-      "high",
-    );
-    await userEvent.click(within(dlg).getByRole("checkbox", { name: "Trade Treasury buy" }));
-    await userEvent.click(within(dlg).getByRole("radio", { name: "Limit" }));
-    await userEvent.type(within(dlg).getByRole("textbox", { name: "Trades per day" }), "4");
-    await userEvent.click(within(dlg).getByRole("radio", { name: "Close at market" }));
+    await user.type(within(dlg).getByRole("textbox", { name: "Name" }), "High only");
+    await user.clear(tp);
+    await user.type(tp, "1.5");
+    await user.clear(minTp);
+    await user.type(minTp, "2");
+    expect(within(dlg).queryByText("Use a number like 1.5, with a dot for decimals.")).toBeNull();
+    // Chỉ còn câu gợi ý cố định của ô (cùng chữ với lỗi).
+    expect(
+      within(dlg).getAllByText("At least 1. Below 1 the fees are bigger than the take profit."),
+    ).toHaveLength(1);
     // #377: thiếu giả thuyết thì không gửi.
-    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await user.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     const hyp = within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" });
     expect(hyp).toHaveAttribute("aria-invalid", "true");
     expect(hyp).toHaveAccessibleDescription("Required.");
     expect(posts()).toHaveLength(0);
-    await userEvent.type(hyp, HYP);
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("4 changes from Baseline warn first; Save and start anyway sends the exact payload with one key", async () => {
+    wrap();
+    const dlg = await openNew();
+    await user.type(within(dlg).getByRole("textbox", { name: "Name" }), "High only");
+    // Gõ lại TP và mức tối thiểu bằng đúng giá trị Baseline: payload phải giữ nguyên chuỗi.
+    const tp = within(dlg).getByRole("textbox", { name: "Take profit" });
+    await user.clear(tp);
+    await user.type(tp, "1.5");
+    const minTp = within(dlg).getByRole("textbox", { name: "Skip if take profit is under" });
+    await user.clear(minTp);
+    await user.type(minTp, "2");
+    await user.selectOptions(
+      within(dlg).getByRole("combobox", { name: "Lowest level to trade" }),
+      "high",
+    );
+    await user.click(within(dlg).getByRole("checkbox", { name: "Trade Treasury buy" }));
+    await user.click(within(dlg).getByRole("radio", { name: "Limit" }));
+    await user.type(within(dlg).getByRole("textbox", { name: "Trades per day" }), "4");
+    await user.click(within(dlg).getByRole("radio", { name: "Close at market" }));
+    await pasteHypothesis(dlg);
+    expect(within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" })).toHaveValue(
+      HYP,
+    );
     await noViolations();
-    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await user.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     // Đổi 4 thứ so với Baseline (level, Treasury buy, giới hạn ngày, tin ngược chiều): cảnh báo, chưa gửi.
     const warn = await within(dlg).findByRole("alert");
     expect(warn).toHaveTextContent(
@@ -484,15 +522,14 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     );
     expect(posts()).toHaveLength(0);
     // Back to edit đóng cảnh báo; lưu lại thì cảnh báo hiện lại; Save and start anyway thì gửi.
-    await userEvent.click(within(warn).getByRole("button", { name: "Back to edit" }));
+    await user.click(within(warn).getByRole("button", { name: "Back to edit" }));
     expect(within(dlg).queryByText(/things from Baseline/)).toBeNull();
-    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
-    await noViolations();
-    await userEvent.click(
-      within(await within(dlg).findByRole("alert")).getByRole("button", {
-        name: "Save and start anyway",
-      }),
-    );
+    await user.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    // Từ lần quét cả trang ở trên chỉ có khối cảnh báo là mới: quét lại riêng nó (luật cần cả trang như
+    // duplicate-id vẫn tra theo document).
+    const again = await within(dlg).findByRole("alert");
+    await noViolations(again);
+    await user.click(within(again).getByRole("button", { name: "Save and start anyway" }));
     await waitFor(() => {
       expect(posts()).toHaveLength(1);
     });
@@ -530,13 +567,13 @@ describe("New version sheet", { timeout: 20_000 }, () => {
   it("copy from v4: Changed from v4 summary, Only these hides Crypto / Stocks, picker, Effectively N", async () => {
     wrap();
     const v4 = await card("News bot v4 · Strict subject");
-    await userEvent.click(within(v4).getByRole("button", { name: "Edit as new version" }));
+    await user.click(within(v4).getByRole("button", { name: "Edit as new version" }));
     const dlg = await screen.findByRole("dialog", { name: "New version · from v4" });
     expect(
       within(dlg).getByText("Saving creates v7. v4 keeps running unchanged."),
     ).toBeInTheDocument();
     expect(within(dlg).getByText("No changes from v4 yet.")).toBeInTheDocument();
-    await userEvent.selectOptions(
+    await user.selectOptions(
       within(dlg).getByRole("combobox", { name: "Lowest level to trade" }),
       "high",
     );
@@ -544,35 +581,32 @@ describe("New version sheet", { timeout: 20_000 }, () => {
       "Changed from v4: Lowest level Medium → High.",
     );
     expect(within(dlg).getByRole("checkbox", { name: "Crypto" })).toBeInTheDocument();
-    await userEvent.click(within(dlg).getByRole("radio", { name: "Only these" }));
+    await user.click(within(dlg).getByRole("radio", { name: "Only these" }));
     expect(within(dlg).queryByRole("checkbox", { name: "Crypto" })).toBeNull();
     expect(within(dlg).queryByRole("checkbox", { name: "Stocks on SoDEX" })).toBeNull();
     const search = await within(dlg).findByRole("combobox", { name: "Search SoDEX markets" });
-    await userEvent.type(search, "btc");
-    await userEvent.keyboard("{Enter}");
-    await userEvent.clear(search);
-    await userEvent.type(search, "eth");
-    await userEvent.keyboard("{Enter}");
+    await user.type(search, "btc");
+    await user.keyboard("{Enter}");
+    await user.clear(search);
+    await user.type(search, "eth");
+    await user.keyboard("{Enter}");
     expect(within(dlg).getByText("Effectively 2: one trade per asset")).toBeInTheDocument();
     expect(within(dlg).getByText(/^Changed from v4:/)).toHaveTextContent(
       "Changed from v4: Lowest level Medium → High · Assets All → Only these · Only BTC-USD, ETH-USD.",
     );
     // Esc chỉ đóng danh sách, không đóng sheet.
-    await userEvent.keyboard("{Escape}");
+    await user.keyboard("{Escape}");
     expect(within(dlg).queryByRole("listbox")).toBeNull();
     expect(screen.getByRole("dialog", { name: "New version · from v4" })).toBeInTheDocument();
-    await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "Majors");
-    await userEvent.type(
-      within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" }),
-      HYP,
-    );
-    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await user.type(within(dlg).getByRole("textbox", { name: "Name" }), "Majors");
+    await pasteHypothesis(dlg);
+    await user.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     // #377: so với Baseline (không phải v4) đổi nhiều thứ → cảnh báo trước, lưu khi bấm "Save and start anyway".
     expect(
       await within(dlg).findByText(/^This version changes \d+ things from Baseline\./),
     ).toBeInTheDocument();
     expect(posts()).toHaveLength(0);
-    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start anyway" }));
+    await user.click(within(dlg).getByRole("button", { name: "Save and start anyway" }));
     await waitFor(() => {
       expect(posts()).toHaveLength(1);
     });
@@ -591,7 +625,7 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     wrap();
     await card("News bot v3 · Baseline");
     expect(screen.queryByRole("heading", { name: "One more slot" })).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "New version" }));
+    await user.click(screen.getByRole("button", { name: "New version" }));
     const dlg = await screen.findByRole("dialog", { name: "New version" });
     expect(within(dlg).getByRole("button", { name: "Save and start v6" })).toBeDisabled();
     expect(within(dlg).getByText("Pause or stop a version first.")).toBeInTheDocument();
@@ -601,14 +635,11 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     state.create = "stale";
     wrap();
     await card("News bot v3 · Baseline");
-    await userEvent.click(newVersion());
+    await user.click(newVersion());
     const dlg = await screen.findByRole("dialog", { name: "New version" });
-    await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "X");
-    await userEvent.type(
-      within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" }),
-      HYP,
-    );
-    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await user.type(within(dlg).getByRole("textbox", { name: "Name" }), "X");
+    await pasteHypothesis(dlg);
+    await user.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     expect(
       await screen.findByText(
         "Saved v7 · X. The market list was out of date when the assets were checked.",
@@ -620,19 +651,16 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     state.create = "unlisted";
     wrap();
     await card("News bot v3 · Baseline");
-    await userEvent.click(newVersion());
+    await user.click(newVersion());
     const dlg = await screen.findByRole("dialog", { name: "New version" });
-    await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "X");
-    await userEvent.type(
-      within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" }),
-      HYP,
-    );
-    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await user.type(within(dlg).getByRole("textbox", { name: "Name" }), "X");
+    await pasteHypothesis(dlg);
+    await user.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     expect(await within(dlg).findByRole("alert")).toHaveTextContent(
       "Not listed on SoDEX now: SOLV-USD.",
     );
     state.create = "full";
-    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await user.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     await waitFor(() => {
       expect(within(dlg).getByRole("alert")).toHaveTextContent("Pause or stop a version first.");
     });
@@ -642,14 +670,11 @@ describe("New version sheet", { timeout: 20_000 }, () => {
     state.create = "network-once";
     wrap();
     await card("News bot v3 · Baseline");
-    await userEvent.click(newVersion());
+    await user.click(newVersion());
     const dlg = await screen.findByRole("dialog", { name: "New version" });
-    await userEvent.type(within(dlg).getByRole("textbox", { name: "Name" }), "Retry");
-    await userEvent.type(
-      within(dlg).getByRole("textbox", { name: "Hypothesis (one sentence)" }),
-      HYP,
-    );
-    await userEvent.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
+    await user.type(within(dlg).getByRole("textbox", { name: "Name" }), "Retry");
+    await pasteHypothesis(dlg);
+    await user.click(within(dlg).getByRole("button", { name: "Save and start v7" }));
     await waitFor(
       () => {
         expect(posts()).toHaveLength(2);
@@ -663,7 +688,7 @@ describe("New version sheet", { timeout: 20_000 }, () => {
   it("Rules opens the saved config read-only", async () => {
     wrap();
     const v4 = await card("News bot v4 · Strict subject");
-    await userEvent.click(within(v4).getByRole("button", { name: "Rules" }));
+    await user.click(within(v4).getByRole("button", { name: "Rules" }));
     const dlg = await screen.findByRole("dialog", { name: "Rules · News bot v4 · Strict subject" });
     expect(within(dlg).getByRole("textbox", { name: "Name" })).toBeDisabled();
     expect(within(dlg).getByRole("textbox", { name: "Name" })).toHaveValue("Strict subject");
