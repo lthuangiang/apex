@@ -870,6 +870,7 @@ async function captureContexts(
             market: s.candidate.market,
             direction: catalystRule(s.catalyst).direction,
             storyStartAt: storyStartAt ?? s.publishedAt,
+            primary: s.primary,
           },
           ctx.now,
           typeof q === "string" ? null : q,

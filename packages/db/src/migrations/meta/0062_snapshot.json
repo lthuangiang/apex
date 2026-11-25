@@ -1,5 +1,5 @@
 {
-  "id": "da29b49e-c184-40e3-9a18-10b604e2dda0",
+  "id": "39097fc0-4787-4c96-a691-0b450f46c681",
   "prevId": "b20443a2-e33d-4590-b219-7ce9d51e12d0",
   "version": "7",
   "dialect": "postgresql",
@@ -8221,6 +8221,322 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.signal_context_coins": {
+      "name": "signal_context_coins",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "article_id": {
+          "name": "article_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "market": {
+          "name": "market",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "context_version": {
+          "name": "context_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_version": {
+          "name": "rule_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "h1_status": {
+          "name": "h1_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "h1_wallets_checked": {
+          "name": "h1_wallets_checked",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h1_asset_on_hyperliquid": {
+          "name": "h1_asset_on_hyperliquid",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h1_wallet_set_version": {
+          "name": "h1_wallet_set_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h1_wallet_set_size": {
+          "name": "h1_wallet_set_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h1_agreeing_wallets": {
+          "name": "h1_agreeing_wallets",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h1_opposing_wallets": {
+          "name": "h1_opposing_wallets",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h1_agreeing_addresses": {
+          "name": "h1_agreeing_addresses",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h1_opposing_addresses": {
+          "name": "h1_opposing_addresses",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h1_agreeing_usdc": {
+          "name": "h1_agreeing_usdc",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h1_first_at": {
+          "name": "h1_first_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h2_status": {
+          "name": "h2_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "h2_funding_rate": {
+          "name": "h2_funding_rate",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h2_funding_time": {
+          "name": "h2_funding_time",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h2_percentile": {
+          "name": "h2_percentile",
+          "type": "numeric(10, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h2_samples": {
+          "name": "h2_samples",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h2_payer": {
+          "name": "h2_payer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h2_interval_hours": {
+          "name": "h2_interval_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h3_status": {
+          "name": "h3_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "h3_moved_pct": {
+          "name": "h3_moved_pct",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "h3_typical_move_pct": {
+          "name": "h3_typical_move_pct",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "volume_vs_24h": {
+          "name": "volume_vs_24h",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "range_breakout": {
+          "name": "range_breakout",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_version": {
+          "name": "market_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_btc_change_24h_pct": {
+          "name": "market_btc_change_24h_pct",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_btc_trend": {
+          "name": "market_btc_trend",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_vol_4h_pct": {
+          "name": "market_vol_4h_pct",
+          "type": "numeric(38, 18)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_vol_percentile": {
+          "name": "market_vol_percentile",
+          "type": "numeric(10, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_volatility": {
+          "name": "market_volatility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "signal_context_coins_article_market_uq": {
+          "name": "signal_context_coins_article_market_uq",
+          "columns": [
+            {
+              "expression": "article_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "market",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "signal_context_coins_decided_idx": {
+          "name": "signal_context_coins_decided_idx",
+          "columns": [
+            {
+              "expression": "decided_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "signal_context_coins_source_ck": {
+          "name": "signal_context_coins_source_ck",
+          "value": "\"signal_context_coins\".\"source\" in ('live', 'backfilled')"
+        },
+        "signal_context_coins_direction_ck": {
+          "name": "signal_context_coins_direction_ck",
+          "value": "\"signal_context_coins\".\"direction\" in ('long', 'short')"
+        },
+        "signal_context_coins_h1_ck": {
+          "name": "signal_context_coins_h1_ck",
+          "value": "\"signal_context_coins\".\"h1_status\" in ('yes', 'no', 'against', 'na')"
+        },
+        "signal_context_coins_h2_ck": {
+          "name": "signal_context_coins_h2_ck",
+          "value": "\"signal_context_coins\".\"h2_status\" in ('yes', 'no', 'na')"
+        },
+        "signal_context_coins_h3_ck": {
+          "name": "signal_context_coins_h3_ck",
+          "value": "\"signal_context_coins\".\"h3_status\" in ('yes', 'no', 'na')"
+        },
+        "signal_context_coins_payer_ck": {
+          "name": "signal_context_coins_payer_ck",
+          "value": "\"signal_context_coins\".\"h2_payer\" is null or \"signal_context_coins\".\"h2_payer\" in ('long', 'short', 'none')"
+        },
+        "signal_context_coins_breakout_ck": {
+          "name": "signal_context_coins_breakout_ck",
+          "value": "\"signal_context_coins\".\"range_breakout\" is null or \"signal_context_coins\".\"range_breakout\" in ('up', 'down', 'none')"
+        },
+        "signal_context_coins_btc_trend_ck": {
+          "name": "signal_context_coins_btc_trend_ck",
+          "value": "\"signal_context_coins\".\"market_btc_trend\" is null or \"signal_context_coins\".\"market_btc_trend\" in ('up', 'flat', 'down')"
+        },
+        "signal_context_coins_volatility_ck": {
+          "name": "signal_context_coins_volatility_ck",
+          "value": "\"signal_context_coins\".\"market_volatility\" is null or \"signal_context_coins\".\"market_volatility\" in ('low', 'normal', 'high')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.signal_contexts": {
       "name": "signal_contexts",
       "schema": "",
@@ -8456,17 +8772,11 @@
         }
       },
       "indexes": {
-        "signal_contexts_article_market_uq": {
-          "name": "signal_contexts_article_market_uq",
+        "signal_contexts_article_uq": {
+          "name": "signal_contexts_article_uq",
           "columns": [
             {
               "expression": "article_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "market",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

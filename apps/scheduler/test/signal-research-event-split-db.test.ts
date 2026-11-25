@@ -1,7 +1,9 @@
 import {
   candles1m,
   createDb,
+  contextFor,
   createSignalBotVersion,
+  loadSignalContexts,
   loadSignalResearchArticles,
   loadSignalResearchArticleTrace,
   newsSignals,
@@ -9,6 +11,7 @@ import {
   setSignalBotVersionStatus,
   signalArticles,
   signalBotVersions,
+  signalContextCoins,
   signalContexts,
   signalEvents,
   signalPaperTrades,
@@ -98,7 +101,7 @@ afterAll(async () => {
 beforeEach(async () => {
   // `news_signals` bất biến (trigger chặn DELETE); TRUNCATE không qua trigger dòng.
   await db.execute(
-    sql`truncate news_signals cascade; truncate signal_articles, signal_events, signal_stories, signal_paper_trades, signal_research_usage, signal_source_health, signal_contexts`,
+    sql`truncate news_signals cascade; truncate signal_articles, signal_events, signal_stories, signal_paper_trades, signal_research_usage, signal_source_health, signal_contexts, signal_context_coins`,
   );
   await db.delete(signalBotVersions).where(eq(signalBotVersions.isBaseline, false));
   await db
@@ -320,12 +323,23 @@ describe("event split: one signal per coin (#530 PR2)", () => {
       "LINK-USD|listing",
       "UNI-USD|listing",
     ]);
-    const ctx = await db
+    // Coin chính ở `signal_contexts` (một dòng mỗi bài, như bản cũ ghi), coin khác ở `signal_context_coins`.
+    const main = await db
       .select({ market: signalContexts.market })
       .from(signalContexts)
       .where(eq(signalContexts.articleId, "c1"));
-    expect(ctx.map((c) => c.market).sort()).toEqual(["AAVE-USD", "LINK-USD", "UNI-USD"]);
-    // #530 PR3: trace có kết quả từng coin (thứ tự bài nêu), k và snapshot Context của từng coin; feed liệt kê mọi coin
+    expect(main.map((c) => c.market)).toEqual(["AAVE-USD"]);
+    const coins = await db
+      .select({ market: signalContextCoins.market })
+      .from(signalContextCoins)
+      .where(eq(signalContextCoins.articleId, "c1"));
+    expect(coins.map((c) => c.market).sort()).toEqual(["LINK-USD", "UNI-USD"]);
+    // Đọc gộp: mỗi coin đúng snapshot của nó; khoá theo bài = coin chính.
+    const map = await loadSignalContexts(db, ["c1"]);
+    for (const m of ["AAVE-USD", "LINK-USD", "UNI-USD"])
+      expect(contextFor(map, "c1", m)?.market).toBe(m);
+    expect(map.get("c1")?.market).toBe("AAVE-USD");
+    // #530 PR3: trace có kết quả từng coin (thứ tự bài nêu), k và snapshot Context của từng coin (coin phụ đọc từ signal_context_coins); feed liệt kê mọi coin
     // đã vào lệnh.
     const tr1 = await loadSignalResearchArticleTrace(db, "c1");
     expect(tr1?.event).toMatchObject({
@@ -342,7 +356,12 @@ describe("event split: one signal per coin (#530 PR2)", () => {
       "LINK-USD",
       "UNI-USD",
     ]);
-    expect(tr1?.event?.items.every((c) => c.context !== null)).toBe(true);
+    // Coin chính (AAVE) từ signal_contexts, coin phụ (LINK, UNI) từ signal_context_coins: mỗi coin đúng snapshot của nó.
+    expect(tr1?.event?.items.map((c) => c.context?.market)).toEqual([
+      "AAVE-USD",
+      "LINK-USD",
+      "UNI-USD",
+    ]);
     const page1 = await loadSignalResearchArticles(
       db,
       researchArticlesQuerySchema.parse({ range: "1d" }),
@@ -487,6 +506,34 @@ describe("event split: one signal per coin (#530 PR2)", () => {
       outcome: "dropped",
       reason: "belowMinSize",
     });
+  });
+});
+
+describe("migration 0062 keeps older builds working (#530 PR2)", () => {
+  it("signal_contexts keeps its unique article_id: the old ON CONFLICT (article_id) insert still runs; the coins table is unique per article x market and immutable", async () => {
+    // Câu ghi của scheduler trước PR này (insertSignalContext, main): ON CONFLICT (article_id) DO NOTHING.
+    const old = (market: string) =>
+      pool.query(
+        `insert into signal_contexts (id, article_id, market, direction, decided_at, source, context_version, rule_version, h1_status, h2_status, h3_status)
+         values (gen_random_uuid(), 'old-1', $1, 'long', now(), 'live', 'context-v2', 'news-v5', 'na', 'na', 'na')
+         on conflict (article_id) do nothing`,
+        [market],
+      );
+    expect((await old("AAVE-USD")).rowCount).toBe(1);
+    expect((await old("LINK-USD")).rowCount).toBe(0);
+    const coin = (market: string) =>
+      pool.query(
+        `insert into signal_context_coins (id, article_id, market, direction, decided_at, source, context_version, rule_version, h1_status, h2_status, h3_status)
+         values (gen_random_uuid(), 'old-1', $1, 'long', now(), 'live', 'context-v2', 'news-v6', 'na', 'na', 'na')
+         on conflict (article_id, market) do nothing`,
+        [market],
+      );
+    expect((await coin("LINK-USD")).rowCount).toBe(1);
+    expect((await coin("LINK-USD")).rowCount).toBe(0);
+    expect((await coin("UNI-USD")).rowCount).toBe(1);
+    await expect(
+      pool.query("update signal_context_coins set h1_status = 'yes' where article_id = 'old-1'"),
+    ).rejects.toThrow(/immutable/);
   });
 });
 
