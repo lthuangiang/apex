@@ -186,6 +186,8 @@ async function cycle(input: {
   items: SosoNewsItem[];
   claude: Record<string, Classification>;
   books: readonly string[];
+  /** `SIGNAL_NEWS_EVENT_SPLIT_ENABLED`: mặc định bật trong file này (đường mainnet mới); tắt ở các test "flag off". */
+  split?: boolean;
 }) {
   const sr = createSignalResearch({
     db,
@@ -196,6 +198,7 @@ async function cycle(input: {
       SOSO_API_KEY: "k",
       DESK_AI_API_KEY: "c",
       SIGNAL_NEWS_PUBLISH_ENABLED: "true",
+      SIGNAL_NEWS_EVENT_SPLIT_ENABLED: input.split === false ? "false" : "true",
     }),
     perps: () => PERPS,
     now: () => input.now,
@@ -484,6 +487,97 @@ describe("event split: one signal per coin (#530 PR2)", () => {
       outcome: "dropped",
       reason: "belowMinSize",
     });
+  });
+});
+
+describe("SIGNAL_NEWS_EVENT_SPLIT_ENABLED off (default): mainnet one row per article (#530 PR2)", () => {
+  it("the multi-coin article writes one row for the main coin (event_coins 1, no event key, no other coins); paper still splits", async () => {
+    await cycle({
+      now: T + 2 * MIN,
+      items: [origin()],
+      claude: originAnswer,
+      books: ["AAVE-USD", "LINK-USD", "UNI-USD"],
+      split: false,
+    });
+    expect((await signalsOf("c1")).map((s) => [s.market, s.eventKey, s.eventCoins])).toEqual([
+      ["AAVE-USD", null, 1],
+    ]);
+    // Paper / research không đọc cờ: ba lệnh, mỗi lệnh 500 ÷ 3.
+    expect((await trades()).map((t) => [t.market, Number(t.sizeUsdc)])).toEqual([
+      ["AAVE-USD", 166.66],
+      ["LINK-USD", 166.66],
+      ["UNI-USD", 166.66],
+    ]);
+    expect((await understandOf("c1"))?.detail).toMatchObject({ eventKey: "evt:c1", eventCoins: 3 });
+  });
+
+  it("a retry inside the window: mainnet writes only the repost's main coin with event_coins 1; SAME_EVENT still blocks new coins", async () => {
+    // Bài gốc, LINK không có giá (paper: câu chuyện LINK chưa khoá).
+    await cycle({
+      now: T + 2 * MIN,
+      items: [origin()],
+      claude: originAnswer,
+      books: ["AAVE-USD", "UNI-USD"],
+      split: false,
+    });
+    const at = T + 60 * MIN;
+    const title = "Major broker lists LINK, AAVE and COMP";
+    await cycle({
+      now: at + 2 * MIN,
+      items: [origin(), item("off-r", at, title, ["LINK", "AAVE", "COMP"])],
+      claude: { ...originAnswer, [title]: listingOf(["LINK", "AAVE", "COMP"]) },
+      books: ["AAVE-USD", "LINK-USD", "UNI-USD", "COMP-USD"],
+      split: false,
+    });
+    // Coin chính của bài đăng lại là LINK (thử lại trong cửa sổ): một dòng, event_coins 1, không event key; không AAVE, không COMP.
+    expect((await signalsOf("off-r")).map((s) => [s.market, s.eventKey, s.eventCoins])).toEqual([
+      ["LINK-USD", null, 1],
+    ]);
+    // Paper: LINK thử lại với k = 3 của bài gốc, AAVE SAME_STORY, COMP SAME_EVENT.
+    expect((await filterEvents("off-r")).map((e) => `${e.outcome}:${e.reason ?? ""}`)).toEqual([
+      "pass:",
+      "merge:SAME_STORY",
+      "drop:SAME_EVENT",
+    ]);
+    const link = (await trades()).find((t) => t.market === "LINK-USD");
+    expect(Number(link?.sizeUsdc)).toBe(166.66);
+  });
+
+  it("a repost outside the window writes nothing on mainnet, like with the flag on", async () => {
+    await cycle({
+      now: T + 2 * MIN,
+      items: [origin()],
+      claude: originAnswer,
+      books: ["AAVE-USD", "LINK-USD", "UNI-USD"],
+      split: false,
+    });
+    const at = T + 3 * HOUR;
+    const title = "Major broker lists UNI and COMP";
+    await cycle({
+      now: at + 2 * MIN,
+      items: [origin(), item("off-late", at, title, ["UNI", "COMP"])],
+      claude: { ...originAnswer, [title]: listingOf(["UNI", "COMP"]) },
+      books: ["UNI-USD", "COMP-USD"],
+      split: false,
+    });
+    expect(await signalsOf("off-late")).toEqual([]);
+  });
+});
+
+describe("SIGNAL_NEWS_EVENT_SPLIT_ENABLED on: mainnet one row per coin (#530 PR2)", () => {
+  it("k rows with one event key and event_coins = k", async () => {
+    await cycle({
+      now: T + 2 * MIN,
+      items: [origin()],
+      claude: originAnswer,
+      books: ["AAVE-USD", "LINK-USD", "UNI-USD"],
+      split: true,
+    });
+    expect((await signalsOf("c1")).map((s) => [s.market, s.eventKey, s.eventCoins])).toEqual([
+      ["AAVE-USD", "evt:c1", 3],
+      ["LINK-USD", "evt:c1", 3],
+      ["UNI-USD", "evt:c1", 3],
+    ]);
   });
 });
 

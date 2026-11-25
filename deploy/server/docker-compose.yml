@@ -221,6 +221,7 @@ services:
       SIGNAL_RESEARCH_WALLETS_K: ${SIGNAL_RESEARCH_WALLETS_K:-30}
       # #419: tín hiệu mainnet dùng chung (news_signals + NATS sr.signal.new). Mặc định tắt; chỉ scheduler đọc.
       SIGNAL_NEWS_PUBLISH_ENABLED: ${SIGNAL_NEWS_PUBLISH_ENABLED:-false}
+      SIGNAL_NEWS_EVENT_SPLIT_ENABLED: ${SIGNAL_NEWS_EVENT_SPLIT_ENABLED:-false}
 
   jobs:
     <<: *app

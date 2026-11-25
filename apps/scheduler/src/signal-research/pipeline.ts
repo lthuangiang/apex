@@ -177,7 +177,14 @@ export interface PipelineDeps {
    * #419 PR 4: ghi tín hiệu dùng chung cho bot `news_signal` mainnet (`news_signals`) và phát chuông NATS. Thiếu / null =
    * tắt (`SIGNAL_NEWS_PUBLISH_ENABLED` không bật). Chỉ ghi, không bao giờ đổi quyết định của research versions.
    */
-  newsSignals?: { notify: (id: string) => void } | null;
+  newsSignals?: {
+    notify: (id: string) => void;
+    /**
+     * #530 PR2 (`SIGNAL_NEWS_EVENT_SPLIT_ENABLED`, mặc định tắt): bật = một dòng mỗi coin của sự kiện (`event_coins` = k);
+     * tắt / thiếu = một dòng cho coin chính của bài, `event_key` null, `event_coins` 1.
+     */
+    eventSplit?: boolean;
+  } | null;
 }
 
 export interface CycleReport {
@@ -244,6 +251,8 @@ interface Signal {
    * theo đúng luật câu chuyện (cần lần thử trước của version); cờ này không dùng ở đó.
    */
   retryable: boolean;
+  /** #530: coin chính của bài (coin đầu bài nêu trong các coin qua Understand); tín hiệu mainnet khi tắt chia sự kiện. */
+  primary: boolean;
 }
 
 /** #530: kiểm tất định của một coin sau Claude (loại tài sản, có trong bài, luật BTC / ETH); null = qua. */
@@ -313,6 +322,16 @@ async function sameEventOf(
       : [],
     firstAt: r.first_at instanceof Date ? r.first_at.getTime() : Date.parse(r.first_at),
   };
+}
+
+/** Gom tín hiệu theo story key (market × loại tin), giữ thứ tự xuất hiện. */
+function groupsOf(signals: readonly Signal[]): Map<string, Signal[]> {
+  const groups = new Map<string, Signal[]>();
+  for (const s of signals) {
+    const k = storyKey(s.candidate.market, s.catalyst);
+    groups.set(k, [...(groups.get(k) ?? []), s]);
+  }
+  return groups;
 }
 
 const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -678,7 +697,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     const coinsOf = earlierEvent === null ? k : earlierEvent.coins;
     const inRetry =
       earlierEvent !== null && now - earlierEvent.firstAt <= NEWS_RULES.retryWindowMinutes * MIN_MS;
-    const made: Signal[] = passed.map((x) => ({
+    const made: Signal[] = passed.map((x, i) => ({
       articleId: a.id,
       source: a.source,
       tier: sourceTierOf(a.source, a.category),
@@ -691,6 +710,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       eventCoins: coinsOf,
       sameEvent: earlierEvent !== null,
       retryable: inRetry && earlierEvent.markets.includes(x.market),
+      primary: i === 0,
     }));
     const first = made[0];
     if (first === undefined) continue;
@@ -736,15 +756,19 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     });
 
   const ctx = cycleContext(deps, info, now);
-  const groups = new Map<string, Signal[]>();
-  for (const s of signals) {
-    const k = storyKey(s.candidate.market, s.catalyst);
-    groups.set(k, [...(groups.get(k) ?? []), s]);
-  }
+  const groups = groupsOf(signals);
   // ── Tín hiệu mainnet (#419): ghi ngay sau Understand, trước Context / Filter, để độ trễ tới engine thấp nhất. Lỗi chỉ log;
   // báo giá đọc riêng nên quyết định của research versions không đổi.
   const publisher = deps.newsSignals ?? null;
-  if (publisher !== null && groups.size > 0) {
+  // #530 PR2: chia sự kiện cho mainnet chỉ khi `SIGNAL_NEWS_EVENT_SPLIT_ENABLED` bật. Tắt: chỉ coin chính của mỗi bài, một
+  // coin (`event_key` null, `event_coins` 1, cả lần thử lại), như trước PR1. Lệnh giấy bên dưới vẫn chia ở cả hai trạng thái.
+  const published =
+    publisher?.eventSplit === true
+      ? groups
+      : groupsOf(
+          signals.filter((s) => s.primary).map((s) => ({ ...s, eventKey: null, eventCoins: 1 })),
+        );
+  if (publisher !== null && published.size > 0) {
     try {
       report.newsSignals = await publishNewsSignals(
         {
@@ -756,7 +780,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
           log: deps.log,
         },
         now,
-        groups,
+        published,
       );
     } catch (e) {
       deps.log.warn(
