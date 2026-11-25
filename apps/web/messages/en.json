@@ -2794,8 +2794,6 @@
     }
   },
   "_pendingReview": [
-    "signalAnalysis.research.trace.noteReasons.belowMinSize",
-    "signalAnalysis.research.trace.noteReasons.sameEvent",
     "signalAnalysis.filters.botKeys",
     "signalAnalysis.research.trace",
     "signalAnalysis.research.sources.names.claude",
@@ -8234,6 +8232,7 @@
           "outNone": "none out",
           "reasonN": "{n} {label}",
           "decide": "{size} USDC each · TP / SL from volatility",
+          "decideUpTo": "Up to {size} USDC each · TP / SL from volatility",
           "merged": "{n} merged into a story",
           "waiting": "{text} · {n} waiting"
         },
@@ -8338,8 +8337,8 @@
           "treasuryMajorAsset": "treasury news on BTC or ETH is not traded",
           "etfMajorAsset": "BTC and ETH already have many ETFs, so one more rarely moves the price. Rules v4 skip ETF news on these two coins.",
           "listingMajorAsset": "BTC and ETH already trade on every major exchange, so one more listing does not move the price. Rules v5 skip listing news on these two coins.",
-          "belowMinSize": "This coin's share of the event is below the SoDEX minimum order size.",
-          "sameEvent": "This article repeats an event that was already handled.",
+          "belowMinSize": "this coin's share of the event is below the SoDEX minimum order size",
+          "sameEvent": "this article repeats an event that was already handled",
           "newsTypeOff": "this news type is off in the version",
           "assetNotInVersion": "the asset is not in the version",
           "levelTooLow": "level below the version’s lowest level to trade",
@@ -8397,7 +8396,12 @@
           "tpUnderCost": "The expected move is too small to beat the cost of a trade.",
           "merged": "Joined a story already open, so the article raises its source count instead of opening a new trade.",
           "mergedTooOld": "Joined a story that started too long ago to trade again.",
-          "decide": "Opened a paper trade on the News bot."
+          "decide": "Opened a paper trade on the News bot.",
+          "decideMany": "Opened paper trades on the News bot.",
+          "filterEach": "Checked each coin on its own.",
+          "sameEvent": "This article repeats an event that was already handled.",
+          "belowMinSize": "This coin's share of the event is below the SoDEX minimum order size.",
+          "eventSplit": "Size split across {n} coins from one event."
         },
         "rows": {
           "published": "Published",
@@ -8408,6 +8412,7 @@
           "story": "Story",
           "storySources": "Sources in story",
           "duplicateOf": "Duplicate of",
+          "firstArticle": "First article",
           "newsType": "News type",
           "asset": "Asset",
           "relevance": "Relevance",
@@ -8478,7 +8483,9 @@
         "subShort": "Every article, what happened to it, and why.",
         "bandShort": {
           "checks": "{passed} of {total} checks",
-          "trade": "{side} {size} USDC"
+          "coins": "{passed} of {n} coins passed",
+          "trade": "{side} {size} USDC",
+          "tradeMany": "{side} {size} USDC × {n}"
         },
         "allRules": "all rules",
         "rulesChip": "Rules v{v}",
@@ -9316,7 +9323,7 @@
           "off": "Off",
           "minLevel": "This version trades level <b>{level}</b> and up.",
           "tpsl": "TP = <b>{tp} ×</b> and SL = <b>{sl} ×</b> the asset’s typical move over the max hold (from its last 30 days). If TP is under <b>{min}×</b> the cost of a trade, the signal is skipped.",
-          "size": "Each trade is <b>{size} USDC</b> of fake money.",
+          "sizeUpTo": "Each trade is up to <b>{size} USDC</b> of fake money; one event with several coins splits it.",
           "gate": "A signal type gets a page for users only after it passes these checks: <b>100 trades or more</b>, average result after fees at least <b>2× the cost of a trade</b>, a likely range that stays above 0, it <b>beats random entries at the same moments</b>, and the result has the <b>same sign in both halves</b>.",
           "classifierGate": "A trade counts only when the Claude reader that made it has <b>{min} labels</b> and at least <b>{pct}%</b> are marked right.",
           "context1": "<b>Where the other signals go: step 4 · Context.</b> After Claude names the news type and the asset (Score), DeskLabs checks three things about that asset at that moment: did the research wallets (the top of the leaderboard) just trade the same way, is funding against the crowd, has the price already run.",

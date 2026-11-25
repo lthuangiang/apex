@@ -128,6 +128,11 @@ export const newsTradeSchema = z.object({
   exitAvgPrice: decimalStringSchema.nullable(),
   /** Lệnh Close now / Edit TP/SL chưa xong của trade này (queued / applying / unknown); null = không có. */
   pendingCommand: newsCommandSchema.nullable(),
+  /**
+   * #530 (DEC-392): số coin của sự kiện tin mà cỡ lệnh này là phần chia (`news_signals.event_coins` của tín hiệu); 1 = lệnh
+   * một coin như trước.
+   */
+  eventCoins: z.number().int().positive().default(1),
 });
 export type NewsTrade = z.infer<typeof newsTradeSchema>;
 

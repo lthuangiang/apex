@@ -565,7 +565,7 @@ const commandView = (c: CommandRow): NewsCommand => ({
 
 const decOut = (v: string | null) => (v === null ? null : dec(v).toFixed());
 
-function tradeView(t: TradeRow, pending: CommandRow | undefined): NewsTrade {
+function tradeView(t: TradeRow, pending: CommandRow | undefined, eventCoins = 1): NewsTrade {
   return {
     id: t.id,
     signalId: t.signalId,
@@ -584,6 +584,7 @@ function tradeView(t: TradeRow, pending: CommandRow | undefined): NewsTrade {
     closeReason: t.closeReason,
     exitAvgPrice: decOut(t.exitAvgPrice),
     pendingCommand: pending === undefined ? null : commandView(pending),
+    eventCoins,
   };
 }
 
@@ -616,7 +617,18 @@ export async function listNewsTrades(
     .orderBy(desc(newsSignalCommands.seq));
   const byTrade = new Map<string, CommandRow>();
   for (const c of pending) if (!byTrade.has(c.tradeId)) byTrade.set(c.tradeId, c);
-  return trades.map((t) => tradeView(t, byTrade.get(t.id)));
+  // #530 (DEC-392): số coin của sự kiện (tín hiệu của lệnh) cho dòng "Size split across {n} coins from one event.".
+  const coins = await deps.db
+    .select({ id: newsSignals.id, eventCoins: newsSignals.eventCoins })
+    .from(newsSignals)
+    .where(
+      inArray(
+        newsSignals.id,
+        trades.map((t) => t.signalId),
+      ),
+    );
+  const coinsOf = new Map(coins.map((c) => [c.id, c.eventCoins]));
+  return trades.map((t) => tradeView(t, byTrade.get(t.id), coinsOf.get(t.signalId) ?? 1));
 }
 
 /** Tín hiệu dùng chung trong 24 giờ (mới nhất trước, tối đa 100) và kết quả trên bot này. */

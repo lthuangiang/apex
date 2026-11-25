@@ -68,6 +68,8 @@ const state = vi.hoisted(
     bots: unknown[];
     /** #511: lệnh đầu tiên đóng `max_hold_no_price` (danh sách và chi tiết). */
     noPrice: boolean;
+    /** #530: chi tiết lệnh News là phần chia của sự kiện 3 coin. */
+    split: boolean;
   } => ({
     mode: "ok",
     paths: [],
@@ -76,6 +78,7 @@ const state = vi.hoisted(
     versions: null,
     bots: [],
     noPrice: false,
+    split: false,
   }),
 );
 
@@ -276,6 +279,10 @@ vi.mock("@/lib/api", async (importOriginal) => {
         if (m !== "news") return Promise.resolve(schema.parse(RESEARCH_DETAIL));
         if (state.noPrice && !p.endsWith(SKIPPED_ID))
           return Promise.resolve(schema.parse(NO_PRICE_DETAIL));
+        if (state.split && !p.endsWith(SKIPPED_ID))
+          return Promise.resolve(
+            schema.parse({ ...NEWS_DETAIL, sizeUsdc: "166.66", eventCoins: 3 }),
+          );
         return Promise.resolve(schema.parse(p.endsWith(SKIPPED_ID) ? SKIPPED_DETAIL : NEWS_DETAIL));
       }
       return Promise.reject(new real.ApiError("NOT_FOUND", 404));
@@ -328,6 +335,7 @@ function wrap() {
 
 beforeEach(() => {
   state.noPrice = false;
+  state.split = false;
   state.mode = "ok";
   state.paths = [];
   state.classifiers = null;
@@ -627,6 +635,24 @@ describe("Signal research tab", { timeout: 30_000 }, () => {
     ).toBeInTheDocument();
     expect(within(dialog).getAllByText(/Max hold · no price/).length).toBeGreaterThan(0);
     for (const z of ["$0", "$0.00", "+$0.00"]) expect(within(dialog).queryByText(z)).toBeNull();
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("#530: a share of a multi-coin event shows the size to the cent and the split line", async () => {
+    state.mode = "news";
+    state.split = true;
+    wrap();
+    const tbl = await screen.findByRole("table", { name: "Signal research trades" });
+    await userEvent.click(
+      within(tbl).getByRole("button", { name: "SEC delays decision on SOL ETF" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByText("Size split across 3 coins from one event."),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/on 166\.66 USDC/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/\$167/)).toBeNull();
+    await noViolations();
     expect(intlErrors).toEqual([]);
   });
 
@@ -1218,6 +1244,10 @@ describe("Signal research page shell (#342)", { timeout: 30_000 }, () => {
     await userEvent.click(within(d2).getByRole("tab", { name: "Take profit / Stop loss" }));
     expect(within(d2).getByText(/the asset’s typical move/)).toHaveTextContent(
       "TP = 1.5 × and SL = 0.75 × the asset’s typical move over the max hold (from its last 30 days). If TP is under 2× the cost of a trade, the signal is skipped.",
+    );
+    // #530: Rules hiện tại chia cỡ lệnh cho các coin của một sự kiện → "up to".
+    expect(within(d2).getByText(/of fake money/)).toHaveTextContent(
+      /^Each trade is up to [\d,.]+ USDC of fake money; one event with several coins splits it\.$/,
     );
     await userEvent.click(within(d2).getByRole("tab", { name: "When a signal passes" }));
     // Cổng nêu đủ điều kiện đã chốt, gồm so với vào lệnh ngẫu nhiên và cùng dấu ở hai nửa.

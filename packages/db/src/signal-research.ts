@@ -72,7 +72,7 @@ import {
   signalSourceHealth,
   signalStories,
 } from "./schema";
-import { loadArticleStops, rangeSince } from "./signal-research-articles";
+import { eventCoinsOfArticles, loadArticleStops, rangeSince } from "./signal-research-articles";
 import {
   loadContextSummary,
   loadMarketSplit,
@@ -760,6 +760,12 @@ export async function loadSignalResearchSummary(
           long: inRange.filter((t) => t.direction === "long").length,
           short: inRange.filter((t) => t.direction === "short").length,
           sizeUsdc: dec(scope?.config?.sizeUsdc ?? NEWS_RULES.sizeUsdc).toFixed(),
+          // #530: có lệnh là phần chia của sự kiện nhiều coin (nhỏ hơn cỡ lệnh của version) → "Up to {size} USDC each".
+          ...(inRange.some((t) =>
+            dec(t.sizeUsdc).lt(dec(scope?.config?.sizeUsdc ?? NEWS_RULES.sizeUsdc)),
+          )
+            ? { sizeSplit: true }
+            : {}),
           drops: { score: drops(["normalize", "understand"]), filter: drops(["filter"]) },
           articleStops,
           outcomes: {
@@ -1521,10 +1527,14 @@ export async function loadSignalResearchTrade(
         : skippedItem(skip, ctx);
   if (item === null) return null;
   const end = trade?.exitedAt?.getTime() ?? now.getTime();
+  // #530: lệnh là phần chia của sự kiện nhiều coin → k cho dòng "Size split across {n} coins from one event.".
+  const eventCoins =
+    trade === undefined ? undefined : (await eventCoinsOfArticles(q, [articleId])).get(articleId);
   return {
     trade: item,
     rulesVersion: versionNumberOf(trade?.ruleVersion ?? story.ruleVersion),
     sizeUsdc: trade === undefined ? null : dec(trade.sizeUsdc).toFixed(),
+    ...(eventCoins === undefined ? {} : { eventCoins }),
     heldSecs:
       trade === undefined ? null : Math.max(0, Math.round((end - trade.openedAt.getTime()) / 1000)),
     steps: stepsOf({ a, story, trade: trade ?? null, skip }),

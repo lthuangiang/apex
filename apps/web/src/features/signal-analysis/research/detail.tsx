@@ -231,6 +231,12 @@ function Step({
             ))}
           </ul>
         )}
+        {/* #530: lệnh là phần chia của sự kiện nhiều coin. */}
+        {s.key === "trade" && d.eventCoins != null ? (
+          <p className="m-0 text-[13px] text-ink-2">
+            {t("trace.summary.eventSplit", { n: d.eventCoins })}
+          </p>
+        ) : null}
         {s.notes.map((n) => (
           <p key={n.key} className="m-0 text-[13px] text-ink-2">
             {n.key === "leaderboard"
@@ -263,7 +269,16 @@ function ResultLine({ d }: { d: Detail }) {
     <p className="m-0 text-sm text-ink-2">
       {d.sizeUsdc === null
         ? t.rich("detail.resultNoSize", { pnl, outcome, b })
-        : t.rich("detail.result", { pnl, outcome, size: usdCompact(d.sizeUsdc), b })}
+        : t.rich("detail.result", {
+            pnl,
+            outcome,
+            // #530: phần chia của sự kiện nhiều coin hiện đủ cent ("166.66 USDC"), không làm tròn kiểu "$167".
+            size:
+              d.eventCoins != null
+                ? t("detail.facts.size.value", { usd: count(Number(d.sizeUsdc)) })
+                : usdCompact(d.sizeUsdc),
+            b,
+          })}
     </p>
   );
 }

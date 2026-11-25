@@ -192,3 +192,20 @@ Mục Signal Research có nhãn BETA trên sidebar, chỉ team và tài khoản 
 - **Mark của Edit TP/SL** lấy từ giá gần nhất của market; không có giá thì "Mark Not available".
 - **Phễu / feed / Context ở Mainnet** dùng tín hiệu chung. Thêm khối "Signals in the last 24 h" (kết quả từng tín hiệu trên bot, lý do theo nhãn của phễu). Phễu theo bot: #444.
 - **Cờ `SIGNAL_NEWS_BOTS_ENABLED` tắt:** tạo / Start / Resume hiện "Mainnet bots are not available yet." ngay trong editor hoặc hộp thoại, không giấu nút.
+
+## Sự kiện tin nêu nhiều coin (#530 PR3)
+
+`news-event-coins.html` (người dùng duyệt bố cục 2026-11-25) và ảnh `news-event-coins-*-1440.png` / `-390.png`. HTML tĩnh, chỉ có link Google Fonts. Ô gạch chéo là số không có trong dữ liệu ví dụ; câu gạch tím là câu chữ mới đã duyệt.
+
+| Khung | Nội dung |
+|---|---|
+| A, `-a-1440`, `-da-390` | Bài đầu nêu 3 coin: band Normalize liệt kê mọi market ứng viên, Filter "{passed} of {n} coins passed", Decide "Long {size} USDC × {n}", thẻ Filter / Decide / Context theo từng coin, dòng "Size split across {n} coins from one event." |
+| B, `-b-1440` | Bài đăng lại một coin đã có story (bị bỏ ở Filter của bài đầu): luật thử lại cũ, quá 120 phút thì gộp "story too old" |
+| B3, `-b3-1440`, `-db-390` | Bài đăng lại (giả định) nêu coin mới trước coin đã vào lệnh: "Dropped at Filter · Same event", dòng "First article … (date time)" khi khác ngày |
+| B2, `-b2-1440` | Chế độ tổng: chip "Same event", ghi chú Decide "Up to {size} USDC each" |
+| C, `-c-1440` | Chi tiết lệnh: cỡ lệnh đủ cent, câu chia cỡ lệnh dưới bước Trade |
+| E, `-e-1440` | Mainnet: min(size, 200) ÷ k, bot chỉ nhận coin trong danh sách market của nó, không dồn phần |
+
+**Code khác ảnh (PR3):**
+- Khung 4 · Context cạnh phễu vẫn hiện snapshot của coin đầu (một market); thẻ Context trong danh sách bước có một khối cho mỗi coin.
+- Trạng thái của cả bài theo coin bài nêu trước (DEC-327), kết quả từng coin nằm trong thẻ Filter / Decide.

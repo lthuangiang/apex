@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>News event coins · mockup #530 PR3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+/* Token chép từ packages/ui/src/styles/tokens.css. Mockup tĩnh, không phải code sản phẩm. */
+:root{
+  --bg:#eef1fa;--surface:#fff;--surface-2:#f5f7fd;--border:#e3e7f5;--border-input:#d5dcf2;
+  --ink:#141a33;--ink-2:#3b4262;--muted:#5f6684;--accent:#2e62e8;--accent-ink:#1d47b8;--accent-tint:#e6ecfe;
+  --pos:#0f7a43;--pos-bg:#ddf4e7;--neg-ink:#a72826;--neg-bg:#fde4e1;--warn:#7a3e00;--warn-bg:#fdebd3;--warn-border:#f0c27e;
+  --unknown:#5a2ca0;--unknown-bg:#f0e6ff;--old:#6b5a2e;--old-bg:#f3ecdc;
+  --radius-control:12px;--radius-tile:18px;--radius-card:24px;
+  --shadow-card:0 8px 24px rgb(20 26 51 / .07);--shadow-float:0 -8px 24px rgb(20 26 51 / .06);
+  --score:color-mix(in srgb,var(--accent) 60%,var(--surface));
+  --soft:color-mix(in srgb,var(--accent) 25%,var(--surface));
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body{overflow-x:hidden}
+h1,h2,h3,h4,p,dl,dd,ol,ul{margin:0}
+ol,ul{list-style:none;padding:0}
+.page{max-width:1440px;margin:0 auto;padding:32px 24px 64px;display:flex;flex-direction:column;gap:28px}
+
+/* ---------- chú thích mockup (ngoài khung UI, tiếng Việt) ---------- */
+.doc-h{font-size:28px;font-weight:800}
+.doc-p{font-size:14px;color:var(--ink-2);line-height:1.55;max-width:1000px}
+.legend{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:13px;color:var(--ink-2);align-items:center}
+.cap{display:flex;flex-direction:column;gap:6px}
+.cap h2{font-size:20px;font-weight:800}
+.cap p{font-size:13.5px;color:var(--ink-2);line-height:1.55;max-width:1100px}
+.tag{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border-radius:6px;padding:3px 8px;margin-right:6px;vertical-align:2px}
+.tag.before{background:#e9e3d6;color:#5a4a20}
+.tag.after{background:#1d47b8;color:#fff}
+.note-out{font-size:12.5px;color:var(--ink-2);background:#fffbe9;border:1px solid #efe1a6;border-radius:10px;padding:8px 12px;line-height:1.5}
+.note-out b{color:var(--ink)}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+.pair-col{display:flex;flex-direction:column;gap:8px;min-width:0}
+
+/* đánh dấu: câu PM đề xuất (đã có trong brief) / câu mới cần PM duyệt / số không có trong dữ liệu ví dụ */
+.pmc{box-shadow:inset 0 -2px 0 #8a5cf0;background:rgb(138 92 240 / .08);border-radius:3px}
+.newc{outline:2px dashed #e08a2e;outline-offset:2px;border-radius:4px;position:relative}
+.newc::after{content:attr(data-n);position:absolute;top:-10px;right:-10px;background:#e08a2e;color:#fff;font-size:10px;font-weight:800;line-height:1;border-radius:999px;padding:3px 5px}
+.ph{display:inline-block;width:38px;height:11px;border-radius:3px;vertical-align:-1px;background:repeating-linear-gradient(135deg,#cfd6ea 0 4px,#eef1fa 4px 8px)}
+.ph.s{width:22px}.ph.l{width:64px}
+.lg-sw{display:inline-block;width:30px;height:14px;vertical-align:-3px;margin-right:6px;border-radius:3px}
+
+/* ---------- khung UI (chép class Tailwind của màn thật) ---------- */
+.card{background:var(--surface);border-radius:var(--radius-card);box-shadow:var(--shadow-card);padding:20px 24px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.h2{font-size:20px;font-weight:800}
+.sub{font-size:13px;color:var(--muted)}
+.btns{display:flex;gap:8px}
+.btn{min-height:44px;border-radius:var(--radius-control);padding:0 14px;font:800 13px/1 inherit;font-family:inherit;border:1px solid var(--border-input);background:var(--surface);color:var(--ink);cursor:pointer}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;padding:0 16px}
+.thead{display:flex;flex-direction:column;gap:4px;min-width:0}
+.thead h3{font-size:18px;font-weight:800}
+.thead span{font-size:12px;color:var(--muted)}
+.thead a{color:var(--accent-ink);font-weight:700;text-decoration:none}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;min-width:0}
+.span2{grid-column:span 2;display:flex;gap:12px;min-width:0;align-items:stretch}
+.feed{display:flex;flex-direction:column;gap:8px;min-width:0}
+.feed-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.feed-h h3{font-size:15px;font-weight:800}
+.feed-h span{font-size:12px;color:var(--muted)}
+.toggles{display:flex;gap:6px;flex-wrap:wrap}
+.tg{min-height:40px;display:inline-flex;align-items:center;border-radius:var(--radius-control);border:1px solid var(--border-input);background:var(--surface);padding:0 12px;font-size:13px;font-weight:700;color:var(--ink);flex:none;white-space:nowrap}
+.tg.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.filterbar{display:flex;justify-content:space-between;align-items:center;gap:8px;border-radius:var(--radius-control);background:var(--accent-tint);padding:8px 12px;font-size:13px;font-weight:700;color:var(--accent-ink)}
+.filterbar u{font-weight:700}
+.art{display:block;width:100%;text-align:left;border:1px solid var(--border);background:var(--surface);border-radius:var(--radius-tile);padding:12px 14px}
+.art.sel{border-color:var(--accent);background:var(--accent-tint)}
+.art .meta{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted)}
+.art .t{display:block;margin:4px 0 6px;font-size:14px;font-weight:700;color:var(--ink)}
+.art .row{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.chip{display:inline-block;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:700}
+.chip.pos{background:var(--pos-bg);color:var(--pos)}
+.chip.neu{background:var(--bg);color:var(--ink-2)}
+.assets{font-size:12px;color:var(--muted)}
+.fbox{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);background:var(--surface-2);border-radius:14px;padding:14px 16px}
+.bands{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;padding-right:104px}
+.band{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px;padding:4px 5%;font-size:13px;font-weight:800;white-space:nowrap;clip-path:polygon(0 0,100% 0,97% 100%,3% 100%)}
+.band .n{min-width:0;text-align:right;line-height:1.15;font-weight:700;white-space:normal;overflow-wrap:anywhere}
+.b-collect{background:var(--accent-ink);color:#fff}.b-normalize{background:var(--accent);color:#fff}.b-score{background:var(--score);color:var(--ink)}
+.b-filter{background:var(--soft);color:var(--ink)}.b-decide{background:var(--pos);color:#fff}
+.b-drop{background:var(--bg);color:var(--ink-2)}.b-idle{background:var(--bg);color:var(--muted)}
+.b-context{clip-path:none;border-radius:6px;border:2px dashed var(--accent);background:var(--surface);color:var(--ink);padding:4px 4%}
+.dock{height:36px}
+.token{position:absolute;z-index:2;border-radius:999px;border:2px solid;font-size:12px;font-weight:800;box-shadow:var(--shadow-float);white-space:nowrap}
+.token.traded{background:var(--pos);border-color:var(--pos-bg);color:#fff;padding:5px 12px;transform:translateX(-50%)}
+.token.drop{background:var(--bg);border-color:var(--muted);color:var(--ink-2);border-radius:14px;min-height:36px;display:flex;align-items:center;padding:4px 10px;font-size:11px;line-height:1.2;max-width:96px;white-space:normal}
+.verdict{margin-top:6px;text-align:center;font-size:13px;font-weight:800;color:var(--ink-2)}
+.verdict.pos{color:var(--pos)}
+.ctxp{width:300px;flex:none;border:2px dashed var(--accent);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:var(--surface)}
+.ctxp .l{display:flex;justify-content:space-between;font-size:13px;font-weight:700}
+.ctxp .tile{height:56px;border-radius:10px;border:1px solid var(--border);background:repeating-linear-gradient(135deg,#f1f3fa 0 6px,#fff 6px 12px)}
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:start}
+.step{border:1px solid var(--border);background:var(--surface);border-radius:var(--radius-tile);padding:12px 14px;min-width:0}
+.step.full{grid-column:1/-1}
+.step.dim{background:var(--surface-2);border-style:dashed}
+.sh{display:flex;align-items:center;gap:8px}
+.dot{display:inline-flex;width:24px;height:24px;flex:none;align-items:center;justify-content:center;border-radius:999px;font-size:12px;font-weight:800}
+.sh h4{flex:1;font-size:14px;font-weight:800}
+.st{flex:none;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:800}
+.st.pass{background:var(--pos-bg);color:var(--pos)}.st.drop{background:var(--bg);color:var(--ink-2)}
+.ssum{margin-top:6px;font-size:12px;line-height:1.5;color:var(--ink-2)}
+.rows{margin-top:8px;display:flex;flex-direction:column;gap:4px;font-size:12px}
+.rows>div{display:flex;justify-content:space-between;gap:12px}
+.rows dt{color:var(--muted)}
+.rows dd{text-align:right;font-weight:700;color:var(--ink)}
+.coin-h{margin-top:10px;padding-top:8px;border-top:1px solid var(--bg);font-size:12px;font-weight:800;color:var(--ink)}
+.coin-h:first-of-type{border-top:0;padding-top:0}
+.split{margin-top:8px;display:flex;align-items:flex-start;gap:6px;border-radius:10px;background:var(--accent-tint);color:var(--accent-ink);font-size:12px;font-weight:700;padding:6px 10px;line-height:1.4}
+.split svg{flex:none;margin-top:1px}
+.dimtxt{font-size:12px;color:var(--muted);margin-top:6px}
+
+/* Totals: Why they dropped out */
+.tcard{border:1px solid var(--border);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.tcard h3{font-size:13px;font-weight:800}
+.hint{font-size:12px;color:var(--muted)}
+
+/* Paper trades table */
+.block{background:var(--surface);border-radius:var(--radius-card);box-shadow:var(--shadow-card);padding:24px;display:flex;flex-direction:column;gap:14px}
+.block h2{font-size:22px;font-weight:800}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th{border-bottom:1px solid var(--border);padding:10px;text-align:left;vertical-align:bottom;font-size:12px;font-weight:700;color:var(--muted)}
+td{border-bottom:1px solid var(--bg);padding:12px 10px;text-align:left;vertical-align:top;font-size:14px;color:var(--ink)}
+td .s{display:block;margin-top:2px;font-size:12px;color:var(--muted)}
+.pill{display:inline-block;white-space:nowrap;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700}
+.pill.pos{background:var(--pos-bg);color:var(--pos)}.pill.paper{background:var(--unknown-bg);color:var(--unknown)}
+.lnk{color:var(--accent-ink);font-weight:700;text-decoration:underline;font-size:14px}
+.trbtn{min-height:40px;border-radius:var(--radius-control);border:1px solid var(--border-input);background:var(--surface);padding:0 12px;font:800 13px inherit;font-family:inherit;color:var(--accent-ink)}
+.sheet{width:560px;max-width:100%;background:var(--surface);border-radius:var(--radius-card);box-shadow:0 20px 60px rgb(20 26 51 / .18);padding:22px 24px;display:flex;flex-direction:column;gap:18px}
+.sheet-h{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.sheet-h h3{font-size:18px;font-weight:800}
+.dstep{display:flex;gap:14px}
+.ddot{display:flex;width:28px;height:28px;flex:none;align-items:center;justify-content:center;border-radius:999px;font-size:13px;font-weight:800}
+.dbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;padding-bottom:18px;border-bottom:1px solid var(--bg)}
+.dbody h3{font-size:16px;font-weight:800}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px}
+.facts dt{font-size:12px;font-weight:700;color:var(--muted)}
+.facts dd{font-size:14px;font-weight:700}
+.dnote{font-size:13px;color:var(--ink-2)}
+
+/* ---------- mobile frames ---------- */
+.phones{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+.phone{width:390px;max-width:100%;background:var(--bg);border-radius:28px;border:1px solid #d9deef;padding:16px;display:flex;flex-direction:column;gap:10px}
+.phone .card{padding:16px;gap:12px}
+.phone .h2{font-size:17px}
+.phone .sub{font-size:12px}
+.phone .btns{width:100%}.phone .btn{flex:1}
+.phone .thead h3{font-size:15px}
+.phone .fbox{padding:14px 12px}
+.phone .bands{padding-right:0}
+.phone .band{min-height:30px;font-size:12px}
+.phone .ctxp{width:auto}
+.phone .steps{grid-template-columns:1fr;gap:8px}
+.phone .toggles{flex-wrap:nowrap;overflow-x:auto;min-width:0}
+.phone .feed-h h3{font-size:14px;margin-top:4px}
+.phone .step{padding:12px}
+.phone .art{padding:12px}
+.copylist{background:var(--surface);border-radius:var(--radius-card);box-shadow:var(--shadow-card);padding:22px 24px;display:flex;flex-direction:column;gap:12px;font-size:13.5px;line-height:1.55;color:var(--ink-2)}
+.copylist h2{font-size:20px;font-weight:800;color:var(--ink)}
+.copylist h3{font-size:15px;font-weight:800;color:var(--ink);margin-top:6px}
+.copylist table{table-layout:auto}
+.copylist td,.copylist th{font-size:13px;vertical-align:top}
+.copylist code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:1px 5px;color:var(--ink)}
+.copylist ol{list-style:decimal;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.desk-only{}
+.mob-msg{display:none}
+@media (max-width:1023px){
+  .desk-only{display:none}
+  .mob-msg{display:block}
+  .page{padding:16px 12px 40px;gap:20px}
+  .doc-h{font-size:22px}
+  .phone{border:0;border-radius:0;padding:0;width:100%}
+  .copylist{padding:16px}
+  .copylist table{display:block;overflow-x:auto}
+}
+</style>
+<style>
+/* bổ sung v2 */
+.cgrid{margin-top:8px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.cgrid .cg{display:flex;flex-direction:column;gap:6px;min-width:0}
+.cgrid .cg b{font-size:12px;font-weight:800}
+.cgrid .tile{height:44px;border-radius:10px;border:1px solid var(--border);background:repeating-linear-gradient(135deg,#f1f3fa 0 6px,#fff 6px 12px)}
+.ctxp .cm{font-size:11.5px;font-weight:800;color:var(--ink-2);margin-top:2px}
+.ctxp .tile.sm{height:38px}
+.mn-strip{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--pos-border,#a9dcbf);background:var(--pos-bg);border-radius:14px;padding:10px 14px;font-size:13px;font-weight:700;color:var(--pos)}
+.sig{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);padding:8px 0;font-size:14px}
+.sig:last-child{border-bottom:0}
+.sig .tm{flex:none;width:56px;font-size:12px;color:var(--muted)}
+.sig .rw{flex:1;min-width:0}
+.mt th{white-space:nowrap;padding:8px 10px}
+.mt td{font-size:13.5px;padding:10px;vertical-align:top}
+.mt .b{display:block}
+.mt .x{display:block;font-size:12px;color:var(--muted)}
+.mn-col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.phone .cgrid{grid-template-columns:1fr}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="cap">
+    <h1 class="doc-h">Signal research · sự kiện tin nêu nhiều coin (#530 PR3) · v2</h1>
+    <p class="doc-p">Mockup HTML tĩnh cho phần hiển thị của #530, cập nhật theo các điểm PM đã chốt (a–i). Gồm: trace bài đầu (mở lệnh cho mọi coin, chia cỡ lệnh, Context và story theo từng coin), trace bài đăng lại (<b>Same event</b>), chế độ tổng, Paper trades, khung Mainnet và bản 390 px. Bố cục, màu, cỡ chữ chép từ code hiện tại (<code>news-trace.tsx</code>, <code>funnel.tsx</code>, <code>trades.tsx</code>, <code>detail.tsx</code>, <code>mainnet/signals-24h.tsx</code>, <code>mainnet/mainnet-trades.tsx</code>) và token <code>packages/ui</code>; chỉ phần đánh dấu là mới. Dữ liệu: ví dụ thật trong #530, bot paper size 500 USDC, giờ UTC, xem như người dùng test (không có chi phí Claude).</p>
+    <div class="legend">
+      <span><span class="lg-sw pmc" style="display:inline-block"></span>Câu chữ mới, PM đã duyệt (dùng nguyên văn)</span>
+      <span><span class="ph"></span>&nbsp;Số không có trong dữ liệu ví dụ; màn thật lấy từ API</span>
+    </div>
+    <p class="mob-msg note-out">Màn hình hẹp: chỉ hiện khung điện thoại (D) và mục câu chữ. Mở ở ≥ 1024 px để xem khung desktop A, B, B3, B2, C, E.</p>
+  </header>
+
+  <!-- ===================================================== A -->
+  <section class="cap desk-only">
+    <h2>A · Bài đầu: một sự kiện, ba coin, chia cỡ lệnh</h2>
+    <p>Bài ChainCatcher 15:35 nêu AAVE, LINK, UNI, chiều Long. k = 3 (cả ba có market trên SoDEX, tính ở Score) → mỗi coin 500 ÷ 3 = 166.66 USDC (làm tròn xuống tới cent). Mỗi coin một story, mở trước các kiểm tra Filter (nên UNI cũng có story dù bị bỏ), nối với nhau bằng <code>eventKey</code>; Context ghi cho từng coin. UNI rớt ở Filter vì take profit dưới 2× cost. Phần của UNI <b>không dồn</b> sang AAVE / LINK, k vẫn là 3, nên câu chia vẫn ghi "3 coins".</p>
+  </section>
+
+  <div class="pair desk-only">
+    <div class="pair-col">
+      <div class="note-out"><span class="tag before">Before</span>Hiện nay bài này chỉ sinh tín hiệu cho một market: chip feed <b>Long AAVE · paper trade</b>, band Decide <b>Long 500 USDC</b>. LINK và UNI vào lệnh vài giờ sau qua bài đăng lại.</div>
+    </div>
+    <div class="pair-col">
+      <div class="note-out"><span class="tag after">After</span>Chip liệt kê các coin đã vào lệnh. Band Filter ghi <b>2 of 3 coins passed</b>, band Decide ghi <b>Long 166.66 USDC × 2</b>. Thẻ Context, Filter, Decide có một nhóm cho mỗi coin. Band Normalize liệt kê cả 3 market ứng viên.</div>
+    </div>
+  </div>
+
+  <section class="card desk-only" id="frame-a" aria-label="Frame A">
+    <div class="head">
+      <div class="thead" style="gap:2px">
+        <h2 class="h2">From headline to trade</h2>
+        <p class="sub">Every article, what happened to it, and why. Pick one to watch it go through.</p>
+      </div>
+      <div class="btns"><button class="btn">Back to totals</button><button class="btn pri">Replay</button></div>
+    </div>
+    <div class="thead">
+      <h3>A major broker adds AAVE, LINK and UNI trading</h3>
+      <span>SoSoValue · ChainCatcher · published 15:35 · <a href="#">Open article</a></span>
+    </div>
+
+    <div class="grid3">
+      <div class="feed">
+        <div class="feed-h"><h3>News feed</h3><span><span class="ph s"></span> of <span class="ph"></span> articles</span></div>
+        <div class="toggles"><span class="tg on">All</span><span class="tg">Traded</span><span class="tg">Dropped</span><span class="tg">Sent to Claude</span></div>
+        <ul class="feed" style="gap:8px">
+          <li><div class="art"><span class="meta"><span>00:47 · <span class="ph s"></span> after release</span></span><span class="t">AAVE, LINK and UNI to trade on a major broker</span><span class="row"><span class="chip neu">Merged into an existing story</span><span class="assets">AAVE, LINK, UNI</span></span></div></li>
+          <li><div class="art"><span class="meta"><span>23:22 · <span class="ph s"></span> after release</span></span><span class="t">Major broker opens AAVE and LINK trading</span><span class="row"><span class="chip neu">Merged into an existing story</span><span class="assets">AAVE, LINK</span></span></div></li>
+          <li><div class="art"><span class="meta"><span>20:24 · <span class="ph s"></span> after release</span></span><span class="t">Major broker lists UNI for trading</span><span class="row"><span class="chip neu">Merged into an existing story</span><span class="assets">UNI</span></span></div></li>
+          <li><div class="art sel"><span class="meta"><span>15:35 · <span class="ph s"></span> after release</span></span><span class="t">A major broker adds AAVE, LINK and UNI trading</span><span class="row"><span class="chip pos">Long AAVE, LINK · paper trade</span><span class="assets">AAVE, LINK, UNI</span></span></div></li>
+        </ul>
+      </div>
+
+      <div class="span2">
+        <div class="fbox">
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
+            <div class="bands">
+              <div class="band b-collect" style="width:94%"><span>1 · Collect</span><span class="n">Seen <span class="ph s" style="background:repeating-linear-gradient(135deg,#6a86d6 0 4px,#1d47b8 4px 8px)"></span> after release</span></div>
+              <div class="band b-normalize" style="width:88%"><span>2 · Normalize</span><span class="n">AAVE-USD, LINK-USD, UNI-USD · new story</span></div>
+              <div class="band b-score" style="width:82%"><span>3 · Score</span><span class="n">Listing → Long</span></div>
+              <div class="band b-context" style="width:78%"><span>4 · Context</span><span class="n"><span class="ph s"></span></span></div>
+              <div class="band b-filter" style="width:72%"><span>5 · Filter</span><span class="n pmc">2 of 3 coins passed</span></div>
+              <div class="band b-decide" style="width:66%"><span>6 · Decide</span><span class="n pmc">Long 166.66 USDC × 2</span></div>
+              <div class="dock"></div>
+              <div class="token traded" style="left:calc((100% - 104px) / 2);bottom:2px">Paper trade · AAVE, LINK</div>
+            </div>
+          </div>
+          <p class="verdict pos">Reached Decide: Long AAVE-USD, 166.66 USDC · Long LINK-USD, 166.66 USDC</p>
+        </div>
+        <div class="ctxp">
+          <div class="l"><span>4 · Context</span><span class="ph"></span></div>
+          <span class="cm">AAVE-USD</span><div class="tile sm"></div>
+          <span class="cm">LINK-USD</span><div class="tile sm"></div>
+          <span class="cm">UNI-USD</span><div class="tile sm"></div>
+        </div>
+      </div>
+    </div>
+
+    <ol class="steps">
+      <li class="step">
+        <div class="sh"><span class="dot b-collect">1</span><h4>Collect</h4><span class="st pass">Passed</span></div>
+        <p class="ssum">Read from the SoSoValue news feed.</p>
+        <dl class="rows"><div><dt>Published</dt><dd>15:35:<span class="ph s"></span></dd></div><div><dt>Collected</dt><dd><span class="ph l"></span></dd></div><div><dt>Source</dt><dd>ChainCatcher</dd></div><div><dt>SoSoValue tags</dt><dd>AAVE, LINK, UNI</dd></div></dl>
+      </li>
+      <li class="step">
+        <div class="sh"><span class="dot b-normalize">2</span><h4>Normalize</h4><span class="st pass">Passed</span></div>
+        <p class="ssum">Matched the tagged coins to SoDEX markets and opened a new story.</p>
+        <dl class="rows"><div><dt>Candidates</dt><dd>AAVE-USD, LINK-USD, UNI-USD</dd></div><div><dt>Story</dt><dd>New · Listing · AAVE-USD</dd></div><div><dt>Sources in story</dt><dd>1</dd></div></dl>
+      </li>
+      <li class="step">
+        <div class="sh"><span class="dot b-score">3</span><h4>Score</h4><span class="st pass">Passed</span></div>
+        <p class="ssum">Claude read the article and named the type and the asset. The rules, not Claude, set the direction and the level.</p>
+        <dl class="rows"><div><dt>News type</dt><dd>Listing → Long</dd></div><div><dt>Asset</dt><dd>AAVE, LINK, UNI</dd></div><div><dt>Relevance</dt><dd>Main subject, not a passing mention</dd></div><div><dt>Level</dt><dd><span class="ph l"></span></dd></div></dl>
+      </li>
+      <li class="step full" style="border:2px solid var(--accent)">
+        <div class="sh"><span class="dot" style="background:var(--accent-tint);color:var(--accent-ink)">4</span><h4>Context</h4></div>
+        <div class="cgrid">
+          <div class="cg"><b>AAVE-USD</b><div class="tile"></div><div class="tile"></div><div class="tile"></div></div>
+          <div class="cg"><b>LINK-USD</b><div class="tile"></div><div class="tile"></div><div class="tile"></div></div>
+          <div class="cg"><b>UNI-USD</b><div class="tile"></div><div class="tile"></div><div class="tile"></div></div>
+        </div>
+        <p class="dimtxt">Mỗi coin một nhóm Context, dùng lại thẻ Context hiện nay (whales / funding / ran early) với snapshot của coin đó. Ô gạch chéo: ví dụ không có số liệu.</p>
+      </li>
+      <li class="step">
+        <div class="sh"><span class="dot b-filter">5</span><h4>Filter</h4><span class="st pass">Passed</span></div>
+        <p class="ssum"><span class="pmc">Checked each coin on its own.</span></p>
+        <dl class="rows">
+          <div class="coin-h">AAVE-USD</div>
+          <div><dt>Source on time</dt><dd><span class="ph"></span></dd></div>
+          <div><dt>Price</dt><dd>SoDEX price available</dd></div>
+          <div><dt>Open trade on AAVE-USD</dt><dd>None</dd></div>
+          <div><dt>Take profit vs cost</dt><dd><span class="ph l"></span></dd></div>
+          <div class="coin-h">LINK-USD</div>
+          <div><dt>Source on time</dt><dd><span class="ph"></span></dd></div>
+          <div><dt>Price</dt><dd>SoDEX price available</dd></div>
+          <div><dt>Open trade on LINK-USD</dt><dd>None</dd></div>
+          <div><dt>Take profit vs cost</dt><dd><span class="ph l"></span></dd></div>
+          <div class="coin-h">UNI-USD</div>
+          <div><dt>Source on time</dt><dd><span class="ph"></span></dd></div>
+          <div><dt>Price</dt><dd>SoDEX price available</dd></div>
+          <div><dt>Open trade on UNI-USD</dt><dd>None</dd></div>
+          <div><dt>Take profit vs cost</dt><dd><span class="ph l"></span> vs 2 × <span class="ph s"></span> = <span class="ph s"></span></dd></div>
+          <div><dt>Result</dt><dd>Dropped: Take profit under 2× cost</dd></div>
+        </dl>
+      </li>
+      <li class="step">
+        <div class="sh"><span class="dot b-decide">6</span><h4>Decide</h4><span class="st pass">Passed</span></div>
+        <p class="ssum"><span class="pmc">Opened paper trades on the News bot.</span></p>
+        <div class="split"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg><span class="pmc">Size split across 3 coins from one event.</span></div>
+        <dl class="rows">
+          <div><dt>AAVE-USD</dt><dd>Long AAVE-USD · 166.66 USDC</dd></div>
+          <div><dt>LINK-USD</dt><dd>Long LINK-USD · 166.66 USDC</dd></div>
+          <div><dt>UNI-USD</dt><dd>Dropped: Take profit under 2× cost</dd></div>
+        </dl>
+        <p class="dimtxt">Entry, Take profit / Stop loss, Max hold của từng lệnh nằm ở chi tiết lệnh (khung C). Ví dụ không có giá nên mockup không vẽ.</p>
+      </li>
+    </ol>
+  </section>
+
+  <div class="note-out desk-only"><b>Ghi chú A:</b> Câu kết luận dưới phễu ghép câu sẵn có <code>trace.why.traded</code> cho từng lệnh, nối bằng " · ". Band Decide "Long {size} USDC × {n}" chỉ dùng khi có hơn một lệnh; một lệnh giữ "Long 500 USDC". Band Filter "{passed} of {n} coins passed" chỉ dùng cho sự kiện nhiều coin; sự kiện một coin giữ "{passed} of {total} checks". Chip feed và chip trong phễu dùng mẫu sẵn có (<code>chip.traded</code>, <code>token.traded</code>) với danh sách coin đã vào lệnh (không gồm UNI). Bài 00:47 hiện <b>Merged</b> như hiện nay (điểm b).</div>
+
+  <!-- ===================================================== B -->
+  <section class="cap desk-only">
+    <h2>B · Bài đăng lại 20:24 (UNI): gộp "story too old"</h2>
+    <p>Story của UNI được mở ở bài 15:35 (story tạo trước các kiểm tra Filter, nên UNI vẫn có story dù bị bỏ vì take profit dưới 2× cost). Bài sau trong 120 phút thì thử lại. Bài 20:24 đến sau gần 5 giờ, quá cửa sổ thử lại, nên gộp vào story đó với lý do sẵn có <code>storyTooOld</code>. Đây là luật thử lại cũ, không dùng Same event. Bài 23:22 và 00:47 gộp vào story của AAVE / LINK (đã vào lệnh) nên hiện Merged như hiện nay.</p>
+  </section>
+
+  <div class="pair desk-only">
+    <div class="pair-col"><div class="note-out"><span class="tag before">Before</span>Bài 20:24 mở lệnh Long UNI trễ khoảng 5 giờ so với tin gốc; bài 23:22 mở Long LINK trễ khoảng 8 giờ.</div></div>
+    <div class="pair-col"><div class="note-out"><span class="tag after">After</span>Chip feed <b>Merged into an existing story</b>, band Filter <b>Merged</b>, thẻ Filter ghi story bắt đầu lúc 15:35 và kết quả <b>Merged: story too old to trade again</b>. Toàn bộ là câu sẵn có.</div></div>
+  </div>
+
+  <section class="card desk-only" id="frame-b" aria-label="Frame B">
+    <div class="head">
+      <div class="thead" style="gap:2px">
+        <h2 class="h2">From headline to trade</h2>
+        <p class="sub">Every article, what happened to it, and why. Pick one to watch it go through.</p>
+      </div>
+      <div class="btns"><button class="btn">Back to totals</button><button class="btn pri">Replay</button></div>
+    </div>
+    <div class="thead">
+      <h3>Major broker lists UNI for trading</h3>
+      <span>SoSoValue · Odaily · published 20:24 · <a href="#">Open article</a></span>
+    </div>
+    <div class="grid3">
+      <div class="feed">
+        <div class="feed-h"><h3>News feed</h3><span><span class="ph s"></span> of <span class="ph"></span> articles</span></div>
+        <div class="toggles"><span class="tg on">All</span><span class="tg">Traded</span><span class="tg">Dropped</span><span class="tg">Sent to Claude</span></div>
+        <ul class="feed" style="gap:8px">
+          <li><div class="art"><span class="meta"><span>00:47 · <span class="ph s"></span> after release</span></span><span class="t">AAVE, LINK and UNI to trade on a major broker</span><span class="row"><span class="chip neu">Merged into an existing story</span><span class="assets">AAVE, LINK, UNI</span></span></div></li>
+          <li><div class="art"><span class="meta"><span>23:22 · <span class="ph s"></span> after release</span></span><span class="t">Major broker opens AAVE and LINK trading</span><span class="row"><span class="chip neu">Merged into an existing story</span><span class="assets">AAVE, LINK</span></span></div></li>
+          <li><div class="art sel"><span class="meta"><span>20:24 · <span class="ph s"></span> after release</span></span><span class="t">Major broker lists UNI for trading</span><span class="row"><span class="chip neu">Merged into an existing story</span><span class="assets">UNI</span></span></div></li>
+          <li><div class="art"><span class="meta"><span>15:35 · <span class="ph s"></span> after release</span></span><span class="t">A major broker adds AAVE, LINK and UNI trading</span><span class="row"><span class="chip pos">Long AAVE, LINK · paper trade</span><span class="assets">AAVE, LINK, UNI</span></span></div></li>
+        </ul>
+      </div>
+      <div class="span2">
+        <div class="fbox">
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
+            <div class="bands">
+              <div class="band b-collect" style="width:94%"><span>1 · Collect</span><span class="n">Seen <span class="ph s" style="background:repeating-linear-gradient(135deg,#6a86d6 0 4px,#1d47b8 4px 8px)"></span> after release</span></div>
+              <div class="band b-normalize" style="width:88%"><span>2 · Normalize</span><span class="n">UNI-USD · same story</span></div>
+              <div class="band b-score" style="width:82%"><span>3 · Score</span><span class="n">Listing → Long</span></div>
+              <div class="band b-context" style="width:78%"><span>4 · Context</span><span class="n"><span class="ph s"></span></span></div>
+              <div class="band b-drop" style="width:72%"><span>5 · Filter</span><span class="n">Merged</span></div>
+              <div class="band b-idle" style="width:66%"><span>6 · Decide</span></div>
+              <div class="dock"></div>
+              <div class="token traded" style="left:calc((100% - 104px) / 2);bottom:2px;background:var(--bg);border-color:var(--muted);color:var(--ink-2)">Merged · UNI</div>
+            </div>
+          </div>
+          <p class="verdict">Merged at Filter: story too old to trade again</p>
+        </div>
+        <div class="ctxp"><div class="l"><span>4 · Context</span><span class="ph"></span></div><span class="cm">UNI-USD</span><div class="tile"></div><div class="tile"></div><div class="tile"></div></div>
+      </div>
+    </div>
+    <ol class="steps">
+      <li class="step dim"><div class="sh"><span class="dot b-collect">1</span><h4>Collect</h4><span class="st pass">Passed</span></div><p class="dimtxt">Không đổi (Published 20:24, Source Odaily, tags UNI).</p></li>
+      <li class="step">
+        <div class="sh"><span class="dot b-normalize">2</span><h4>Normalize</h4><span class="st pass">Passed</span></div>
+        <p class="ssum">Matched the tagged coins to SoDEX markets and joined a story already open.</p>
+        <dl class="rows"><div><dt>Candidates</dt><dd>UNI-USD</dd></div><div><dt>Story</dt><dd>Joined · Listing · UNI-USD</dd></div><div><dt>Sources in story</dt><dd><span class="ph s"></span></dd></div></dl>
+      </li>
+      <li class="step dim"><div class="sh"><span class="dot b-score">3</span><h4>Score</h4><span class="st pass">Passed</span></div><p class="dimtxt">Không đổi (Listing → Long, Asset UNI).</p></li>
+      <li class="step">
+        <div class="sh"><span class="dot b-drop">5</span><h4>Filter</h4><span class="st drop">Merged</span></div>
+        <p class="ssum">Joined a story that started too long ago to trade again.</p>
+        <dl class="rows">
+          <div><dt>Source on time</dt><dd><span class="ph"></span></dd></div>
+          <div><dt>Price</dt><dd>SoDEX price available</dd></div>
+          <div><dt>Open trade on UNI-USD</dt><dd>None</dd></div>
+          <div><dt>Take profit vs cost</dt><dd><span class="ph l"></span></dd></div>
+          <div><dt>Story started</dt><dd>15:35</dd></div>
+          <div><dt>Result</dt><dd>Merged: story too old to trade again</dd></div>
+        </dl>
+      </li>
+    </ol>
+  </section>
+
+  <div class="note-out desk-only"><b>Ghi chú B:</b> Khung này chỉ dùng câu sẵn có của trace: <code>chip.merged</code>, <code>status.merge</code>, <code>token.merged</code>, <code>verdict.merged</code> + <code>why.storyTooOld</code>, <code>summary.mergedTooOld</code>, <code>rows.storyStarted</code>, <code>values.merged</code>. "Story too old to retry" là nhãn của <code>STORY_TOO_OLD</code> trong danh sách Signals của bot Mainnet. Trace dùng câu riêng "story too old to trade again". Bài gộp không phải bài bị loại, nên không có chip trong "Why they dropped out" mà nằm trong số "merged into a story" ở tooltip band Filter (xem B2).</div>
+
+  <!-- ===================================================== B3 Same event -->
+  <section class="cap desk-only">
+    <h2>B3 · Same event (GIẢ ĐỊNH, không có trong dữ liệu ví dụ)</h2>
+    <p><b>Bài giả định:</b> đăng lại 25/11 01:30, cùng loại tin listing, nêu COMP trước rồi tới AAVE. COMP là coin mới, không có ở bài đầu. Có ít nhất một coin trùng với sự kiện 15:35 nên mọi coin của bài được xét theo SAME_EVENT. COMP không có story nào nên bị loại với <b>Same event</b> (Dropped ở Filter). AAVE đã có story khoá (đã vào lệnh) nên gộp <code>sameStory</code>. Cả bài ghi "Dropped at Filter · Same event" vì COMP được nêu trước. Bài đầu khác ngày nên dòng First article có thêm ngày ("Nov 24 15:35"). Tiêu đề và nguồn là giả định.</p>
+  </section>
+
+  <section class="card desk-only" id="frame-b3" aria-label="Frame B3">
+    <div class="head">
+      <div class="thead" style="gap:2px">
+        <h2 class="h2">From headline to trade</h2>
+        <p class="sub">Every article, what happened to it, and why. Pick one to watch it go through.</p>
+      </div>
+      <div class="btns"><button class="btn">Back to totals</button><button class="btn pri">Replay</button></div>
+    </div>
+    <div class="thead">
+      <h3>Major broker adds COMP and AAVE trading</h3>
+      <span>SoSoValue · <span class="ph"></span> · published 01:30 · <a href="#">Open article</a></span>
+    </div>
+    <div class="grid3">
+      <div class="feed">
+        <div class="feed-h"><h3>News feed</h3><span><span class="ph s"></span> of <span class="ph"></span> articles</span></div>
+        <div class="toggles"><span class="tg on">All</span><span class="tg">Traded</span><span class="tg">Dropped</span><span class="tg">Sent to Claude</span></div>
+        <ul class="feed" style="gap:8px">
+          <li><div class="art sel"><span class="meta"><span>01:30 · <span class="ph s"></span> after release</span></span><span class="t">Major broker adds COMP and AAVE trading</span><span class="row"><span class="chip neu">Dropped at Filter</span><span class="assets">COMP, AAVE</span></span></div></li>
+          <li><div class="art"><span class="meta"><span>00:47 · <span class="ph s"></span> after release</span></span><span class="t">AAVE, LINK and UNI to trade on a major broker</span><span class="row"><span class="chip neu">Merged into an existing story</span><span class="assets">AAVE, LINK, UNI</span></span></div></li>
+          <li><div class="art"><span class="meta"><span>23:22 · <span class="ph s"></span> after release</span></span><span class="t">Major broker opens AAVE and LINK trading</span><span class="row"><span class="chip neu">Merged into an existing story</span><span class="assets">AAVE, LINK</span></span></div></li>
+          <li><div class="art"><span class="meta"><span>20:24 · <span class="ph s"></span> after release</span></span><span class="t">Major broker lists UNI for trading</span><span class="row"><span class="chip neu">Merged into an existing story</span><span class="assets">UNI</span></span></div></li>
+        </ul>
+      </div>
+      <div class="span2">
+        <div class="fbox">
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
+            <div class="bands">
+              <div class="band b-collect" style="width:94%"><span>1 · Collect</span><span class="n">Seen <span class="ph s" style="background:repeating-linear-gradient(135deg,#6a86d6 0 4px,#1d47b8 4px 8px)"></span> after release</span></div>
+              <div class="band b-normalize" style="width:88%"><span>2 · Normalize</span><span class="n">COMP-USD, AAVE-USD · same story</span></div>
+              <div class="band b-score" style="width:82%"><span>3 · Score</span><span class="n">Listing → Long</span></div>
+              <div class="band b-context" style="width:78%"><span>4 · Context</span><span class="n"><span class="ph s"></span></span></div>
+              <div class="band b-drop" style="width:72%"><span>5 · Filter</span><span class="n pmc">Same event</span></div>
+              <div class="band b-idle" style="width:66%"><span>6 · Decide</span></div>
+              <div class="dock"></div>
+              <div class="token drop" style="left:calc(100% - 100px);top:176px">Out · COMP, AAVE</div>
+            </div>
+          </div>
+          <p class="verdict">Stopped at Filter: <span class="pmc">this article repeats an event that was already handled</span></p>
+        </div>
+        <div class="ctxp"><div class="l"><span>4 · Context</span><span class="ph"></span></div><span class="cm">COMP-USD</span><div class="tile sm"></div><span class="cm">AAVE-USD</span><div class="tile sm"></div></div>
+      </div>
+    </div>
+    <ol class="steps">
+      <li class="step dim"><div class="sh"><span class="dot b-collect">1</span><h4>Collect</h4><span class="st pass">Passed</span></div><p class="dimtxt">Không đổi (Published 01:30, tags COMP, AAVE).</p></li>
+      <li class="step">
+        <div class="sh"><span class="dot b-normalize">2</span><h4>Normalize</h4><span class="st pass">Passed</span></div>
+        <p class="ssum">Matched the tagged coins to SoDEX markets and joined a story already open.</p>
+        <dl class="rows"><div><dt>Candidates</dt><dd>COMP-USD, AAVE-USD</dd></div><div><dt>Story</dt><dd>Joined · Listing · AAVE-USD</dd></div><div><dt>Sources in story</dt><dd><span class="ph s"></span></dd></div></dl>
+      </li>
+      <li class="step dim"><div class="sh"><span class="dot b-score">3</span><h4>Score</h4><span class="st pass">Passed</span></div><p class="dimtxt">Không đổi (Listing → Long, Asset COMP, AAVE).</p></li>
+      <li class="step">
+        <div class="sh"><span class="dot b-drop">5</span><h4>Filter</h4><span class="st drop">Dropped</span></div>
+        <p class="ssum"><span class="pmc">This article repeats an event that was already handled.</span></p>
+        <dl class="rows">
+          <div><dt><span class="pmc">First article</span></dt><dd>A major broker adds AAVE, LINK and UNI trading (Nov 24 15:35)</dd></div>
+          <div class="coin-h">COMP-USD</div>
+          <div><dt>Result</dt><dd>Dropped: <span class="pmc">Same event</span></dd></div>
+          <div class="coin-h">AAVE-USD</div>
+          <div><dt>Result</dt><dd>Merged: joined a story already open</dd></div>
+        </dl>
+      </li>
+    </ol>
+  </section>
+
+  <div class="note-out desk-only"><b>Ghi chú B3:</b> Một bài, hai coin, hai kết quả. Theo luật xếp bài DEC-327 (event ghi trước thắng), trạng thái cả bài lấy theo coin được nêu trước. Bài này nêu COMP trước, nên chip feed là "Dropped at Filter", band là "Same event", và bài nằm dưới chip lý do Same event. Nếu bài nêu AAVE trước thì cả bài ra <b>Merged</b> (chip "Merged into an existing story") và không tính vào chip Same event. Kết quả từng coin ghi trong thẻ Filter, theo thứ tự coin trong bài: COMP "Dropped: Same event", AAVE "Merged: joined a story already open". Band Normalize liệt kê mọi market ứng viên. Dòng Story là story mà trace trả về (AAVE-USD, Joined).</div>
+
+  <section class="cap desk-only">
+    <h2>B2 · Chế độ tổng: chip lý do và bộ lọc feed</h2>
+    <p>"Why they dropped out" có chip <b>Same event · 1</b>: chỉ bài giả định 01:30 (khung B3). Bài 20:24 (story too old), 23:22 và 00:47 (same story) là bài gộp, không có trong chip lý do. Chúng được đếm trong "merged into a story" ở tooltip band Filter. Bấm chip thì feed lọc theo lý do, thanh lọc ghi <b>Reason: Same event</b>. Ghi chú band Decide là <b>Up to {size} USDC each</b> khi trong kỳ có lệnh chia. Phễu tổng và các ô khác không đổi nên lược bớt.</p>
+  </section>
+
+  <section class="card desk-only" id="frame-b2" aria-label="Frame B2">
+    <div class="grid3">
+      <div class="feed">
+        <div class="feed-h"><h3>News feed</h3><span>1 of <span class="ph"></span> articles</span></div>
+        <div class="toggles"><span class="tg on">All</span><span class="tg">Traded</span><span class="tg">Dropped</span><span class="tg">Sent to Claude</span></div>
+        <div class="filterbar"><span>Reason: <span class="pmc">Same event</span></span><u>Clear</u></div>
+        <ul class="feed" style="gap:8px">
+          <li><div class="art"><span class="meta"><span>01:30 · <span class="ph s"></span> after release</span></span><span class="t">Major broker adds COMP and AAVE trading</span><span class="row"><span class="chip neu">Dropped at Filter</span><span class="assets">COMP, AAVE</span></span></div></li>
+        </ul>
+        <p class="dimtxt">Bài 01:30 là bài giả định của khung B3.</p>
+      </div>
+      <div class="span2" style="flex-direction:column">
+        <div class="fbox" style="flex:none;gap:10px">
+          <div class="bands" style="padding-right:0">
+            <div class="band b-filter" style="width:50%"><span>5 · Filter</span><span class="n"><span class="ph s"></span> left</span></div>
+          </div>
+          <p class="sub" style="text-align:center">Tooltip band Filter: "<span class="ph s"></span> out · <span class="ph s"></span> TP under cost, 1 <span class="pmc">same event</span>, <span class="ph s"></span> merged into a story"</p>
+          <div class="bands" style="padding-right:0">
+            <div class="band b-decide" style="width:38%"><span>6 · Decide</span><span class="n">Long <span class="ph s" style="background:repeating-linear-gradient(135deg,#5fae84 0 4px,#0f7a43 4px 8px)"></span> · Short <span class="ph s" style="background:repeating-linear-gradient(135deg,#5fae84 0 4px,#0f7a43 4px 8px)"></span></span></div>
+          </div>
+          <p class="sub" style="text-align:center">Tooltip band Decide: "<span class="pmc">Up to 500 USDC each</span> · TP / SL from volatility"</p>
+        </div>
+        <div class="tcard">
+          <h3>Why they dropped out</h3>
+          <div class="toggles">
+            <span class="tg">Not on SoDEX · <span class="ph s"></span></span>
+            <span class="tg">Not a catalyst · <span class="ph s"></span></span>
+            <span class="tg on"><span>Same event · 1</span></span>
+            <span class="tg">Take profit under 2× cost · <span class="ph s"></span></span>
+          </div>
+          <span class="hint">Click a reason to list those articles in the feed.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== C -->
+  <section class="cap desk-only">
+    <h2>C · Paper trades: hai lệnh cùng một bài</h2>
+    <p>Hai dòng AAVE và LINK cùng bài 15:35. Mỗi dòng mở được chi tiết riêng và có nút Trace về cùng bài. Bảng không có cột cỡ lệnh nên không thêm gì vào bảng. Câu chia cỡ lệnh đặt ở chi tiết lệnh, dưới bước Trade, cạnh ô Size 166.66 USDC. Dòng kết quả hiện cỡ lệnh đủ cent ("on 166.66 USDC"), không làm tròn thành $167.</p>
+  </section>
+
+  <section class="block desk-only" id="frame-c" aria-label="Frame C">
+    <div style="display:flex;justify-content:space-between;align-items:baseline"><h2>Paper trades</h2></div>
+    <table>
+      <colgroup><col style="width:10%"><col style="width:9%"><col style="width:18%"><col style="width:11%"><col style="width:6%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:9%"><col style="width:7%"></colgroup>
+      <thead><tr><th>Signal</th><th>Seen · delay</th><th>What happened</th><th>Market at entry</th><th>Moved before entry</th><th>Entry</th><th>Take profit</th><th>Stop loss</th><th>Max hold</th><th>Result after fees</th><th></th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>AAVE</b><span class="pill pos">Long</span></span><span class="s">News · <b style="color:var(--unknown)">Live paper</b></span></td>
+          <td style="white-space:nowrap">15:35:<span class="ph s"></span><span class="s"><span class="ph s"></span> after release</span></td>
+          <td><span class="lnk">A major broker adds AAVE, LINK and UNI trading</span><span class="s">Listing → Long · entered at <b><span class="ph s"></span></b> (<span class="ph s"></span>)</span></td>
+          <td><span class="ph l"></span></td><td><span class="ph"></span></td><td><span class="ph"></span></td><td><span class="ph"></span></td><td><span class="ph"></span></td><td><span class="ph s"></span></td><td><span class="ph l"></span></td>
+          <td style="text-align:right"><button class="trbtn">Trace</button></td>
+        </tr>
+        <tr>
+          <td><span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>LINK</b><span class="pill pos">Long</span></span><span class="s">News · <b style="color:var(--unknown)">Live paper</b></span></td>
+          <td style="white-space:nowrap">15:35:<span class="ph s"></span><span class="s"><span class="ph s"></span> after release</span></td>
+          <td><span class="lnk">A major broker adds AAVE, LINK and UNI trading</span><span class="s">Listing → Long · entered at <b><span class="ph s"></span></b> (<span class="ph s"></span>)</span></td>
+          <td><span class="ph l"></span></td><td><span class="ph"></span></td><td><span class="ph"></span></td><td><span class="ph"></span></td><td><span class="ph"></span></td><td><span class="ph s"></span></td><td><span class="ph l"></span></td>
+          <td style="text-align:right"><button class="trbtn">Trace</button></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;margin-top:6px">
+      <div class="sheet" aria-label="Trade detail AAVE">
+        <div class="sheet-h"><h3>Long AAVE · A major broker adds AAVE, LINK and UNI trading</h3><button class="btn" style="min-height:36px">Close</button></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="pill paper">News · Live paper · rules v<span class="ph s"></span></span><span class="pill pos">Long AAVE</span></div>
+          <p class="dnote">Result after fees <b><span class="ph"></span></b> on 166.66 USDC · <span class="ph l"></span></p>
+        </div>
+        <ol style="display:flex;flex-direction:column;gap:18px">
+          <li class="dstep"><span class="ddot" style="background:var(--pos-bg);color:var(--pos)">1</span><div class="dbody"><h3>Received</h3><p class="dimtxt" style="margin:0">Không đổi.</p></div></li>
+          <li class="dstep"><span class="ddot" style="background:var(--pos-bg);color:var(--pos)">4</span><div class="dbody"><h3>Checks</h3><p class="dimtxt" style="margin:0">Không đổi (kiểm tra của riêng AAVE).</p></div></li>
+          <li class="dstep"><span class="ddot" style="background:var(--accent-tint);color:var(--accent-ink)">5</span><div class="dbody">
+            <h3>Trade</h3>
+            <dl class="facts">
+              <div><dt>Entry</dt><dd><span class="ph l"></span> · taker, at the price when seen</dd></div>
+              <div><dt>Size</dt><dd>166.66 USDC</dd></div>
+              <div><dt>Take profit</dt><dd><span class="ph l"></span></dd></div>
+              <div><dt>Stop loss</dt><dd><span class="ph l"></span></dd></div>
+              <div><dt>Max hold</dt><dd><span class="ph"></span></dd></div>
+            </dl>
+            <p class="dnote"><span class="pmc">Size split across 3 coins from one event.</span></p>
+          </div></li>
+        </ol>
+      </div>
+      <div class="note-out" style="max-width:520px"><b>Ghi chú C:</b> Ô Size dùng <code>detail.facts.size</code> "{usd} USDC", nên ra đúng 166.66. Dòng "Result after fees … on {size}" hiện định dạng bằng <code>usdCompact</code> ($167); PR3 đổi sang cỡ lệnh đủ cent "166.66 USDC" (điểm 6, không phải câu chữ mới). Câu chia cỡ lệnh là một note của bước Trade, cùng kiểu với <code>detail.notes.*</code>. Sheet thật có đủ các bước Received → Understood → Scored → Checks → Trade → Result; mockup lược các bước không đổi.</div>
+    </div>
+  </section>
+
+  <!-- ===================================================== E Mainnet -->
+  <section class="cap desk-only">
+    <h2>E · Bot Mainnet: cùng quy tắc chia, theo trần 200 USDC</h2>
+    <p>Bot thật size 500 USDC, sự kiện 3 coin → min(500, 200) ÷ 3 = 66.66 USDC mỗi coin (làm tròn xuống tới cent). Câu vẫn là "Size split across 3 coins from one event.": n là k của sự kiện, kể cả khi bot chỉ nhận một phần. Để thấy rõ "không dồn phần", khung này <b>giả định cả ba coin qua Filter</b>. Với dữ liệu thật (UNI rớt ở Filter), UNI không thành tín hiệu nên cả hai bot đều chỉ có AAVE và LINK. Đòn bẩy và giá không có trong ví dụ.</p>
+  </section>
+
+  <div class="pair desk-only" id="frame-e" aria-label="Frame E">
+    <div class="mn-col">
+      <div class="note-out"><b>Bot 1</b> · Markets: all · Size 500 USDC → 3 lệnh × 66.66 USDC</div>
+      <section class="card" style="padding:24px">
+        <h2 class="h2">Signals in the last 24 h</h2>
+        <ul>
+          <li class="sig"><span class="tm">15:35</span><span class="rw">AAVE · Long · Listing</span><span style="font-weight:600">Traded</span></li>
+          <li class="sig"><span class="tm">15:35</span><span class="rw">LINK · Long · Listing</span><span style="font-weight:600">Traded</span></li>
+          <li class="sig"><span class="tm">15:35</span><span class="rw">UNI · Long · Listing</span><span style="font-weight:600">Traded</span></li>
+        </ul>
+      </section>
+      <section class="card" style="padding:24px">
+        <h2 class="h2">Mainnet trades</h2>
+        <p class="sub" style="font-size:12px">TP and SL are orders on SoDEX, so they stay in place even if DeskLabs is down. Result after SoDEX and builder fees.</p>
+        <table class="mt">
+          <colgroup><col style="width:12%"><col style="width:40%"><col><col><col><col></colgroup>
+          <thead><tr><th>Opened</th><th>Market</th><th style="text-align:right">Entry</th><th style="text-align:right">TP</th><th style="text-align:right">SL</th><th style="text-align:right">Result</th></tr></thead>
+          <tbody>
+            <tr><td>15:35</td><td><span class="b">AAVE · Long</span><span class="x" style="white-space:nowrap">66.66 USDC · <span class="ph s"></span>×</span><span class="x pmc">Size split across 3 coins from one event.</span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td></tr>
+            <tr><td>15:35</td><td><span class="b">LINK · Long</span><span class="x" style="white-space:nowrap">66.66 USDC · <span class="ph s"></span>×</span><span class="x pmc">Size split across 3 coins from one event.</span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td></tr>
+            <tr><td>15:35</td><td><span class="b">UNI · Long</span><span class="x" style="white-space:nowrap">66.66 USDC · <span class="ph s"></span>×</span><span class="x pmc">Size split across 3 coins from one event.</span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+    <div class="mn-col">
+      <div class="note-out"><b>Bot 2</b> · Markets: AAVE, LINK · Size 500 USDC → 2 lệnh × 66.66 USDC; phần của UNI không dồn</div>
+      <section class="card" style="padding:24px">
+        <h2 class="h2">Signals in the last 24 h</h2>
+        <ul>
+          <li class="sig"><span class="tm">15:35</span><span class="rw">AAVE · Long · Listing</span><span style="font-weight:600">Traded</span></li>
+          <li class="sig"><span class="tm">15:35</span><span class="rw">LINK · Long · Listing</span><span style="font-weight:600">Traded</span></li>
+          <li class="sig"><span class="tm">15:35</span><span class="rw">UNI · Long · Listing</span><span style="color:var(--ink-2)">Skipped: Market not in this bot</span></li>
+        </ul>
+      </section>
+      <section class="card" style="padding:24px">
+        <h2 class="h2">Mainnet trades</h2>
+        <p class="sub" style="font-size:12px">TP and SL are orders on SoDEX, so they stay in place even if DeskLabs is down. Result after SoDEX and builder fees.</p>
+        <table class="mt">
+          <colgroup><col style="width:12%"><col style="width:40%"><col><col><col><col></colgroup>
+          <thead><tr><th>Opened</th><th>Market</th><th style="text-align:right">Entry</th><th style="text-align:right">TP</th><th style="text-align:right">SL</th><th style="text-align:right">Result</th></tr></thead>
+          <tbody>
+            <tr><td>15:35</td><td><span class="b">AAVE · Long</span><span class="x" style="white-space:nowrap">66.66 USDC · <span class="ph s"></span>×</span><span class="x pmc">Size split across 3 coins from one event.</span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td></tr>
+            <tr><td>15:35</td><td><span class="b">LINK · Long</span><span class="x" style="white-space:nowrap">66.66 USDC · <span class="ph s"></span>×</span><span class="x pmc">Size split across 3 coins from one event.</span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td><td style="text-align:right"><span class="ph"></span></td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+  <div class="note-out desk-only"><b>Ghi chú E:</b> Dùng câu sẵn có: <code>mainnet.signals.row</code>, <code>accepted</code> "Traded", <code>dropped</code> + <code>reasons.ASSET_NOT_IN_BOT</code> "Skipped: Market not in this bot", <code>mainnet.trades.size</code> "{size} USDC · {lev}×". Câu chia cỡ lệnh là dòng phụ thứ hai trong ô Market của bảng Mainnet trades (bảng này có cỡ lệnh, khác bảng Paper trades). Cột Actions (Edit TP/SL, Close now) giữ như hiện nay, mockup lược bớt. Trace của bot Mainnet ở Signal research dùng chung thẻ Decide như khung A, với 66.66 USDC và band "Long 66.66 USDC × 3" (hoặc × 2 với Bot 2).</div>
+
+  <!-- ===================================================== D -->
+  <section class="cap">
+    <h2>D · Điện thoại 390 px (A và Same event B3)</h2>
+    <p>Như màn thật: phễu trước, feed sau. Dưới 768 px không có chip chạy trong phễu, nên kết quả nằm ở câu kết luận dưới phễu và ở thẻ bước. Thẻ bước xếp một cột, nhóm Context của từng coin xếp dọc.</p>
+  </section>
+
+  <div class="phones">
+    <div class="phone" id="frame-da" aria-label="Mobile A">
+      <div class="note-out"><span class="tag after">After</span>A · bài đầu 15:35</div>
+      <section class="card">
+        <div class="thead" style="gap:2px"><h2 class="h2">From headline to trade</h2><p class="sub">Every article, what happened to it, and why.</p></div>
+        <div class="btns"><button class="btn">Back to totals</button><button class="btn pri">Replay</button></div>
+        <div class="thead"><h3>A major broker adds AAVE, LINK and UNI trading</h3><span>SoSoValue · ChainCatcher · published 15:35 · <a href="#">Open article</a></span></div>
+        <div class="fbox">
+          <div class="bands">
+            <div class="band b-collect" style="width:100%"><span>1 · Collect</span><span class="n">Seen <span class="ph s" style="background:repeating-linear-gradient(135deg,#6a86d6 0 4px,#1d47b8 4px 8px)"></span> after release</span></div>
+            <div class="band b-normalize" style="width:92%"><span>2 · Normalize</span><span class="n">AAVE-USD, LINK-USD, UNI-USD · new story</span></div>
+            <div class="band b-score" style="width:86%"><span>3 · Score</span><span class="n">Listing → Long</span></div>
+            <div class="band b-context" style="width:80%"><span>4 · Context</span><span class="n"><span class="ph s"></span></span></div>
+            <div class="band b-filter" style="width:72%"><span>5 · Filter</span><span class="n pmc">2 of 3 coins passed</span></div>
+            <div class="band b-decide" style="width:64%"><span>6 · Decide</span><span class="n pmc">Long 166.66 USDC × 2</span></div>
+          </div>
+          <p class="verdict pos" style="font-size:12px">Reached Decide: Long AAVE-USD, 166.66 USDC · Long LINK-USD, 166.66 USDC</p>
+        </div>
+        <div class="ctxp"><div class="l"><span>4 · Context</span><span class="ph"></span></div><span class="cm">AAVE-USD</span><div class="tile sm"></div><span class="cm">LINK-USD</span><div class="tile sm"></div><span class="cm">UNI-USD</span><div class="tile sm"></div></div>
+        <div class="feed">
+          <div class="feed-h"><h3>News feed</h3><span><span class="ph s"></span> of <span class="ph s"></span></span></div>
+          <div class="toggles"><span class="tg on">All</span><span class="tg">Traded</span><span class="tg">Dropped</span><span class="tg">Sent to Claude</span></div>
+          <div class="art"><span class="meta"><span>20:24 · <span class="ph s"></span> after release</span></span><span class="t">Major broker lists UNI for trading</span><span class="row"><span class="chip neu">Merged into an existing story</span><span class="assets">UNI</span></span></div>
+          <div class="art sel"><span class="meta"><span>15:35 · <span class="ph s"></span> after release</span></span><span class="t">A major broker adds AAVE, LINK and UNI trading</span><span class="row"><span class="chip pos">Long AAVE, LINK · paper trade</span><span class="assets">AAVE, LINK, UNI</span></span></div>
+        </div>
+        <ol class="steps">
+          <li class="step dim"><div class="sh"><span class="dot b-collect">1</span><h4>Collect</h4><span class="st pass">Passed</span></div></li>
+          <li class="step"><div class="sh"><span class="dot b-normalize">2</span><h4>Normalize</h4><span class="st pass">Passed</span></div><dl class="rows"><div><dt>Candidates</dt><dd>AAVE-USD, LINK-USD, UNI-USD</dd></div><div><dt>Story</dt><dd>New · Listing · AAVE-USD</dd></div></dl></li>
+          <li class="step"><div class="sh"><span class="dot b-score">3</span><h4>Score</h4><span class="st pass">Passed</span></div><dl class="rows"><div><dt>News type</dt><dd>Listing → Long</dd></div><div><dt>Asset</dt><dd>AAVE, LINK, UNI</dd></div></dl></li>
+          <li class="step" style="border:2px solid var(--accent)"><div class="sh"><span class="dot" style="background:var(--accent-tint);color:var(--accent-ink)">4</span><h4>Context</h4></div>
+            <div class="cgrid"><div class="cg"><b>AAVE-USD</b><div class="tile"></div></div><div class="cg"><b>LINK-USD</b><div class="tile"></div></div><div class="cg"><b>UNI-USD</b><div class="tile"></div></div></div></li>
+          <li class="step">
+            <div class="sh"><span class="dot b-filter">5</span><h4>Filter</h4><span class="st pass">Passed</span></div>
+            <p class="ssum"><span class="pmc">Checked each coin on its own.</span></p>
+            <dl class="rows"><div class="coin-h">UNI-USD</div><div><dt>Take profit vs cost</dt><dd><span class="ph"></span> vs 2 × <span class="ph s"></span> = <span class="ph s"></span></dd></div><div><dt>Result</dt><dd>Dropped: Take profit under 2× cost</dd></div></dl>
+            <p class="dimtxt">AAVE-USD, LINK-USD: như khung A.</p>
+          </li>
+          <li class="step">
+            <div class="sh"><span class="dot b-decide">6</span><h4>Decide</h4><span class="st pass">Passed</span></div>
+            <p class="ssum"><span class="pmc">Opened paper trades on the News bot.</span></p>
+            <div class="split"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg><span class="pmc">Size split across 3 coins from one event.</span></div>
+            <dl class="rows">
+              <div><dt>AAVE-USD</dt><dd>Long AAVE-USD · 166.66 USDC</dd></div>
+              <div><dt>LINK-USD</dt><dd>Long LINK-USD · 166.66 USDC</dd></div>
+              <div><dt>UNI-USD</dt><dd>Dropped: Take profit under 2× cost</dd></div>
+            </dl>
+          </li>
+        </ol>
+      </section>
+    </div>
+
+    <div class="phone" id="frame-db" aria-label="Mobile Same event">
+      <div class="note-out"><span class="tag after">After</span>B3 · Same event · <b>bài giả định</b> 01:30 (COMP, AAVE)</div>
+      <section class="card">
+        <div class="thead" style="gap:2px"><h2 class="h2">From headline to trade</h2><p class="sub">Every article, what happened to it, and why.</p></div>
+        <div class="btns"><button class="btn">Back to totals</button><button class="btn pri">Replay</button></div>
+        <div class="thead"><h3>Major broker adds COMP and AAVE trading</h3><span>SoSoValue · <span class="ph"></span> · published 01:30 · <a href="#">Open article</a></span></div>
+        <div class="fbox">
+          <div class="bands">
+            <div class="band b-collect" style="width:100%"><span>1 · Collect</span><span class="n">Seen <span class="ph s" style="background:repeating-linear-gradient(135deg,#6a86d6 0 4px,#1d47b8 4px 8px)"></span> after release</span></div>
+            <div class="band b-normalize" style="width:92%"><span>2 · Normalize</span><span class="n">COMP-USD, AAVE-USD · same story</span></div>
+            <div class="band b-score" style="width:86%"><span>3 · Score</span><span class="n">Listing → Long</span></div>
+            <div class="band b-context" style="width:80%"><span>4 · Context</span><span class="n"><span class="ph s"></span></span></div>
+            <div class="band b-drop" style="width:72%"><span>5 · Filter</span><span class="n pmc">Same event</span></div>
+            <div class="band b-idle" style="width:64%"><span>6 · Decide</span></div>
+          </div>
+          <p class="verdict" style="font-size:12px">Stopped at Filter: <span class="pmc">this article repeats an event that was already handled</span></p>
+        </div>
+        <div class="ctxp"><div class="l"><span>4 · Context</span><span class="ph"></span></div><span class="cm">COMP-USD</span><div class="tile sm"></div><span class="cm">AAVE-USD</span><div class="tile sm"></div></div>
+        <div class="feed">
+          <div class="feed-h"><h3>News feed</h3><span><span class="ph s"></span> of <span class="ph s"></span></span></div>
+          <div class="toggles"><span class="tg on">All</span><span class="tg">Traded</span><span class="tg">Dropped</span><span class="tg">Sent to Claude</span></div>
+          <div class="art sel"><span class="meta"><span>01:30 · <span class="ph s"></span> after release</span></span><span class="t">Major broker adds COMP and AAVE trading</span><span class="row"><span class="chip neu">Dropped at Filter</span><span class="assets">COMP, AAVE</span></span></div>
+          <div class="art"><span class="meta"><span>00:47 · <span class="ph s"></span> after release</span></span><span class="t">AAVE, LINK and UNI to trade on a major broker</span><span class="row"><span class="chip neu">Merged into an existing story</span><span class="assets">AAVE, LINK, UNI</span></span></div>
+        </div>
+        <ol class="steps">
+          <li class="step dim"><div class="sh"><span class="dot b-collect">1</span><h4>Collect</h4><span class="st pass">Passed</span></div></li>
+          <li class="step"><div class="sh"><span class="dot b-normalize">2</span><h4>Normalize</h4><span class="st pass">Passed</span></div><dl class="rows"><div><dt>Candidates</dt><dd>COMP-USD, AAVE-USD</dd></div><div><dt>Story</dt><dd>Joined · Listing · AAVE-USD</dd></div></dl></li>
+          <li class="step dim"><div class="sh"><span class="dot b-score">3</span><h4>Score</h4><span class="st pass">Passed</span></div></li>
+          <li class="step">
+            <div class="sh"><span class="dot b-drop">5</span><h4>Filter</h4><span class="st drop">Dropped</span></div>
+            <p class="ssum"><span class="pmc">This article repeats an event that was already handled.</span></p>
+            <dl class="rows">
+              <div><dt><span class="pmc">First article</span></dt><dd>A major broker adds AAVE, LINK and UNI trading (Nov 24 15:35)</dd></div>
+              <div class="coin-h">COMP-USD</div>
+              <div><dt>Result</dt><dd>Dropped: <span class="pmc">Same event</span></dd></div>
+              <div class="coin-h">AAVE-USD</div>
+              <div><dt>Result</dt><dd>Merged: joined a story already open</dd></div>
+            </dl>
+          </li>
+        </ol>
+      </section>
+    </div>
+  </div>
+
+  <!-- ===================================================== Câu chữ -->
+  <section class="copylist" id="copy">
+    <h2>Câu chữ đã duyệt</h2>
+    <table>
+      <thead><tr><th>Key đề xuất</th><th>Câu (nguyên văn)</th><th>Chỗ dùng</th></tr></thead>
+      <tbody>
+        <tr><td><code>trace.reasonLabels.sameEvent</code></td><td>Same event</td><td>Band Filter, dòng Result, chip "Why they dropped out", thanh lọc "Reason: …"</td></tr>
+        <tr><td><code>trace.noteReasons.sameEvent</code></td><td>same event</td><td>Tooltip band ở chế độ tổng</td></tr>
+        <tr><td><code>trace.summary.sameEvent</code></td><td>This article repeats an event that was already handled.</td><td>Thẻ Filter của bài Same event</td></tr>
+        <tr><td><code>trace.why.sameEvent</code></td><td>this article repeats an event that was already handled</td><td>Câu kết luận "Stopped at Filter: …"</td></tr>
+        <tr><td><code>trace.rows.firstArticle</code></td><td>First article</td><td>Dòng tham chiếu bài đầu; giá trị "{title} ({time})", thêm ngày (<code>monthDay</code>) khi khác ngày</td></tr>
+        <tr><td><code>trace.summary.filterEach</code></td><td>Checked each coin on its own.</td><td>Thẻ Filter của sự kiện nhiều coin</td></tr>
+        <tr><td><code>trace.bandShort.coins</code></td><td>{passed} of {n} coins passed</td><td>Band Filter của sự kiện nhiều coin (một coin giữ "{passed} of {total} checks")</td></tr>
+        <tr><td><code>trace.summary.decideMany</code></td><td>Opened paper trades on the News bot.</td><td>Thẻ Decide khi có hơn một lệnh</td></tr>
+        <tr><td><code>trace.bandShort.tradeMany</code></td><td>Long {size} USDC × {n}</td><td>Band Decide khi có hơn một lệnh (chiều theo <code>sides.*</code>; một lệnh giữ như cũ)</td></tr>
+        <tr><td><code>trace.summary.eventSplit</code></td><td>Size split across {n} coins from one event.</td><td>Thẻ Decide, note bước Trade ở chi tiết lệnh, dòng phụ ô Market của Mainnet trades</td></tr>
+        <tr><td><code>trace.notes.decideUpTo</code></td><td>Up to {size} USDC each</td><td>Ghi chú band Decide ở chế độ tổng khi trong kỳ có lệnh chia (thay "{size} USDC each")</td></tr>
+      </tbody>
+    </table>
+    <p>Không phải câu chữ: dòng "Result after fees … on {size}" ở chi tiết lệnh hiện cỡ lệnh đủ cent ("166.66 USDC"), không dùng <code>usdCompact</code>.</p>
+
+    <h3>Câu sẵn có dùng lại (dữ liệu khác)</h3>
+    <ul style="list-style:disc;padding-left:20px;display:flex;flex-direction:column;gap:4px">
+      <li><code>trace.chip.traded</code> với danh sách coin đã vào lệnh: "Long AAVE, LINK · paper trade"; <code>trace.token.traded</code>: "Paper trade · AAVE, LINK".</li>
+      <li><code>trace.short.newStory</code> với 3 market; <code>trace.values.storyNew</code> "New · {type} · {market}" cho từng coin.</li>
+      <li><code>trace.why.traded</code> lặp cho từng lệnh, nối bằng <code>trades.sep</code>; <code>trace.short.trade</code> làm giá trị dòng coin ở thẻ Decide; <code>trace.values.dropped</code> cho coin bị bỏ.</li>
+      <li>Bài gộp: <code>trace.chip.merged</code>, <code>status.merge</code>, <code>token.merged</code>, <code>verdict.merged</code>, <code>why.storyTooOld</code>, <code>why.sameStory</code>, <code>summary.mergedTooOld</code>, <code>rows.storyStarted</code>, <code>values.merged</code>, <code>values.storySame</code>.</li>
+      <li><code>trace.chip.dropped</code>, <code>trace.reasonFilter</code>, <code>trace.reasonChip</code>, <code>detail.facts.size</code>.</li>
+      <li>Mainnet: <code>mainnet.signals.row</code>, <code>accepted</code>, <code>dropped</code> + <code>reasons.ASSET_NOT_IN_BOT</code>, <code>mainnet.trades.size</code>.</li>
+    </ul>
+
+    <h3>Điểm PM đã chốt (đã thể hiện trên mockup)</h3>
+    <ol>
+      <li>Same event dừng ở 5 · Filter.</li>
+      <li>Bài gộp vào story đã có hiện Merged như hiện nay. Bài 23:22 và 00:47: <code>sameStory</code>. Bài 20:24 (UNI): <code>storyTooOld</code>, vì lần thử trước của UNI là 15:35, đã quá cửa sổ thử lại 120 phút. Chip "Same event · 1" chỉ là bài giả định 01:30 (COMP, AAVE).</li>
+      <li><b>Bài có kết quả khác nhau theo coin:</b> trạng thái cả bài theo coin được nêu trước (luật DEC-327, event ghi trước thắng). Bài nêu COMP trước AAVE: Dropped · Same event. Bài nêu AAVE trước COMP: Merged.</li>
+      <li><b>Same event xuất hiện khi nào:</b> khi coin của bài đăng lại thuộc một sự kiện đã xét (có ít nhất một coin trùng, trong 24 giờ) nhưng không có story nào. Gồm ba trường hợp: (1) coin mới ở bài đăng lại; (2) coin rớt ở bước Understand của bài đầu; (3) coin rớt bộ lọc version ở bài đầu. Coin rớt ở Filter vẫn có story (story mở trước Filter) nên đi luật thử lại cũ: trong 120 phút thì thử lại, quá 120 phút thì gộp "story too old". Coin đã có story khoá (đã vào lệnh) thì gộp <code>sameStory</code>.</li>
+      <li>Band Filter nhiều coin: "{passed} of {n} coins passed"; một coin giữ "11 of 12 checks".</li>
+      <li>Band Decide nhiều lệnh: "Long {size} USDC × {n}".</li>
+      <li>Context ghi cho từng coin.</li>
+      <li>Mỗi coin một story (mở trước Filter), nối bằng <code>eventKey</code>. Thẻ Normalize theo code hiện nay: một dòng Story của story mà trace trả về ("New · {type} · {market}"). Band Normalize liệt kê mọi market ứng viên.</li>
+      <li>Tham chiếu dùng "First article", thêm ngày khi khác ngày ("Nov 24 15:35", theo <code>monthDay</code> sẵn có; ví dụ ở khung B3).</li>
+      <li>Chế độ tổng: "Up to {size} USDC each" khi trong kỳ có lệnh chia.</li>
+      <li>Mainnet: min(size, 200) ÷ k; n trong câu chia là k của sự kiện; bot chỉ nhận coin trong danh sách market của nó, không dồn phần.</li>
+    </ol>
+  </section>
+</div>
+</body>
+</html>

@@ -165,6 +165,12 @@ export function MainnetTrades({ botId, tz }: { botId: string; tz: string }) {
                 <td className={cell}>
                   <span className="block">{label(x)}</span>
                   <span className="block text-xs text-muted tabular-nums">{size(x)}</span>
+                  {/* #530 (DEC-392): lệnh là phần chia của sự kiện tin nêu nhiều coin. */}
+                  {x.eventCoins >= 2 ? (
+                    <span className="block text-xs text-muted">
+                      {tn("trace.summary.eventSplit", { n: x.eventCoins })}
+                    </span>
+                  ) : null}
                 </td>
                 <td className={`${cell} text-right`}>{price(x.entryAvgPrice)}</td>
                 <td className={`${cell} text-right`}>{price(x.tpPrice)}</td>
