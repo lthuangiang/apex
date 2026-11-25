@@ -294,6 +294,12 @@ describe("Signal research · multi-coin news event (#530)", { timeout: 30_000 },
     ).toBeInTheDocument();
     expect(within(list).getByText("Dropped: Same event")).toHaveAttribute("title", "SAME_EVENT");
     expect(within(list).getByText("Merged: joined a story already open")).toBeInTheDocument();
+    // Khung 4 · Context theo từng coin, theo thứ tự bài nêu (COMP trước).
+    expect(
+      within(within(f).getByTestId("sr-ctx-panel"))
+        .getAllByTestId("sr-ctx-coin")
+        .map((x) => x.getAttribute("aria-label")),
+    ).toEqual(["COMP-USD", "AAVE-USD"]);
     await noViolations();
     expect(intlErrors).toEqual([]);
   });

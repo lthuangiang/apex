@@ -210,7 +210,7 @@ const REPOST_EVENT: ResearchTraceEvent = {
       storyStartedAt: null,
       story: null,
       trade: null,
-      context: null,
+      context: CTX_ETH,
     },
     {
       market: "AAVE-USD",
@@ -222,7 +222,7 @@ const REPOST_EVENT: ResearchTraceEvent = {
       storyStartedAt: null,
       story: story("AAVE-USD", false),
       trade: null,
-      context: null,
+      context: CTX_ETH,
     },
   ],
 };
