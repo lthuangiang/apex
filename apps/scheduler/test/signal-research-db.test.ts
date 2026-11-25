@@ -1239,7 +1239,7 @@ describe("news-v3 (#298): asset in text, treasury on BTC / ETH, small treasury, 
       claudeDailyInputBudget: 2_000_000,
     });
     expect(summary.rows[0]).toMatchObject({
-      rulesVersion: 5,
+      rulesVersion: 6,
       closed: 0,
       opened: 0,
     });
