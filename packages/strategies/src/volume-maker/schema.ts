@@ -15,6 +15,25 @@ export const VM_DEFAULTS = {
   maxInventoryMultiple: 2,
 } as const;
 
+/**
+ * "Where to quote" mặc định của bot Market Making MỚI (#536, DEC-395): lùi 2 tick so với giá tốt nhất. Chỉ áp lúc tạo bot
+ * (form Create, `POST /bots`, MCP `draft_new_bot`, dry run); không phải giá trị dự phòng của schema: config đã lưu thiếu
+ * `quoteLevel` vẫn báo giá theo `distanceBp` như cũ (DEC-135), strategy vẫn `quoteLevel ?? 0`.
+ */
+export const VM_NEW_BOT_QUOTE_LEVEL = 2;
+
+/**
+ * Mặc định cho config bot Market Making MỚI trước khi parse (#536, DEC-395): config là object, thiếu cả `quoteLevel` lẫn
+ * `distanceBp` → `quoteLevel = VM_NEW_BOT_QUOTE_LEVEL`. Có `distanceBp` (người gọi chọn báo giá theo khoảng cách) hoặc
+ * có `quoteLevel` (kể cả 0) thì giữ nguyên. Không dùng cho version mới / sửa bot (config cũ giữ đúng cách báo giá cũ).
+ */
+export function vmNewBotDefaults(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return raw;
+  const r = raw as Record<string, unknown>;
+  if (r.quoteLevel !== undefined || r.distanceBp !== undefined) return raw;
+  return { ...r, quoteLevel: VM_NEW_BOT_QUOTE_LEVEL };
+}
+
 export const volumeMakerSchema = z
   .object({
     market: marketSchema,

@@ -19,7 +19,13 @@ import {
   volumeMakerStopCause,
   type VolumeMakerState,
 } from "../volume-maker";
-import { vmMaxInventory, volumeMakerSchema, type VolumeMakerConfig } from "../volume-maker/schema";
+import {
+  VM_NEW_BOT_QUOTE_LEVEL,
+  vmMaxInventory,
+  vmNewBotDefaults,
+  volumeMakerSchema,
+  type VolumeMakerConfig,
+} from "../volume-maker/schema";
 import { quoteSnapshot, withQuoteSnapshots } from "../volume-maker/snapshot";
 
 const ctx: StepContext = {
@@ -2947,5 +2953,22 @@ describe("volume maker — live SoDEX book for every bot, real book age (#517, D
     expect(
       buys(from(c, opened().s, [ws(2900, "99999.8", "99999.9"), rest(3000, 2950)]).all),
     ).not.toEqual([]);
+  });
+});
+
+describe("new-bot Where to quote default (#536, DEC-395)", () => {
+  const base = { market: "BTC-USD", orderSize: "20", costBudget: "10" };
+  it("adds quoteLevel 2 only when the config has neither quoteLevel nor distanceBp", () => {
+    expect(VM_NEW_BOT_QUOTE_LEVEL).toBe(2);
+    expect(vmNewBotDefaults(base)).toEqual({ ...base, quoteLevel: 2 });
+    expect(vmNewBotDefaults({ ...base, distanceBp: "1" })).toEqual({ ...base, distanceBp: "1" });
+    expect(vmNewBotDefaults({ ...base, quoteLevel: 0 })).toEqual({ ...base, quoteLevel: 0 });
+    // Không phải object: để parse báo lỗi như trước.
+    for (const raw of [null, "x", 3, [base]]) expect(vmNewBotDefaults(raw)).toBe(raw);
+  });
+  it("the schema itself still has no quoteLevel default (old configs keep quoting by distanceBp, DEC-135)", () => {
+    const parsed = volumeMakerSchema.parse({ ...base, distanceBp: "1" });
+    expect(parsed.quoteLevel).toBeUndefined();
+    expect(volumeMakerSchema.parse(vmNewBotDefaults(base)).quoteLevel).toBe(2);
   });
 });

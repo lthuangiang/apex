@@ -120,6 +120,34 @@ describe("MCP drafts", () => {
     expect(rows[0]?.opened_at).not.toBeNull();
   });
 
+  it("#536 (DEC-395): a Market Making draft without quoteLevel or distanceBp gets Where to quote 2; distanceBp is kept", async () => {
+    const u = await person("draft-mm-536@example.com");
+    const mm = {
+      market: "BTC-USD",
+      leverage: 1,
+      orderSize: "500",
+      maxOrders: 1,
+      refreshSeconds: 3,
+      runUntil: "target_or_budget",
+      costBudget: "300",
+      onStop: "close_inventory",
+    };
+    const configOf = async (config: Record<string, unknown>) => {
+      const r = await post("/api/v1/mcp/me/drafts/new", u.token, {
+        strategy: "volume_maker",
+        config,
+      });
+      expect(r.statusCode).toBe(200);
+      const d = mcpDraftResultSchema.parse(r.json());
+      return botDraftViewSchema.parse(
+        (await u.client.request("GET", `/api/v1/drafts/${d.draftId}`)).json(),
+      ).config;
+    };
+    expect((await configOf(mm)).quoteLevel).toBe(2);
+    expect((await configOf({ ...mm, distanceBp: "1" })).quoteLevel).toBeUndefined();
+    expect((await configOf({ ...mm, quoteLevel: 0 })).quoteLevel).toBe(0);
+  });
+
   it("checks settings like the form and lists the bad fields", async () => {
     const u = await person("draft-invalid@example.com");
     const r = await post("/api/v1/mcp/me/drafts/new", u.token, {
