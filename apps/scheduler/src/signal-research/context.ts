@@ -1,4 +1,4 @@
-import { signalContexts, type Db } from "@drift/db";
+import { signalContextCoins, signalContexts, type Db } from "@drift/db";
 import {
   ContextSource,
   h1Of,
@@ -51,6 +51,11 @@ export interface ContextSignal {
    * review PR #349). Bài mở story thì là giờ đăng của chính bài đó.
    */
   storyStartAt: number;
+  /**
+   * #530 PR2: coin chính của bài (mọi bài một coin, và coin đầu bài nêu của bài nhiều coin) → `signal_contexts` (unique
+   * theo bài, như trước); coin khác của sự kiện → `signal_context_coins`. Thiếu = coin chính.
+   */
+  primary?: boolean;
 }
 
 const rowsOf = <T>(r: { rows: T[] }) => r.rows;
@@ -352,13 +357,27 @@ export async function computeSignalContext(
   };
 }
 
-/** Ghi snapshot; bài đã có snapshot (live hay backfilled) thì giữ nguyên dòng cũ. Trả true khi đã ghi dòng mới. */
-export async function insertSignalContext(db: Exec, values: ContextValues): Promise<boolean> {
-  const rows = await db
-    .insert(signalContexts)
-    .values(values)
-    .onConflictDoNothing({ target: [signalContexts.articleId, signalContexts.market] })
-    .returning({ id: signalContexts.id });
+/**
+ * Ghi snapshot; đã có snapshot (live hay backfilled) thì giữ nguyên dòng cũ. Trả true khi đã ghi dòng mới. Coin chính →
+ * `signal_contexts` (một dòng mỗi bài, `ON CONFLICT (article_id)` như bản trước #530 PR2); coin khác của sự kiện nhiều coin
+ * (`primary = false`) → `signal_context_coins` (một dòng mỗi bài × market).
+ */
+export async function insertSignalContext(
+  db: Exec,
+  values: ContextValues,
+  primary = true,
+): Promise<boolean> {
+  const rows = primary
+    ? await db
+        .insert(signalContexts)
+        .values(values)
+        .onConflictDoNothing({ target: signalContexts.articleId })
+        .returning({ id: signalContexts.id })
+    : await db
+        .insert(signalContextCoins)
+        .values(values)
+        .onConflictDoNothing({ target: [signalContextCoins.articleId, signalContextCoins.market] })
+        .returning({ id: signalContextCoins.id });
   return rows.length > 0;
 }
 
@@ -379,5 +398,5 @@ export async function captureSignalContext(
     quote === null ? null : midOf(quote),
     { source: ContextSource.live, ruleVersion: NEWS_RULES.version, whales: true },
   );
-  await insertSignalContext(db, values);
+  await insertSignalContext(db, values, s.primary !== false);
 }

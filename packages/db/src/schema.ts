@@ -2164,106 +2164,133 @@ export const signalSourceHealth = pgTable("signal_source_health", {
  * mọi version nối qua `article_id`. Không bao giờ tính lại: trigger DB chặn UPDATE. `source` = `live` (chụp lúc chạy) hoặc
  * `backfilled` (dựng lại sau cho lệnh cũ, tách riêng). OI không có cột: SoDEX không có lịch sử OI trong dữ liệu của DeskLabs.
  */
-export const signalContexts = pgTable(
-  "signal_contexts",
-  {
-    id: id(),
-    /** Bài (`signal_articles.id`), không FK như các bảng signal khác. */
-    articleId: text("article_id").notNull(),
-    market: text("market").notNull(),
-    direction: text("direction").notNull(),
-    decidedAt: tstz("decided_at").notNull(),
-    /** `live` | `backfilled`. */
-    source: text("source").notNull(),
-    /** `SIGNAL_CONTEXT_VERSION` (ngưỡng / định nghĩa lúc chụp). */
-    contextVersion: text("context_version").notNull(),
-    ruleVersion: text("rule_version").notNull(),
-    /**
-     * H1 cá voi cùng chiều: `yes` | `no` | `against` (chỉ ví ngược chiều, lưu riêng cho phân tích khám phá) | `na` (không có
-     * trên Hyperliquid, hoặc N = 0). Tập ví theo `context_version`: v1 = ví DeskLabs đang theo dõi (được follow), v2 (#353) =
-     * ví trong tập ví nghiên cứu (top-K leaderboard) có hiệu lực trước quyết định. Hai version không bao giờ gộp số.
-     */
-    h1Status: text("h1_status").notNull(),
-    /** N = số ví thật sự được kiểm lúc quyết định (đọc thành công trong 60 phút trước; "N wallets checked"). */
-    h1WalletsChecked: integer("h1_wallets_checked"),
-    /** Tài sản có trên Hyperliquid theo dữ liệu đã lưu trước quyết định; null với dòng không ghi giá trị này. */
-    h1AssetOnHyperliquid: boolean("h1_asset_on_hyperliquid"),
-    /** context-v2 (#353): version tập ví nghiên cứu đã dùng; null ở context-v1 (ví được follow) hoặc khi chưa có tập. */
-    h1WalletSetVersion: integer("h1_wallet_set_version"),
-    /** context-v2: số ví của tập đó ("top {K} of the leaderboard"); null như trên. */
-    h1WalletSetSize: integer("h1_wallet_set_size"),
-    h1AgreeingWallets: integer("h1_agreeing_wallets"),
-    h1OpposingWallets: integer("h1_opposing_wallets"),
-    /**
-     * Địa chỉ ví cùng chiều / ngược chiều (chữ thường, sắp xếp) lúc chụp. null ở snapshot ghi trước khi có cột này (chỉ có số
-     * lượng) hoặc khi H1 không tính (backfill); `[]` khi không có ví nào.
-     */
-    h1AgreeingAddresses: text("h1_agreeing_addresses").array(),
-    h1OpposingAddresses: text("h1_opposing_addresses").array(),
-    h1AgreeingUsdc: money("h1_agreeing_usdc"),
-    h1FirstAt: tstz("h1_first_at"),
-    /** H2 funding ngược đám đông: `yes` | `no` | `na`. */
-    h2Status: text("h2_status").notNull(),
-    h2FundingRate: money("h2_funding_rate"),
-    h2FundingTime: tstz("h2_funding_time"),
-    h2Percentile: numeric("h2_percentile", { precision: 10, scale: 4 }),
-    h2Samples: integer("h2_samples"),
-    /** Bên trả funding: `long` | `short` | `none`. */
-    h2Payer: text("h2_payer"),
-    h2IntervalHours: numeric("h2_interval_hours", { precision: 10, scale: 2 }),
-    /** H3 giá đã chạy: `yes` | `no` | `na`. */
-    h3Status: text("h3_status").notNull(),
-    h3MovedPct: money("h3_moved_pct"),
-    h3TypicalMovePct: money("h3_typical_move_pct"),
-    /** Chỉ số khám phá (không bao giờ thành tuỳ chọn version). */
-    volumeVs24h: money("volume_vs_24h"),
-    /** `up` | `down` | `none`. */
-    rangeBreakout: text("range_breakout"),
-    /**
-     * Trạng thái thị trường lúc quyết định (Catalyst P0, #376): chỉ để tách kết quả, không đổi quyết định. Từ nến 1 phút đã
-     * đóng trước `decided_at`; thiếu dữ liệu → null. Dòng ghi trước #376 có mọi cột này null ("Not recorded").
-     * BTC: % đổi giá BTC-USD trong 24 h và `up` | `flat` | `down` (ngưỡng ±1.5%).
-     */
-    /**
-     * `MARKET_STATE_VERSION` lúc chụp; null = snapshot ghi trước #376 ("Not recorded"). Có version mà trường null = thiếu dữ
-     * liệu lúc đó ("Not available").
-     */
-    marketVersion: text("market_version"),
-    marketBtcChange24hPct: money("market_btc_change_24h_pct"),
-    marketBtcTrend: text("market_btc_trend"),
-    /** Biến động 4 h của chính tài sản (%), phân vị trong 30 ngày, `low` | `normal` | `high` (ngưỡng 33 / 67). */
-    marketVol4hPct: money("market_vol_4h_pct"),
-    marketVolPercentile: numeric("market_vol_percentile", { precision: 10, scale: 4 }),
-    marketVolatility: text("market_volatility"),
-    createdAt: tstz("created_at").notNull().defaultNow(),
-  },
-  (t) => [
-    // #530 (news-v6): một snapshot cho mỗi coin của bài (bài nêu nhiều coin có nhiều dòng).
-    uniqueIndex("signal_contexts_article_market_uq").on(t.articleId, t.market),
-    index("signal_contexts_decided_idx").on(t.decidedAt),
-    check("signal_contexts_source_ck", sql`${t.source} in ('live', 'backfilled')`),
-    check("signal_contexts_direction_ck", sql`${t.direction} in ('long', 'short')`),
-    check("signal_contexts_h1_ck", sql`${t.h1Status} in ('yes', 'no', 'against', 'na')`),
-    check("signal_contexts_h2_ck", sql`${t.h2Status} in ('yes', 'no', 'na')`),
-    check("signal_contexts_h3_ck", sql`${t.h3Status} in ('yes', 'no', 'na')`),
-    check(
-      "signal_contexts_payer_ck",
-      sql`${t.h2Payer} is null or ${t.h2Payer} in ('long', 'short', 'none')`,
-    ),
-    check(
-      "signal_contexts_breakout_ck",
-      sql`${t.rangeBreakout} is null or ${t.rangeBreakout} in ('up', 'down', 'none')`,
-    ),
-    check(
-      "signal_contexts_btc_trend_ck",
-      sql`${t.marketBtcTrend} is null or ${t.marketBtcTrend} in ('up', 'flat', 'down')`,
-    ),
-    check(
-      "signal_contexts_volatility_ck",
-      sql`${t.marketVolatility} is null or ${t.marketVolatility} in ('low', 'normal', 'high')`,
-    ),
-  ],
-);
+/** Cột của một snapshot ngữ cảnh, dùng chung cho `signal_contexts` và `signal_context_coins` (#530 PR2). */
+const contextColumns = () => ({
+  id: id(),
+  /** Bài (`signal_articles.id`), không FK như các bảng signal khác. */
+  articleId: text("article_id").notNull(),
+  market: text("market").notNull(),
+  direction: text("direction").notNull(),
+  decidedAt: tstz("decided_at").notNull(),
+  /** `live` | `backfilled`. */
+  source: text("source").notNull(),
+  /** `SIGNAL_CONTEXT_VERSION` (ngưỡng / định nghĩa lúc chụp). */
+  contextVersion: text("context_version").notNull(),
+  ruleVersion: text("rule_version").notNull(),
+  /**
+   * H1 cá voi cùng chiều: `yes` | `no` | `against` (chỉ ví ngược chiều, lưu riêng cho phân tích khám phá) | `na` (không có
+   * trên Hyperliquid, hoặc N = 0). Tập ví theo `context_version`: v1 = ví DeskLabs đang theo dõi (được follow), v2 (#353) =
+   * ví trong tập ví nghiên cứu (top-K leaderboard) có hiệu lực trước quyết định. Hai version không bao giờ gộp số.
+   */
+  h1Status: text("h1_status").notNull(),
+  /** N = số ví thật sự được kiểm lúc quyết định (đọc thành công trong 60 phút trước; "N wallets checked"). */
+  h1WalletsChecked: integer("h1_wallets_checked"),
+  /** Tài sản có trên Hyperliquid theo dữ liệu đã lưu trước quyết định; null với dòng không ghi giá trị này. */
+  h1AssetOnHyperliquid: boolean("h1_asset_on_hyperliquid"),
+  /** context-v2 (#353): version tập ví nghiên cứu đã dùng; null ở context-v1 (ví được follow) hoặc khi chưa có tập. */
+  h1WalletSetVersion: integer("h1_wallet_set_version"),
+  /** context-v2: số ví của tập đó ("top {K} of the leaderboard"); null như trên. */
+  h1WalletSetSize: integer("h1_wallet_set_size"),
+  h1AgreeingWallets: integer("h1_agreeing_wallets"),
+  h1OpposingWallets: integer("h1_opposing_wallets"),
+  /**
+   * Địa chỉ ví cùng chiều / ngược chiều (chữ thường, sắp xếp) lúc chụp. null ở snapshot ghi trước khi có cột này (chỉ có số
+   * lượng) hoặc khi H1 không tính (backfill); `[]` khi không có ví nào.
+   */
+  h1AgreeingAddresses: text("h1_agreeing_addresses").array(),
+  h1OpposingAddresses: text("h1_opposing_addresses").array(),
+  h1AgreeingUsdc: money("h1_agreeing_usdc"),
+  h1FirstAt: tstz("h1_first_at"),
+  /** H2 funding ngược đám đông: `yes` | `no` | `na`. */
+  h2Status: text("h2_status").notNull(),
+  h2FundingRate: money("h2_funding_rate"),
+  h2FundingTime: tstz("h2_funding_time"),
+  h2Percentile: numeric("h2_percentile", { precision: 10, scale: 4 }),
+  h2Samples: integer("h2_samples"),
+  /** Bên trả funding: `long` | `short` | `none`. */
+  h2Payer: text("h2_payer"),
+  h2IntervalHours: numeric("h2_interval_hours", { precision: 10, scale: 2 }),
+  /** H3 giá đã chạy: `yes` | `no` | `na`. */
+  h3Status: text("h3_status").notNull(),
+  h3MovedPct: money("h3_moved_pct"),
+  h3TypicalMovePct: money("h3_typical_move_pct"),
+  /** Chỉ số khám phá (không bao giờ thành tuỳ chọn version). */
+  volumeVs24h: money("volume_vs_24h"),
+  /** `up` | `down` | `none`. */
+  rangeBreakout: text("range_breakout"),
+  /**
+   * Trạng thái thị trường lúc quyết định (Catalyst P0, #376): chỉ để tách kết quả, không đổi quyết định. Từ nến 1 phút đã
+   * đóng trước `decided_at`; thiếu dữ liệu → null. Dòng ghi trước #376 có mọi cột này null ("Not recorded").
+   * BTC: % đổi giá BTC-USD trong 24 h và `up` | `flat` | `down` (ngưỡng ±1.5%).
+   */
+  /**
+   * `MARKET_STATE_VERSION` lúc chụp; null = snapshot ghi trước #376 ("Not recorded"). Có version mà trường null = thiếu dữ
+   * liệu lúc đó ("Not available").
+   */
+  marketVersion: text("market_version"),
+  marketBtcChange24hPct: money("market_btc_change_24h_pct"),
+  marketBtcTrend: text("market_btc_trend"),
+  /** Biến động 4 h của chính tài sản (%), phân vị trong 30 ngày, `low` | `normal` | `high` (ngưỡng 33 / 67). */
+  marketVol4hPct: money("market_vol_4h_pct"),
+  marketVolPercentile: numeric("market_vol_percentile", { precision: 10, scale: 4 }),
+  marketVolatility: text("market_volatility"),
+  createdAt: tstz("created_at").notNull().defaultNow(),
+});
+
+/** Cột mà các ràng buộc kiểm giá trị của snapshot đọc tới. */
+interface ContextCheckColumns {
+  source: AnyPgColumn;
+  direction: AnyPgColumn;
+  h1Status: AnyPgColumn;
+  h2Status: AnyPgColumn;
+  h3Status: AnyPgColumn;
+  h2Payer: AnyPgColumn;
+  rangeBreakout: AnyPgColumn;
+  marketBtcTrend: AnyPgColumn;
+  marketVolatility: AnyPgColumn;
+}
+
+/** Ràng buộc kiểm giá trị của snapshot, tên theo bảng (`signal_contexts_*_ck` giữ đúng tên cũ). */
+const contextChecks = (name: string, t: ContextCheckColumns) => [
+  check(`${name}_source_ck`, sql`${t.source} in ('live', 'backfilled')`),
+  check(`${name}_direction_ck`, sql`${t.direction} in ('long', 'short')`),
+  check(`${name}_h1_ck`, sql`${t.h1Status} in ('yes', 'no', 'against', 'na')`),
+  check(`${name}_h2_ck`, sql`${t.h2Status} in ('yes', 'no', 'na')`),
+  check(`${name}_h3_ck`, sql`${t.h3Status} in ('yes', 'no', 'na')`),
+  check(`${name}_payer_ck`, sql`${t.h2Payer} is null or ${t.h2Payer} in ('long', 'short', 'none')`),
+  check(
+    `${name}_breakout_ck`,
+    sql`${t.rangeBreakout} is null or ${t.rangeBreakout} in ('up', 'down', 'none')`,
+  ),
+  check(
+    `${name}_btc_trend_ck`,
+    sql`${t.marketBtcTrend} is null or ${t.marketBtcTrend} in ('up', 'flat', 'down')`,
+  ),
+  check(
+    `${name}_volatility_ck`,
+    sql`${t.marketVolatility} is null or ${t.marketVolatility} in ('low', 'normal', 'high')`,
+  ),
+];
+
+export const signalContexts = pgTable("signal_contexts", contextColumns(), (t) => [
+  // Một dòng mỗi bài (unique theo bài như trước #530; bản scheduler cũ ghi `ON CONFLICT (article_id)`). Coin khác của sự
+  // kiện nhiều coin nằm ở `signal_context_coins`.
+  uniqueIndex("signal_contexts_article_uq").on(t.articleId),
+  index("signal_contexts_decided_idx").on(t.decidedAt),
+  ...contextChecks("signal_contexts", t),
+]);
+
+/**
+ * #530 PR2 (DEC-393): snapshot ngữ cảnh của các coin KHÁC coin chính trong một bài nêu nhiều coin (cùng cột, cùng cách
+ * chụp, cùng trigger chặn UPDATE với `signal_contexts`). Coin chính (và mọi bài một coin) vẫn ở `signal_contexts`, unique
+ * theo bài như cũ, để bản scheduler / api trước PR này vẫn ghi / đọc được khi migrate trước hoặc rollback. Đọc qua
+ * `loadSignalContexts` / `contextFor` (gộp hai bảng).
+ */
+export const signalContextCoins = pgTable("signal_context_coins", contextColumns(), (t) => [
+  uniqueIndex("signal_context_coins_article_market_uq").on(t.articleId, t.market),
+  index("signal_context_coins_decided_idx").on(t.decidedAt),
+  ...contextChecks("signal_context_coins", t),
+]);
 
 /**
  * Tín hiệu tin tức dùng chung cho bot `news_signal` mainnet (#419, DEC-360). Scheduler ghi một dòng mỗi câu chuyện mỗi chu

@@ -34,7 +34,12 @@ import { and, asc, count, eq, gte, inArray, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import type { DbTx } from "./read-only";
 import { latestResearchWalletSet } from "./research-wallets";
-import { leaderStatsDaily, signalContexts, type signalPaperTrades } from "./schema";
+import {
+  leaderStatsDaily,
+  signalContextCoins,
+  signalContexts,
+  type signalPaperTrades,
+} from "./schema";
 import type { SignalVersionScope } from "./signal-research-versions";
 
 // Đọc ngữ cảnh tín hiệu (#329) cho API: thẻ bước 4 của trace, cờ gọn của feed, khối "Does context help?" của tổng kết.
@@ -229,9 +234,10 @@ export async function loadMarketSplit(
 }
 
 /**
- * Snapshot theo bài. Từ #530 (news-v6) một bài nêu nhiều coin có một snapshot cho MỖI coin: khoá `"<id bài>|<market>"`
- * cho từng coin, và khoá `"<id bài>"` cho snapshot đầu tiên của bài (coin đầu theo thứ tự ghi; bài một coin: đúng dòng
- * duy nhất như trước). Chỗ biết market (lệnh) dùng `contextFor`.
+ * Snapshot theo bài. Từ #530 (news-v6) một bài nêu nhiều coin có một snapshot cho MỖI coin: coin chính ở `signal_contexts`
+ * (một dòng mỗi bài, như trước), coin khác ở `signal_context_coins`. Map có khoá `"<id bài>|<market>"` cho từng coin, và
+ * khoá `"<id bài>"` cho snapshot coin chính (bài một coin: đúng dòng duy nhất như trước). Chỗ biết market (lệnh) dùng
+ * `contextFor`.
  */
 export async function loadSignalContexts(
   q: Q,
@@ -239,13 +245,18 @@ export async function loadSignalContexts(
 ): Promise<Map<string, ContextRow>> {
   const ids = [...new Set(articleIds)];
   if (ids.length === 0) return new Map();
-  const rows = await q
+  const main = await q
     .select()
     .from(signalContexts)
     .where(inArray(signalContexts.articleId, ids))
     .orderBy(asc(signalContexts.createdAt), asc(signalContexts.id));
+  const coins = await q
+    .select()
+    .from(signalContextCoins)
+    .where(inArray(signalContextCoins.articleId, ids))
+    .orderBy(asc(signalContextCoins.createdAt), asc(signalContextCoins.id));
   const out = new Map<string, ContextRow>();
-  for (const r of rows) {
+  for (const r of [...main, ...coins]) {
     out.set(`${r.articleId}|${r.market}`, r);
     if (!out.has(r.articleId)) out.set(r.articleId, r);
   }
@@ -325,31 +336,27 @@ export async function loadContextSummary(
     };
   });
 
-  const since =
-    scope === null || scope.isBaseline ? undefined : gte(signalContexts.decidedAt, scope.createdAt);
-  const base = and(
-    eq(signalContexts.ruleVersion, NEWS_RULES.version),
-    inArray(signalContexts.contextVersion, [...H23_SAME_AS_CURRENT]),
-    since,
-  );
-  const cov = await q
-    .select({
-      source: signalContexts.source,
-      version: signalContexts.contextVersion,
-      h1: signalContexts.h1Status,
-      h2: signalContexts.h2Status,
-      h3: signalContexts.h3Status,
-      n: count(),
-    })
-    .from(signalContexts)
-    .where(base)
-    .groupBy(
-      signalContexts.source,
-      signalContexts.contextVersion,
-      signalContexts.h1Status,
-      signalContexts.h2Status,
-      signalContexts.h3Status,
-    );
+  // #530 PR2: độ phủ đếm mọi snapshot, cả coin khác của sự kiện nhiều coin (`signal_context_coins`).
+  const coverageOf = (t: typeof signalContexts | typeof signalContextCoins) =>
+    q
+      .select({
+        source: t.source,
+        version: t.contextVersion,
+        h1: t.h1Status,
+        h2: t.h2Status,
+        h3: t.h3Status,
+        n: count(),
+      })
+      .from(t)
+      .where(
+        and(
+          eq(t.ruleVersion, NEWS_RULES.version),
+          inArray(t.contextVersion, [...H23_SAME_AS_CURRENT]),
+          scope === null || scope.isBaseline ? undefined : gte(t.decidedAt, scope.createdAt),
+        ),
+      )
+      .groupBy(t.source, t.contextVersion, t.h1Status, t.h2Status, t.h3Status);
+  const cov = [...(await coverageOf(signalContexts)), ...(await coverageOf(signalContextCoins))];
   const own = cov.filter((r) => r.source === source);
   const sum = (rows: typeof cov) => rows.reduce((s, r) => s + r.n, 0);
   const set = await latestResearchWalletSet(q);
