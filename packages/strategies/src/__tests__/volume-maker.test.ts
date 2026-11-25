@@ -12,6 +12,7 @@ import { requirementOf } from "../requirements";
 import {
   costPerMillion,
   VM_KEEP_DONE_MS,
+  VM_RC_KEEP_MAX_MS,
   VM_STALE_CANCEL_MS,
   VOLUME_MAKER_STOPPED,
   volumeMaker,
@@ -408,7 +409,14 @@ describe("volume maker inventory-aware quoting (DEC-100)", () => {
     const rcId = id("vm:2:rc");
     expect(s.orders[rcId]?.qty).toBe("0.005");
 
-    // Cycle 3 (t=5 s): vm:2:rc → cancelling; pendingClose covers remaining → no new close.
+    // Cycle 3 (t=5 s): giá chạy nên giá đích của lệnh đóng đổi (DEC-390: cùng giá thì giữ nguyên) → vm:2:rc → cancelling;
+    // pendingClose covers remaining → no new close.
+    s = volumeMaker.step(
+      c,
+      s,
+      { type: "tick", at: 4900, market: "BTC-USD", price: "100050" },
+      ctx,
+    ).state;
     const r3 = volumeMaker.step(c, s, { type: "timer", at: 5000 }, ctx);
     s = r3.state;
     expect(s.orders[rcId]?.status).toBe("cancelling");
@@ -1039,11 +1047,22 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
   it("re-places the close soon after SoDEX confirms its cancel while a position is held (DEC-248)", () => {
     const r1 = more(longAt(), [snap(10100)]);
     const closeId = places(r1.all).find((o) => o.reduceOnly)?.clOrdID ?? "";
-    // Chu kỳ kế tiếp huỷ lệnh đóng (không đặt lại vì lệnh cũ còn đang huỷ).
-    let r = more(r1.s, [snap(13200)], { confirm: false });
+    // Chu kỳ kế tiếp, ask tốt nhất đã đổi nên giá đích của lệnh đóng đổi: huỷ lệnh đóng (không đặt lại vì lệnh cũ còn
+    // đang huỷ). Cùng giá thì lệnh đóng được giữ nguyên (DEC-390).
+    let r = more(r1.s, [snap2(13200, "100000", "100000.1")], { confirm: false });
     expect(r.s.orders[closeId]?.status).toBe("cancelling");
     r = more(r.s, [{ type: "orderDone", at: 13500, clOrdID: closeId }], { confirm: false });
     expect(r.s.requoteDue).toBe(true);
+  });
+
+  it("DEC-390: with Smart quoting on, the close stays live when the book keeps its price", () => {
+    const r1 = more(longAt(), [snap(10100)]);
+    const closeId = places(r1.all).find((o) => o.reduceOnly)?.clOrdID ?? "";
+    expect(closeId).not.toBe("");
+    const r = more(r1.s, [snap(13200)], { confirm: false });
+    expect(r.all.some((a) => a.type === "cancel" && a.clOrdID === closeId)).toBe(false);
+    expect(places(r.all).filter((o) => o.reduceOnly)).toEqual([]);
+    expect(r.s.orders[closeId]?.status).toBe("live");
   });
 
   it("keeps quoting on a tick that also drops orders older than 10 minutes (DEC-251)", () => {
@@ -2466,6 +2485,313 @@ describe("volume maker — quote snapshot on quoting decisions (#230)", () => {
       VOLUME_MAKER_STOPPED,
     );
     expect(out).toBe(r);
+  });
+});
+
+// DEC-390 (#517 PR B): lệnh đóng rc giữ nguyên khi giá đích không đổi; giá đổi thì huỷ rồi mới đặt (DEC-257).
+describe("volume maker keeps the reduce-only close when its price does not change (DEC-390)", () => {
+  const T = (s: number) => s * 1000;
+  const tick = (at: number, price: string) =>
+    ({ type: "tick", at, market: "BTC-USD", price }) as const;
+  const timer = (at: number) => ({ type: "timer", at }) as const;
+  /** Long 0.005 BTC sau chu kỳ 1, rồi chu kỳ 2 đặt `vm:2:rc` (bán đóng 0.005). */
+  function longWithClose(c: VolumeMakerConfig) {
+    let s = run(c, [...firstQuote()]).s;
+    s = volumeMaker.step(
+      c,
+      s,
+      { type: "fill", at: 1, clOrdID: id("vm:1:bid"), price: "99990", quantity: "0.005", fee: "0" },
+      ctx,
+    ).state;
+    const r = stepConfirmed(c, s, timer(T(2)));
+    const rc = places(r.actions).find((o) => o.tag.endsWith(":rc"));
+    expect(rc).toMatchObject({ side: "sell", quantity: "0.005", reduceOnly: true });
+    return { s: r.state, rc: rc?.clOrdID ?? "", price: rc?.price ?? "" };
+  }
+  const rcActions = (a: StrategyAction[], rcId: string) => ({
+    cancels: a.filter((x) => x.type === "cancel" && x.clOrdID === rcId),
+    closes: places(a).filter((o) => o.reduceOnly),
+  });
+
+  it("keeps the close live with no cancel and no new close while the target price is the same", () => {
+    const c = cfg();
+    const base = longWithClose(c);
+    const { rc, price } = base;
+    let s = base.s;
+    for (const at of [T(5), T(8), T(11)]) {
+      const r = stepConfirmed(c, s, timer(at));
+      const x = rcActions(r.actions, rc);
+      expect(x.cancels).toEqual([]);
+      expect(x.closes).toEqual([]);
+      expect(r.state.orders[rc]).toMatchObject({ status: "live", price, qty: "0.005" });
+      s = r.state;
+    }
+    // Phía làm tăng vị thế (mua) vẫn được huỷ và đặt lại mỗi nhịp như cũ.
+    const r = stepConfirmed(c, s, timer(T(14)));
+    expect(r.actions.some((a) => a.type === "cancel" && a.clOrdID !== rc)).toBe(true);
+    expect(places(r.actions).some((o) => o.side === "buy" && !o.reduceOnly)).toBe(true);
+  });
+
+  it("stops keeping the close once it is VM_RC_KEEP_MAX_MS old: cancels, then re-places after SoDEX confirms", () => {
+    // Lệnh được giữ không bị huỷ nên engine không tra nó; nếu nó đã chết trên SoDEX mà tin WS trễ, chỉ lần huỷ mới mở
+    // đường đối soát. Quá tuổi thì quay về cách cũ.
+    expect(VM_RC_KEEP_MAX_MS).toBe(10_000);
+    const c = cfg();
+    const base = longWithClose(c);
+    const placedAt = base.s.orders[base.rc]?.since ?? 0;
+    // Còn dưới 10 s: giữ.
+    const young = stepConfirmed(c, base.s, timer(placedAt + VM_RC_KEEP_MAX_MS - 1));
+    expect(rcActions(young.actions, base.rc)).toEqual({ cancels: [], closes: [] });
+    // Đủ 10 s: huỷ, chưa đặt lệnh đóng mới tới khi SoDEX xác nhận.
+    const old = volumeMaker.step(c, base.s, timer(placedAt + VM_RC_KEEP_MAX_MS), ctx);
+    expect(rcActions(old.actions, base.rc).cancels).toHaveLength(1);
+    expect(rcActions(old.actions, base.rc).closes).toEqual([]);
+    const done = volumeMaker.step(
+      c,
+      old.state,
+      { type: "orderDone", at: placedAt + VM_RC_KEEP_MAX_MS + 100, clOrdID: base.rc },
+      ctx,
+    ).state;
+    const again = stepConfirmed(c, done, timer(placedAt + VM_RC_KEEP_MAX_MS + 3000));
+    const close = places(again.actions).find((o) => o.reduceOnly);
+    expect(close).toMatchObject({ side: "sell", quantity: "0.005", reduceOnly: true });
+    // Lệnh đóng mới lại được giữ ở nhịp sau (tuổi tính lại từ lúc đặt).
+    const next = stepConfirmed(c, again.state, timer(placedAt + VM_RC_KEEP_MAX_MS + 6000));
+    expect(rcActions(next.actions, close?.clOrdID ?? "")).toEqual({ cancels: [], closes: [] });
+  });
+
+  it("a partial fill does not reset the close's age", () => {
+    const c = bookCfg();
+    const base = bookLongWithClose(c);
+    const placedAt = base.s.orders[base.rc]?.since ?? 0;
+    const s = volumeMaker.step(
+      c,
+      base.s,
+      {
+        type: "fill",
+        at: placedAt + 8000,
+        clOrdID: base.rc,
+        price: "100000",
+        quantity: "0.002",
+        fee: "0",
+      },
+      ctx,
+    ).state;
+    expect(s.orders[base.rc]?.since).toBe(placedAt);
+    const r = volumeMaker.step(c, s, book(placedAt + VM_RC_KEEP_MAX_MS), ctx);
+    expect(rcActions(r.actions, base.rc).cancels).toHaveLength(1);
+  });
+
+  it("cancels first and places the new close only after SoDEX confirms when the price moves (DEC-257)", () => {
+    const c = cfg();
+    const base = longWithClose(c);
+    const { rc } = base;
+    let s = base.s;
+    s = volumeMaker.step(c, s, tick(T(4), "100050"), ctx).state;
+    const r = volumeMaker.step(c, s, timer(T(5)), ctx);
+    expect(rcActions(r.actions, rc).cancels).toHaveLength(1);
+    expect(rcActions(r.actions, rc).closes).toEqual([]);
+    expect(r.state.orders[rc]?.status).toBe("cancelling");
+    // SoDEX xác nhận huỷ, nhịp sau đặt lệnh đóng mới ở giá mới, đủ khối lượng.
+    s = volumeMaker.step(c, r.state, { type: "orderDone", at: T(5) + 100, clOrdID: rc }, ctx).state;
+    const r2 = stepConfirmed(c, s, timer(T(8)));
+    const close = places(r2.actions).find((o) => o.reduceOnly);
+    expect(close).toMatchObject({ side: "sell", quantity: "0.005", reduceOnly: true });
+    expect(close?.price).not.toBe(r.state.orders[rc]?.price);
+  });
+
+  /** Chế độ sổ lệnh (Smart quoting tắt): lệnh đóng đứng ở giá tốt nhất phía đóng, không phụ thuộc khối lượng vị thế. */
+  const bookCfg = () => cfg({ quoteLevel: 0 });
+  /** Sổ REST đọc đúng lúc nhịp đồng hồ (`bookAt` = `at`, DEC-389: tuổi sổ là tuổi thật). */
+  const book = (at: number, bid = "99999.9", ask = "100000") =>
+    ({
+      type: "timer",
+      at,
+      market: {
+        market: "BTC-USD",
+        candles: [],
+        book: { bid, ask, bidNotional: "100000", askNotional: "100000" },
+        bookAt: at,
+      },
+    }) as const;
+  function bookLongWithClose(c: VolumeMakerConfig) {
+    let s = volumeMaker.step(c, volumeMaker.initialState(c), book(T(1)), ctx).state;
+    let r = stepConfirmed(c, s, tick(T(1), "100000"));
+    const bid = Object.entries(r.state.orders).find(
+      ([, o]) => o.status === "live" && o.side === "buy",
+    );
+    expect(bid).toBeDefined();
+    s = volumeMaker.step(
+      c,
+      r.state,
+      {
+        type: "fill",
+        at: T(1) + 100,
+        clOrdID: bid?.[0] ?? "",
+        price: bid?.[1].price ?? "0",
+        quantity: "0.005",
+        fee: "0",
+      },
+      ctx,
+    ).state;
+    s = confirmed(c, s, T(1) + 200);
+    r = stepConfirmed(c, s, book(T(4)));
+    const rc = places(r.actions).find((o) => o.reduceOnly);
+    expect(rc).toMatchObject({ side: "sell", price: "100000", quantity: "0.005" });
+    return { s: r.state, rc: rc?.clOrdID ?? "" };
+  }
+
+  it("a stale book (DEC-389) drops new opening orders but never cancels or drops the kept close", () => {
+    const c = bookCfg();
+    const base = bookLongWithClose(c);
+    // Nhịp 7 s không có sổ mới (sổ đọc lúc 4 s, quá VM_BOOK_MAX_AGE_MS): giá đích theo giá khớp gần nhất (100000.1) khác
+    // giá lệnh đóng (100000), nhưng không có giá mới để so nên lệnh đóng được giữ.
+    const r = stepConfirmed(c, base.s, timer(T(7)));
+    expect(rcActions(r.actions, base.rc)).toEqual({ cancels: [], closes: [] });
+    expect(r.state.orders[base.rc]).toMatchObject({
+      status: "live",
+      role: "close",
+      price: "100000",
+    });
+    // Không có lệnh mở mới nào (sổ cũ chỉ còn lệnh đóng, #524); lệnh mua đang nằm vẫn bị huỷ như thường.
+    expect(places(r.actions).filter((o) => !o.reduceOnly)).toEqual([]);
+    expect(r.actions.some((a) => a.type === "cancel" && a.clOrdID !== base.rc)).toBe(true);
+    // Quá tuổi thì vẫn huỷ, kể cả khi sổ cũ (đường đối soát như trước).
+    const old = volumeMaker.step(c, r.state, timer(T(4) + VM_RC_KEEP_MAX_MS), ctx);
+    expect(rcActions(old.actions, base.rc).cancels).toHaveLength(1);
+  });
+
+  it("the kept close is not treated as an opening order (open-side filters never drop or cancel it)", () => {
+    const c = bookCfg();
+    const base = bookLongWithClose(c);
+    // Một lệnh mở phía bán đang huỷ chưa được SoDEX xác nhận: phía bán không được đặt lệnh mở mới (DEC-253). Lệnh đóng
+    // (cũng phía bán) không bị bộ lọc lệnh mở đụng tới: vẫn được giữ.
+    const s: VolumeMakerState = {
+      ...base.s,
+      orders: {
+        ...base.s.orders,
+        "open-sell-cancelling": {
+          side: "sell",
+          role: "open",
+          price: "100000.5",
+          qty: "0.005",
+          filled: "0",
+          status: "cancelling",
+          since: T(4),
+        },
+      },
+    };
+    const r = volumeMaker.step(c, s, book(T(7)), ctx);
+    expect(rcActions(r.actions, base.rc)).toEqual({ cancels: [], closes: [] });
+    expect(r.state.orders[base.rc]).toMatchObject({ status: "live", role: "close" });
+    expect(places(r.actions).filter((o) => o.side === "sell" && !o.reduceOnly)).toEqual([]);
+  });
+
+  it("keeps the close after a partial fill: its rest still equals the position", () => {
+    const c = bookCfg();
+    const base = bookLongWithClose(c);
+    const { rc } = base;
+    let s = base.s;
+    s = volumeMaker.step(
+      c,
+      s,
+      { type: "fill", at: T(5), clOrdID: rc, price: "100000", quantity: "0.002", fee: "0" },
+      ctx,
+    ).state;
+    expect(s.ledger.position).toBe("0.003");
+    const r = stepConfirmed(c, s, book(T(7)));
+    expect(rcActions(r.actions, rc)).toEqual({ cancels: [], closes: [] });
+    expect(r.state.orders[rc]).toMatchObject({ status: "live", qty: "0.005", filled: "0.002" });
+  });
+
+  it("keeps the close and adds only the missing part when the position grows", () => {
+    const c = bookCfg();
+    const base = bookLongWithClose(c);
+    const { rc } = base;
+    let s = base.s;
+    // Phía mua làm tăng vị thế khớp thêm 0.003: vị thế 0.008. Lệnh đóng 0.005 cùng giá được giữ, chỉ đặt thêm 0.003.
+    const buy = Object.entries(s.orders).find(
+      ([, o]) => o.status === "live" && o.role === "open" && o.side === "buy",
+    )?.[0];
+    expect(buy).toBeDefined();
+    s = volumeMaker.step(
+      c,
+      s,
+      { type: "fill", at: T(5), clOrdID: buy ?? "", price: "99999.7", quantity: "0.003", fee: "0" },
+      ctx,
+    ).state;
+    expect(s.ledger.position).toBe("0.008");
+    const r = stepConfirmed(c, s, book(T(7)));
+    expect(rcActions(r.actions, rc).cancels).toEqual([]);
+    expect(rcActions(r.actions, rc).closes.map((o) => o.quantity)).toEqual(["0.003"]);
+    const live = () =>
+      Object.entries(r.state.orders).filter(([, o]) => o.role === "close" && o.status === "live");
+    expect(live().reduce((n, [, o]) => n + Number(o.qty) - Number(o.filled), 0)).toBeCloseTo(
+      0.008,
+      9,
+    );
+    // Nhịp sau, cùng giá: cả hai lệnh đóng được giữ, không huỷ, không đặt thêm.
+    const r2 = stepConfirmed(c, r.state, book(T(10)));
+    const ids = live().map(([id]) => id);
+    expect(r2.actions.filter((a) => a.type === "cancel" && ids.includes(a.clOrdID))).toEqual([]);
+    expect(places(r2.actions).filter((o) => o.reduceOnly)).toEqual([]);
+  });
+
+  it("cancels then re-sizes the close when the position shrank for another reason (rest above the position)", () => {
+    const c = bookCfg();
+    const { s, rc } = bookLongWithClose(c);
+    // Sổ cái lấy vị thế SoDEX làm chuẩn (DEC-380) và vị thế giảm còn 0.002: lệnh đóng 0.005 vượt vị thế → huỷ rồi mới đặt.
+    const shrunk: VolumeMakerState = {
+      ...s,
+      ledger: { ...s.ledger, position: "0.002" },
+    };
+    const r = volumeMaker.step(c, shrunk, book(T(7)), ctx);
+    expect(rcActions(r.actions, rc).cancels).toHaveLength(1);
+    expect(rcActions(r.actions, rc).closes).toEqual([]);
+    const done = volumeMaker.step(
+      c,
+      r.state,
+      { type: "orderDone", at: T(7) + 100, clOrdID: rc },
+      ctx,
+    ).state;
+    const close = places(stepConfirmed(c, done, book(T(10))).actions).find((o) => o.reduceOnly);
+    expect(close?.quantity).toBe("0.002");
+  });
+
+  it("never keeps a close that is not reduce-only, an old close without the flag, or while orders are held (#497)", () => {
+    const c = cfg();
+    const base = longWithClose(c);
+    // Lệnh đóng chỉ post-only (SoDEX từ chối reduce-only): huỷ rồi đặt lại như cũ.
+    const notRo = volumeMaker.step(c, { ...base.s, closeReduceOnly: false }, timer(T(5)), ctx);
+    expect(rcActions(notRo.actions, base.rc).cancels).toHaveLength(1);
+    // State cũ không có cờ reduceOnly trên lệnh.
+    const legacy = {
+      ...base.s,
+      orders: Object.fromEntries(
+        Object.entries(base.s.orders).map(([k, o]) => {
+          const copy = { ...o };
+          delete copy.reduceOnly;
+          return [k, copy];
+        }),
+      ),
+    };
+    const old = volumeMaker.step(c, legacy, timer(T(5)), ctx);
+    expect(rcActions(old.actions, base.rc).cancels).toHaveLength(1);
+    // Đang giữ lệnh (Needs attention): lệnh đang nằm vẫn bị huỷ, không đặt gì.
+    const stuck = volumeMaker.step(c, { ...base.s, positionStuck: true }, timer(T(5)), ctx);
+    expect(rcActions(stuck.actions, base.rc).cancels).toHaveLength(1);
+    expect(places(stuck.actions)).toEqual([]);
+  });
+
+  it("still applies the SoDEX Max open position cap (DEC-380) to the growing side while the close is kept", () => {
+    const c = cfg();
+    const base = longWithClose(c);
+    // Vị thế SoDEX đọc mới đã chạm Max open position (2000 USDC): không đặt lệnh mua; lệnh đóng reduce-only vẫn nằm.
+    const s: VolumeMakerState = { ...base.s, sodexPosition: { size: "0.03", at: T(4) } };
+    const r = stepConfirmed(c, s, timer(T(5)));
+    expect(places(r.actions).filter((o) => o.side === "buy")).toEqual([]);
+    expect(rcActions(r.actions, base.rc).cancels).toEqual([]);
+    expect(r.state.orders[base.rc]?.status).toBe("live");
   });
 });
 

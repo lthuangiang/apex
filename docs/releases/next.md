@@ -11,6 +11,7 @@ Not financial advice. Past results are not a forecast.
 ## Kỹ thuật
 
 - Market Making: mọi bot báo giá theo sổ WS của SoDEX (như Volume Builder), tuổi sổ là tuổi thật, sổ cũ quá 1,5 s thì không đặt lệnh mở mới, lệnh đóng reduce-only vẫn đặt; giảm lệnh bị từ chối PostOnly (#517 PR A, DEC-389; **chưa merge**).
+- Market Making giữ nguyên lệnh đóng rc khi giá đích không đổi (#517 PR B, DEC-390; **chưa merge**): không còn huỷ rồi đặt lại lệnh đóng reduce-only mỗi nhịp làm mới; giá đổi thì vẫn huỷ rồi mới đặt (DEC-257). Bộ chặn tự khớp và các chốt vị thế không đổi.
 
 **Migration (chạy khi deploy):** không có.
 

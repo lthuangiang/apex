@@ -108,6 +108,11 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   to". Đặt lại ngay khi xác nhận tối đa một lần mỗi 2 s cho mỗi phía (`VM_MIN_REQUOTE_MS`); sớm hơn thì để nhịp đồng hồ.
   Lần đặt lại này không tính là một lần báo giá (không đổi `lastRefresh`). Lệnh đóng, và lệnh mở Smart quoting giữ nằm yên
   (cùng giá), không đổi.
+- **Giữ lệnh đóng cùng giá** (DEC-390): ở lần báo giá đầy đủ, lệnh đóng rc reduce-only đang nằm có đúng giá đích mới, đặt chưa quá 10 s
+  (`VM_RC_KEEP_MAX_MS`, để lệnh đã chết mà tin WS trễ vẫn được huỷ và đối soát) và tổng phần chưa khớp không vượt khối lượng cần đóng thì được giữ nguyên (không huỷ, không đặt lại); vị thế tăng thì chỉ
+  đặt thêm phần còn thiếu. Giá đổi, phần chưa khớp vượt vị thế, lệnh đóng không reduce-only, hoặc bot đang giữ lệnh
+  (#497) thì huỷ rồi mới đặt như cũ. Sổ cũ (DEC-389) thì không so giá: lệnh đóng đang được giữ vẫn nằm. Áp cho cả bot
+  bật và tắt Smart quoting.
 - **Dọn lệnh cũ không chặn báo giá** (DEC-251): nhịp đồng hồ dọn lệnh đã xong quá `VM_KEEP_DONE_MS` rồi báo giá luôn trong
   cùng nhịp.
 - **Định giá theo Binance** (một phần của **Smart quoting**; DEC-242, thay "Binance guard" của DEC-241):
