@@ -143,7 +143,7 @@ export const newsBotSignalSchema = z.object({
   decidedAt: iso,
   expiresAt: iso,
   /**
-   * #530 (DEC-TBD-news-event-coins): khoá của sự kiện tin nêu nhiều coin (null = tín hiệu một coin) và số coin của sự
+   * #530 (DEC-392): khoá của sự kiện tin nêu nhiều coin (null = tín hiệu một coin) và số coin của sự
    * kiện (bot chia cỡ lệnh cho số này; 1 = như trước).
    */
   eventKey: z.string().nullable().default(null),

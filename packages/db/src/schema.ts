@@ -2309,7 +2309,7 @@ export const newsSignals = pgTable(
     assetMapVersion: text("asset_map_version").notNull(),
     ruleVersion: text("rule_version").notNull(),
     /**
-     * #530 (DEC-TBD-news-event-coins): khoá của sự kiện tin nêu nhiều coin; các dòng cùng sự kiện có cùng khoá. null =
+     * #530 (DEC-392): khoá của sự kiện tin nêu nhiều coin; các dòng cùng sự kiện có cùng khoá. null =
      * tín hiệu một coin (mọi dòng trước #530).
      */
     eventKey: text("event_key"),

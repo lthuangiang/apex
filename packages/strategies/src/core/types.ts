@@ -202,7 +202,7 @@ export interface NewsSignalInput {
   /** Biến động thường gặp (%) theo số giờ giữ; null = thiếu nến. */
   typicalByHoldHours: Readonly<Record<string, string | null>>;
   /**
-   * #530 (DEC-TBD-news-event-coins): khoá của sự kiện tin nêu nhiều coin; null / thiếu = tín hiệu một coin.
+   * #530 (DEC-392): khoá của sự kiện tin nêu nhiều coin; null / thiếu = tín hiệu một coin.
    */
   eventKey?: string | null;
   /** #530: số coin của sự kiện; bot chia `sizeUsdc` cho số này. Thiếu / không hợp lệ = 1 (như trước). */

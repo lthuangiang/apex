@@ -313,7 +313,7 @@ describe("entry", () => {
     expect(o?.quantity).toBe("1.99");
   });
 
-  // #530 PR1 (DEC-TBD-news-event-coins): sự kiện nêu nhiều coin chia cỡ lệnh cho số coin; một coin giữ nguyên như trước.
+  // #530 PR1 (DEC-392): sự kiện nêu nhiều coin chia cỡ lệnh cho số coin; một coin giữ nguyên như trước.
   it("event of one coin (missing, 1, invalid) sizes exactly as before", () => {
     const base = places(
       newsSignal.step(cfg(), initialNewsSignalState(), signalEv(sig({ id: "same" })), ctx).actions,
@@ -332,9 +332,15 @@ describe("entry", () => {
     expect(newsEventShare("50.555", undefined).toString()).toBe("50.555");
   });
 
-  it("event of 3 coins: one third of the size, rounded down to the cent; the 200 cap still applies", () => {
+  it("event of 3 coins: the event total stays within the 200 cap, split and rounded down to the cent", () => {
     expect(newsEventShare("200", 3).toString()).toBe("66.66");
-    expect(newsEventShare("100", 3).toString()).toBe("33.33");
+    expect(newsEventShare("150", 3).toString()).toBe("50");
+    // Trần áp TRƯỚC khi chia: 500 / 3 → 200 / 3 = 66.66 mỗi coin (tổng ≤ 200), không phải 3 × 166.66.
+    expect(newsEventShare("500", 3).toString()).toBe("66.66");
+    expect(newsEventShare("500", 2).toString()).toBe("100");
+    // Một coin: min(sizeUsdc, trần) như trước.
+    expect(newsEventShare("500", 1).toString()).toBe("200");
+    expect(newsEventShare("150", undefined).toString()).toBe("150");
     const r = newsSignal.step(
       cfg(),
       initialNewsSignalState(),
@@ -345,25 +351,24 @@ describe("entry", () => {
     // 66.66 / 100.30 = 0.664… → 0.66 (bước 0.01).
     expect(o?.quantity).toBe("0.66");
     expect(Object.values(r.state.trades)[0]?.sizeUsdc).toBe("66.66");
-    // Cỡ cấu hình vượt trần (500): phần chia 166.66 dưới trần 200 nên giữ 166.66; 2 coin → 250 → trần 200.
-    const raw3 = { ...cfg(), sizeUsdc: "500" };
+    const raw = { ...cfg(), sizeUsdc: "500" };
     const r3 = newsSignal.step(
-      raw3,
+      raw,
       initialNewsSignalState(),
       signalEv(sig({ eventCoins: 3 })),
       ctx,
     );
-    expect(Object.values(r3.state.trades)[0]?.sizeUsdc).toBe("166.66");
+    expect(Object.values(r3.state.trades)[0]?.sizeUsdc).toBe("66.66");
     const r2 = newsSignal.step(
-      raw3,
+      raw,
       initialNewsSignalState(),
       signalEv(sig({ eventCoins: 2 })),
       ctx,
     );
-    expect(Object.values(r2.state.trades)[0]?.sizeUsdc).toBe("200");
-    expect(
-      Number(places(r2.actions)[0]?.price) * Number(places(r2.actions)[0]?.quantity),
-    ).toBeLessThanOrEqual(200);
+    expect(Object.values(r2.state.trades)[0]?.sizeUsdc).toBe("100");
+    // Một coin với cỡ cấu hình 500: 200 như trước.
+    const r1 = newsSignal.step(raw, initialNewsSignalState(), signalEv(sig()), ctx);
+    expect(Object.values(r1.state.trades)[0]?.sizeUsdc).toBe("200");
   });
 
   it("a share below the minimum order size is dropped with BELOW_MIN_ORDER_SIZE", () => {
