@@ -56,6 +56,7 @@ import {
 import { MmRawRecorder } from "./mm-raw";
 import { SodexBookRelay } from "./sodex-book";
 import { srBookResponder } from "./sr-book";
+import { backfillSymbols, startLeaderFeedsThenBackfill, type CancelFlag } from "./startup";
 import { CandleTracker, FundingTracker, marketSubject } from "./trackers";
 
 // marketdata: nơi duy nhất mở WS thị trường SoDEX (ARCHITECTURE.md mục 3.3.7). Một bản active nhờ
@@ -288,11 +289,14 @@ async function withRateLimitWait<T>(read: () => Promise<T>, attempts = 10): Prom
   }
 }
 
-async function backfill(engine: Engine, symbols: readonly string[]) {
+/** Đọc lại nến 1 phút REST của mọi symbol một engine; dừng giữa hai symbol khi `flag` bị huỷ (#531). */
+function backfill(engine: Engine, symbols: readonly string[], flag: CancelFlag) {
   const now = Date.now();
   const openMinute = now - (now % 60_000);
-  for (const symbol of symbols) {
-    try {
+  return backfillSymbols(
+    symbols,
+    flag,
+    async (symbol) => {
       const rows = await withRateLimitWait(() =>
         rest.getKlines(engine, symbol, {
           interval: "1m",
@@ -302,10 +306,11 @@ async function backfill(engine: Engine, symbols: readonly string[]) {
       await saveCandles(
         rows.filter((k) => k.t < openMinute).map((k) => ({ ...k, market: symbol })),
       );
-    } catch (error) {
+    },
+    (symbol, error) => {
       log.warn({ err: error, symbol }, "backfill failed");
-    }
-  }
+    },
+  );
 }
 
 function onCandles(closed: WsCandle[]) {
@@ -319,6 +324,8 @@ function onCandles(closed: WsCandle[]) {
 let streams: MarketStream[] = [];
 /** #507: subscription `sr.book.request` của lần làm leader hiện tại. */
 let srBookSub: Subscription | null = null;
+/** #531: huỷ backfill nền của lần làm leader hiện tại. */
+let cancelBackfill: (() => void) | null = null;
 let mmTimers: ReturnType<typeof setInterval>[] = [];
 /** Bộ lưu thô của lần làm leader hiện tại; ghi nốt phần đệm khi dừng. */
 let mmRawNow: MmRawRecorder | null = null;
@@ -434,7 +441,7 @@ async function start() {
               },
             }
           : {}),
-        onReconnect: () => void backfill(engine, symbols),
+        onReconnect: () => void backfill(engine, symbols, { cancelled: false }),
         onError: (error) => {
           log.warn({ err: error.message, engine }, "market stream error");
         },
@@ -456,10 +463,38 @@ async function start() {
         m.respond(JSON.stringify(reply));
       });
     }
-  })();
+  })().catch((error: unknown) => {
+    // #531: không để lỗi của subscription thành unhandled rejection (làm sập cả marketdata).
+    log.warn({ err: error }, "sr book subscription failed");
+  });
   const perpsStream = make("perps", perpsSymbols);
   streams = [make("spot", spotSymbols), perpsStream];
   for (const s of streams) s.connect();
+  // #531: theo dõi ví leader (Copy Trading SoDEX + Hyperliquid) bật ngay sau khi stream mở; backfill nến chạy nền.
+  // Trước đây các dòng này nằm sau `await backfill(…)`, và backfill có lần chạy hơn 10 giờ.
+  cancelBackfill = startLeaderFeedsThenBackfill({
+    startLeaderFeeds: () => {
+      startLeaderFeeds(perpsSymbols);
+    },
+    backfill: async (flag) => {
+      const [s, p] = await Promise.all([
+        backfill("spot", spotSymbols, flag),
+        backfill("perps", perpsSymbols, flag),
+      ]);
+      return {
+        symbols: s.symbols + p.symbols,
+        failed: s.failed + p.failed,
+        cancelled: s.cancelled || p.cancelled,
+      };
+    },
+    now: Date.now,
+    info: (detail, message) => {
+      log.info(detail, message);
+    },
+    warn: (detail, message) => {
+      log.warn(detail, message);
+    },
+  });
   await seedCurrentHour(db, mmCost, Date.now()).catch((error: unknown) => {
     log.warn({ err: error }, "mm cost seed failed");
   });
@@ -561,7 +596,13 @@ async function start() {
     });
     void scanner.run();
   }
-  await Promise.all([backfill("spot", spotSymbols), backfill("perps", perpsSymbols)]);
+}
+
+/**
+ * Theo dõi ví leader (#531, dời khỏi cuối `start()`): Copy Trading SoDEX (`leaders.sync` + copy allocator) và Hyperliquid
+ * (sync T0, poll Following / ví nghiên cứu 2 phút, flush sự kiện 10 s). Không phụ thuộc backfill nến.
+ */
+function startLeaderFeeds(perpsSymbols: readonly string[]) {
   const syncLeaders = () => {
     void allocator.refresh().catch((error: unknown) => {
       log.warn({ err: error }, "copy allocator refresh failed");
@@ -586,9 +627,13 @@ async function start() {
   every(env.LEADER_SYNC_MS, () => hlLeaders.sync(), "hyperliquid leader sync failed");
   every(120_000, () => hlLeaders.poll(), "hyperliquid follow poll failed");
   every(10_000, () => hlLeaders.flush(), "hyperliquid leader flush failed");
+  log.info({}, "leader feeds started");
 }
 
 function stop() {
+  // #531: backfill nền của lần làm leader này dừng ở symbol kế tiếp.
+  cancelBackfill?.();
+  cancelBackfill = null;
   for (const s of streams) s.close();
   srBookSub?.unsubscribe();
   srBookSub = null;
