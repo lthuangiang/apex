@@ -77,6 +77,7 @@ import {
   waitingOf,
   volumeFarm,
   volumeMakerStopCause,
+  vmNewBotDefaults,
   type MarketRules,
   type VolumeFarmState,
   type VolumeMakerState,
@@ -417,6 +418,15 @@ export async function assertCopyLeaderReady(
     );
 }
 
+/**
+ * Mặc định chỉ cho bot MỚI, áp trên config thô trước `parseConfig` (#536, DEC-395): Market Making thiếu cả `quoteLevel`
+ * lẫn `distanceBp` → `quoteLevel` 2. Gọi ở `createBot`, `checkNewBotConfig` (MCP `draft_new_bot`) và `dryRunChecks`;
+ * KHÔNG gọi ở version mới / sửa bot (`checkVersionConfig`), để config cũ giữ cách báo giá cũ.
+ */
+export function newBotDefaults(strategy: string, raw: unknown): unknown {
+  return strategy === Strategy.volumeMaker ? vmNewBotDefaults(raw) : raw;
+}
+
 export function parseConfig(strategy: string, config: unknown): Record<string, unknown> {
   const entry = (
     STRATEGIES as Record<
@@ -751,7 +761,7 @@ export async function createBot(
 ): Promise<BotSummary> {
   await assertStrategyAvailable(deps.db, userId, body.strategy);
   const a = await account(deps.db, userId);
-  const config = parseConfig(body.strategy, body.config);
+  const config = parseConfig(body.strategy, newBotDefaults(body.strategy, body.config));
   assertCopyLeader(body.strategy, config, a.address);
   await assertLeverageCap(deps, a.id, body.strategy, config);
   const req = requirementOf(body.strategy, config);
@@ -1326,7 +1336,7 @@ export async function dryRunChecks(
 ): Promise<StartChecks> {
   await assertStrategyAvailable(deps.db, userId, body.strategy);
   const a = await account(deps.db, userId);
-  const config = parseConfig(body.strategy, body.config);
+  const config = parseConfig(body.strategy, newBotDefaults(body.strategy, body.config));
   assertCopyLeader(body.strategy, config, a.address);
   return checksFor(deps, userId, a, body.strategy, config);
 }
@@ -1921,7 +1931,7 @@ export async function checkNewBotConfig(
 ): Promise<Record<string, unknown>> {
   await assertStrategyAvailable(deps.db, userId, strategy);
   const a = await account(deps.db, userId);
-  const config = parseConfig(strategy, raw);
+  const config = parseConfig(strategy, newBotDefaults(strategy, raw));
   assertCopyLeader(strategy, config, a.address);
   await assertLeverageCap(deps, a.id, strategy, config);
   return config;

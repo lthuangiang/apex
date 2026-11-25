@@ -1,4 +1,5 @@
 import { arbEnterPct, arbRoundTripFeePct, type Strategy } from "@drift/shared";
+import { VM_NEW_BOT_QUOTE_LEVEL } from "@drift/strategies/client";
 
 // Field spec của form tạo/sửa bot (docs/STRATEGIES.md). Nhóm theo artboard Create: 2 = Market,
 // 3 = Parameters, 4 = Risk & exits. Key khớp zod schema trong packages/strategies; câu chữ ở
@@ -812,7 +813,8 @@ export function emptyValues(strategy: keyof typeof FIELDS): FormValues {
       orderSize: "20",
       costBudget: "10",
       maxOrders: "1",
-      quoteLevel: "0",
+      // Where to quote của bot mới: lùi 2 tick (#536, DEC-395). Màn Edit giữ giá trị đã lưu (xem `fromConfig`).
+      quoteLevel: String(VM_NEW_BOT_QUOTE_LEVEL),
       refreshSeconds: "3",
       // Smart quoting tắt mặc định cho bot mới (#498, DEC-378, thay phần "bật mặc định" của DEC-242);
       // bot đang có giữ thiết lập của nó. Như schema (`smartQuoting` mặc định false).
@@ -981,6 +983,11 @@ export function fromConfig(
         ? [config.market]
         : [];
     out.markets = ms.join(",");
+  }
+  if (strategy === "volume_maker" && config.quoteLevel === undefined) {
+    // Config cũ thiếu `quoteLevel` (báo giá theo distanceBp, DEC-135): màn Edit hiện 0 như trước, không lấy mặc định của
+    // bot mới (#536, DEC-395).
+    out.quoteLevel = "0";
   }
   if (strategy === "volume_maker" && config.maxOrders === undefined) {
     // Config trước DEC-133: quy vị thế tối đa (USDC) về số lệnh; không đặt thì là 2 lệnh (DEC-100), giữ đúng mức cũ.

@@ -118,7 +118,9 @@ export {
 export {
   VM_DEFAULTS,
   VM_LEVERAGE_MAX,
+  VM_NEW_BOT_QUOTE_LEVEL,
   vmMaxInventory,
+  vmNewBotDefaults,
   volumeMakerSchema,
   type VolumeMakerConfig,
 } from "./volume-maker/schema";
