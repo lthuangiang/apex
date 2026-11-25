@@ -382,6 +382,8 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 > **v2.18.4** (`docs/releases/v2.18.4.md`): cache Realized PnL và sparkline của Overview (DEC-387), cảnh báo team "SoDEX order updates delayed" (DEC-386), sửa a11y trang Market hours. Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.18.4`. Không đổi engine, không cần Stop bot. Sau deploy chạy lại `reports/sodex-ratelimit-a.sql` để đo mức giảm weight của `positions/history`.
 >
 > **v2.18.5** (`docs/releases/v2.18.5.md`): Market Making báo giá theo sổ WS (DEC-389) và giữ lệnh đóng rc tối đa 10 s khi giá không đổi (DEC-390). **Đổi engine của bot tiền thật.** Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.18.5`. Stop bot Market Making trước khi deploy, Start lại sau; chạy thử cỡ lệnh nhỏ 1–2 giờ, rồi chạy lại `reports/mm-517-cost.sql` để so với số đo trước.
+>
+> **v2.18.6** (`docs/releases/v2.18.6.md`): Trading Agent hiện vị thế Long / Short, Unrealized PnL và thời gian giữ của Volume Builder (#527). Không migration, không biến mới. Deploy: `infra/deploy/build-push.sh --deploy-only v2.18.6`. **Nếu prod chưa deploy v2.18.5 thì lần này mang theo thay đổi engine Market Making của v2.18.5:** Stop bot Market Making trước khi deploy, Start lại sau; chạy thử cỡ lệnh nhỏ 1–2 giờ, rồi chạy lại `reports/mm-517-cost.sql` để so với số đo trước.
 
 **3. Service cần pull lại:** cả 11 app. `infra/deploy/changed-apps.sh v2.12.0 <tag mới>` trả cả 11 vì `packages/**` đổi (shared, db). `build-push.sh --deploy-only <tag>` đã pull và `up -d` hết; không cần chọn tay.
 
