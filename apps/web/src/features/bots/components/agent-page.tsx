@@ -38,6 +38,7 @@ import { liveOrder, pickable } from "../bot-picker";
 import { pendingNoteOf, pendingVersionOf } from "../pending-version";
 import { stopEventIdOf, useReasonLabel } from "../stop-reason";
 
+import { HoldLines, PositionLines } from "./agent-tiles";
 import { BetaChip, isBeta } from "./beta-chip";
 import { useBotErrorText } from "./bot-errors";
 import { BotFills } from "./bot-fills";
@@ -281,10 +282,14 @@ export function AgentPage({ botId }: { botId?: string }) {
         : b.state === BotState.resuming
           ? "running"
           : (b.state as string);
-    const tile = (label: string, value: ReactNode) => (
+    const tile = (label: string, value: ReactNode, extra?: ReactNode) => (
       <div className="flex min-w-0 flex-col gap-1 rounded-[14px] bg-surface/85 px-3.5 py-3">
         <dt className="text-xs font-semibold text-muted">{label}</dt>
-        <dd className="m-0 text-base font-extrabold whitespace-nowrap tabular-nums">{value}</dd>
+        <dd className="m-0 text-base font-extrabold whitespace-nowrap tabular-nums">
+          {value}
+          {/* #527: dòng nhỏ bên dưới (vị thế / thời gian giữ); xuống dòng được ở 390. */}
+          {extra}
+        </dd>
       </div>
     );
     return (
@@ -396,7 +401,11 @@ export function AgentPage({ botId }: { botId?: string }) {
         <dl className="relative m-0 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
           {tile(t("profit"), <BotProfit bot={b} />)}
           {tile(t("runtime"), runtime ?? tm("notAvailable"))}
-          {tile(t("openOrders"), dd.openOrders)}
+          {tile(
+            t("openOrders"),
+            dd.openOrders,
+            <PositionLines d={dd} priceDigits={names.priceDigits(b.market)} />,
+          )}
           {tile(
             t("lastDecision"),
             lastEvent === undefined
@@ -406,6 +415,11 @@ export function AgentPage({ botId }: { botId?: string }) {
                   formatDateTime(dd.serverTime).split(", ")[0]
                 ? clock(lastEvent.occurredAt)
                 : formatDateTime(lastEvent.occurredAt),
+            <HoldLines
+              hold={dd.hold}
+              serverTime={dd.serverTime}
+              receivedAt={detail.dataUpdatedAt}
+            />,
           )}
         </dl>
         {b.capital === null && !pnlShare ? null : (

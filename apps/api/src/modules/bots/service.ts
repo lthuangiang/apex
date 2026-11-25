@@ -567,6 +567,73 @@ function netOf(
   return mark === undefined ? null : netPnl(l, mark).toString();
 }
 
+/** Chiến lược có nhiều sổ (#527): ô Open orders giữ như cũ, không hiện vị thế (PM chốt; phương án riêng sau). */
+const MULTI_LEDGER: ReadonlySet<string> = new Set([
+  Strategy.newsSignal,
+  Strategy.fundingArb,
+  Strategy.rebalancing,
+]);
+
+/**
+ * #527: vị thế theo sổ của chính bot cho ô Open orders. Chỉ bot một sổ (`state.ledger`), đang chạy / chờ / pause (bot
+ * đã dừng không còn quản lý vị thế, như `netOf`), sổ cái khớp vị thế thật. `shown` false = ô giữ như cũ. Giá lấy từ
+ * `marks` (giá khớp gần nhất `md:last`, cùng nguồn và cùng quy tắc hết hạn với Profit since start); thiếu thì
+ * `markPrice` / `unrealizedPnl` null, không bao giờ 0. Lãi chưa chốt chưa trừ phí.
+ */
+export function positionOf(
+  strategy: string,
+  state: unknown,
+  marks: Readonly<Record<string, string>>,
+  market: string,
+  botState: BotState,
+  mismatch: boolean,
+): { shown: boolean; position: BotDetail["position"] } {
+  const hidden = { shown: false, position: null };
+  if (botState === BotState.stopped || botState === BotState.archived || mismatch) return hidden;
+  if (MULTI_LEDGER.has(strategy) || isMultiMarketCopyState(state)) return hidden;
+  const l = (state as { ledger?: Ledger } | null)?.ledger;
+  if (l === undefined) return hidden;
+  const pos = dec(l.position);
+  if (pos.isZero()) return { shown: true, position: null };
+  const qty = pos.abs();
+  const mark = marks[market] ?? null;
+  return {
+    shown: true,
+    position: {
+      side: pos.gt(0) ? "long" : "short",
+      qty: qty.toString(),
+      value: qty.mul(l.avgCost).toString(),
+      avgEntry: dec(l.avgCost).toString(),
+      markPrice: mark,
+      unrealizedPnl: mark === null ? null : pos.mul(dec(mark).sub(l.avgCost)).toString(),
+    },
+  };
+}
+
+/** #527: thời gian giữ của lượt Volume Builder đang chạy; null khi không có lượt, chiến lược khác hoặc bot không chạy. */
+export function holdOf(strategy: string, state: unknown, botState: BotState): BotDetail["hold"] {
+  if (strategy !== Strategy.volumeFarm) return null;
+  if (botState === BotState.stopped || botState === BotState.archived) return null;
+  const s = state as {
+    phase?: unknown;
+    holdSecs?: unknown;
+    openedAt?: unknown;
+    holdUntil?: unknown;
+  } | null;
+  if (s === null || typeof s !== "object") return null;
+  const phase = s.phase;
+  if (phase !== "entering" && phase !== "open" && phase !== "exiting") return null;
+  if (typeof s.holdSecs !== "number" || !Number.isFinite(s.holdSecs) || s.holdSecs < 0) return null;
+  const at = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) ? iso(new Date(v)) : null;
+  return {
+    phase,
+    holdSecs: Math.round(s.holdSecs),
+    openedAt: at(s.openedAt),
+    holdUntil: at(s.holdUntil),
+  };
+}
+
 /** Market cần giá để tính lãi của bot: `bots.market`, cộng mọi market của bot copy (DEC-163). */
 export function priceMarketsOf(market: string, strategy: string, config: unknown): string[] {
   if (strategy !== Strategy.copyTrade || config === null || typeof config !== "object")
@@ -1042,6 +1109,20 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
     .select({ n: sql<number>`count(*)::int` })
     .from(orders)
     .where(and(eq(orders.botId, botId), inArray(orders.status, ["open", "partially_filled"])));
+  // #527: lệnh đang mở duy nhất (cho dòng "Buy … USDC at …" khi bot còn phẳng); đọc tối đa 2 dòng.
+  const openRows =
+    (open?.n ?? 0) === 1
+      ? await deps.db
+          .select({
+            side: orders.side,
+            price: orders.price,
+            size: orders.size,
+            filledSize: orders.filledSize,
+          })
+          .from(orders)
+          .where(and(eq(orders.botId, botId), inArray(orders.status, ["open", "partially_filled"])))
+          .limit(2)
+      : [];
   const [filled] = await deps.db
     .select({ n: sql<number>`count(*)::int` })
     .from(orders)
@@ -1065,6 +1146,23 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
   const marks: Record<string, string> = await deps
     .prices(priceMarketsOf(b.market, b.strategy, active?.config ?? null))
     .catch(() => ({}));
+  const pos = positionOf(
+    b.strategy,
+    runtime?.state ?? null,
+    marks,
+    b.market,
+    b.state,
+    hasPositionMismatch(b),
+  );
+  const only = openRows.length === 1 ? openRows[0] : undefined;
+  const pendingOrder =
+    pos.shown && pos.position === null && only !== undefined && only.price !== null
+      ? {
+          side: only.side,
+          value: dec(only.price).mul(dec(only.size).sub(only.filledSize)).toString(),
+          price: dec(only.price).toString(),
+        }
+      : null;
   return {
     // Cùng công thức vốn với danh sách (`GET /bots`), để hai endpoint thống nhất (UI_REVIEW F7).
     bot: summary(
@@ -1095,6 +1193,10 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
       occurredAt: iso(e.occurredAt),
     })),
     openOrders: open?.n ?? 0,
+    positionShown: pos.shown,
+    position: pos.position,
+    pendingOrder,
+    hold: holdOf(b.strategy, runtime?.state ?? null, b.state),
     serverTime: iso(deps.now()),
     refusedRecently: refused?.n ?? 0,
     blockedByRiskRecently: refused?.risk ?? 0,

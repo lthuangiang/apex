@@ -101,6 +101,12 @@ Sau đó là checkbox xác nhận và nút `Start on mainnet`. Khi bấm: disabl
 - Thanh vòng đời (Stopped → Starting → Running → Paused → Stopping); bước hiện tại được tô, bước đang chờ backend thì dùng viền nét đứt.
 - Các nút theo trạng thái: Pause / Resume / Start…, "Stop agent…" đặt tách riêng ở cuối trang.
 - Bảng "Decisions & actions" (time, decision, why, result), thẻ cấu hình kèm nút "Edit bot", thẻ lỗi gần đây có mã lỗi.
+- **Ô "Open orders"** (#527, mockup `docs/mockups/agent-position-hold`): con số lớn = số lệnh đang mở; hai dòng nhỏ bên dưới theo sổ của chính bot (không phải vị thế cả tài khoản):
+  - đang giữ vị thế: `Long` (success) / `Short` (danger) + `{size} USDC at {price}` (size = khối lượng × giá vào trung bình), dòng 2 `Unrealized {value} USDC` (màu theo dấu);
+  - **Unrealized PnL** = khối lượng có dấu × (**giá khớp gần nhất** − giá vào trung bình), chưa trừ phí, tính bằng decimal. Giá khớp gần nhất là `md:last` của marketdata, cùng nguồn và cùng quy tắc hết hạn (khoá Redis 60 s) với Profit since start; không phải mark price. Không có giá thì `Not available`, không bao giờ 0;
+  - phẳng mà còn đúng một lệnh đang mở: `Buy` / `Sell {size} USDC at {price}` + `No position yet` (nhiều lệnh thì chỉ `No position yet`); phẳng, không lệnh: `No open position`;
+  - **giữ ô như cũ** (không thêm dòng nào, không hiện `No open position`): bot nhiều sổ (`news_signal`, copy trade nhiều market, `funding_arb`, `rebalancing`; phương án riêng sau), bot không có sổ (grid…), bot đã dừng / archived, vị thế thật lệch sổ cái.
+- **Ô "Last decision"** (#527, chỉ Volume Builder): giờ của decision giữ nguyên; dòng 1 `Hold {n} s` (`holdSecs` của lượt hiện tại); dòng 2 `Starts when filled` (lệnh vào chưa khớp), `{n} s left` (đếm ngược mỗi giây tới `holdUntil`, chạy trên trình duyệt theo giờ server, không âm, không tăng số lần gọi API), `Hold finished · exiting` (quá `holdUntil`). Không có lượt, bot không chạy, hoặc thoát sớm trước `holdUntil`: không có dòng nào. Số đếm không nằm trong vùng `aria-live`; chỉ câu trạng thái (không có số giây) được đọc một lần khi đổi.
 
 ### 8.4 Sửa bot (`/bots/:botId/edit`)
 - Khoá: strategy, market, mode. Muốn đổi thì Stop rồi Duplicate.

@@ -3092,6 +3092,22 @@
     "runtime": "Runtime",
     "openOrders": "Open orders",
     "lastDecision": "Last decision",
+    "position": {
+      "noPositionYet": "No position yet",
+      "noOpenPosition": "No open position",
+      "long": "Long",
+      "short": "Short",
+      "at": "{size} USDC at {price}",
+      "buyAt": "Buy {size} USDC at {price}",
+      "sellAt": "Sell {size} USDC at {price}",
+      "unrealized": "Unrealized {value} USDC"
+    },
+    "hold": {
+      "holdN": "Hold {n} s",
+      "startsWhenFilled": "Starts when filled",
+      "left": "{n} s left",
+      "finished": "Hold finished · exiting"
+    },
     "decisions": "Decisions & actions",
     "allOrders": "All orders →",
     "cols": {

@@ -363,6 +363,52 @@ export const botDetailSchema = z.object({
   versions: z.array(botVersionSchema),
   events: z.array(botEventSchema),
   openOrders: z.number().int().nonnegative(),
+  /**
+   * #527: ô Open orders có hiện vị thế không. true = bot một sổ (`state.ledger`), đang chạy / pause, sổ cái khớp vị thế
+   * thật; false = giữ ô như cũ (bot nhiều sổ: news_signal, copy trade nhiều market, funding arb, rebalancing; bot không
+   * có sổ; bot đã dừng; vị thế thật lệch sổ cái).
+   */
+  positionShown: z.boolean().default(false),
+  /**
+   * #527: vị thế theo sổ của chính bot (không phải của cả tài khoản); null = phẳng (hoặc `positionShown` false).
+   * `value` = khối lượng × giá vào trung bình (quote). `markPrice` = giá khớp gần nhất của marketdata (Redis `md:last`,
+   * cùng nguồn và cùng quy tắc với Profit since start); null khi không có hoặc đã hết hạn. `unrealizedPnl` =
+   * khối lượng có dấu × (giá đó − giá vào trung bình), chưa trừ phí; null khi không có giá.
+   */
+  position: z
+    .object({
+      side: z.enum(["long", "short"]),
+      qty: decimalStringSchema,
+      value: decimalStringSchema,
+      avgEntry: decimalStringSchema,
+      markPrice: decimalStringSchema.nullable(),
+      unrealizedPnl: decimalStringSchema.nullable(),
+    })
+    .nullable()
+    .default(null),
+  /** #527: lệnh đang mở duy nhất của bot khi còn phẳng (`value` = giá × phần chưa khớp); null khi 0 hay nhiều lệnh. */
+  pendingOrder: z
+    .object({
+      side: z.enum(["buy", "sell"]),
+      value: decimalStringSchema,
+      price: decimalStringSchema,
+    })
+    .nullable()
+    .default(null),
+  /**
+   * #527: thời gian giữ của lượt Volume Builder đang chạy (`holdSecs` của decision lượt này). `openedAt` / `holdUntil`
+   * null khi lệnh vào chưa khớp; `holdUntil` đặt lúc lệnh vào khớp lần đầu. Null với chiến lược khác, khi không có lượt
+   * nào hoặc bot không chạy.
+   */
+  hold: z
+    .object({
+      phase: z.enum(["entering", "open", "exiting"]),
+      holdSecs: z.number().int().nonnegative(),
+      openedAt: isoDateTimeSchema.nullable(),
+      holdUntil: isoDateTimeSchema.nullable(),
+    })
+    .nullable()
+    .default(null),
   /** Giờ server: Runtime tính theo mốc này, không phụ thuộc đồng hồ máy người dùng (DEC-88). */
   serverTime: isoDateTimeSchema,
   /**
