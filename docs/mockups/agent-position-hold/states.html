@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trading Agent · position and hold</title>
+<style>
+body{margin:0;padding:24px;background:#eef1fa;color:#141a33;font-family:'Plus Jakarta Sans',system-ui,sans-serif}
+h1{font-size:24px;margin:0 0 4px} h2{font-size:18px;margin:28px 0 12px} p{margin:0 0 12px;color:#3b4262;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+figure{margin:0} figcaption{font-size:12px;color:#3b4262;margin-bottom:6px}
+dl{margin:0;padding:16px;border-radius:20px;background:#dfe6fd}
+.tile{display:flex;flex-direction:column;gap:4px;border-radius:14px;background:rgb(255 255 255/.85);padding:12px 14px}
+dt{font-size:12px;font-weight:600;color:#6a7190} dd{margin:0;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
+.sub{display:block;font-size:12px;font-weight:600;line-height:1.35}
+.ink2{color:#3b4262} .muted{color:#6a7190} .pos{color:#13804a} .neg{color:#c2343a} .accent{color:#1d47b8} .warn{color:#a35a00}
+</style>
+</head>
+<body>
+<main>
+<h1>Trading Agent · Open orders and Last decision (#527)</h1>
+<p>Bản phác người dùng duyệt ngày 25/11, dựng lại tĩnh theo các trạng thái trong issue. Ảnh bản code: agent-position-1440.png, agent-position-390.png.</p>
+<h2>Open orders (mọi bot một sổ)</h2>
+<div class="grid"><figure><figcaption>Lệnh vào đang chờ, chưa có vị thế</figcaption><dl><div class="tile"><dt>Open orders</dt><dd>1<span class="sub ink2">Buy 55.38 USDC at 1666.2</span><span class="sub muted">No position yet</span></dd></div></dl></figure><figure><figcaption>Đang Long</figcaption><dl><div class="tile"><dt>Open orders</dt><dd>1<span class="sub ink2"><span class="pos">Long</span> 55.38 USDC at 1666.2</span><span class="sub pos">Unrealized +0.04 USDC</span></dd></div></dl></figure><figure><figcaption>Đang Short</figcaption><dl><div class="tile"><dt>Open orders</dt><dd>1<span class="sub ink2"><span class="neg">Short</span> 71.10 USDC at 1668.0</span><span class="sub neg">Unrealized -0.11 USDC</span></dd></div></dl></figure><figure><figcaption>Đang giữ vị thế, không có giá khớp gần nhất</figcaption><dl><div class="tile"><dt>Open orders</dt><dd>1<span class="sub ink2"><span class="pos">Long</span> 55.38 USDC at 1666.2</span><span class="sub ink2">Not available</span></dd></div></dl></figure><figure><figcaption>Không có vị thế, không có lệnh</figcaption><dl><div class="tile"><dt>Open orders</dt><dd>0<span class="sub ink2">No open position</span></dd></div></dl></figure><figure><figcaption>Bot nhiều sổ (news, copy nhiều market, funding arb, rebalancing), bot đã dừng</figcaption><dl><div class="tile"><dt>Open orders</dt><dd>3</dd></div></dl></figure></div>
+<h2>Last decision (chỉ Volume Builder)</h2>
+<div class="grid"><figure><figcaption>Lệnh vào đã đặt, chưa khớp</figcaption><dl><div class="tile"><dt>Last decision</dt><dd>10:53:01<span class="sub ink2">Hold 172 s</span><span class="sub muted">Starts when filled</span></dd></div></dl></figure><figure><figcaption>Đã khớp, đang giữ (đếm ngược mỗi giây)</figcaption><dl><div class="tile"><dt>Last decision</dt><dd>10:53:01<span class="sub ink2">Hold 172 s</span><span class="sub accent">124 s left</span></dd></div></dl></figure><figure><figcaption>Hết thời gian giữ, đang đóng</figcaption><dl><div class="tile"><dt>Last decision</dt><dd>10:53:01<span class="sub ink2">Hold 172 s</span><span class="sub warn">Hold finished · exiting</span></dd></div></dl></figure><figure><figcaption>Không có vị thế / thoát sớm / chiến lược khác</figcaption><dl><div class="tile"><dt>Last decision</dt><dd>10:53:01</dd></div></dl></figure></div>
+</main>
+</body>
+</html>

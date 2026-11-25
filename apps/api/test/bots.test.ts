@@ -898,6 +898,27 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(analyst?.needsAttention).toBe(true);
     await env.pool.query("update bots set position_mismatch = null where id = $1", [id]);
     expect(await net()).toBe("24");
+    // #527: ô Open orders hiện vị thế theo sổ của bot và lãi chưa chốt theo cùng giá (md:last) với Profit since start.
+    const detail527 = async () =>
+      botDetailSchema.parse((await client.request("GET", `/api/v1/bots/${id}`)).json());
+    const d527 = await detail527();
+    expect(d527.positionShown).toBe(true);
+    expect(d527.position).toEqual({
+      side: "long",
+      qty: "2",
+      value: "200",
+      avgEntry: "100",
+      markPrice: "110",
+      unrealizedPnl: "20",
+    });
+    expect(d527.hold).toBeNull();
+    // Không có giá: markPrice và lãi chưa chốt null (không bao giờ 0), cùng lúc Profit since start null.
+    env.prices.delete("vBTC_vUSDC");
+    const noMark = await detail527();
+    expect(noMark.position?.markPrice).toBeNull();
+    expect(noMark.position?.unrealizedPnl).toBeNull();
+    expect(noMark.bot.netPnl).toBeNull();
+    env.prices.set("vBTC_vUSDC", { price: "110", at: env.clock.now.getTime() });
     expect(
       botListSchema
         .parse((await client.request("GET", "/api/v1/bots")).json())
