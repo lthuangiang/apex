@@ -858,6 +858,26 @@ describe("per-article Claude usage (#290)", () => {
 });
 
 describe("feature flag and env", () => {
+  it("#530 PR2: SIGNAL_NEWS_EVENT_SPLIT_ENABLED is off when missing or false, on only for true / 1", () => {
+    const base = { SIGNAL_RESEARCH_ENABLED: "true", SOSO_API_KEY: "k", DESK_AI_API_KEY: "c" };
+    expect(signalResearchEnvSchema.parse(base).SIGNAL_NEWS_EVENT_SPLIT_ENABLED).toBe(false);
+    for (const v of ["false", "0", "", "no", "off"])
+      expect(
+        signalResearchEnvSchema.parse({ ...base, SIGNAL_NEWS_EVENT_SPLIT_ENABLED: v })
+          .SIGNAL_NEWS_EVENT_SPLIT_ENABLED,
+      ).toBe(false);
+    for (const v of ["true", "1", " TRUE "])
+      expect(
+        signalResearchEnvSchema.parse({ ...base, SIGNAL_NEWS_EVENT_SPLIT_ENABLED: v })
+          .SIGNAL_NEWS_EVENT_SPLIT_ENABLED,
+      ).toBe(true);
+    // Đi qua parseSignalEnv (đường scheduler đọc env thật): thiếu biến → tắt.
+    expect(parseSignalEnv(base).env?.SIGNAL_NEWS_EVENT_SPLIT_ENABLED).toBe(false);
+    expect(
+      parseSignalEnv({ ...base, SIGNAL_NEWS_EVENT_SPLIT_ENABLED: "true" }).env
+        ?.SIGNAL_NEWS_EVENT_SPLIT_ENABLED,
+    ).toBe(true);
+  });
   it("is off by default and needs both keys", () => {
     expect(disabledReason(signalResearchEnvSchema.parse({}))).toMatch(/SIGNAL_RESEARCH_ENABLED/);
     expect(
