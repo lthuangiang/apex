@@ -8,7 +8,7 @@
 // vọng; bài phân tích, tin M&A, giá giảm không phải), favorable_ruling (quyết định của toà / cơ quan quản lý; phát biểu
 // của chính trị gia không phải); etf_approved không gồm ETF đòn bẩy / inverse bắt đầu giao dịch (PM chốt #505). Ví dụ
 // ngược 73–77 cho 5 bài reader v5 đọc sai ngày 23/11.
-// news-classifier-v7 (#530, DEC-TBD-news-event-split): thêm `other_markets` (các coin khác cùng là chủ thể của MỘT sự kiện,
+// news-classifier-v7 (#530, DEC-393): thêm `other_markets` (các coin khác cùng là chủ thể của MỘT sự kiện,
 // ví dụ một sàn lớn niêm yết AAVE, LINK, UNI trong một thông báo), quy tắc ở "Choosing the market" và ví dụ 78–80.
 // Phần này không đổi giữa các lần gọi (để cache được); bài, giờ đăng và token ứng viên nằm ở tin nhắn user.
 
@@ -157,7 +157,7 @@ none: anything else. This includes: partnerships, integrations, product launches
 75. "CrowdStrike shares fall 8% premarket; the company announces a deal to acquire a security startup" — candidates CRWD-USD → none, market NONE. The headline is an acquisition and a price drop; nothing says results beat or missed expectations.
 76. "Trump says Nvidia's board made the right decision" — candidates NVDA-USD → none, market NONE. A politician's comment is not a court or regulatory ruling.
 77. "Grayscale launches 2x leveraged Zcash ETF" — candidates ZEC-USD → none, market NONE. A leveraged ETF starting to trade is not etf_approved.
-78. "Robinhood adds trading for AAVE, LINK and UNI" — candidates AAVE-USD, LINK-USD, UNI-USD → listing, market AAVE-USD, other_markets LINK-USD, UNI-USD, relevance direct. One listing announcement directly about three tokens.
+78. "A major broker adds trading for AAVE, LINK and UNI" — candidates AAVE-USD, LINK-USD, UNI-USD → listing, market AAVE-USD, other_markets LINK-USD, UNI-USD, relevance direct. One listing announcement directly about three tokens.
 79. "Top gainers today: AAVE +8%, LINK +6%, UNI +5%" — candidates AAVE-USD, LINK-USD, UNI-USD → none, relevance passing_mention, other_markets empty.
 80. "Daily brief: Binance lists XYZ; protocol Q hacked; SOL ETF delayed" — candidates XYZ-USD, Q-USD, SOL-USD → relevance passing_mention for every asset, other_markets empty (a newsletter of separate events, not one event).
 

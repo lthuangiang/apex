@@ -202,7 +202,7 @@ export const SR_WATCH_REST = {
  * ETH không phải catalyst. Lên cùng prompt `news-classifier-v6` (#505) trong một hotfix, nên tổng kết, nhãn và cổng chỉ đếm
  * lại từ 0 một lần. Bài v4 còn `collected` / `pending` lúc deploy được chuyển sang v5 như lần trước; lệnh v4 là lịch sử.
  *
- * v6 so với v5 (#530, DEC-TBD-news-event-split): một sự kiện tin nêu nhiều coin mở lệnh cho mọi coin ngay ở bài đầu và
+ * v6 so với v5 (#530, DEC-393): một sự kiện tin nêu nhiều coin mở lệnh cho mọi coin ngay ở bài đầu và
  * chia cỡ lệnh (`eventMaxCoins`, `sameEventWindowHours`, `SAME_EVENT`, `BELOW_MIN_ORDER_SIZE` cho lệnh giấy), cùng prompt
  * `news-classifier-v7` (reader trả thêm các coin khác của sự kiện).
  */

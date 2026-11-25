@@ -35,7 +35,7 @@ import {
 } from "../src/signal-research/index";
 import type { SosoClient, SosoNewsItem } from "../src/signal-research/soso";
 
-// #530 PR2 (news-v6, DEC-TBD-news-event-split) trên Postgres thật: một bài nêu nhiều coin của MỘT sự kiện ra một tín hiệu
+// #530 PR2 (news-v6, DEC-393) trên Postgres thật: một bài nêu nhiều coin của MỘT sự kiện ra một tín hiệu
 // mỗi coin (cùng event key, k = số coin qua Understand), cỡ lệnh giấy chia k, bài đăng lại trong 24 giờ có coin trùng là
 // SAME_EVENT (trừ lần thử lại của câu chuyện đã có), tín hiệu mainnet mang event_key / event_coins. SoSoValue / Claude là
 // mock; không có SoDEX.
@@ -271,7 +271,7 @@ const storyOf = async (market: string) => {
   return s;
 };
 
-const ORIGIN_TITLE = "Robinhood to list AAVE, LINK and UNI";
+const ORIGIN_TITLE = "Major broker to list AAVE, LINK and UNI";
 const origin = (at = T) => item("c1", at, ORIGIN_TITLE, ["AAVE", "LINK", "UNI"]);
 const originAnswer = { [ORIGIN_TITLE]: listingOf(["AAVE", "LINK", "UNI"]) };
 const NO_PRICE = ["NO_SODEX_PRICE", "NO_BOOK_DATA"];
@@ -324,7 +324,7 @@ describe("event split: one signal per coin (#530 PR2)", () => {
 
     // 20:24 Odaily (UNI), ~5 giờ sau: UNI đã có câu chuyện (bỏ ở Filter) → luật thử lại hiện có: quá 120 phút → STORY_TOO_OLD.
     const at2 = Date.parse("2026-11-24T20:24:00Z");
-    const uniTitle = "Robinhood adds UNI trading";
+    const uniTitle = "Major broker adds UNI trading";
     await cycle({
       now: at2 + 2 * MIN,
       items: [origin(), item("o1", at2, uniTitle, ["UNI"])],
@@ -341,7 +341,7 @@ describe("event split: one signal per coin (#530 PR2)", () => {
 
     // 23:22 Odaily (AAVE, LINK): cả hai câu chuyện đã khoá (đã vào lệnh) → SAME_STORY.
     const at3 = Date.parse("2026-11-24T23:22:00Z");
-    const pairTitle = "Robinhood lists AAVE and LINK";
+    const pairTitle = "Major broker lists AAVE and LINK";
     await cycle({
       now: at3 + 2 * MIN,
       items: [
@@ -390,7 +390,7 @@ describe("event split: one signal per coin (#530 PR2)", () => {
 
   it("an article that names more than 5 coins is a passing mention for the whole article", async () => {
     const coins = ["AAVE", "LINK", "UNI", "COMP", "CRV", "SNX"];
-    const title = "Robinhood adds AAVE, LINK, UNI, COMP, CRV and SNX";
+    const title = "Major broker adds AAVE, LINK, UNI, COMP, CRV and SNX";
     await cycle({
       now: T + 2 * MIN,
       items: [item("six", T, title, coins)],
@@ -407,7 +407,7 @@ describe("event split: one signal per coin (#530 PR2)", () => {
   it("a limit hit mid-event: coins are checked in the order the article names them, the later one goes to shadow", async () => {
     const v = await onlyVersion("Two open", { maxOpenTrades: 2 });
     // Reader trả AAVE, LINK, UNI nhưng bài nêu UNI trước: thứ tự xét giới hạn = thứ tự trong bài.
-    const title = "Robinhood lists UNI, AAVE and LINK";
+    const title = "Major broker lists UNI, AAVE and LINK";
     await cycle({
       now: T + 2 * MIN,
       items: [item("lim", T, title, ["AAVE", "LINK", "UNI"])],
@@ -462,6 +462,61 @@ describe("event split: one signal per coin (#530 PR2)", () => {
   });
 });
 
+describe("single-coin articles keep the old path (#530 PR2)", () => {
+  it("one coin: no event fields, full size, story key market x type, one mainnet row with event_coins 1; a repost is SAME_STORY, never SAME_EVENT", async () => {
+    const title = "Major broker lists SOL perpetuals";
+    // Reader v6 trả lời không có `markets` (bài trước v7): coi như chỉ `market`.
+    const answer: Classification = {
+      catalyst: "listing",
+      market: "SOL-USD",
+      relevance: "direct",
+      promotional: false,
+      eventDate: "2026-11-24",
+    };
+    await cycle({
+      now: T + 2 * MIN,
+      items: [item("one", T, title, ["SOL"])],
+      claude: { [title]: answer },
+      books: ["SOL-USD"],
+    });
+    const u = await understandOf("one");
+    expect(u).toMatchObject({ outcome: "pass", reason: null });
+    for (const k of [
+      "event",
+      "eventKey",
+      "eventCoins",
+      "eventMarkets",
+      "eventDropped",
+      "sameEventOf",
+    ])
+      expect(u?.detail).not.toHaveProperty(k);
+    const [a] = await db.select().from(signalArticles).where(eq(signalArticles.id, "one"));
+    expect(a?.classification).not.toHaveProperty("event");
+    const t = await trades();
+    expect(t.map((x) => [x.market, Number(x.sizeUsdc)])).toEqual([["SOL-USD", 500]]);
+    expect((await db.select().from(signalStories)).map((s) => s.storyKey)).toEqual([
+      "SOL-USD|listing",
+    ]);
+    expect((await signalsOf("one")).map((s) => [s.market, s.eventKey, s.eventCoins])).toEqual([
+      ["SOL-USD", null, 1],
+    ]);
+
+    // Bài đăng lại một coin 30 phút sau: SAME_STORY như trước (bài một coin không ghi sự kiện, nên không bao giờ SAME_EVENT).
+    const again = "SOL perpetuals go live on a major broker";
+    await cycle({
+      now: T + 32 * MIN,
+      items: [item("one", T, title, ["SOL"]), item("one-b", T + 30 * MIN, again, ["SOL"])],
+      claude: { [title]: answer, [again]: answer },
+      books: ["SOL-USD"],
+    });
+    expect((await filterEvents("one-b")).map((e) => `${e.outcome}:${e.reason ?? ""}`)).toEqual([
+      "merge:SAME_STORY",
+    ]);
+    expect((await understandOf("one-b"))?.detail).not.toHaveProperty("sameEventOf");
+    expect(await trades()).toHaveLength(1);
+  });
+});
+
 describe("reposts of an event (#530 PR2)", () => {
   /** Bài gốc AAVE / LINK / UNI; LINK không có giá → bỏ ở Filter (câu chuyện chưa khoá). */
   async function originWithLinkDropped() {
@@ -474,7 +529,7 @@ describe("reposts of an event (#530 PR2)", () => {
     expect((await trades()).map((t) => t.market)).toEqual(["AAVE-USD", "UNI-USD"]);
     expect(await storyOf("LINK-USD")).toMatchObject({ locked: false, outcome: "skipped" });
   }
-  const pairTitle = "Robinhood lists AAVE and LINK";
+  const pairTitle = "Major broker lists AAVE and LINK";
   const pair = (at: number) => item("r1", at, pairTitle, ["AAVE", "LINK"]);
 
   it("a coin dropped at Filter, repost inside the retry window: retried with the first article's k (paper and mainnet)", async () => {
@@ -520,7 +575,7 @@ describe("reposts of an event (#530 PR2)", () => {
   it("B3: a repost with a traded coin and a new coin: AAVE merges SAME_STORY, COMP drops SAME_EVENT with no story; the article follows the existing state rule", async () => {
     await originWithLinkDropped();
     const at = T + 60 * MIN;
-    const title = "Robinhood adds AAVE and COMP";
+    const title = "Major broker adds AAVE and COMP";
     await cycle({
       now: at + 2 * MIN,
       items: [origin(), item("b3", at, title, ["AAVE", "COMP"])],
@@ -560,7 +615,7 @@ describe("reposts of an event (#530 PR2)", () => {
   it("a repost with no overlapping coin is a new event: its own key and k", async () => {
     await originWithLinkDropped();
     const at = T + 60 * MIN;
-    const title = "Robinhood lists SOL and COMP";
+    const title = "Major broker lists SOL and COMP";
     await cycle({
       now: at + 2 * MIN,
       items: [origin(), item("n1", at, title, ["SOL", "COMP"])],

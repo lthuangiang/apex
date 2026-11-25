@@ -686,7 +686,7 @@ describe("event split (news-v6, #530)", () => {
 
   it("orders an event's coins by first mention in the article", () => {
     const c = (symbol: string) => ({ symbol, market: `${symbol}-USD`, kind: "crypto" as const });
-    const title = "Robinhood lists AAVE, LINK and UNI";
+    const title = "Major broker lists AAVE, LINK and UNI";
     expect(firstMentionAt(title, [{ text: "LINK", match: "symbol" }])).toBe(title.indexOf("LINK"));
     expect(firstMentionAt(title, [{ text: "SOL", match: "symbol" }])).toBeNull();
     const out = marketsByMention(

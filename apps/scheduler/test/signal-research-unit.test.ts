@@ -462,7 +462,7 @@ describe("classifier prompt news-classifier-v7 (#530)", () => {
       "other_markets: the other candidate markets that the SAME single event",
     );
     expect(CLASSIFIER_SYSTEM).toMatch(
-      /Robinhood adds trading for AAVE, LINK and UNI" — candidates AAVE-USD, LINK-USD, UNI-USD → listing, market AAVE-USD, other_markets LINK-USD, UNI-USD/,
+      /A major broker adds trading for AAVE, LINK and UNI" — candidates AAVE-USD, LINK-USD, UNI-USD → listing, market AAVE-USD, other_markets LINK-USD, UNI-USD/,
     );
     expect(CLASSIFIER_SYSTEM).toMatch(/Top gainers today: .* other_markets empty/);
     expect(CLASSIFIER_SYSTEM).toMatch(/Daily brief: .* other_markets empty/);
@@ -729,7 +729,9 @@ describe("classifier prompt rules from news-classifier-v2 (#298)", () => {
       "news-classifier-v7",
     );
     // v7 (#530): and the multi-coin example.
-    expect(JSON.stringify(body.system)).toContain("Robinhood adds trading for AAVE, LINK and UNI");
+    expect(JSON.stringify(body.system)).toContain(
+      "A major broker adds trading for AAVE, LINK and UNI",
+    );
   });
 });
 

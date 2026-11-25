@@ -236,7 +236,7 @@ export function marketsByMention(
 }
 
 /**
- * #530 (DEC-TBD-news-event-split): cỡ lệnh giấy của một coin trong sự kiện `eventCoins` coin = `sizeUsdc` ÷ số coin, làm
+ * #530 (DEC-393): cỡ lệnh giấy của một coin trong sự kiện `eventCoins` coin = `sizeUsdc` ÷ số coin, làm
  * tròn xuống tới cent. Một coin (1, thiếu, không hợp lệ) = đúng `sizeUsdc`, không làm tròn (như trước). Cùng quy tắc chia
  * với bot mainnet (`newsEventShare`), không có trần mainnet (lệnh giấy của version không có trần đó).
  */
