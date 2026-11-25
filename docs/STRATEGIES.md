@@ -233,6 +233,7 @@ Hành vi và quy tắc bắt buộc ở `docs/VOLUME_MAKER.md` mục 17. Field:
 | 4 | Stop after this much volume (`volumeTarget`) | empty | Optional, > 0; bot stops when reached | Must be above 0. |
 | Adv | Max open position (`maxInventory`) | empty = 2 × order size (DEC-100) | > order size | Must be above the order size. |
 | Adv | Quote distance | 1.0 bp | ≥ 1 tick | Must be at least one tick. |
+| Adv | Where to quote (`quoteLevel`) | 2 cho bot mới (#536, DEC-395); config đã lưu thiếu field = báo giá theo Quote distance như cũ, màn Edit hiện 0 | 0–20 tick lùi so với giá tốt nhất mỗi phía (0 = giá tốt nhất, DEC-135) | Allowed 0–20. |
 | Adv | Refresh every | 3 s | 2–60 s | Allowed 2–60 s. |
 | 4 | Position loss limit (`inventoryLossStop`) | empty | Optional, < budget; closes reduce-only. Chỉ hiện khi tắt Smart quoting (hoặc khi ô có giá trị / lỗi), trong khối "How your losses are capped"; giá trị đã lưu vẫn giữ và engine vẫn dùng (DEC-262) | Must be below the budget. |
 | 3 | Close only at your entry price or better (`closeAtEntry`) · BETA | Off | Hint "Fees are not included in your entry price." Close order stays post-only reduce-only at max(best, entry) for long / min(best, entry) for short; after 30 min falls back to the normal close (DEC-227) | — |

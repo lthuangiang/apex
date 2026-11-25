@@ -31,6 +31,7 @@ export { volumeFarmSchema, type VolumeFarmConfig } from "./volume-farm/schema";
 export {
   VM_DEFAULTS,
   VM_LEVERAGE_MAX,
+  VM_NEW_BOT_QUOTE_LEVEL,
   vmMaxInventory,
   volumeMakerSchema,
   type VolumeMakerConfig,

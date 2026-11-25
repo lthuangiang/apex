@@ -548,6 +548,41 @@ describe("Volume bots per user (DEC-80)", () => {
     expect((await make("BTC-USD")).statusCode).toBe(201);
   });
 
+  it("#536 (DEC-395): a new Market Making bot gets Where to quote 2 only when the caller set neither quoteLevel nor distanceBp; a new version adds nothing", async () => {
+    const { client } = await connectedUser("vm-quote-536@example.com");
+    const base: Record<string, unknown> = { ...vmConfig };
+    delete base.distanceBp;
+    const make = async (config: Record<string, unknown>) => {
+      const r = await client.request("POST", "/api/v1/bots", {
+        body: { strategy: "volume_maker", name: "MM", paramSource: "manual", config },
+      });
+      expect(r.statusCode).toBe(201);
+      return r.json<{ id: string }>().id;
+    };
+    const saved = async (id: string) =>
+      (
+        await env.pool.query<{ config: Record<string, unknown> }>(
+          "select config from bot_versions where bot_id = $1 order by version desc limit 1",
+          [id],
+        )
+      ).rows[0]?.config;
+    // Thiếu cả hai: bot mới báo giá theo sổ lệnh, lùi 2 tick.
+    expect((await saved(await make(base)))?.quoteLevel).toBe(2);
+    // Có distanceBp: giữ ý người gọi (báo giá theo khoảng cách, không thêm quoteLevel).
+    const legacy = await make(vmConfig);
+    expect((await saved(legacy))?.quoteLevel).toBeUndefined();
+    // Có quoteLevel 0: giữ 0.
+    expect((await saved(await make({ ...base, quoteLevel: 0 })))?.quoteLevel).toBe(0);
+    // Version mới của bot cũ thiếu cả hai: không áp mặc định của bot mới.
+    const v2 = await client.request("POST", `/api/v1/bots/${legacy}/versions`, {
+      body: { paramSource: "manual", config: { ...base, costBudget: "400" } },
+    });
+    expect(v2.statusCode).toBeLessThan(300);
+    const after = await saved(legacy);
+    expect(after?.costBudget).toBe("400");
+    expect(after?.quoteLevel).toBeUndefined();
+  });
+
   it("lets the team set a builder fee per strategy for one user (DEC-159)", async () => {
     const { client } = await connectedUser("fee-user@example.com");
     const me = meSchema.parse((await client.request("GET", "/api/v1/me")).json());
