@@ -374,8 +374,12 @@ function fastMove(
   return { range, threshold, bp: range.div(last).mul(10_000) };
 }
 
-/** Sổ lệnh cũ hơn ngần này thì không dùng; báo giá theo giá khớp gần nhất, lùi 1 tick. */
-export const VM_BOOK_MAX_AGE_MS = 10_000;
+/**
+ * Sổ lệnh cũ hơn ngần này (tính theo giờ đọc thật: giờ nhận tin WS, hoặc giờ engine đọc REST) thì không dùng (DEC-389,
+ * trước đây 10 s với giờ của nhịp đồng hồ). Bot báo giá theo sổ (`quoteLevel`) khi sổ cũ: không đặt lệnh mở mới; lệnh
+ * đóng reduce-only vẫn đặt theo giá khớp gần nhất, lùi 1 tick như trước.
+ */
+export const VM_BOOK_MAX_AGE_MS = 1_500;
 
 /** Sổ lệnh còn mới và không chéo, hoặc null. */
 function freshBook(s: VolumeMakerState, at: number): BookTop | null {
@@ -494,6 +498,8 @@ function quote(
   const orderQty = roundQty(dec(c.orderSize).div(mid), rules);
   // Báo giá theo sổ lệnh khi config có `quoteLevel` và có sổ lệnh mới (DEC-135).
   const book = c.quoteLevel === undefined ? null : freshBook(s, at);
+  // Báo giá theo sổ mà sổ đã cũ / chưa có (WS im, bản REST cũ): không đặt lệnh mở mới (DEC-389). Lệnh đóng vẫn đặt.
+  const staleBook = c.quoteLevel !== undefined && book === null;
   const level = c.quoteLevel ?? 0;
   // Smart quoting (DEC-144, v2 DEC-152): chỉ khi bật và có sổ lệnh mới; tắt thì không lùi, không rút, đúng logic cũ.
   const smart = c.smartQuoting && book !== null ? smartAdjust(s, book, mid, rules, at) : null;
@@ -764,6 +770,12 @@ function quote(
     const p = places[i];
     if (p !== undefined && unsure[p.side] && !closeIds.has(p.clOrdID)) places.splice(i, 1);
   }
+  // Sổ cũ (DEC-389): chỉ còn lệnh đóng; lệnh mở đang nằm đã bị huỷ ở trên như thường.
+  if (staleBook)
+    for (let i = places.length - 1; i >= 0; i -= 1) {
+      const p = places[i];
+      if (p !== undefined && !closeIds.has(p.clOrdID)) places.splice(i, 1);
+    }
   let tracked = orders;
   for (const o of places) {
     const id = o.clOrdID;
@@ -1143,8 +1155,7 @@ function onBook(
   e: Extract<StrategyEvent, { type: "book" }>,
   ctx: StepContext,
 ): StepResult<VolumeMakerState> {
-  if (e.market !== c.market || !c.smartQuoting || !dec(e.bid).lt(e.ask))
-    return { actions: [], state: s };
+  if (e.market !== c.market || !dec(e.bid).lt(e.ask)) return { actions: [], state: s };
   const book: BookTop = {
     bid: e.bid,
     ask: e.ask,
@@ -1152,6 +1163,9 @@ function onBook(
     askNotional: s.book?.askNotional ?? "0",
   };
   const state: VolumeMakerState = { ...s, book, bookAt: e.at, bookStreamAt: e.at };
+  // Không Smart quoting (DEC-389): engine đưa giá WS mới nhất vào trước mỗi bước; chỉ cập nhật sổ, không đặt lại lệnh
+  // (báo giá vẫn theo nhịp `refreshSeconds` như trước).
+  if (!c.smartQuoting) return { actions: [], state };
   if (s.lastRefresh === null || e.at - s.lastRefresh < VM_BOOK_STREAM.minRequoteMs)
     return { actions: [], state };
   // Chỉ phía có lệnh mở đang sống bị giá tốt nhất bỏ lại phía sau. Lệnh đóng để chu kỳ thường lo: huỷ nó ở đây thì
@@ -1287,7 +1301,13 @@ function stepCore(
     }
     case "timer": {
       if (e.market?.market === c.market && e.market.book !== null) {
-        const ws = s.bookStreamAt != null && e.at - s.bookStreamAt <= VM_BOOK_STREAM.freshMs;
+        // Giờ engine đọc REST thật (bản đọc dùng chung giữa các bot, có thể cũ hơn nhịp này), không phải giờ của nhịp
+        // (DEC-389). Giá WS còn mới, hoặc mới hơn bản đọc REST, thì giữ giá WS và chỉ lấy độ dày từ REST, như Volume Farm.
+        const readAt = e.market.bookAt ?? e.at;
+        const ws =
+          s.bookStreamAt != null &&
+          (e.at - s.bookStreamAt <= VM_BOOK_STREAM.freshMs ||
+            (s.bookAt != null && s.bookAt > readAt));
         const rest = e.market.book;
         s =
           ws && s.book != null
@@ -1295,7 +1315,7 @@ function stepCore(
                 ...s,
                 book: { ...s.book, bidNotional: rest.bidNotional, askNotional: rest.askNotional },
               }
-            : { ...s, book: rest, bookAt: e.at };
+            : { ...s, book: rest, bookAt: readAt };
       }
       const g = guards(c, s, ctx, e.at);
       if (g !== null) return g;
