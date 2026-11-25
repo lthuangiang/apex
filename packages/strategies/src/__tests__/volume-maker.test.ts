@@ -2587,6 +2587,31 @@ describe("volume maker — live SoDEX book for every bot, real book age (#517, D
     expect(places(r.all).every((o) => o.side === "sell" && o.reduceOnly)).toBe(true);
   });
 
+  it("logs one Waiting line per stale-book wait, with the Volume Builder wording, and a new one after a fresh book", () => {
+    const waits = (a: StrategyAction[]) =>
+      a.flatMap((x) => (x.type === "log" && x.decision === "Waiting" ? [x.why] : []));
+    // Đợt 1: ba nhịp liền chỉ có bản REST cũ 2 s → một dòng.
+    const w1 = from(c, opened().s, [rest(3000, 1000), rest(6000, 4000), rest(9000, 7000)]);
+    expect(waits(w1.all)).toEqual([
+      "Waiting for a fresh SoDEX price before placing a post-only order.",
+    ]);
+    expect(buys(w1.all)).toEqual([]);
+    expect(w1.s.staleWait).toBe(true);
+    // Sổ mới trở lại: báo giá lại, đợt chờ kết thúc, không dòng mới.
+    const back = from(c, w1.s, [rest(12000, 11900)]);
+    expect(waits(back.all)).toEqual([]);
+    expect(buys(back.all)).not.toEqual([]);
+    expect(back.s.staleWait).toBe(false);
+    // Đợt 2: sổ lại cũ → thêm đúng một dòng.
+    const w2 = from(c, back.s, [rest(15000, 13000), rest(18000, 16000)]);
+    expect(waits(w2.all)).toEqual([
+      "Waiting for a fresh SoDEX price before placing a post-only order.",
+    ]);
+    // Kiểm ngược: sổ luôn mới thì không có dòng "Waiting".
+    const ok = from(c, opened().s, [rest(3000, 2900), rest(6000, 5900)]);
+    expect(waits([...opened().all, ...ok.all])).toEqual([]);
+  });
+
   it("keeps the fresh SoDEX position cap (#497, DEC-380) on the live-book path", () => {
     // SoDEX vừa đọc: long 0.02 BTC (2000 USDC = Max open position) dù sổ cái phẳng.
     const synced: VolumeMakerState = { ...opened().s, sodexPosition: { size: "0.02", at: 2900 } };

@@ -134,6 +134,11 @@ export interface VolumeMakerState {
   /** Vị thế SoDEX đọc gần nhất và lúc đọc (#497), cho chốt Max open position độc lập với sổ cái. */
   sodexPosition?: { size: string; at: number } | null;
   /**
+   * DEC-389: đang trong một đợt bỏ lệnh mở vì sổ cũ / chưa có sổ (đã ghi dòng "Waiting" của đợt này). Về false khi có
+   * sổ mới; thiếu ở state cũ.
+   */
+  staleWait?: boolean;
+  /**
    * #497: lúc SoDEX từ chối lệnh đóng reduce-only vì không có vị thế ("position not found"): sổ cái có thể sai. Lần đọc
    * sau mốc này mà SoDEX phẳng (và đủ điều kiện mới / yên / đã đối soát) thì lấy SoDEX làm chuẩn ngay; null = không nghi.
    */
@@ -770,12 +775,27 @@ function quote(
     const p = places[i];
     if (p !== undefined && unsure[p.side] && !closeIds.has(p.clOrdID)) places.splice(i, 1);
   }
-  // Sổ cũ (DEC-389): chỉ còn lệnh đóng; lệnh mở đang nằm đã bị huỷ ở trên như thường.
-  if (staleBook)
+  // Sổ cũ (DEC-389): chỉ còn lệnh đóng; lệnh mở đang nằm đã bị huỷ ở trên như thường. Một dòng Decisions cho mỗi đợt
+  // chờ, nguyên văn câu của Volume Builder ở cùng tình huống; có sổ mới thì đợt chờ kết thúc.
+  const waitLogs: StrategyAction[] = [];
+  if (staleBook) {
+    let dropped = 0;
     for (let i = places.length - 1; i >= 0; i -= 1) {
       const p = places[i];
-      if (p !== undefined && !closeIds.has(p.clOrdID)) places.splice(i, 1);
+      if (p !== undefined && !closeIds.has(p.clOrdID)) {
+        places.splice(i, 1);
+        dropped += 1;
+      }
     }
+    if (dropped > 0 && s.staleWait !== true) {
+      waitLogs.push({
+        type: "log",
+        decision: "Waiting",
+        why: "Waiting for a fresh SoDEX price before placing a post-only order.",
+      });
+      next = { ...next, staleWait: true };
+    }
+  } else if (book !== null && s.staleWait === true) next = { ...next, staleWait: false };
   let tracked = orders;
   for (const o of places) {
     const id = o.clOrdID;
@@ -805,6 +825,7 @@ function quote(
     ...places.map((o) => ({ type: "place" as const, order: o })),
     ...smartLogs,
     ...fastLogs,
+    ...waitLogs,
   ];
   return { actions, state: next };
 }
