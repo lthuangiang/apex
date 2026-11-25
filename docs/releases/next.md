@@ -1,6 +1,6 @@
-# vTBD (sau v2.18.4)
+# vTBD (sau v2.18.5)
 
-PM đổi tên file theo tag khi người dùng gõ "release" (xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.18.4` (2026-11-24). Mục nào ghi **chưa merge** là việc đang làm: khi PR merge thì bỏ chữ đó và thêm số PR; PR không vào bản này thì xoá dòng.
+PM đổi tên file theo tag khi người dùng gõ "release" (xem `docs/RELEASE.md` mục 2; số version để TBD). Danh sách tính từ tag `v2.18.5` (2026-11-25). Mục nào ghi **chưa merge** là việc đang làm: khi PR merge thì bỏ chữ đó và thêm số PR; PR không vào bản này thì xoá dòng.
 
 ## Cho người dùng (English, dùng được cho GitHub Release)
 
@@ -10,8 +10,7 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-- Market Making: mọi bot báo giá theo sổ WS của SoDEX (như Volume Builder), tuổi sổ là tuổi thật, sổ cũ quá 1,5 s thì không đặt lệnh mở mới, lệnh đóng reduce-only vẫn đặt; giảm lệnh bị từ chối PostOnly (#517 PR A, DEC-389; **chưa merge**).
-- Market Making giữ nguyên lệnh đóng rc khi giá đích không đổi (#517 PR B, DEC-390; **chưa merge**): không còn huỷ rồi đặt lại lệnh đóng reduce-only mỗi nhịp làm mới; giá đổi thì vẫn huỷ rồi mới đặt (DEC-257). Bộ chặn tự khớp và các chốt vị thế không đổi.
+Chưa có thay đổi.
 
 **Migration (chạy khi deploy):** không có.
 
