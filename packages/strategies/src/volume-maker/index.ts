@@ -50,6 +50,11 @@ export interface TrackedOrder {
   status: "live" | "cancelling" | "done";
   /** Thời điểm đổi `status` gần nhất (ms). */
   since: number;
+  /**
+   * Lệnh đóng limit của chu kỳ báo giá (`vm:<n>:rc`) gửi kèm reduce-only (DEC-390). Chỉ lệnh có `true` mới được giữ nguyên
+   * qua lần báo giá sau khi giá đích không đổi; thiếu (state cũ, lệnh market đóng / cắt) = không bao giờ giữ.
+   */
+  reduceOnly?: boolean;
 }
 
 export interface VolumeMakerState {
@@ -461,6 +466,43 @@ function pendingClose(s: VolumeMakerState, closingSide: "buy" | "sell"): Decimal
   return sum;
 }
 
+/**
+ * DEC-390: các lệnh đóng rc được giữ nguyên qua lần báo giá này (rỗng = không giữ lệnh nào). Chỉ khi:
+ * - không phải lần đặt lại riêng một phía (`only`: lệnh đóng đã luôn được giữ ở đó) và bot không đang giữ lệnh (#497);
+ * - bot vẫn đang gửi lệnh đóng reduce-only, và mọi lệnh đóng đang sống ở phía đóng đều là lệnh rc limit gửi kèm
+ *   reduce-only (không bao giờ làm tăng vị thế, nên chốt Max open position và chốt vị thế SoDEX của DEC-380 không cần
+ *   huỷ chúng), giá đúng bằng giá đích mới;
+ * - tổng phần chưa khớp của chúng không vượt khối lượng cần đóng (vị thế trừ phần chưa khớp của các lệnh đóng đang huỷ).
+ *   Khớp một phần thì vị thế và phần chưa khớp cùng giảm, vẫn bằng nhau. Vị thế tăng thì giữ chúng và lệnh đóng mới chỉ
+ *   đặt phần còn thiếu (`closeQty` trừ phần đang treo). Vị thế giảm vì lý do khác (phần chưa khớp vượt vị thế) thì huỷ
+ *   rồi đặt lại đúng khối lượng.
+ * Bộ chặn tự khớp ở engine vẫn thấy các lệnh này như mọi lệnh đang mở.
+ */
+function keptCloses(
+  s: VolumeMakerState,
+  next: VolumeMakerState,
+  closeSide: "buy" | "sell",
+  closePrice: string,
+  pos: Decimal,
+  rules: MarketRules,
+  only: ReadonlySet<"buy" | "sell"> | undefined,
+): string[] {
+  if (only !== undefined || s.positionStuck === true || !s.closeReduceOnly) return [];
+  const live = Object.entries(s.orders).filter(
+    ([, o]) => o.role === "close" && o.status === "live" && o.side === closeSide,
+  );
+  if (live.length === 0) return [];
+  const priced = live.every(
+    ([, o]) => o.reduceOnly === true && dec(o.price).gt(0) && dec(o.price).eq(closePrice),
+  );
+  if (!priced) return [];
+  const rest = live.reduce((n, [, o]) => n.add(remaining(o)), new Decimal(0));
+  const others = pendingClose(next, closeSide).sub(rest);
+  const need = dec(roundQty(pos.abs().sub(others), rules));
+  if (!rest.gt(0) || rest.gt(need)) return [];
+  return live.map(([id]) => id);
+}
+
 /** Giá tick-grid chắc chắn ở đúng phía mid: mua dưới mid, bán trên mid, ít nhất 1 tick. */
 function tickAway(mid: Decimal, side: "buy" | "sell", price: Decimal, rules: MarketRules): string {
   const raw = roundPrice(price, rules, side === "buy" ? RoundMode.down : RoundMode.up);
@@ -556,7 +598,9 @@ function quote(
   const note = [sideText("buy"), sideText("sell")].filter((x) => x !== null).join("; ") || null;
 
   // Huỷ mọi lệnh đang mở (chúng trở thành cancelling; lệnh đóng đang cancelling vẫn chiếm chỗ khi tính close size).
+  // Lệnh đóng rc đúng giá đích, không vượt khối lượng cần đóng thì được giữ lại bên dưới (DEC-390).
   const cancels: StrategyAction[] = [];
+  const kept = new Set<string>();
   const orders: Record<string, TrackedOrder> = {};
   for (const [id, o] of Object.entries(s.orders)) {
     if (o.status === "live") {
@@ -671,6 +715,15 @@ function quote(
       });
       next = { ...next, entryCloseExpired: true };
     }
+    // DEC-390: lệnh đóng rc đang nằm đúng giá đích mới, tổng phần chưa khớp không vượt khối lượng cần đóng thì giữ nguyên
+    // (không huỷ, không đặt lại): huỷ rồi chờ SoDEX xác nhận mới đặt lại làm vị thế nằm không có lệnh đóng mỗi nhịp
+    // (prod: 3.8–5.4 lần đặt rc cho mỗi lần khớp khi Smart quoting tắt). Giá đổi thì vẫn huỷ rồi mới đặt (DEC-257).
+    for (const id of keptCloses(s, next, closeSide, closePrice, pos, rules, only)) {
+      const o = s.orders[id];
+      if (o === undefined) continue;
+      kept.add(id);
+      orders[id] = o;
+    }
     const closeQty = roundQty(pos.abs().sub(pendingClose(next, closeSide)), rules);
     if (meetsMinimum(closePrice, closeQty, rules)) {
       const rc = order(
@@ -707,7 +760,6 @@ function quote(
 
   // Smart quoting giữ lệnh nằm yên (giữ chỗ trong hàng chờ): lệnh mở đang sống có đúng giá và khối lượng của báo giá
   // mới thì không huỷ, không đặt lại.
-  const kept = new Set<string>();
   for (let i = c.smartQuoting ? places.length - 1 : -1; i >= 0; i -= 1) {
     const p = places[i];
     if (p === undefined || closeIds.has(p.clOrdID)) continue;
@@ -780,6 +832,7 @@ function quote(
         filled: "0",
         status: "live",
         since: at,
+        ...(role === "close" ? { reduceOnly: o.reduceOnly } : {}),
       },
     };
   }

@@ -10,7 +10,7 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-Chưa có thay đổi.
+- Market Making giữ nguyên lệnh đóng rc khi giá đích không đổi (#517 PR B, DEC-390; **chưa merge**): không còn huỷ rồi đặt lại lệnh đóng reduce-only mỗi nhịp làm mới; giá đổi thì vẫn huỷ rồi mới đặt (DEC-257). Bộ chặn tự khớp và các chốt vị thế không đổi.
 
 **Migration (chạy khi deploy):** không có.
 
