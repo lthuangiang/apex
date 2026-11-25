@@ -5,10 +5,12 @@ import type {
   ResearchDropReason,
   ResearchStage,
   ResearchTraceCheck,
+  ResearchTraceEvent,
+  ResearchTraceEventCoin,
   ResearchTraceStep,
 } from "@drift/shared";
 
-import { clock, count } from "../format";
+import { clock, count, day, monthDay } from "../format";
 
 import {
   delay,
@@ -63,7 +65,11 @@ export function reached(a: ResearchArticle, t: Tr): { text: string; tone: ChipTo
         text:
           a.side === null || a.asset === null
             ? t("trace.chip.tradedNoAsset")
-            : t("trace.chip.traded", { side: t(`sides.${a.side}`), asset: a.asset }),
+            : t("trace.chip.traded", {
+                side: t(`sides.${a.side}`),
+                // #530: sự kiện nhiều coin mở nhiều lệnh: liệt kê mọi coin đã vào lệnh ("Long AAVE, LINK · paper trade").
+                asset: a.tradedAssets?.join(", ") ?? a.asset,
+              }),
         tone: "pos",
       };
     case "dropped":
@@ -99,6 +105,10 @@ export interface StepView {
   band: string;
   summary: string;
   rows: Row[];
+  /** #530: nhóm dòng theo từng coin của sự kiện nhiều coin (Filter / Decide), sau `rows`. */
+  groups?: { title: string; rows: Row[] }[];
+  /** #530: dòng nhấn mạnh dưới tóm tắt ("Size split across {n} coins from one event."). */
+  note?: string;
 }
 
 export type TraceEnd = "traded" | "drop" | "merge" | "waiting";
@@ -109,6 +119,8 @@ export interface TraceView {
   end: TraceEnd;
   steps: StepView[];
   assets: string;
+  /** Coin của chip đã vào lệnh trong phễu: sự kiện nhiều coin → mọi coin đã vào lệnh (#530), không thì `assets`. */
+  tradedAssets: string;
   /** Câu kết luận (không có phần chi phí Claude). */
   verdict: string;
   /**
@@ -225,12 +237,81 @@ type TraceStory = Extract<ResearchTraceStep, { key: "normalize" }>["detail"] ext
 
 interface StepCtx {
   market: string;
+  /** #530: sự kiện nhiều coin / bài đăng lại của sự kiện; null = bài một coin. */
+  event: ResearchTraceEvent | null;
   story: TraceStory;
   /** Tick size của market (danh sách market SoDEX); null khi chưa biết. */
   tickOf: (market: string) => string | null;
   /** #423: false = người dùng test, không có token / chi phí Claude trên thẻ Score. */
   claudeCost: boolean;
 }
+
+/** #530: sự kiện có từ hai coin trở lên (thẻ Filter / Decide / Context theo từng coin). */
+const multiCoin = (e: ResearchTraceEvent | null): e is ResearchTraceEvent =>
+  e !== null && e.items.length >= 2;
+
+/** Giờ của bài đầu cho dòng "First article": thêm ngày khi khác ngày với bài đang xem (theo múi giờ người xem). */
+function firstArticleTime(at: string, articleAt: string, tz: string): string {
+  const time = clock(at, tz, false);
+  return day(at, tz) === day(articleAt, tz) ? time : `${monthDay(at, tz)} ${time}`;
+}
+
+/** Dòng "First article" của bài đăng lại khi có coin dừng với `sameEvent`; null khi không có. */
+function firstArticleRow(
+  e: ResearchTraceEvent | null,
+  a: ResearchArticle,
+  tz: string,
+  t: Tr,
+): Row | null {
+  const f = e?.firstArticle ?? null;
+  if (f === null) return null;
+  return {
+    label: t("trace.rows.firstArticle"),
+    value: t("trace.values.duplicateOf", {
+      title: f.title ?? f.excerpt ?? t("na"),
+      time: firstArticleTime(f.publishedAt, a.publishedAt, tz),
+    }),
+  };
+}
+
+/** Dòng kết quả của một coin (bị loại / gộp); null khi coin vào lệnh hoặc còn chờ. */
+function coinResultRow(c: ResearchTraceEventCoin, t: Tr): Row | null {
+  if (c.outcome === "dropped")
+    return {
+      label: t("trace.rows.result"),
+      value:
+        c.reason === null
+          ? t("trace.status.drop")
+          : t("trace.values.dropped", { code: t(`trace.reasonLabels.${c.reason}`) }),
+      title: c.code ?? undefined,
+    };
+  if (c.outcome === "merged")
+    return {
+      label: t("trace.rows.result"),
+      value:
+        c.mergeReason === null
+          ? t("trace.status.merge")
+          : t("trace.values.merged", { why: t(`trace.why.${c.mergeReason}`) }),
+      title: c.code ?? undefined,
+    };
+  return null;
+}
+
+/** Nhóm dòng của thẻ Filter theo từng coin: các kiểm, giờ bắt đầu câu chuyện (gộp quá cũ), kết quả. */
+function filterGroups(e: ResearchTraceEvent, tz: string, t: Tr): { title: string; rows: Row[] }[] {
+  return e.items.map((c) => {
+    const rows = c.checks.map((x) => checkRow(x, c.market, t));
+    if (c.storyStartedAt !== null)
+      rows.push({ label: t("trace.rows.storyStarted"), value: clock(c.storyStartedAt, tz, false) });
+    const r = coinResultRow(c, t);
+    if (r !== null) rows.push(r);
+    return { title: c.market, rows };
+  });
+}
+
+/** Lệnh đã vào của sự kiện, theo thứ tự coin. */
+const tradesOf = (e: ResearchTraceEvent) =>
+  e.items.flatMap((c) => (c.trade === null ? [] : [{ market: c.market, trade: c.trade }]));
 
 /**
  * Dựng toàn bộ phần trace (tầng, thẻ bước, câu kết luận) từ `/articles/:id/trace`. `tickOf` (tuỳ chọn): tick size của
@@ -254,8 +335,9 @@ export function traceView(
     a.asset ??
     (normalize?.key === "normalize" ? normalize.detail?.candidates[0]?.market : undefined) ??
     assets;
+  const event = tr.event ?? null;
   const steps: StepView[] = tr.steps.map((s) =>
-    stepView(s, a, { market, story: story ?? null, tickOf, claudeCost }, tz, t),
+    stepView(s, a, { market, event, story: story ?? null, tickOf, claudeCost }, tz, t),
   );
   let last = 0;
   tr.steps.forEach((s, i) => {
@@ -293,15 +375,27 @@ export function traceView(
     });
   } else if (end === "traded") {
     const d = decide?.key === "decide" ? decide.detail : null;
+    const many = multiCoin(event) ? tradesOf(event) : [];
     verdict = t("trace.verdict.reached", {
       why:
-        d === null
-          ? na
-          : t("trace.why.traded", {
-              side: t(`sides.${d.side}`),
-              market,
-              size: count(Number(d.sizeUsdc)),
-            }),
+        many.length > 0
+          ? // #530: một câu cho mỗi lệnh của sự kiện nhiều coin, nối bằng " · ".
+            many
+              .map((x) =>
+                t("trace.why.traded", {
+                  side: t(`sides.${x.trade.side}`),
+                  market: x.market,
+                  size: count(Number(x.trade.sizeUsdc)),
+                }),
+              )
+              .join(t("trades.sep"))
+          : d === null
+            ? na
+            : t("trace.why.traded", {
+                side: t(`sides.${d.side}`),
+                market,
+                size: count(Number(d.sizeUsdc)),
+              }),
     });
   } else {
     verdict = t("trace.verdict.waiting", { stage: stageName });
@@ -314,7 +408,9 @@ export function traceView(
       : a.sentToClaude
         ? t("trace.verdict.claude", { cost: c })
         : c;
-  return { stop: last + 1, end, steps, assets, verdict, cost };
+  const tradedAssets =
+    a.tradedAssets !== undefined && a.tradedAssets.length > 0 ? a.tradedAssets.join(", ") : assets;
+  return { stop: last + 1, end, steps, assets, tradedAssets, verdict, cost };
 }
 
 function stepView(
@@ -454,7 +550,8 @@ function stepView(
             ? short
             : marketList
           : t(story.isNew ? "trace.short.newStory" : "trace.short.sameStory", {
-              markets: story.market,
+              // #530: sự kiện nhiều coin liệt kê mọi market ứng viên (Normalize đứng trước Filter, chưa biết coin nào qua).
+              markets: ctx.event !== null && cands.length >= 2 ? marketList : story.market,
             });
       return { ...base, short, band, summary, rows };
     }
@@ -510,7 +607,12 @@ function stepView(
                     side: t(`sides.${d.side}`),
                   }),
         });
-        if (d.asset !== null) rows.push({ label: t("trace.rows.asset"), value: d.asset });
+        if (multiCoin(ctx.event))
+          rows.push({
+            label: t("trace.rows.asset"),
+            value: ctx.event.items.map((c) => c.market).join(", "),
+          });
+        else if (d.asset !== null) rows.push({ label: t("trace.rows.asset"), value: d.asset });
         if (d.relevance !== null)
           rows.push({ label: t("trace.rows.relevance"), value: t(`trace.values.${d.relevance}`) });
         if (d.promotional !== null)
@@ -596,9 +698,13 @@ function stepView(
         summary =
           s.reason === "tpUnderCost"
             ? t("trace.summary.tpUnderCost")
-            : t("trace.summary.dropped", {
-                reason: s.reason === null ? t("na") : t(`trace.reasonLabels.${s.reason}`),
-              });
+            : s.reason === "sameEvent"
+              ? t("trace.summary.sameEvent")
+              : s.reason === "belowMinSize"
+                ? t("trace.summary.belowMinSize")
+                : t("trace.summary.dropped", {
+                    reason: s.reason === null ? t("na") : t(`trace.reasonLabels.${s.reason}`),
+                  });
         rows.push(droppedRow(s, t));
         // #306: bài là tin ngược chiều trên lệnh đang mở (đóng hay giữ lệnh đó); tín hiệu bị giới hạn chặn vẫn được
         // theo dõi giả định (shadow).
@@ -615,10 +721,80 @@ function stepView(
         band = t("trace.bandShort.checks", { passed, total: checks.length });
         summary = t("trace.summary.filter");
       }
-      return { ...base, short, band: band ?? short, summary, rows };
+      // #530: bài đăng lại có coin dừng với "Same event" → dòng "First article" (bài đầu của sự kiện) lên đầu.
+      const ev = ctx.event;
+      const same =
+        s.reason === "sameEvent" || (ev?.items.some((c) => c.reason === "sameEvent") ?? false);
+      const first = same && s.status !== "notReached" ? firstArticleRow(ev, a, tz, t) : null;
+      if (multiCoin(ev) && s.status !== "notReached") {
+        // Sự kiện nhiều coin: kết quả từng coin trong nhóm riêng; bước dừng của cả bài vẫn theo coin bài nêu trước.
+        if (s.status === "pass") {
+          band = t("trace.bandShort.coins", {
+            passed: ev.items.filter((c) => c.outcome === "traded").length,
+            n: ev.items.length,
+          });
+          short = band;
+          summary = t("trace.summary.filterEach");
+        }
+        return {
+          ...base,
+          short,
+          band: band ?? short,
+          summary,
+          rows: first === null ? [] : [first],
+          groups: filterGroups(ev, tz, t),
+        };
+      }
+      return {
+        ...base,
+        short,
+        band: band ?? short,
+        summary,
+        rows: first === null ? rows : [first, ...rows],
+      };
     }
     case "decide": {
       const d = s.detail;
+      const ev = ctx.event;
+      // #530: sự kiện nhiều coin → một dòng mỗi coin (vào lệnh / bị loại / gộp) và câu chia cỡ lệnh.
+      if (multiCoin(ev) && s.status === "pass") {
+        const many = tradesOf(ev);
+        const head = many[0];
+        if (head !== undefined) {
+          const side = t(`sides.${head.trade.side}`);
+          const size = count(Number(head.trade.sizeUsdc));
+          return {
+            ...base,
+            short: many
+              .map((x) =>
+                t("trace.short.trade", {
+                  side: t(`sides.${x.trade.side}`),
+                  market: x.market,
+                  size: count(Number(x.trade.sizeUsdc)),
+                }),
+              )
+              .join(sep),
+            band:
+              many.length >= 2
+                ? t("trace.bandShort.tradeMany", { side, size, n: many.length })
+                : t("trace.bandShort.trade", { side, size }),
+            summary: many.length >= 2 ? t("trace.summary.decideMany") : t("trace.summary.decide"),
+            ...(ev.coins >= 2 ? { note: t("trace.summary.eventSplit", { n: ev.coins }) } : {}),
+            rows: ev.items.map((c) => ({
+              label: c.market,
+              value:
+                c.trade !== null
+                  ? t("trace.short.trade", {
+                      side: t(`sides.${c.trade.side}`),
+                      market: c.market,
+                      size: count(Number(c.trade.sizeUsdc)),
+                    })
+                  : (coinResultRow(c, t)?.value ?? t("na")),
+              title: c.code ?? undefined,
+            })),
+          };
+        }
+      }
       if (d === null)
         return {
           ...base,
@@ -634,6 +810,10 @@ function stepView(
         short: t("trace.short.trade", { side, market, size }),
         band: t("trace.bandShort.trade", { side, size }),
         summary: t("trace.summary.decide"),
+        // #530: lần thử lại một coin của sự kiện nhiều coin vẫn là phần chia của sự kiện.
+        ...(ev !== null && ev.coins >= 2
+          ? { note: t("trace.summary.eventSplit", { n: ev.coins }) }
+          : {}),
         rows: [
           { label: t("trace.rows.side"), value: t("trace.values.sideMarket", { side, market }) },
           { label: t("trace.rows.size"), value: t("trace.values.size", { size }) },

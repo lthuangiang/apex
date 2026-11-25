@@ -5,6 +5,7 @@ import {
   createSignalBotVersion,
   loadSignalContexts,
   loadSignalResearchArticles,
+  loadSignalResearchArticleTrace,
   newsSignals,
   runMigrations,
   setSignalBotVersionStatus,
@@ -338,6 +339,35 @@ describe("event split: one signal per coin (#530 PR2)", () => {
     for (const m of ["AAVE-USD", "LINK-USD", "UNI-USD"])
       expect(contextFor(map, "c1", m)?.market).toBe(m);
     expect(map.get("c1")?.market).toBe("AAVE-USD");
+    // #530 PR3: trace có kết quả từng coin (thứ tự bài nêu), k và snapshot Context của từng coin (coin phụ đọc từ signal_context_coins); feed liệt kê mọi coin
+    // đã vào lệnh.
+    const tr1 = await loadSignalResearchArticleTrace(db, "c1");
+    expect(tr1?.event).toMatchObject({
+      coins: 3,
+      firstArticle: null,
+      items: [
+        { market: "AAVE-USD", outcome: "traded", trade: { sizeUsdc: "166.66", side: "long" } },
+        { market: "LINK-USD", outcome: "traded", trade: { sizeUsdc: "166.66", side: "long" } },
+        { market: "UNI-USD", outcome: "dropped", trade: null, reason: "noPrice" },
+      ],
+    });
+    expect(tr1?.event?.items.map((c) => c.story?.market)).toEqual([
+      "AAVE-USD",
+      "LINK-USD",
+      "UNI-USD",
+    ]);
+    // Coin chính (AAVE) từ signal_contexts, coin phụ (LINK, UNI) từ signal_context_coins: mỗi coin đúng snapshot của nó.
+    expect(tr1?.event?.items.map((c) => c.context?.market)).toEqual([
+      "AAVE-USD",
+      "LINK-USD",
+      "UNI-USD",
+    ]);
+    const page1 = await loadSignalResearchArticles(
+      db,
+      researchArticlesQuerySchema.parse({ range: "1d" }),
+      new Date(T + 3 * MIN),
+    );
+    expect(page1.items.find((a) => a.id === "c1")?.tradedAssets).toEqual(["AAVE-USD", "LINK-USD"]);
 
     // 20:24 Odaily (UNI), ~5 giờ sau: UNI đã có câu chuyện (bỏ ở Filter) → luật thử lại hiện có: quá 120 phút → STORY_TOO_OLD.
     const at2 = Date.parse("2026-11-24T20:24:00Z");
@@ -745,6 +775,17 @@ describe("reposts of an event (#530 PR2)", () => {
       outcome: "merged",
       mergeReason: "sameStory",
       reason: null,
+    });
+    // #530 PR3: trace của bài đăng lại: k của bài đầu, bài đầu để dẫn "First article", kết quả từng coin theo thứ tự bài
+    // nêu (event có story theo market của story; event SAME_EVENT không có story gán cho coin còn lại).
+    const tr = await loadSignalResearchArticleTrace(db, "b3");
+    expect(tr?.event).toMatchObject({
+      coins: 3,
+      firstArticle: { id: "c1" },
+      items: [
+        { market: "AAVE-USD", outcome: "merged", mergeReason: "sameStory", trade: null },
+        { market: "COMP-USD", outcome: "dropped", reason: "sameEvent", story: null, trade: null },
+      ],
     });
   });
 

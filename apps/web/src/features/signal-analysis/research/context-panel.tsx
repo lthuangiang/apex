@@ -291,6 +291,32 @@ export function useContextAnswers(
  * Khung "4 · Context" cạnh phễu. `state`: `waiting` (chip chưa tới bước 4), `shown` (chạy hiệu ứng), `notReached` (bài
  * dừng trước bước 4), `missing` (bài trước khi có bước này). `playKey` đổi = hiệu ứng chạy lại.
  */
+/** #530: ba cảnh H1 / H2 / H3 của MỘT coin trong sự kiện nhiều coin (nhãn market phía trên). */
+function CoinScenes({
+  market,
+  context,
+  tz,
+}: {
+  market: string;
+  context: ResearchSignalContext;
+  tz: string;
+}) {
+  const answers = useContextAnswers(context, market, tz);
+  if (answers === null) return null;
+  return (
+    <section aria-label={market} data-testid="sr-ctx-coin" className="flex flex-col gap-1.5">
+      <h5 className="m-0 text-[11.5px] font-extrabold text-ink-2">{market}</h5>
+      <WhaleScene answer={answers.h1.answer} tag={answers.h1.tag} />
+      <SeesawScene answer={answers.h2.answer} tag={answers.h2.tag} />
+      <PriceRunScene
+        answer={answers.h3.answer}
+        tag={answers.h3.tag}
+        direction={priceDirection(context)}
+      />
+    </section>
+  );
+}
+
 export function ContextPanel({
   state,
   context,
@@ -298,6 +324,7 @@ export function ContextPanel({
   tz,
   playKey,
   className = "",
+  coins = [],
 }: {
   state: ContextPanelState;
   context: ResearchSignalContext | null;
@@ -305,6 +332,8 @@ export function ContextPanel({
   tz: string;
   playKey: string | number;
   className?: string;
+  /** #530: sự kiện nhiều coin: snapshot của từng coin (từ 2 coin trở lên thì hiện từng coin, theo thứ tự bài nêu). */
+  coins?: readonly { market: string; context: ResearchSignalContext }[];
 }) {
   const t = useTranslations("signalAnalysis.research");
   const answers = useContextAnswers(context, asset, tz);
@@ -327,7 +356,13 @@ export function ContextPanel({
         </h4>
         <span className="text-[11px] font-bold text-muted">{t("context.recordsOnly")}</span>
       </div>
-      {shown ? (
+      {shown && coins.length >= 2 ? (
+        <div key={playKey} className="flex flex-col gap-3">
+          {coins.map((c) => (
+            <CoinScenes key={c.market} market={c.market} context={c.context} tz={tz} />
+          ))}
+        </div>
+      ) : shown ? (
         <div key={playKey} className="flex flex-col gap-2">
           <WhaleScene answer={answers.h1.answer} tag={answers.h1.tag} />
           <SeesawScene answer={answers.h2.answer} tag={answers.h2.tag} />

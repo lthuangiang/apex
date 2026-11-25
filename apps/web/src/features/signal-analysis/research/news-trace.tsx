@@ -11,6 +11,7 @@ import {
   type ResearchFunnel,
   type ResearchRange,
   type ResearchSignalContext,
+  type ResearchTraceEvent,
 } from "@drift/shared";
 import { Info, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -211,7 +212,10 @@ function totals(f: ResearchFunnel | null, t: Tr): Totals {
       noteAt(1),
       noteAt(2),
       noteAt(3),
-      t("trace.notes.decide", { size: count(Number(f.sizeUsdc)) }),
+      // #530: trong khoảng có lệnh là phần chia của sự kiện nhiều coin → "Up to {size} USDC each".
+      t(f.sizeSplit === true ? "trace.notes.decideUpTo" : "trace.notes.decide", {
+        size: count(Number(f.sizeUsdc)),
+      }),
     ],
     reasons,
     context:
@@ -365,11 +369,21 @@ function tokenOf(view: TraceView, step: number, stop: number, t: Tr): FunnelToke
       end === "drop"
         ? t("trace.token.out", { assets: view.assets })
         : end === "traded"
-          ? t("trace.token.traded", { assets: view.assets })
+          ? t("trace.token.traded", { assets: view.tradedAssets })
           : end === "merge"
             ? t("trace.token.merged", { assets: view.assets })
             : view.assets,
   };
+}
+
+/** #530: snapshot Context của từng coin trong sự kiện nhiều coin (rỗng = bài một coin / thiếu snapshot). */
+function eventContexts(
+  e: ResearchTraceEvent | null,
+): { market: string; context: ResearchSignalContext }[] {
+  if (e === null || e.items.length < 2) return [];
+  return e.items.flatMap((c) =>
+    c.context === null ? [] : [{ market: c.market, context: c.context }],
+  );
 }
 
 /** Khung 4 · Context theo vị trí chip. */
@@ -744,12 +758,14 @@ export function NewsTrace({
               asset={asset}
               tz={ctx.tz}
               playKey={`${sel}:${String(run)}`}
+              coins={eventContexts(data?.event ?? null)}
               className="xl:w-[240px] xl:flex-none min-[1400px]:w-[300px]"
             />
           ) : liveOn ? (
             <ContextPanel
               state={panelStateOf(liveModel, Math.min(livePlayer.step, liveModel.stop))}
               context={liveData?.context ?? null}
+              coins={eventContexts(liveData?.event ?? null)}
               asset={liveData?.article.asset ?? liveData?.context?.market ?? liveView.assets}
               tz={ctx.tz}
               playKey={`live:${liveId}:${String(livePlayer.run)}`}
@@ -774,6 +790,7 @@ export function NewsTrace({
           key={`${sel}:${String(run)}`}
           bands={tb}
           context={data?.context ?? null}
+          event={data?.event ?? null}
           asset={asset}
           tz={ctx.tz}
           scoreExtra={labelBox(data, ctx.tz)}
@@ -854,7 +871,7 @@ function liveVerdict(
     const side = q.current?.side ?? null;
     head = t("live.reached", {
       side: side === null ? t("na") : t(`sides.${side}`),
-      asset: view.assets,
+      asset: view.tradedAssets,
     });
   } else head = t("live.stopped", { name: name(model.stop) });
   return `${head}${q.queue.length > 0 ? t("live.waiting", { n: q.queue.length }) : ""}${
@@ -1198,6 +1215,7 @@ function labelBox(data: ResearchArticleTrace | null, tz: string): ReactNode {
 function Steps({
   bands,
   context,
+  event = null,
   asset,
   tz,
   scoreExtra = null,
@@ -1208,6 +1226,8 @@ function Steps({
   /** #413: lệnh của bài thuộc version Rules cũ: thẻ Decide ghi "counted under vN" thay cho "passed". */
   countedUnder?: number | null;
   context: ResearchSignalContext | null;
+  /** #530: sự kiện nhiều coin: thẻ Context một khối cho mỗi coin có snapshot. */
+  event?: ResearchTraceEvent | null;
   asset: string;
   tz: string;
   /** Thêm vào cuối thẻ Score (hộp gắn nhãn, #306). */
@@ -1231,20 +1251,39 @@ function Steps({
       className="m-0 grid list-none grid-cols-1 items-start gap-2 p-0 md:grid-cols-3 md:gap-2.5"
     >
       {visible.map(({ b, n }) => {
-        if (b.key === "context" && context !== null)
+        if (b.key === "context" && context !== null) {
+          const perCoin = eventContexts(event);
           return (
             <li
               key={b.key}
               className="rounded-tile border-2 border-accent bg-surface p-3 motion-safe:animate-[sr-reveal_.45s_cubic-bezier(.2,.8,.2,1)_both] md:col-span-3 md:rounded-[14px] md:p-4"
             >
-              <ContextCard
-                context={context}
-                asset={asset}
-                tz={tz}
-                canOpenTraders={canOpenTraders}
-              />
+              {perCoin.length >= 2 ? (
+                // #530: mỗi coin của sự kiện một snapshot Context, theo thứ tự bài nêu.
+                <div className="flex flex-col gap-4">
+                  {perCoin.map((c) => (
+                    <section key={c.market} aria-label={c.market} className="flex flex-col gap-2">
+                      <h5 className="m-0 text-xs font-extrabold text-ink">{c.market}</h5>
+                      <ContextCard
+                        context={c.context}
+                        asset={c.market}
+                        tz={tz}
+                        canOpenTraders={canOpenTraders}
+                      />
+                    </section>
+                  ))}
+                </div>
+              ) : (
+                <ContextCard
+                  context={context}
+                  asset={asset}
+                  tz={tz}
+                  canOpenTraders={canOpenTraders}
+                />
+              )}
             </li>
           );
+        }
         const s = b.step;
         if (s === null) return null;
         const drop = b.state === "drop";
@@ -1280,6 +1319,12 @@ function Steps({
             {s.summary === "" ? null : (
               <p className="m-0 mt-1.5 text-xs leading-normal text-ink-2">{s.summary}</p>
             )}
+            {s.note === undefined ? null : (
+              <p className="m-0 mt-2 flex items-start gap-1.5 rounded-[10px] bg-accent-tint px-2.5 py-1.5 text-xs font-bold leading-snug text-accent-ink">
+                <Info aria-hidden="true" size={14} className="mt-px flex-none" />
+                <span>{s.note}</span>
+              </p>
+            )}
             {s.rows.length === 0 ? null : (
               <dl className="m-0 mt-2 flex flex-col gap-1 text-xs">
                 {s.rows.map((r) => (
@@ -1292,6 +1337,25 @@ function Steps({
                 ))}
               </dl>
             )}
+            {s.groups?.map((g) => (
+              <section
+                key={g.title}
+                aria-label={g.title}
+                className="mt-2.5 border-t border-bg pt-2 first-of-type:border-t-0"
+              >
+                <h5 className="m-0 text-xs font-extrabold text-ink">{g.title}</h5>
+                <dl className="m-0 mt-1 flex flex-col gap-1 text-xs">
+                  {g.rows.map((r) => (
+                    <div key={r.label} className="flex justify-between gap-3">
+                      <dt className="text-muted">{r.label}</dt>
+                      <dd title={r.title} className="m-0 text-right font-bold text-ink">
+                        {r.value ?? <Na />}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ))}
             {s.key === "collect" && collectExtra !== null ? collectExtra : null}
             {/* #376: trạng thái thị trường lúc quyết định (chỉ ghi lại, không đổi quyết định). */}
             {s.key === "decide" && context !== null ? (

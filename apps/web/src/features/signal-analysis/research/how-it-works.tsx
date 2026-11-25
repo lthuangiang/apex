@@ -353,7 +353,8 @@ function Panel({
               b,
             })}
           </p>
-          <p className="m-0">{t.rich("size", { size: count(Number(cfg.sizeUsdc)), b })}</p>
+          {/* #530: drawer mô tả Rules hiện tại (news-v6), luôn chia cỡ lệnh cho các coin của một sự kiện → "up to". */}
+          <p className="m-0">{t.rich("sizeUpTo", { size: count(Number(cfg.sizeUsdc)), b })}</p>
         </>
       );
     case "gate":

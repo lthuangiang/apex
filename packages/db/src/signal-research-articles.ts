@@ -19,6 +19,8 @@ import {
   type ResearchRange,
   type ResearchStage,
   type ResearchTraceCheck,
+  type ResearchTraceEvent,
+  type ResearchTraceEventCoin,
   type ResearchTraceStep,
   type ResearchTraceStory,
   srExportExcerpt,
@@ -124,7 +126,7 @@ function stateCte(
     with ev as (
       select a.id, a.published_at, a.collected_at, a.claude_calls, a.rule_version,
         jsonb_array_length(case when jsonb_typeof(a.matched_currencies) = 'array' then a.matched_currencies else '[]'::jsonb end) as tagged,
-        x.*
+        x.*, y.traded_markets
       from signal_articles a
       cross join lateral (
         select
@@ -141,6 +143,14 @@ function stateCte(
         from signal_events e
         where e.article_id = a.id and e.rule_version = a.rule_version and ${versionEventSql(scope, "e")}
       ) x
+      -- #530 (news-v6): market của mọi lệnh giấy bài này mở (sự kiện nhiều coin), theo thứ tự mở.
+      cross join lateral (
+        select array_agg(t.market order by e2.at, e2.id) as traded_markets
+        from signal_events e2
+        join signal_paper_trades t on t.id = e2.trade_id
+        where e2.article_id = a.id and e2.rule_version = a.rule_version
+          and e2.stage = 'decide' and e2.outcome = 'open' and ${versionEventSql(scope, "e2")}
+      ) y
       where a.status <> 'backlog'
         ${allRules ? sql`` : sql`and a.rule_version = ${v}`}
         ${since === null ? sql`` : sql`and a.collected_at >= ${since}`}
@@ -200,6 +210,7 @@ interface StateRow extends Record<string, unknown> {
   f_detail: unknown;
   f_trade_id: string | null;
   sent_to_claude: boolean;
+  traded_markets: string[] | null;
 }
 
 /** Số bài theo bước dừng + kết quả + lý do (cho `funnel.articleStops` của tổng kết). */
@@ -340,6 +351,9 @@ function articleItem(
     context: context === undefined ? null : contextFlagsOf(context),
     rulesVersion: rulesVersionNumberOf(a.ruleVersion),
     readerVersion: a.claudePromptVersion,
+    ...(s.traded_markets !== null && s.traded_markets.length >= 2
+      ? { tradedAssets: s.traded_markets }
+      : {}),
   };
 }
 
@@ -818,6 +832,165 @@ function stepsOf(input: {
   return steps;
 }
 
+/** #530 (news-v6): phần sự kiện nhiều coin đã lưu trong `classification` (pipeline `eventInfo`). */
+const eventInfoSchema = z.looseObject({
+  eventMarkets: z.array(z.string()).optional(),
+  eventCoins: z.number().int().nonnegative().optional(),
+  sameEventOf: z.string().optional(),
+});
+
+/** Khoá sự kiện `evt:<id bài đầu>` → id bài đầu; dạng lạ → null. */
+const firstArticleIdOf = (key: string | undefined): string | null =>
+  key?.startsWith("evt:") === true && key.length > 4 ? key.slice(4) : null;
+
+const MERGE: ReadonlyMap<string, ResearchTraceEventCoin["mergeReason"]> = new Map([
+  ["SAME_STORY", "sameStory"],
+  ["STORY_TOO_OLD", "storyTooOld"],
+]);
+
+/**
+ * k của sự kiện mà lệnh của bài này được chia cho: bài đầu → `eventCoins`; bài đăng lại → `eventCoins` của bài đầu (lần thử
+ * lại chia đúng phần của sự kiện). null = không phải sự kiện nhiều coin / không biết.
+ */
+export async function eventCoinsOfArticles(
+  q: Q,
+  articleIds: readonly string[],
+): Promise<Map<string, number>> {
+  const ids = [...new Set(articleIds)];
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const rows = await q
+    .select({ id: signalArticles.id, classification: signalArticles.classification })
+    .from(signalArticles)
+    .where(inArray(signalArticles.id, ids));
+  const infos = rows.map((r) => ({ id: r.id, e: parseOr(eventInfoSchema, r.classification, {}) }));
+  const firsts = [
+    ...new Set(infos.flatMap((x) => [firstArticleIdOf(x.e.sameEventOf)].filter((y) => y !== null))),
+  ];
+  const firstCoins = new Map<string, number>();
+  if (firsts.length > 0)
+    for (const r of await q
+      .select({ id: signalArticles.id, classification: signalArticles.classification })
+      .from(signalArticles)
+      .where(inArray(signalArticles.id, firsts)))
+      firstCoins.set(r.id, parseOr(eventInfoSchema, r.classification, {}).eventCoins ?? 0);
+  for (const { id, e } of infos) {
+    const first = firstArticleIdOf(e.sameEventOf);
+    const k = first === null ? (e.eventCoins ?? 0) : (firstCoins.get(first) ?? 0);
+    if (k >= 2) out.set(id, k);
+  }
+  return out;
+}
+
+/**
+ * #530: kết quả từng coin của một bài thuộc sự kiện nhiều coin (hoặc bài đăng lại của sự kiện). Mỗi coin có đúng một event
+ * Filter của version: event có story → market của story; event không có story (bị loại trước story: `SAME_EVENT`, bộ lọc
+ * version) → gán theo thứ tự ghi cho các coin còn lại (pipeline xét coin theo thứ tự bài nêu). null = bài một coin.
+ */
+async function traceEventOf(input: {
+  q: Q;
+  a: ArticleRow;
+  events: readonly EventRow[];
+  contexts: ReadonlyMap<string, typeof signalContexts.$inferSelect>;
+  profiles: ReadonlySet<string>;
+  scope: SignalVersionScope | null;
+}): Promise<ResearchTraceEvent | null> {
+  const { q, a, events } = input;
+  const info = parseOr(eventInfoSchema, a.classification, {});
+  const markets = info.eventMarkets ?? [];
+  const firstId = firstArticleIdOf(info.sameEventOf);
+  if (markets.length === 0 || (markets.length < 2 && firstId === null)) return null;
+  const filters = events.filter((e) => e.stage === "filter");
+  const decides = events.filter(
+    (e) => e.stage === "decide" && e.outcome === "open" && e.tradeId !== null,
+  );
+  const storyIds = [...new Set(filters.flatMap((e) => (e.storyId === null ? [] : [e.storyId])))];
+  const tradeIds = decides.flatMap((e) => (e.tradeId === null ? [] : [e.tradeId]));
+  const stories =
+    storyIds.length === 0
+      ? []
+      : await q.select().from(signalStories).where(inArray(signalStories.id, storyIds));
+  const trades =
+    tradeIds.length === 0
+      ? []
+      : await q.select().from(signalPaperTrades).where(inArray(signalPaperTrades.id, tradeIds));
+  const storyById = new Map(stories.map((x) => [x.id, x]));
+  const byMarket = new Map<string, EventRow>();
+  const loose: EventRow[] = [];
+  for (const e of filters) {
+    const m = e.storyId === null ? undefined : storyById.get(e.storyId)?.market;
+    if (m !== undefined && markets.includes(m)) byMarket.set(m, e);
+    else loose.push(e);
+  }
+  for (const m of markets) {
+    if (byMarket.has(m)) continue;
+    const e = loose.shift();
+    if (e === undefined) break;
+    byMarket.set(m, e);
+  }
+  const [first] =
+    firstId === null
+      ? []
+      : await q.select().from(signalArticles).where(eq(signalArticles.id, firstId));
+  const coins =
+    firstId === null
+      ? (info.eventCoins ?? 0)
+      : (parseOr(eventInfoSchema, first?.classification, {}).eventCoins ?? 0);
+  const items = markets.map((market): ResearchTraceEventCoin => {
+    const e = byMarket.get(market);
+    const story = e?.storyId == null ? undefined : storyById.get(e.storyId);
+    const trade = trades.find((t) => t.market === market);
+    const fd = parseOr(filterDetail, e?.detail ?? null, {});
+    const merged = e?.outcome === "merge";
+    const ctx = input.contexts.get(`${a.id}|${market}`);
+    return {
+      market,
+      outcome:
+        trade !== undefined
+          ? "traded"
+          : merged
+            ? "merged"
+            : e?.outcome === "drop"
+              ? "dropped"
+              : "waiting",
+      reason:
+        trade === undefined && e?.outcome === "drop" && e.reason !== null
+          ? (DROP.get(e.reason) ?? null)
+          : null,
+      mergeReason: merged && e.reason !== null ? (MERGE.get(e.reason) ?? null) : null,
+      code: trade === undefined ? (e?.reason ?? null) : null,
+      checks: e === undefined || merged ? [] : checksOf(a, e, input.scope?.config),
+      storyStartedAt:
+        merged && fd.storyStartedAt !== undefined && !Number.isNaN(Date.parse(fd.storyStartedAt))
+          ? new Date(fd.storyStartedAt).toISOString()
+          : null,
+      story: story === undefined ? null : storyOf(a, story),
+      trade:
+        trade === undefined
+          ? null
+          : {
+              tradeId: trade.id,
+              side: trade.direction === "short" ? "short" : "long",
+              sizeUsdc: decOut(trade.sizeUsdc),
+            },
+      context: ctx === undefined ? null : signalContextOf(ctx, input.profiles),
+    };
+  });
+  return {
+    coins,
+    firstArticle:
+      first === undefined
+        ? null
+        : {
+            id: first.id,
+            title: (first.title ?? "").trim() === "" ? null : first.title,
+            excerpt: excerptOf(first.content),
+            publishedAt: iso(first.publishedAt),
+          },
+    items,
+  };
+}
+
 /**
  * Trace một bài (id SoSoValue). null = không có hoặc bài backlog. #413: bài của version Rules cũ vẫn mở được, các bước
  * đọc theo version Rules của chính bài (không gọi lại Claude). `viewerId` (#304): thẻ
@@ -866,11 +1039,13 @@ export async function loadSignalResearchArticleTrace(
       : await q.select().from(signalArticles).where(eq(signalArticles.id, a.duplicateOf));
   const labelable = (await signalClassifierOf(q, id)) !== null;
   const label = viewerId === null ? null : await loadMyLabel(q, id, viewerId);
-  const context = (await loadSignalContexts(q, [id])).get(id);
-  const profiles =
-    context === undefined
-      ? new Set<string>()
-      : await walletsWithProfile(q, contextWalletAddresses(context));
+  const contexts = await loadSignalContexts(q, [id]);
+  const context = contexts.get(id);
+  // #530: mỗi coin của sự kiện một snapshot; hồ sơ ví cho mọi snapshot của bài.
+  const profiles = await walletsWithProfile(
+    q,
+    [...new Set(contexts.values())].flatMap((c) => contextWalletAddresses(c)),
+  );
   check();
   // #375: mốc độ trễ (đồng hồ scheduler). Decided = lần quyết định Filter / Decide đầu tiên của version cho bài.
   const decidedMs = events
@@ -879,6 +1054,8 @@ export async function loadSignalResearchArticleTrace(
     .reduce((m, x) => Math.min(m, x), Infinity);
   const decidedAt = Number.isFinite(decidedMs) ? new Date(decidedMs) : null;
   const liveTrade = trade?.label === "live" ? trade : null;
+  const event = await traceEventOf({ q, a, events, contexts, profiles, scope });
+  check();
   return {
     article: articleItem(a, s, scope, context),
     context: context === undefined ? null : signalContextOf(context, profiles),
@@ -900,6 +1077,7 @@ export async function loadSignalResearchArticleTrace(
       label,
       scope,
     }),
+    ...(event === null ? {} : { event }),
   };
 }
 

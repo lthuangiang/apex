@@ -196,6 +196,7 @@ function trade(over: Partial<NewsTrade> = {}): NewsTrade {
     closeReason: null,
     exitAvgPrice: null,
     pendingCommand: null,
+    eventCoins: 1,
     ...over,
   };
 }
@@ -756,6 +757,34 @@ describe("leverage 1 / 5 / 10 / 20 (#458)", () => {
     expect(within(table).getByText("150 USDC · 10×")).toBeInTheDocument();
     expect(within(table).getByText("150 USDC")).toBeInTheDocument();
     expect(within(table).getByText("Leverage couldn’t be set to 10×")).toBeInTheDocument();
+  });
+
+  it("Mainnet trades: a share of a multi-coin event says the size is split (#530)", async () => {
+    state.trades = [
+      {
+        ...trade({ id: "22222222-2222-4222-8222-222222222241", sizeUsdc: "66.66" }),
+        leverage: 1,
+        eventCoins: 3,
+      },
+      trade({ id: "22222222-2222-4222-8222-222222222242", sizeUsdc: "100" }),
+    ];
+    wrap(<MainnetTrades botId={BOT_ID} tz="UTC" />);
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("66.66 USDC · 1×")).toBeInTheDocument();
+    // n = k của sự kiện (kể cả khi bot chỉ nhận một phần); lệnh một coin không có dòng này.
+    expect(within(table).getAllByText("Size split across 3 coins from one event.")).toHaveLength(1);
+  });
+
+  it("Mainnet trades with the event split flag off: one coin, event_coins 1, no split line and no × n (#530)", async () => {
+    // SIGNAL_NEWS_EVENT_SPLIT_ENABLED tắt: bot chỉ nhận coin chính của bài, đủ cỡ lệnh, event_coins = 1.
+    state.trades = [
+      { ...trade({ id: "22222222-2222-4222-8222-222222222251", sizeUsdc: "200" }), leverage: 1 },
+    ];
+    wrap(<MainnetTrades botId={BOT_ID} tz="UTC" />);
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("200 USDC · 1×")).toBeInTheDocument();
+    expect(within(table).queryByText(/Size split across/)).toBeNull();
+    expect(within(table).queryByText(/×\s*\d/)).toBeNull();
   });
 
   it("Signals: SL_BEYOND_LIQUIDATION has a label, never the raw code", async () => {

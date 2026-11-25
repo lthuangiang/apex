@@ -203,6 +203,11 @@ export const researchFunnelSchema = z.object({
   long: int,
   short: int,
   sizeUsdc: dec,
+  /**
+   * #530 (news-v6): trong khoảng có lệnh mở với phần chia của một sự kiện nhiều coin (cỡ lệnh nhỏ hơn `sizeUsdc`): ghi chú
+   * tầng Decide ghi "Up to {size} USDC each". Thiếu = không có.
+   */
+  sizeSplit: z.boolean().optional(),
   drops: z.object({ score: dropSchema, filter: dropSchema }),
   /**
    * #291: số BÀI (không phải event) theo bước dừng + kết quả + lý do, cùng cách tính với feed `/articles` (bấm một lý do
@@ -875,6 +880,11 @@ export const researchTradeDetailSchema = z.object({
   trade: researchTradeSchema,
   rulesVersion: int,
   sizeUsdc: dec.nullable(),
+  /**
+   * #530 (news-v6): số coin của sự kiện mà cỡ lệnh này là phần chia (k ≥ 2; lần thử lại dùng k của bài đầu). Thiếu / null =
+   * lệnh một coin.
+   */
+  eventCoins: z.number().int().min(2).nullish(),
   heldSecs: int.nullable(),
   steps: z.array(researchStepSchema),
 });
@@ -970,6 +980,11 @@ export const researchArticleSchema = z.object({
   rulesVersion: int,
   /** #413: prompt Claude đã đọc bài (`news-classifier-v3`); null khi bài chưa gửi Claude hoặc không lưu. */
   readerVersion: z.string().nullable(),
+  /**
+   * #530 (news-v6): market của MỌI lệnh giấy bài này đã mở (sự kiện nhiều coin), theo thứ tự mở; cùng dạng với `asset`.
+   * Thiếu = như trước (một lệnh, dùng `asset`).
+   */
+  tradedAssets: z.array(z.string()).optional(),
 });
 
 export const researchArticlesPageSchema = z.object({
@@ -1405,6 +1420,43 @@ export const researchTraceLatencySchema = z.object({
   openedAt: iso.nullable(),
 });
 
+/**
+ * #530 (news-v6): kết quả của MỘT coin trong sự kiện tin nêu nhiều coin, ở bước Filter / Decide của version. Bước dừng của
+ * cả bài vẫn theo DEC-327 (coin bài nêu trước); mục này cho thẻ Filter / Decide / Context theo từng coin.
+ */
+export const researchTraceEventCoinSchema = z.object({
+  market: z.string(),
+  outcome: z.enum(RESEARCH_ARTICLE_OUTCOMES),
+  reason: z.enum(RESEARCH_DROP_REASONS).nullable(),
+  mergeReason: z.enum(RESEARCH_MERGE_REASONS).nullable(),
+  /** Mã nội bộ đã lưu (chỉ ở tooltip). */
+  code: z.string().nullable(),
+  /** Kiểm của Filter cho coin này (rỗng khi gộp / bị loại trước các kiểm). */
+  checks: z.array(researchTraceCheckSchema),
+  /** Gộp `storyTooOld`: giờ bài đầu tiên được tính của câu chuyện. */
+  storyStartedAt: iso.nullable(),
+  story: researchTraceStorySchema.nullable(),
+  trade: z.object({ tradeId: z.uuid(), side, sizeUsdc: dec }).nullable(),
+  /** Snapshot bước 4 · Context của coin này; null = không có. */
+  context: researchSignalContextSchema.nullable(),
+});
+
+export const researchTraceEventSchema = z.object({
+  /** k: số coin của sự kiện mà cỡ lệnh được chia cho (bài đăng lại: k của bài đầu); 0 = không biết. */
+  coins: int,
+  /** Bài đầu của sự kiện khi bài này là bài đăng lại (dòng "First article"); null với bài đầu. */
+  firstArticle: z
+    .object({
+      id: z.string(),
+      title: z.string().nullable(),
+      excerpt: z.string().nullable(),
+      publishedAt: iso,
+    })
+    .nullable(),
+  /** Mỗi coin qua Understand một mục, theo thứ tự bài nêu. */
+  items: z.array(researchTraceEventCoinSchema),
+});
+
 export const researchArticleTraceSchema = z.object({
   article: researchArticleSchema,
   /** Luôn đủ 5 bước theo thứ tự collect → decide. */
@@ -1416,6 +1468,8 @@ export const researchArticleTraceSchema = z.object({
   context: researchSignalContextSchema.nullable(),
   /** #375: mốc độ trễ của bài (dòng thời gian trong thẻ Collect). */
   latency: researchTraceLatencySchema,
+  /** #530: sự kiện nhiều coin / bài đăng lại của sự kiện; thiếu / null = bài một coin như trước. */
+  event: researchTraceEventSchema.nullish(),
 });
 
 export type ResearchRange = (typeof RESEARCH_RANGES)[number];
@@ -1436,6 +1490,8 @@ export type ResearchTraceStory = z.infer<typeof researchTraceStorySchema>;
 export type ResearchTraceCheck = z.infer<typeof researchTraceCheckSchema>;
 export type ResearchTraceStep = z.infer<typeof researchTraceStepSchema>;
 export type ResearchArticleTrace = z.infer<typeof researchArticleTraceSchema>;
+export type ResearchTraceEvent = z.infer<typeof researchTraceEventSchema>;
+export type ResearchTraceEventCoin = z.infer<typeof researchTraceEventCoinSchema>;
 export type ResearchTraceLatency = z.infer<typeof researchTraceLatencySchema>;
 export type ResearchMyLabel = z.infer<typeof researchMyLabelSchema>;
 export type ResearchLabelBody = z.infer<typeof researchLabelBodySchema>;
