@@ -442,6 +442,13 @@
       "when": 1795599590612,
       "tag": "0062_sr_context_coins",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1795678552887,
+      "tag": "0063_rewards_watch",
+      "breakpoints": true
     }
   ]
 }

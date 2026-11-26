@@ -26,6 +26,8 @@ x-app-env: &app-env
   COPY_LEADERBOARD_ENABLED: ${COPY_LEADERBOARD_ENABLED:-false}
   COPY_LEADERBOARD_HOUR_UTC: ${COPY_LEADERBOARD_HOUR_UTC:-1}
   COPY_BIG_MOVE_MIN_USD: ${COPY_BIG_MOVE_MIN_USD:-50000}
+  # #558 / DEC-398: báo box mới SoDEX rewards (api nhận token, scheduler đọc định kỳ). Mặc định tắt (docs/DEPLOY.md mục 2.23).
+  REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}
   API_TOTP_ENC_KEY: ${API_TOTP_ENC_KEY}
   API_COOKIE_SECURE: ${API_COOKIE_SECURE:-true}
   SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025}

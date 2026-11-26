@@ -60,3 +60,4 @@ export * from "./signal-research/context";
 export * from "./signal-research/market-state";
 export * from "./stats/day-bootstrap";
 export * from "./sodex-rewards";
+export * from "./api/rewards-watch";

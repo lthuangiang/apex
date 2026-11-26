@@ -494,6 +494,17 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 - **Trang chẩn đoán `/admin/rewards-debug`** (chỉ role team, không có mục sidebar) chạy **cả khi công tắc tắt**: chủ sản phẩm thử bằng ví thật trên prod trước khi mở. Token ký ví chỉ nằm trong trình duyệt (sessionStorage); server DeskLabs không nhận, không log.
 - Không migration. Không đổi gì ở engine / scheduler.
 
+### 2.23 Báo box mới SoDEX rewards: cờ `REWARDS_WATCH_ENABLED` và migration `0063_rewards_watch` (#558, DEC-398)
+
+| Biến | Service | Ý nghĩa |
+|---|---|---|
+| `REWARDS_WATCH_ENABLED` | api, scheduler | **Mới (#558 PR1).** Báo box mới: người dùng bật "Tell me about new boxes" lúc ký rewards thì api nhận phiên rewards (JWT) một lần, signer mã hoá, scheduler đọc định kỳ bằng client chỉ đọc và báo in-app. Mặc định **`false`**. Đặt cùng giá trị cho api và scheduler |
+
+- **Giữ `false`** tới khi PM đã xem `aud` / `iss` của token trên `/admin/rewards-debug` và đặt `REWARDS_JWT_AUD_ALLOW` (api, PR3) theo đó. `aud` cho thấy token dùng được cho giao dịch thì không bật, báo người dùng. PR1 chỉ khai báo cờ; route (PR3), job (PR4), web (PR5) làm sau, nên bật cờ ở bản PR1 không làm gì.
+- Mẫu `deploy/server/docker-compose.yml` có dòng `REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}` trong khối `environment` của `api` và của `scheduler`. Compose trên VPS thiếu thì thêm vào (như mẫu).
+- **Migration `0063_rewards_watch`:** chỉ thêm bảng `rewards_watch` (một dòng mỗi user đã bật; JWT chỉ ở dạng ciphertext Vault transit). Bản trước không đọc bảng này, nên rollback image không cần làm gì với bảng.
+- Các bước sau (khoá transit `drift-rewards`, policy của signer, cert mTLS cho `scheduler`) sẽ ghi vào mục này ở PR2.
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push image các app đổi (app không đổi được gắn tag mới vào image của tag trước) → PM trả tag (`docs/RELEASE.md`).

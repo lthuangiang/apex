@@ -92,6 +92,11 @@ const env = z
       .or(z.literal("").transform(() => undefined)),
     /** NATS cho giá tốt nhất SoDEX (`md.*.book`) của Signal research; trống = chỉ dùng Redis / DB. */
     NATS_URL: z.string().default(""),
+    /** #558 / DEC-398: job báo box mới SoDEX rewards (PR4). Mặc định tắt; cùng giá trị với api. */
+    REWARDS_WATCH_ENABLED: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "scheduler" } });
