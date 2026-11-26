@@ -2,6 +2,8 @@
 # Production 1 host (DEC-70). Chạy liên tục trong container `vault-init`:
 #   - lần đầu: init (1 unseal key), bật transit, tạo khoá `drift-api-keys`, policy `signer` chỉ encrypt/decrypt
 #     khoá đó, và token của signer (id = SIGNER_TOKEN = VAULT_TOKEN trong .env) sống 10 năm, không có quyền khác;
+#   - mỗi lần container khởi động: tạo khoá còn thiếu và ghi lại policy `signer` (idempotent). #558 / DEC-398 thêm
+#     khoá `drift-rewards` (phiên SoDEX rewards) và quyền encrypt/decrypt khoá đó; Vault và signer không cần restart;
 #   - mỗi 15 s: nếu Vault đang sealed (vừa restart / VPS reboot) thì unseal.
 # Đánh đổi: unseal key nằm trong volume `vaultinit` trên cùng máy để bot tự chạy lại sau reboot. Ai có root trên
 # VPS thì đọc được. Chép /vault/init/init.txt ra chỗ an toàn ngoài VPS (trình quản lý mật khẩu) ngay sau lần đầu.
@@ -38,9 +40,15 @@ vault read transit/keys/drift-api-keys >/dev/null 2>&1 \
   || vault write -f transit/keys/drift-api-keys type=aes256-gcm96 >/dev/null
 # Không cho xoá khoá transit (mất khoá = mất mọi API key đã mã hoá).
 vault write transit/keys/drift-api-keys/config deletion_allowed=false >/dev/null
+# #558 / DEC-398: khoá riêng cho phiên SoDEX rewards. Tách khỏi khoá API key để xoay / huỷ riêng; mất khoá này thì
+# người dùng chỉ phải ký rewards lại (token sống 15 ngày), nên không khoá việc xoá.
+vault read transit/keys/drift-rewards >/dev/null 2>&1 \
+  || vault write -f transit/keys/drift-rewards type=aes256-gcm96 >/dev/null
 printf '%s\n' \
   'path "transit/encrypt/drift-api-keys" { capabilities = ["update"] }' \
   'path "transit/decrypt/drift-api-keys" { capabilities = ["update"] }' \
+  'path "transit/encrypt/drift-rewards" { capabilities = ["update"] }' \
+  'path "transit/decrypt/drift-rewards" { capabilities = ["update"] }' \
   | vault policy write signer - >/dev/null
 # Signer chỉ đăng nhập một lần lúc khởi động và không renew token, nên token phải sống lâu.
 vault auth tune -max-lease-ttl=87600h token/ >/dev/null
