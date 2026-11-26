@@ -51,16 +51,21 @@ export type RewardAmount = z.infer<typeof rewardAmountSchema>;
 
 export const sopointsSummarySchema = z.object({
   totalPoints: numOrString,
+  /** Dữ liệu thật (2026-11-26) không có basePoints / boostPoints; giữ tuỳ chọn, UI không hiện. */
   basePoints: numOrString.nullish(),
   boostPoints: numOrString.nullish(),
   referralPoints: numOrString.nullish(),
+  /** TÊN tier (DIAMOND, EPIC…), hiện nguyên chuỗi. */
   currentTier: numOrString.nullish(),
   /** Ví ở tier cao nhất thì không có tier kế tiếp. */
   nextTier: numOrString.nullish(),
-  /** [confirm] ngưỡng tổng hay số điểm còn thiếu. */
+  /** Ngưỡng TỔNG của tier kế tiếp (đã chốt): còn thiếu = nextTierPoints − totalPoints. */
   nextTierPoints: numOrString.nullish(),
   rank: numOrString.nullish(),
   totalUser: numOrString.nullish(),
+  weekPoolPoints: numOrString.nullish(),
+  /** Unix giây. */
+  distributionTime: z.number().int().nullish(),
 });
 export type SopointsSummary = z.infer<typeof sopointsSummarySchema>;
 
@@ -75,18 +80,29 @@ export const sopointsWeekInfoSchema = z.object({
   distributionTime: z.number().int(),
 });
 
+/**
+ * Một tuần của `week/list` (dữ liệu thật 2026-11-26). Các trường squad (`team*`, `totalBonusPct`) và chi tiết khác
+ * SoDEX trả bị zod bỏ qua: DeskLabs không hiện (ngoài chương trình builder).
+ */
 export const sopointsWeekRowSchema = z.object({
   weekNo: z.number().int(),
   weekName: z.string(),
+  /** "COMPLETED"… */
+  status: z.string().nullish(),
+  /** Tuần đang chạy. */
+  isLive: z.boolean().nullish(),
   /** Unix giây. */
   weekStartTime: z.number().int(),
   weekEndTime: z.number().int(),
-  /** [confirm] đơn vị. */
+  distributionTime: z.number().int().nullish(),
+  /** USD. */
   spotVolume: numOrString.nullish(),
   futuresVolume: numOrString.nullish(),
   rank: numOrString.nullish(),
+  totalUser: numOrString.nullish(),
   points: numOrString.nullish(),
-  /** `CONFIRMED` = điểm đã chốt; giá trị khác [confirm]. */
+  referralPoints: numOrString.nullish(),
+  /** `CONFIRMED` = điểm đã chốt; giá trị khác coi là chưa chốt. */
   pointsStatus: z.string().nullish(),
 });
 export const sopointsWeekListSchema = z.array(sopointsWeekRowSchema);

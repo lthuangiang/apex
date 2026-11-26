@@ -292,10 +292,15 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
   it("shows the summary, tier, rank, week tiles and weekly performance from SoDEX", async () => {
     show();
     expect(await screen.findByText("48,210")).toBeInTheDocument();
-    expect(screen.getByText("41,880")).toBeInTheDocument();
-    expect(screen.getByText("4,190")).toBeInTheDocument();
-    expect(screen.getByText("Current tier: Tier 3")).toBeInTheDocument();
-    expect(screen.getByText("Next: Tier 4")).toBeInTheDocument();
+    // SoDEX không trả basePoints / boostPoints: không có Base / Boost; Referral khi có.
+    expect(screen.queryByText("Base")).toBeNull();
+    expect(screen.queryByText(/Boost/)).toBeNull();
+    expect(screen.getByText("2,140", { selector: "b" })).toBeInTheDocument();
+    // Tier là tên, hiện nguyên; nextTierPoints là ngưỡng tổng.
+    expect(screen.getByText("Current tier: EPIC")).toBeInTheDocument();
+    expect(screen.getByText("Next: DIAMOND at 60,000")).toBeInTheDocument();
+    expect(screen.getByText("11,790 points to DIAMOND")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "80");
     expect(screen.getByText("1,284")).toBeInTheDocument();
     expect(screen.getByText("of 38,902")).toBeInTheDocument();
     expect(await screen.findByText("SoPoints shared this week")).toBeInTheDocument();
@@ -308,6 +313,10 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(within(at(rows, 0)).getByText("Not final")).toBeInTheDocument();
     expect(within(at(rows, 1)).getByText("Confirmed")).toBeInTheDocument();
     expect(within(at(rows, 0)).getByText("$84,300")).toBeInTheDocument();
+    // Tuần đang chạy theo isLive; không hiện số squad (team*, totalBonusPct).
+    expect(within(at(rows, 0)).getByText("LIVE")).toBeInTheDocument();
+    expect(within(at(rows, 1)).queryByText("LIVE")).toBeNull();
+    expect(screen.queryByText(/987,654|1,234,567/)).toBeNull();
     // Không còn khối mời ký; chip đăng nhập + Sign out of rewards.
     expect(screen.queryByRole("button", { name: "Sign with wallet" })).toBeNull();
     expect(screen.getByText("Signed in as 0x3f2a…9c4e")).toBeInTheDocument();
@@ -330,6 +339,27 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(resolveRewardsTab("boxes")).toBe("sopoints");
     expect(resolveRewardsTab(null)).toBe("sopoints");
     expect(resolveRewardsTab("sopoints")).toBe("sopoints");
+  });
+
+  it("no progress bar when nextTierPoints is missing or not above the total", async () => {
+    gateway({
+      "sopoints/summary": {
+        body: {
+          code: 0,
+          data: {
+            totalPoints: 70000,
+            currentTier: "DIAMOND",
+            nextTier: "LEGEND",
+            nextTierPoints: 60000,
+          },
+        },
+      },
+    });
+    show();
+    expect(await screen.findByText("Current tier: DIAMOND")).toBeInTheDocument();
+    expect(screen.getByText("Next: LEGEND")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.queryByText(/points to/)).toBeNull();
   });
 
   it("missing fields show Not available, never 0", async () => {

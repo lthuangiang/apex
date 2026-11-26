@@ -10107,7 +10107,7 @@
     "multipliers": {
       "title": "Markets with a volume multiplier",
       "setBy": "Set by SoDEX for round {round} · ends {time}",
-      "showAll": "Show all {count} markets",
+      "showAll": "{count, plural, one {Show all # market} other {Show all # markets}}",
       "showLess": "Show less",
       "empty": "SoDEX lists no markets with a volume multiplier right now."
     },
@@ -10119,14 +10119,11 @@
     },
     "summary": {
       "total": "Total SoPoints",
-      "base": "Base",
-      "boost": "Boost",
       "referral": "Referral",
-      "tier": "Tier {tier}",
       "currentTier": "Current tier: {tier}",
       "nextAt": "Next: {tier} at {points}",
       "nextOnly": "Next: {tier}",
-      "toNext": "{points} points to {tier}",
+      "toNext": "{points, plural, one {# point} other {# points}} to {tier}",
       "rank": "Rank",
       "of": "of {total}",
       "thisWeek": "This week",
@@ -10148,6 +10145,35 @@
       "range": "{start} – {end}",
       "emptyTitle": "No weekly points yet",
       "emptyBody": "Weeks appear after SoDEX takes its weekly snapshot."
+    },
+    "card": {
+      "title": "SoDEX rewards",
+      "from": "From SoDEX",
+      "weeklyPool": "Weekly pool {points} SoPoints",
+      "multiplier": "Volume multiplier",
+      "more": "+{count} more",
+      "signTitle": "Sign in to see your points and boxes",
+      "signBody": "One signature, no gas. It can't trade, withdraw or transfer.",
+      "goToRewards": "Go to Rewards →",
+      "points": "SoPoints",
+      "rankOf": "Rank {rank} of {total}",
+      "rank": "Rank {rank}",
+      "toClaim": "Blind Boxes to claim",
+      "backpack": "Boxes in backpack",
+      "thisWeek": "This week",
+      "open": "Open Rewards",
+      "job": {
+        "opening": "{count, plural, one {Opening # box…} other {Opening # boxes…}}",
+        "openingAny": "Opening boxes…",
+        "merging": "Merging boxes…",
+        "claiming": "{count, plural, one {Claiming # box…} other {Claiming # boxes…}}",
+        "claimingAny": "Claiming boxes…",
+        "other": "SoDEX is working on a job…",
+        "pending": "Job #{id} · recording on-chain",
+        "submitting": "Job #{id} · sent to SoDEX",
+        "more": "+{count} more",
+        "view": "View"
+      }
     }
   },
   "rewardsDebug": {
