@@ -240,9 +240,11 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
         // Số SoDEX trả dạng chuỗi: hiện có dấu phẩy nếu là số, không thì nguyên chuỗi.
         const fmt = (v: string | null) =>
           v === null || !Number.isFinite(Number(v)) ? v : Number(v).toLocaleString("en-US");
+        // Thứ hạng 0 = SoDEX chưa xếp hạng: coi như thiếu, không hiện "Rank 0".
+        const ranked = (v: string | null) => (v !== null && Number(v) > 0 ? fmt(v) : null);
         const points = fmt(d.data.points);
-        const rank = fmt(d.data.rank);
-        const total = fmt(d.data.totalUser);
+        const rank = ranked(d.data.rank);
+        const total = ranked(d.data.totalUser);
         return {
           title:
             points === null

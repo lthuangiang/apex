@@ -117,6 +117,9 @@ describe("targetOf", () => {
     expect(targetOf(n("a", "risk_alert", at), false)).toBe("/risk");
     expect(targetOf(n("a", "key_fee", at), false)).toBe("/settings");
     expect(targetOf(n("a", "fee_tier_changed", at), false)).toBe("/settings?tab=access");
+    // #567: tin tuần SoDEX mở trang Rewards.
+    expect(targetOf(n("a", "rewards_week_snapshot", at), false)).toBe("/rewards");
+    expect(targetOf(n("a", "rewards_week_points", at), true)).toBe("/rewards");
     expect(targetOf(n("a", "daily_summary", at), true)).toBe("/desk");
     expect(targetOf(n("a", "daily_summary", at), false)).toBe("/");
     expect(targetOf(n("a", "leader_big_move", at), true)).toBe("/following");

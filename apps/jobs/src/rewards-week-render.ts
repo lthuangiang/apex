@@ -37,6 +37,12 @@ export function count(v: string | null): string | null {
   return n === null ? null : n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
+/** Thứ hạng / tổng người: SoDEX trả 0 khi chưa xếp hạng (dữ liệu thật 2026-11-26), nên 0 hoặc âm coi như thiếu. */
+function ranked(v: string | null): string | null {
+  const n = num(v);
+  return n === null || n <= 0 ? null : count(v);
+}
+
 function safeZone(tz: string): string {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
@@ -138,8 +144,8 @@ export function weekPointsMessage(data: RewardsWeekPointsData): {
     pts === null
       ? fill(M.pointsTitleNoNumber, { week: weekLabel(data) })
       : fill(M.pointsTitle, { week: weekLabel(data), points: pts });
-  const rank = count(data.rank);
-  const total = count(data.totalUser);
+  const rank = ranked(data.rank);
+  const total = ranked(data.totalUser);
   const rankParts: string[] = [];
   if (rank !== null)
     rankParts.push(total === null ? fill(M.rank, { rank }) : fill(M.rankOf, { rank, total }));

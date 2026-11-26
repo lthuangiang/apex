@@ -145,6 +145,17 @@ describe("week points message", () => {
     );
   });
 
+  it("treats rank 0 (not ranked yet) as missing, never 'Rank 0'", () => {
+    const m = rewardsWeekMessage(
+      "rewards_week_points",
+      points({ rank: "0", rankPercentile: null }),
+    );
+    expect(m?.body).not.toContain("Rank");
+    expect(rewardsWeekMessage("rewards_week_points", points({ totalUser: "0" }))?.body).toContain(
+      "Rank 1,410 · Top 0.06%",
+    );
+  });
+
   it("never contains a wallet address or squad fields, and escapes SoDEX strings", () => {
     const m = rewardsWeekMessage("rewards_week_points", points({ currentTier: "<b>X" }));
     expect(m?.body).toContain("&lt;b&gt;X");
