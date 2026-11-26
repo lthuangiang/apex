@@ -166,7 +166,7 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
   it("shows points, tier, rank, boxes to claim (number only), backpack, this week and Open Rewards", async () => {
     show();
     expect(await within(card()).findByText("48,210")).toBeInTheDocument();
-    expect(within(card()).getByText("Tier 3 · Rank 1,284 of 38,902")).toBeInTheDocument();
+    expect(within(card()).getByText("EPIC · Rank 1,284 of 38,902")).toBeInTheDocument();
     const row = (label: string) => within(card()).getByText(label).closest("li") as HTMLElement;
     await waitFor(() => {
       expect(row("Blind Boxes to claim")).toHaveTextContent("3");

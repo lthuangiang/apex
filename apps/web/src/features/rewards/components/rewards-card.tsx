@@ -473,8 +473,12 @@ function SignedCard({ data }: { auth: Auth; data: CardData }) {
     );
 
   const busy = error?.kind === "rate_limited";
+  // Tuần này: dòng `isLive` của SoDEX; thiếu thì dòng trùng `weekNo` của week/info.
   const current =
-    week.data === undefined ? undefined : weekList.data?.find((r) => r.weekNo === week.data.weekNo);
+    weekList.data?.find((r) => r.isLive === true) ??
+    (week.data === undefined
+      ? undefined
+      : weekList.data?.find((r) => r.weekNo === week.data.weekNo));
   const next =
     week.data === undefined ? null : formatDayTime(secToMs(week.data.distributionTime), tz);
   return (

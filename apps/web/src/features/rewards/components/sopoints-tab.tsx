@@ -21,26 +21,41 @@ import {
   type RewardsSession,
 } from "../queries";
 
-import { CARD, CardUnavailable, MultipliersCard, Value, WeekStatusPill } from "./public-cards";
+import {
+  CARD,
+  CardUnavailable,
+  LivePill,
+  MultipliersCard,
+  Value,
+  WeekStatusPill,
+} from "./public-cards";
 
 // Rewards › SoPoints (bản phác 09): tổng điểm, tier, hạng, tuần hiện tại, weekly pool, weekly performance và cặp có hệ
 // số nhân. Mọi số lấy từ SoDEX; thiếu thì "Not available" (quy tắc 8).
 
 /**
- * `nextTierPoints` là ngưỡng tổng hay số điểm còn thiếu còn [confirm] (README bản phác, câu hỏi 3). Tới khi chốt, không
- * vẽ thanh tiến độ và không tính "còn N điểm": chỉ hiện tier kế tiếp. Chốt "ngưỡng tổng" thì trả `true`.
+ * Tier của SoDEX là TÊN (DIAMOND, EPIC…; đã chốt từ dữ liệu thật 2026-11-26): hiện nguyên chuỗi SoDEX trả, không thêm
+ * tiền tố.
  */
-export function nextTierPointsIsThreshold(): boolean {
-  return false;
+export function useTierText(): (v: NumLike | null | undefined) => string | null {
+  return (v) => (v === null || v === undefined || String(v).trim() === "" ? null : String(v));
 }
 
-/** Tier của SoDEX: số (hoặc chuỗi số) thì "Tier 3"; chuỗi tên thì hiện nguyên. */
-export function useTierText(): (v: NumLike | null | undefined) => string | null {
-  const t = useTranslations("rewards.summary");
-  return (v) => {
-    if (v === null || v === undefined || v === "") return null;
-    const n = decimalOf(v);
-    return n === null ? String(v) : t("tier", { tier: formatCount(n) ?? n });
+/**
+ * `nextTierPoints` là NGƯỠNG TỔNG (đã chốt): thanh = totalPoints / nextTierPoints, còn thiếu = nextTierPoints −
+ * totalPoints. Thiếu hoặc ngưỡng ≤ tổng hiện tại thì không có thanh.
+ */
+export function tierProgress(
+  total: NumLike | null | undefined,
+  threshold: NumLike | null | undefined,
+): { pct: number; left: string; threshold: string } | null {
+  const t = decimalOf(total);
+  const n = decimalOf(threshold);
+  if (t === null || n === null || !dec(n).gt(t) || !dec(n).gt(0)) return null;
+  return {
+    pct: Math.min(100, Math.max(0, dec(t).div(n).times(100).toNumber())),
+    left: dec(n).minus(t).toFixed(),
+    threshold: n,
   };
 }
 
@@ -84,16 +99,8 @@ function SummaryHero({ session, tz }: { session: RewardsSession; tz: string }) {
   const total = formatCount(s?.totalPoints);
   const current = tierText(s?.currentTier);
   const next = tierText(s?.nextTier);
-  const nextPts = decimalOf(s?.nextTierPoints);
-  const totalDec = decimalOf(s?.totalPoints);
-  // Chỉ khi đã chốt `nextTierPoints` là ngưỡng tổng (nextTierPointsIsThreshold).
-  const progress =
-    nextTierPointsIsThreshold() && nextPts !== null && totalDec !== null && dec(nextPts).gt(0)
-      ? {
-          pct: Math.min(100, Math.max(0, dec(totalDec).div(nextPts).times(100).toNumber())),
-          left: dec(nextPts).minus(totalDec),
-        }
-      : null;
+  const progress = tierProgress(s?.totalPoints, s?.nextTierPoints);
+  const referral = formatCount(s?.referralPoints);
   const rank = formatCount(s?.rank);
   const totalUser = formatCount(s?.totalUser);
 
@@ -105,28 +112,20 @@ function SummaryHero({ session, tz }: { session: RewardsSession; tz: string }) {
           <span className="text-[44px] leading-none font-extrabold tracking-[-0.02em] tabular-nums">
             <Value text={total} />
           </span>
-          <span className="text-sm text-ink-2 tabular-nums">
-            {t("base")}{" "}
-            <b className="text-ink">
-              <Value text={formatCount(s?.basePoints)} />
-            </b>{" "}
-            · {t("boost")}{" "}
-            <b className="text-ink">
-              <Value text={formatCount(s?.boostPoints)} />
-            </b>{" "}
-            · {t("referral")}{" "}
-            <b className="text-ink">
-              <Value text={formatCount(s?.referralPoints)} />
-            </b>
-          </span>
+          {/* SoDEX không trả basePoints / boostPoints (dữ liệu thật): chỉ hiện Referral khi có. */}
+          {referral === null ? null : (
+            <span className="text-sm text-ink-2 tabular-nums">
+              {t("referral")} <b className="text-ink">{referral}</b>
+            </span>
+          )}
         </div>
         <div className="flex min-w-0 flex-[0_1_360px] flex-col gap-2 text-sm">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <b>{t("currentTier", { tier: current ?? "" })}</b>
             {next === null ? null : (
               <span className="text-ink-2 tabular-nums">
-                {progress !== null && nextPts !== null
-                  ? t("nextAt", { tier: next, points: formatCount(nextPts) ?? "" })
+                {progress !== null
+                  ? t("nextAt", { tier: next, points: formatCount(progress.threshold) ?? "" })
                   : t("nextOnly", { tier: next })}
               </span>
             )}
@@ -152,7 +151,7 @@ function SummaryHero({ session, tz }: { session: RewardsSession; tz: string }) {
                 />
               </div>
               <span className="text-xs text-ink-2 tabular-nums">
-                {t("toNext", { points: formatCount(progress.left.toFixed()) ?? "", tier: next })}
+                {t("toNext", { points: formatCount(progress.left) ?? "", tier: next })}
               </span>
             </>
           )}
@@ -300,7 +299,11 @@ function WeeklyPerformance({ session, tz }: { session: RewardsSession; tz: strin
                 return (
                   <tr key={r.weekNo} className="border-b border-border">
                     <td className="px-2.5 py-3">
-                      <b className="block">{r.weekName}</b>
+                      {/* Tuần đang chạy theo `isLive` của SoDEX (dữ liệu thật). */}
+                      <span className="flex items-center gap-2">
+                        <b>{r.weekName}</b>
+                        {r.isLive === true ? <LivePill /> : null}
+                      </span>
                       <span className="text-xs text-ink-2">
                         {t("range", {
                           start: formatDay(secToMs(r.weekStartTime), tz) ?? "",

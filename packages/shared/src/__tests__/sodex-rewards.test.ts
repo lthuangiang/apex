@@ -6,8 +6,10 @@ import {
   lotteryMetaSchema,
   rewardsEnvelopeSchema,
   sameWallet,
+  sopointsSummarySchema,
   sopointsVolumeWeightsSchema,
   sopointsWeekInfoSchema,
+  sopointsWeekListSchema,
 } from "../sodex-rewards";
 
 // Schema Rewards API (#547) khớp response công khai thật của gateway mainnet (lấy 2026-11-26, cắt bớt). Endpoint cần
@@ -98,6 +100,56 @@ describe("SoDEX rewards public responses", () => {
 
   it("rejects an envelope without a numeric code", () => {
     expect(rewardsEnvelopeSchema.safeParse({ msg: "x" }).success).toBe(false);
+  });
+});
+
+describe("SoDEX rewards wallet responses (shape confirmed 2026-11-26)", () => {
+  it("summary: tier names, threshold, no base / boost", () => {
+    const s = sopointsSummarySchema.parse({
+      walletAddress: "0x0000000000000000000000000000000000000001",
+      totalPoints: 48210,
+      referralPoints: 2140,
+      currentTier: "EPIC",
+      nextTier: "DIAMOND",
+      nextTierPoints: 60000,
+      rank: 1284,
+      totalUser: 38902,
+      weekPoolPoints: 1000000,
+      distributionTime: 1764846000,
+    });
+    expect(s.currentTier).toBe("EPIC");
+    expect(s.basePoints).toBeUndefined();
+    expect(s.boostPoints).toBeUndefined();
+  });
+
+  it("week/list: isLive kept, squad fields dropped", () => {
+    const [row] = sopointsWeekListSchema.parse([
+      {
+        weekNo: 13,
+        weekName: "Week 13",
+        status: "LIVE",
+        isLive: true,
+        weekStartTime: 1763942400,
+        weekEndTime: 1764547200,
+        distributionTime: 1764846000,
+        spotVolume: 1920,
+        futuresVolume: 84300,
+        points: 2140,
+        referralPoints: 0,
+        pointsStatus: "PENDING",
+        rank: 1410,
+        totalUser: 38902,
+        rankPercentile: "Top 3.62%",
+        totalBonusPct: 15,
+        futuresVolumeWeightDetails: [],
+        vaultHolding: null,
+        teamWeekVolume: 987654,
+        teamWindowVolume: 1234567,
+      },
+    ]);
+    expect(row?.isLive).toBe(true);
+    expect(row).not.toHaveProperty("teamWeekVolume");
+    expect(row).not.toHaveProperty("totalBonusPct");
   });
 });
 

@@ -37,7 +37,7 @@ Desktop và mobile dùng **cùng một route**, layout responsive. Artboard mobi
 **Điều hướng:**
 - Sidebar desktop: Overview, Portfolio, Trading Agent, Strategy Lab, Execution & Orders, Risk Center, AI Analyst | Builder Revenue (chỉ đội DRIFT), Settings.
 - Bottom nav mobile: Home, Portfolio, Agent (ở giữa), Strategy, More (gồm Settings và link tới Orders, Risk, AI Analyst).
-- **SoDEX rewards (DEC-397, khi `REWARDS_ENABLED` bật, #548–#551):** Rewards ở vị trí 2 có chip New, Trading Agent vẫn vị trí 3 (DEC-108), Portfolio xuống nhóm dưới ngay trên Settings; mobile: thanh dưới giữ nguyên (DEC-208), Rewards đứng đầu More. Overview phương án B: thẻ SoDEX rewards thay thẻ Trading Agent (cùng vị trí, cùng độ rộng; hero giữ nguyên). Tắt thì sidebar, More và Overview như hiện tại.
+- **SoDEX rewards (DEC-397, khi `REWARDS_ENABLED` bật, #548–#551):** Rewards ở vị trí 2 có chip New, Trading Agent vẫn vị trí 3 (DEC-108), Portfolio xuống nhóm dưới ngay trên Settings; mobile: thanh dưới giữ nguyên (DEC-208), Rewards đứng đầu More. Overview phương án B: thẻ SoDEX rewards thay thẻ Trading Agent (cùng vị trí, cùng độ rộng; hero giữ nguyên). #549: thẻ có trạng thái chưa ký / đã ký / job / hết hạn / lỗi / 429 / tải; số box chờ claim chỉ hiện số (nút Claim ở #551); "View" của dòng job dẫn tới `/rewards?tab=boxes`. Tắt thì sidebar, More và Overview như hiện tại.
 - Mục "Trading Agent" trên sidebar mở bot đang chạy gần nhất. Nếu người dùng có nhiều bot thì có thanh chọn bot ở đầu trang.
 
 **Không có wizard nhiều bước.** Nút "New bot" mở tab catalog của `/bots`. Mỗi thẻ trong catalog dẫn tới `/bots/new/:strategy`.

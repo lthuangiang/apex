@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { tierProgress } from "../components/sopoints-tab";
 import {
   decimalOf,
   formatCoefficient,
@@ -51,5 +52,13 @@ describe("rewards format", () => {
         w("E", "1.15"),
       ]).map((x) => x.symbol),
     ).toEqual(["B", "D", "E", "A", "C"]);
+  });
+
+  it("tier progress: nextTierPoints is the total threshold", () => {
+    expect(tierProgress(48210, 60000)).toEqual({ pct: 80.35, left: "11790", threshold: "60000" });
+    expect(tierProgress(60000, 60000)).toBeNull();
+    expect(tierProgress(70000, "60000")).toBeNull();
+    expect(tierProgress(48210, null)).toBeNull();
+    expect(tierProgress(null, 60000)).toBeNull();
   });
 });

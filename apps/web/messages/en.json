@@ -10126,10 +10126,7 @@
     },
     "summary": {
       "total": "Total SoPoints",
-      "base": "Base",
-      "boost": "Boost",
       "referral": "Referral",
-      "tier": "Tier {tier}",
       "currentTier": "Current tier: {tier}",
       "nextAt": "Next: {tier} at {points}",
       "nextOnly": "Next: {tier}",
