@@ -66,7 +66,8 @@
       "rewards_draw_won_one_ticket": "🎉 <b>{wins} of your 1 ticket won</b>",
       "rewards_draw_prize": "🎉 <b>Weekly draw prize received</b>",
       "rewards_paused": "⏸ <b>New box alerts paused</b>",
-      "rewards_claimable_any": "🎁 <b>New Blind Boxes to claim</b>"
+      "rewards_claimable_any": "🎁 <b>New Blind Boxes to claim</b>",
+      "rewards_week": "📊 <b>Your SoDEX week</b>"
     },
     "bodies": {
       "pausedReason": "{reason}. Open orders were kept.",
@@ -141,6 +142,30 @@
       "digestTitle": "📋 <b>Daily incidents · last 24 h</b>",
       "digestLine": "• {n} × {title} ({severity})",
       "digestNone": "No incidents in the last 24 h."
+    },
+    "rewardsWeek": {
+      "snapshotTitle": "📊 <b>SoDEX · {week} snapshot</b>",
+      "range": "{from} – {to}",
+      "perps": "Perps volume",
+      "spot": "Spot volume",
+      "oi": "Open interest",
+      "accountValue": "Account value",
+      "vault": "Vault",
+      "wealthTvl": "Wealth TVL",
+      "boosted": "Boosted volume: {symbol} ×{coef}",
+      "boostedMore": "Boosted volume: {symbol} ×{coef} and {n} more",
+      "pointsArrive": "Points for this week arrive {when}",
+      "pointsTitle": "🏆 <b>{week} SoPoints: +{points}</b>",
+      "pointsTitleNoNumber": "🏆 <b>{week} SoPoints</b>",
+      "rank": "Rank {rank}",
+      "rankOf": "Rank {rank} of {total}",
+      "total": "Total",
+      "totalValue": "{points} SoPoints",
+      "tier": "Tier",
+      "nextLabel": "Next",
+      "nextToGo": "{tier} at {at} · {left} to go",
+      "next": "{tier} at {at}",
+      "weekFallback": "Week {n}"
     }
   },
   "copySkip": {

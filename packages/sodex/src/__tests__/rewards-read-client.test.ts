@@ -79,6 +79,7 @@ describe("RewardsReadClient allowlist", () => {
       "lottery/ledger",
       "lottery/draw/entries",
       "sopoints/summary",
+      "sopoints/week/list",
     ]);
     for (const p of paths) for (const f of FORBIDDEN) expect(p).not.toContain(f);
   });
@@ -92,14 +93,38 @@ describe("RewardsReadClient allowlist", () => {
         "REWARDS_READ_TIMEOUT_MS",
         "RewardsReadClient",
         "rewardsLedgerReadSchema",
+        "rewardsWeekReadSchema",
       ].sort(),
     );
     const methods = Object.getOwnPropertyNames(RewardsReadClient.prototype).filter(
       (m) => m !== "constructor",
     );
     expect(methods.sort()).toEqual(
-      ["getDrawEntries", "getLedger", "getSopointsSummary", "getTreasures"].sort(),
+      ["getDrawEntries", "getLedger", "getSopointsSummary", "getTreasures", "getWeekList"].sort(),
     );
+  });
+
+  it("reads the week list (#567) as GET with the token, dropping squad fields", async () => {
+    const f = fakeFetch(() =>
+      okJson([
+        {
+          weekNo: 13,
+          weekName: "Week 13",
+          weekStartTime: 1,
+          weekEndTime: 2,
+          oi: 17.62,
+          teamWeekVolume: 999,
+          totalBonusPct: 5,
+          futuresVolumeWeightDetails: [{ symbol: "NVDA-USD", coefficient: "1.2" }],
+        },
+      ]),
+    );
+    const r = await client(f.fn).getWeekList(TOKEN);
+    expect(r.kind).toBe("ok");
+    expect(JSON.stringify(r)).not.toContain("teamWeekVolume");
+    expect(JSON.stringify(r)).not.toContain("totalBonusPct");
+    expect(f.calls[0]?.init.method).toBe("GET");
+    expect(new URL(f.calls[0]?.url ?? "").pathname).toBe("/api/v1/sopoints/week/list");
   });
 
   it("sends every call as GET without a body, to the fixed gateway, on an allowed path", async () => {

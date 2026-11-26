@@ -164,6 +164,11 @@ export function emailText(
         subject: "DeskLabs: rewards alerts paused",
         text: "Your rewards sign-in expired. Sign in again on Rewards in DeskLabs to turn alerts back on.",
       };
+    // #567: email tắt mặc định cho nhóm rewards; người dùng bật thì chỉ có câu ngắn, chi tiết xem trong app.
+    case "rewards_week_snapshot":
+      return { subject: "DeskLabs: your SoDEX week", text: "Open Rewards in DeskLabs." };
+    case "rewards_week_points":
+      return { subject: "DeskLabs: your weekly SoPoints", text: "Open Rewards in DeskLabs." };
   }
 }
 

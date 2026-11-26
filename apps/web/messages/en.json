@@ -2906,7 +2906,12 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch"
+    "signalAnalysis.research.live.batch",
+    "notifications.types.rewards_week_snapshot",
+    "notifications.types.rewards_week_points",
+    "notifications.panel.rewards.weekPointsNoNumber",
+    "notifications.panel.rewards.weekFallback",
+    "notifications.panel.rewards.rank"
   ],
   "beta": {
     "label": "Beta",
@@ -4371,7 +4376,9 @@
       "rewards_claimable": "New boxes to claim",
       "rewards_box_received": "You received a box",
       "rewards_draw_won": "Weekly draw prize received",
-      "rewards_watch_paused": "New box alerts paused"
+      "rewards_watch_paused": "New box alerts paused",
+      "rewards_week_snapshot": "Your SoDEX week",
+      "rewards_week_points": "Your weekly SoPoints"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
@@ -4461,7 +4468,13 @@
         "drawRound": "Weekly draw · Round {round}",
         "pausedBody": "Your rewards sign-in expired. Sign in again to turn them back on.",
         "levelCount": "{count} {level}",
-        "source": "SoDEX rewards"
+        "source": "SoDEX rewards",
+        "weekSnapshot": "SoDEX · {week} snapshot",
+        "weekPoints": "{week} SoPoints: +{points}",
+        "weekPointsNoNumber": "{week} SoPoints",
+        "weekFallback": "Week {n}",
+        "rank": "Rank {rank}",
+        "rankOf": "Rank {rank} of {total}"
       }
     },
     "reasonText": {

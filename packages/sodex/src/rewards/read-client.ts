@@ -7,6 +7,7 @@ import {
   rewardsRetryAfterSchema,
   SODEX_REWARDS_DEFAULT_ORIGIN,
   sopointsSummarySchema,
+  sopointsWeekRowSchema,
 } from "@drift/shared";
 import { z } from "zod";
 
@@ -23,6 +24,8 @@ export const REWARDS_READ_ENDPOINTS = {
   ledger: { path: "lottery/ledger", weight: 5 },
   drawEntries: { path: "lottery/draw/entries", weight: 5 },
   sopointsSummary: { path: "sopoints/summary", weight: 5 },
+  /** #567: tổng kết tuần và điểm tuần (Telegram). */
+  weekList: { path: "sopoints/week/list", weight: 5 },
 } as const;
 export type RewardsReadEndpoint = keyof typeof REWARDS_READ_ENDPOINTS;
 
@@ -48,6 +51,25 @@ export const rewardsLedgerReadSchema = z.object({
     }),
   ),
 });
+
+const numOrString = z.union([z.number(), z.string()]);
+
+/**
+ * `sopoints/week/list` phía server (#567): thêm các trường dữ liệu thật cần cho tin tổng kết tuần (đều tuỳ chọn, khoan
+ * dung). Không đọc trường squad (`team*`, `totalBonusPct`): zod bỏ trường không khai báo.
+ */
+export const rewardsWeekReadSchema = z.array(
+  sopointsWeekRowSchema.extend({
+    rankPercentile: z.string().nullish(),
+    oi: numOrString.nullish(),
+    accountValue: numOrString.nullish(),
+    vaultHolding: numOrString.nullish(),
+    wealthTvl: numOrString.nullish(),
+    futuresVolumeWeightDetails: z
+      .array(z.object({ symbol: z.string(), coefficient: numOrString.nullish() }))
+      .nullish(),
+  }),
+);
 
 const summaryWithWalletSchema = sopointsSummarySchema.extend({
   walletAddress: z.string().nullish(),
@@ -171,6 +193,11 @@ export class RewardsReadClient {
     token: string,
   ): Promise<RewardsReadResult<z.output<typeof summaryWithWalletSchema>>> {
     return this.#read(token, "sopointsSummary", {}, summaryWithWalletSchema);
+  }
+
+  /** #567: các tuần SoPoints của ví (mốc giờ, trạng thái, volume, điểm). */
+  getWeekList(token: string): Promise<RewardsReadResult<z.output<typeof rewardsWeekReadSchema>>> {
+    return this.#read(token, "weekList", {}, rewardsWeekReadSchema);
   }
 
   async #take(weight: number): Promise<RewardsReadFailure | null> {

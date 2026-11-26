@@ -1,4 +1,4 @@
-import { outbox, rewardsWatch, sodexAccounts, type Db } from "@drift/db";
+import { outbox, rewardsWatch, sodexAccounts, users, type Db } from "@drift/db";
 import type {
   RewardsBoxReceivedData,
   RewardsClaimableData,
@@ -6,9 +6,11 @@ import type {
   RewardsNotificationType,
   RewardsWatchPauseReason,
   RewardsWatchPausedData,
+  RewardsWeekPointsData,
+  RewardsWeekSnapshotData,
 } from "@drift/shared";
 import type { RewardsReadClient, RewardsReadFailure } from "@drift/sodex";
-import { and, asc, eq, isNotNull, lt, lte } from "drizzle-orm";
+import { and, asc, eq, isNotNull, lt, lte, or } from "drizzle-orm";
 
 import {
   backoffMs,
@@ -25,6 +27,7 @@ import {
   type LedgerMark,
 } from "./classify";
 import type { RewardsDecrypt } from "./signer-decrypt";
+import { planWeekly, pointsData, snapshotData, WEEKLY_POLL_MS } from "./weekly";
 
 // Job báo box mới SoDEX rewards (#558, DEC-398, plan-558 mục 2). Chạy ở scheduler (một leader). Mỗi lượt lấy các dòng
 // `rewards_watch` tới hạn, mỗi user: xin signer giải mã token (biến cục bộ, bỏ sau lượt), đọc `lottery/treasures` +
@@ -41,7 +44,10 @@ export interface RewardsPauseStore {
 export interface RewardsWatchJobDeps {
   db: Db;
   now: () => Date;
-  reader: Pick<RewardsReadClient, "getTreasures" | "getLedger" | "getDrawEntries">;
+  reader: Pick<
+    RewardsReadClient,
+    "getTreasures" | "getLedger" | "getDrawEntries" | "getWeekList" | "getSopointsSummary"
+  >;
   decrypt: RewardsDecrypt;
   pause: RewardsPauseStore;
   /** Chu kỳ đọc mỗi user (`REWARDS_WATCH_INTERVAL_MIN`). */
@@ -74,7 +80,13 @@ type Stop = "budget" | "rate_limited";
 
 interface Notice {
   type: RewardsNotificationType;
-  data: RewardsClaimableData | RewardsBoxReceivedData | RewardsDrawWonData | RewardsWatchPausedData;
+  data:
+    | RewardsClaimableData
+    | RewardsBoxReceivedData
+    | RewardsDrawWonData
+    | RewardsWatchPausedData
+    | RewardsWeekSnapshotData
+    | RewardsWeekPointsData;
   dedupeKey: string;
 }
 
@@ -208,7 +220,27 @@ async function processRow(
   }
   const token = dec.token;
 
-  const handle = async (o: Outcome): Promise<Stop | null> => {
+  // Lượt đọc box (chu kỳ `intervalMs`) và lượt tin tuần (#567, theo mốc SoDEX) có hạn riêng; dòng tới hạn vì một trong
+  // hai thì chỉ chạy phần tới hạn. Lượt box tạm dừng / lùi user thì bỏ lượt tin tuần.
+  if (row.nextCheckAt.getTime() <= now.getTime()) {
+    const r = await mainPass(deps, row, result, token, now);
+    if (r === "user") return null;
+    if (r !== null) return r;
+  }
+  if (row.weeklyCheckAt !== null && row.weeklyCheckAt.getTime() > now.getTime()) return null;
+  return weeklyPass(deps, row, result, token, now);
+}
+
+/** Lượt đọc box: `null` = xong (đi tiếp lượt tin tuần), `"user"` = user bị tạm dừng / lùi, `Stop` = dừng cả lượt. */
+async function mainPass(
+  deps: RewardsWatchJobDeps,
+  row: Row,
+  result: RewardsWatchTickResult,
+  token: string,
+  now: Date,
+): Promise<Stop | "user" | null> {
+  const { db } = deps;
+  const handle = async (o: Outcome): Promise<Stop | "user"> => {
     if ("stop" in o) return o.stop;
     if ("pause" in o) {
       await pauseRow(db, row, o.pause, now);
@@ -217,7 +249,7 @@ async function processRow(
       await backoffRow(db, row, o.error, now, deps.intervalMs);
       result.errors += 1;
     }
-    return null;
+    return "user";
   };
 
   const treasures = await deps.reader.getTreasures(token);
@@ -315,6 +347,97 @@ async function processRow(
   return null;
 }
 
+/**
+ * Lượt tin tuần (#567): đọc `sopoints/week/list`, lập lịch theo mốc SoDEX (`planWeekly`), gửi tin tổng kết tuần / điểm
+ * tuần (điểm cần thêm `sopoints/summary`), ghi mốc + `weekly_check_at` cùng transaction với outbox. 401 → tạm dừng như
+ * lượt box; hết ngân sách / 429 → dừng lượt; lỗi khác → đọc lại sau 10 phút (không thử lại ngay).
+ */
+async function weeklyPass(
+  deps: RewardsWatchJobDeps,
+  row: Row,
+  result: RewardsWatchTickResult,
+  token: string,
+  now: Date,
+): Promise<Stop | null> {
+  const { db } = deps;
+  const retryLater = async () => {
+    await db
+      .update(rewardsWatch)
+      .set({ weeklyCheckAt: new Date(now.getTime() + WEEKLY_POLL_MS) })
+      .where(and(eq(rewardsWatch.userId, row.userId), eq(rewardsWatch.status, "active")));
+  };
+  const onFailure = async (f: RewardsReadFailure): Promise<Stop | null> => {
+    const o = await failureOutcome(f, deps, now);
+    if ("stop" in o) return o.stop;
+    if ("pause" in o) {
+      await pauseRow(db, row, o.pause, now);
+      result.paused += 1;
+      return null;
+    }
+    await retryLater();
+    return null;
+  };
+
+  const weeks = await deps.reader.getWeekList(token);
+  if (weeks.kind !== "ok") return onFailure(weeks);
+  const plan = planWeekly(
+    weeks.data,
+    { snapshotSent: row.snapshotWeekSent, pointsSent: row.pointsWeekSent },
+    now.getTime(),
+  );
+  const [user] = await db
+    .select({ timeZone: users.timezone })
+    .from(users)
+    .where(eq(users.id, row.userId))
+    .limit(1);
+  const timeZone = user?.timeZone ?? "UTC";
+
+  const notices: Notice[] = [];
+  if (plan.snapshot !== null)
+    notices.push({
+      type: "rewards_week_snapshot",
+      data: snapshotData(plan.snapshot, timeZone),
+      dedupeKey: `rw:snapshot:${String(plan.snapshot.weekNo)}`,
+    });
+  let pointsSent = plan.pointsSent;
+  let nextMs = plan.nextCheckMs;
+  if (plan.points !== null) {
+    const summary = await deps.reader.getSopointsSummary(token);
+    if (summary.kind === "ok") {
+      notices.push({
+        type: "rewards_week_points",
+        data: pointsData(plan.points, summary.data, timeZone),
+        dedupeKey: `rw:points:${String(plan.points.weekNo)}`,
+      });
+    } else if (summary.kind === "unauthorized" || summary.kind === "invalid_token") {
+      await pauseRow(db, row, "unauthorized", now);
+      result.paused += 1;
+      return null;
+    } else {
+      // Chưa đọc được tổng điểm: giữ mốc cũ, thử lại sau 10 phút (vẫn trong cửa sổ 6 giờ).
+      if (summary.kind === "rate_limited") await failureOutcome(summary, deps, now);
+      pointsSent = row.pointsWeekSent;
+      nextMs = Math.min(nextMs, now.getTime() + WEEKLY_POLL_MS);
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(rewardsWatch)
+      .set({
+        snapshotWeekSent: plan.snapshotSent,
+        pointsWeekSent: pointsSent,
+        weeklyCheckAt: new Date(nextMs),
+      })
+      .where(and(eq(rewardsWatch.userId, row.userId), eq(rewardsWatch.status, "active")))
+      .returning({ userId: rewardsWatch.userId });
+    if (updated.length === 0 || notices.length === 0) return;
+    await tx.insert(outbox).values(notices.map((n) => notifyRow(row.userId, n)));
+  });
+  result.notified += notices.length;
+  return null;
+}
+
 /** Một lượt của job. Không ném lỗi theo từng user: lỗi một user thì lùi user đó, lượt tiếp tục. */
 export async function runRewardsWatchTick(
   deps: RewardsWatchJobDeps,
@@ -336,7 +459,12 @@ export async function runRewardsWatchTick(
   const due = await deps.db
     .select()
     .from(rewardsWatch)
-    .where(and(eq(rewardsWatch.status, "active"), lte(rewardsWatch.nextCheckAt, now)))
+    .where(
+      and(
+        eq(rewardsWatch.status, "active"),
+        or(lte(rewardsWatch.nextCheckAt, now), lte(rewardsWatch.weeklyCheckAt, now)),
+      ),
+    )
     .orderBy(asc(rewardsWatch.nextCheckAt))
     .limit(deps.batch);
   for (const row of due) {

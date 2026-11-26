@@ -29,6 +29,8 @@ type Reader = RewardsWatchJobDeps["reader"];
 type Treasures = Awaited<ReturnType<RewardsReadClient["getTreasures"]>>;
 type Ledger = Awaited<ReturnType<RewardsReadClient["getLedger"]>>;
 type Draw = Awaited<ReturnType<RewardsReadClient["getDrawEntries"]>>;
+type Weeks = Awaited<ReturnType<RewardsReadClient["getWeekList"]>>;
+type Summary = Awaited<ReturnType<RewardsReadClient["getSopointsSummary"]>>;
 
 let container: StartedPostgreSqlContainer;
 let db: Db;
@@ -42,6 +44,8 @@ const state = {
   decrypt: { kind: "ok", token: TOKEN } as RewardsDecryptResult,
   pausedUntil: null as number | null,
   calls: [] as string[],
+  weeks: null as Weeks | null,
+  summary: null as Summary | null,
 };
 
 const reader: Reader = {
@@ -56,6 +60,15 @@ const reader: Reader = {
   getDrawEntries: (_token, q) => {
     state.calls.push(`draw:${String(q?.round ?? "")}`);
     return Promise.resolve(state.draw ?? { kind: "error", code: "network" });
+  },
+  // #567: tin tuần. Mặc định lỗi mạng: lượt tin tuần chỉ hẹn đọc lại, không gửi gì.
+  getWeekList: () => {
+    state.calls.push("weeks");
+    return Promise.resolve(state.weeks ?? { kind: "error", code: "network" });
+  },
+  getSopointsSummary: () => {
+    state.calls.push("summary");
+    return Promise.resolve(state.summary ?? { kind: "error", code: "network" });
   },
 };
 
@@ -102,6 +115,8 @@ beforeEach(async () => {
   state.decrypt = { kind: "ok", token: TOKEN };
   state.pausedUntil = null;
   state.calls = [];
+  state.weeks = null;
+  state.summary = null;
 });
 
 let n = 0;
@@ -363,5 +378,145 @@ describe("rewards watch job", () => {
     expect(await purgeRewardsWatch(db, new Date())).toBe(1);
     expect(await rowOf(w.userId)).toBeUndefined();
     expect(await rowOf(fresh.userId)).toBeDefined();
+  });
+});
+
+describe("weekly SoDEX messages (#567)", () => {
+  const nowS = () => Math.floor(state.now.getTime() / 1000);
+  const week = (over: Record<string, unknown> = {}) => ({
+    weekNo: 13,
+    weekName: "Week 13",
+    status: "COMPLETED",
+    isLive: false,
+    weekStartTime: nowS() - 7 * 24 * 3600 - 2 * 3600,
+    weekEndTime: nowS() - 2 * 3600,
+    distributionTime: nowS() + 3 * 3600,
+    spotVolume: 7.65,
+    futuresVolume: 70722.87,
+    oi: 17.62,
+    accountValue: 208.33,
+    vaultHolding: 0,
+    wealthTvl: 2.57,
+    points: 521,
+    rank: 1410,
+    totalUser: 226582,
+    rankPercentile: "Top 0.06%",
+    pointsStatus: "PENDING",
+    futuresVolumeWeightDetails: [
+      { symbol: "NVDA-USD", coefficient: "1.2" },
+      { symbol: "GOOGL-USD", coefficient: "1.1" },
+      { symbol: "AMZN-USD", coefficient: "1.05" },
+    ],
+    ...over,
+  });
+  const live = () => ({
+    weekNo: 14,
+    weekName: "Week 14",
+    status: "LIVE",
+    isLive: true,
+    weekStartTime: nowS() - 2 * 3600,
+    weekEndTime: nowS() + 7 * 24 * 3600 - 2 * 3600,
+    distributionTime: nowS() + 10 * 24 * 3600,
+  });
+  const forceWeekly = (userId: string) =>
+    db
+      .update(rewardsWatch)
+      .set({ weeklyCheckAt: new Date(state.now.getTime() - 1000) })
+      .where(eq(rewardsWatch.userId, userId));
+  const weeklyNotices = async () =>
+    (await notices()).filter((n) => n.type.startsWith("rewards_week_"));
+
+  it("sends the snapshot once after the week completed, with no squad fields or wallet", async () => {
+    const w = await watcher();
+    state.weeks = { kind: "ok", data: [week(), live()] };
+    await runRewardsWatchTick(deps());
+    const sent = await weeklyNotices();
+    expect(sent.map((n) => n.type)).toEqual(["rewards_week_snapshot"]);
+    expect(sent[0]?.dedupeKey).toBe("rw:snapshot:13");
+    expect(sent[0]?.data).toMatchObject({
+      weekNo: 13,
+      futuresVolume: "70722.87",
+      vaultHolding: "0",
+      boosted: { symbol: "NVDA-USD", coefficient: "1.2", more: 2 },
+      timeZone: "Asia/Ho_Chi_Minh",
+    });
+    expect(JSON.stringify(sent)).not.toMatch(/team|totalBonusPct|0x[0-9a-f]{40}/i);
+    const row = await rowOf(w.userId);
+    expect(row?.snapshotWeekSent).toBe(13);
+    // Điểm chưa tới cửa sổ (3 giờ nữa): đọc lại 30 phút trước giờ chia điểm.
+    expect(row?.weeklyCheckAt?.getTime()).toBe((nowS() + 3 * 3600) * 1000 - 30 * 60_000);
+    await forceWeekly(w.userId);
+    await runRewardsWatchTick(deps());
+    expect(await weeklyNotices()).toHaveLength(1);
+  });
+
+  it("waits while the week is not completed, then sends", async () => {
+    const w = await watcher();
+    state.weeks = { kind: "ok", data: [week({ status: "SETTLING" }), live()] };
+    await runRewardsWatchTick(deps());
+    expect(await weeklyNotices()).toEqual([]);
+    expect((await rowOf(w.userId))?.weeklyCheckAt?.getTime()).toBe(
+      state.now.getTime() + 10 * 60_000,
+    );
+  });
+
+  it("sends the points once they are CONFIRMED in the window, with totals from the summary", async () => {
+    const w = await watcher();
+    state.weeks = {
+      kind: "ok",
+      data: [week({ distributionTime: nowS() - 600, pointsStatus: "PENDING" }), live()],
+    };
+    await runRewardsWatchTick(deps());
+    expect((await weeklyNotices()).map((n) => n.type)).toEqual(["rewards_week_snapshot"]);
+    expect((await rowOf(w.userId))?.weeklyCheckAt?.getTime()).toBe(
+      state.now.getTime() + 10 * 60_000,
+    );
+
+    state.weeks = {
+      kind: "ok",
+      data: [week({ distributionTime: nowS() - 600, pointsStatus: "CONFIRMED" }), live()],
+    };
+    state.summary = {
+      kind: "ok",
+      data: { totalPoints: 29556, currentTier: "DIAMOND", nextTier: "EPIC", nextTierPoints: 50000 },
+    };
+    await forceWeekly(w.userId);
+    await runRewardsWatchTick(deps());
+    const points = (await weeklyNotices()).filter((n) => n.type === "rewards_week_points");
+    expect(points).toHaveLength(1);
+    expect(points[0]?.dedupeKey).toBe("rw:points:13");
+    expect(points[0]?.data).toMatchObject({
+      points: "521",
+      rank: "1410",
+      totalUser: "226582",
+      rankPercentile: "Top 0.06%",
+      totalPoints: "29556",
+      currentTier: "DIAMOND",
+      nextTier: "EPIC",
+      nextTierPoints: "50000",
+    });
+    expect((await rowOf(w.userId))?.pointsWeekSent).toBe(13);
+    await forceWeekly(w.userId);
+    await runRewardsWatchTick(deps());
+    expect((await weeklyNotices()).filter((n) => n.type === "rewards_week_points")).toHaveLength(1);
+  });
+
+  it("gives up silently 6 hours after distributionTime", async () => {
+    const w = await watcher();
+    state.weeks = {
+      kind: "ok",
+      data: [week({ distributionTime: nowS() - 7 * 3600, pointsStatus: "PENDING" }), live()],
+    };
+    await runRewardsWatchTick(deps());
+    expect((await weeklyNotices()).filter((n) => n.type === "rewards_week_points")).toEqual([]);
+    expect((await rowOf(w.userId))?.pointsWeekSent).toBe(13);
+  });
+
+  it("401 on the week list: no message, paused like the box reads", async () => {
+    const w = await watcher();
+    state.weeks = { kind: "unauthorized" };
+    await runRewardsWatchTick(deps());
+    expect(await weeklyNotices()).toEqual([]);
+    expect(await rowOf(w.userId)).toMatchObject({ status: "paused", pauseReason: "unauthorized" });
   });
 });
