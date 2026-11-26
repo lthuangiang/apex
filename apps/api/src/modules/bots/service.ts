@@ -56,18 +56,22 @@ import {
 import { readDriftApproval, type SodexRestClient } from "@drift/sodex";
 import {
   type AdaptiveDcaState,
+  botCostPerMillion,
   copyLedgerTotals,
   copyMarkets,
   costPerMillion,
   costUsed,
+  farmCostPerMillion,
   farmNet,
   initialBuyProgress,
   isMultiMarketCopyState,
+  netCostPerMillion,
   netPnl,
   type Ledger,
   leverageCapIssue,
   meetsMinSize,
   rebalancingSchema,
+  settledNet,
   minSizeDetail,
   requirementOf,
   botCapitalOf,
@@ -567,11 +571,12 @@ function netOf(
 ): string | null {
   // Bot đã dừng không còn quản lý vị thế; sổ cái có thể còn số cũ, không được tính lãi chưa chốt theo giá mới.
   const finished = botState === BotState.stopped || botState === BotState.archived;
+  // Bot đã dừng: cùng hàm với tin Telegram khi bot dừng (#566).
+  if (finished) return settledNet(state);
   if (isMultiMarketCopyState(state)) {
     // Copy Trade nhiều market (DEC-163): đã chốt − phí − funding của mọi market + chưa chốt theo giá từng market.
     const t = copyLedgerTotals(state);
     let net = dec(t.realized).sub(t.fees).sub(t.funding);
-    if (finished) return net.toString();
     for (const p of t.positions) {
       const mark = marks[p.market];
       if (mark === undefined) return null;
@@ -582,7 +587,7 @@ function netOf(
   const l = (state as { ledger?: Ledger } | null)?.ledger;
   if (l === undefined) return null;
   const position = dec(l.position);
-  if (finished || position.isZero()) return dec(l.realized).sub(l.fees).sub(l.funding).toString();
+  if (position.isZero()) return settledNet(state);
   const mark = marks[market];
   return mark === undefined ? null : netPnl(l, mark).toString();
 }
@@ -845,28 +850,9 @@ export async function listBots(
   );
 }
 
-/** Chi phí mỗi $1M của một bot Market Making / Volume Farm từ state runtime (cùng công thức trang bot, #129). */
-export function botCostPerMillion(strategy: string, state: unknown): string | null {
-  if (state === null || state === undefined) return null;
-  if (strategy === Strategy.volumeMaker) return costPerMillion(state as VolumeMakerState);
-  if (strategy === Strategy.volumeFarm) return farmCostPerMillion(state as VolumeFarmState);
-  return null;
-}
-
-/**
- * Net cost / $1M của trang bot: max(0, −net) ÷ volume × 1M, 2 chữ số; lãi (net ≥ 0) → "0"; chưa có khối lượng → null.
- * Trang bot Volume Farm và Platform Stats (theo strategy) dùng chung.
- */
-export function netCostPerMillion(net: Decimal, volume: Decimal): string | null {
-  return volume.isZero()
-    ? null
-    : Decimal.max(0, net.neg()).div(volume).mul(1_000_000).toDecimalPlaces(2).toString();
-}
-
-/** Chi phí / $1M của phiên Volume Farm: `netCostPerMillion(farmNet, volume)` (trang bot dùng chung). */
-function farmCostPerMillion(st: VolumeFarmState): string | null {
-  return netCostPerMillion(farmNet(st), dec(st.volume));
-}
+// Công thức chi phí / $1M nằm ở `@drift/strategies` (run-facts.ts) để tin Telegram khi bot dừng (#566) dùng chung; giữ
+// export ở đây cho các module api đang import từ file này.
+export { botCostPerMillion, netCostPerMillion };
 
 /**
  * Chi phí trên mỗi 1 triệu USD khối lượng của mọi bot Market Making và Volume Farm của một user, theo id bot. Cùng nguồn

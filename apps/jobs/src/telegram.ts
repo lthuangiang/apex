@@ -10,6 +10,7 @@ import {
 import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
 
+import { attachStoppedRuns } from "./stopped-run";
 import { renderTelegram, type RenderRow } from "./telegram-render";
 
 // Worker gửi tin Telegram (docs/NOTIFICATIONS.md mục 6, DEC-170). `jobs.notify` ghi bản `channel = telegram`
@@ -178,6 +179,8 @@ export async function handleTelegram(
         botName: names.find((b) => b.id === data.botId)?.name ?? null,
       };
     });
+    // #566: số liệu phiên cho tin bot dừng đúng kế hoạch (chỉ đọc, cùng fact với Trading Agent).
+    await attachStoppedRuns(tx, n.userId, renderRows);
     const msg = renderTelegram(renderRows, deps.appUrl);
     const res = await deps.botApi.sendMessage({
       chat_id: link.chatId,

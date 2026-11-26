@@ -13,6 +13,8 @@ import {
 } from "@drift/shared";
 
 import messages from "./messages/en.json" with { type: "json" };
+import { isPlannedStop, type StoppedRun } from "./stopped-run";
+import { plannedStopBody, plannedStopReason } from "./stopped-run-render";
 
 // Nội dung tin Telegram (docs/NOTIFICATIONS.md mục 5, artboard NT-Telegram): tiêu đề một dòng có emoji theo
 // nhóm, 1–2 câu, rồi một URL button mở đúng màn hình. Hàm thuần, không I/O.
@@ -40,6 +42,8 @@ export interface RenderRow {
   data: Record<string, unknown>;
   /** Tên bot do user đặt (chưa escape); null khi không có bot hoặc không tìm thấy. */
   botName: string | null;
+  /** `bot_stopped` dừng đúng kế hoạch (#566): số liệu phiên do worker đọc lúc dựng tin; null/thiếu = không có số. */
+  run?: StoppedRun | null;
 }
 
 export interface Rendered {
@@ -117,6 +121,9 @@ function targetOf(row: RenderRow): { path: string; label: string } {
   switch (row.type) {
     case "bot_paused":
     case "bot_stopped":
+      // Dừng đúng kế hoạch (#566, mẫu đã duyệt): nút "Open Trading Agent".
+      if (row.type === "bot_stopped" && isPlannedStop(row.data))
+        return { path: agent, label: M.buttons.agent };
       return paper
         ? { path: "/desk", label: M.buttons.desk }
         : { path: agent, label: M.buttons.review };
@@ -395,6 +402,11 @@ function title(row: RenderRow): string {
     case "bot_paused":
       return fill(paper ? M.titles.paper_paused : M.titles.bot_paused, { bot });
     case "bot_stopped":
+      if (isPlannedStop(row.data))
+        return fill(M.titles.bot_stopped_planned, {
+          bot,
+          reason: plannedStopReason(row.data, row.run ?? null),
+        });
       return fill(paper ? M.titles.paper_stopped : M.titles.bot_stopped, { bot });
     case "unknown_order":
       return fill(M.titles.unknown_order, { bot });
@@ -485,6 +497,7 @@ function body(row: RenderRow): string | null {
         : fill(M.bodies.pausedReason, { reason: capitalize(reason) });
     case "bot_stopped":
       if (paper) return M.bodies.paper;
+      if (isPlannedStop(row.data)) return plannedStopBody(row.run ?? null);
       return reason === null ? null : fill(M.bodies.stoppedReason, { reason: capitalize(reason) });
     case "unknown_order":
       return M.bodies.unknown_order;
