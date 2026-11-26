@@ -10262,6 +10262,98 @@
         "received": "Prize boxes received in round {round}",
         "source": "Results from SoDEX's weekly draw."
       }
+    },
+    "action": {
+      "cancel": "Cancel",
+      "close": "Close",
+      "done": "Done",
+      "tryAgain": "Try again",
+      "skip": "Skip",
+      "job": "Job #{id}",
+      "canClose": "You can close this. It keeps going and shows on Overview.",
+      "slow": "Taking longer than usual. SoDEX is still working on it.",
+      "seeResults": "See results",
+      "steps": {
+        "signed": "Signed",
+        "sent": "Sent to SoDEX",
+        "minting": "Minting your boxes",
+        "ready": "Ready",
+        "recording": "Recording on-chain",
+        "revealed": "Revealed",
+        "newBox": "New box ready"
+      },
+      "wallet": {
+        "title": "Confirm in your wallet",
+        "body": "Check the request in your wallet app. Nothing is sent until you approve."
+      },
+      "ids": {
+        "more": "and {n} more",
+        "showAll": "Show all",
+        "showLess": "Show less"
+      },
+      "oldest": "Uses your oldest {level} boxes first.",
+      "claim": {
+        "chip": "Claim",
+        "all": "Claim all {n}",
+        "n": "Claim {n}",
+        "title": "{n, plural, one {Claim # box} other {Claim # boxes}}",
+        "body": "They go into your backpack and SoDEX shows each level. No wallet signature needed.",
+        "processing": "{n, plural, one {Claiming # box} other {Claiming # boxes}}",
+        "result": "{n, plural, one {# box claimed} other {# boxes claimed}}",
+        "backpack": "Backpack {before} → {after}",
+        "openThem": "Open them",
+        "failed": "Claim failed",
+        "failedBody": "Nothing was claimed. Your count refreshes from SoDEX."
+      },
+      "open": {
+        "n": "Open {n}",
+        "upTo": "Open up to {n} at a time",
+        "oldestGoFirst": "Oldest boxes go first.",
+        "fewer": "Fewer boxes to open",
+        "more": "More boxes to open",
+        "title": "{n, plural, one {Open # {level} box} other {Open # {level} boxes}}",
+        "body": "Your wallet will ask you to sign. This signature only opens these boxes. Rewards go to your SoDEX account.",
+        "inside": "What's inside is decided by SoDEX when the box opens.",
+        "confirm": "Sign and open",
+        "processing": "{n, plural, one {Opening # box} other {Opening # boxes}}",
+        "revealing": "Revealing…",
+        "result": "{n, plural, one {# box opened} other {# boxes opened}}",
+        "pfp": "PFP dropped · Cybereator #{id}",
+        "usdNote": "USD values are at open time, from SoDEX. Rewards were paid to your SoDEX account.",
+        "approx": "≈ {usd}",
+        "failed": "Open failed",
+        "failedBody": "Your boxes are still in your backpack. Trying again asks your wallet for a new signature.",
+        "inRunning": "{n} of these are in an open that's running.",
+        "opening": "Opening…"
+      },
+      "merge": {
+        "n": "Merge {n}",
+        "title": "{n, plural, one {Merge # {level} box} other {Merge # {level} boxes}}",
+        "body": "These {n} boxes are used up and SoDEX gives you one new box. Its level shows when it's done.",
+        "sign": "Your wallet will ask you to sign. This signature only merges these boxes.",
+        "confirm": "Sign and merge",
+        "processing": "{n, plural, one {Merging # box} other {Merging # boxes}}",
+        "result": "Merge done",
+        "newBox": "New box",
+        "used": "{n, plural, one {Used # {level} box} other {Used # {level} boxes}}",
+        "openIt": "Open it",
+        "failed": "Merge failed",
+        "failedBody": "{n, plural, one {Your box is still in your backpack.} other {Your # boxes are still in your backpack.}}"
+      },
+      "recovered": {
+        "title": "{kind, select, claim {Picked up a claim that was still running} merge {Picked up a merge that was still running} other {Picked up an open that was still running}}",
+        "body": "Job #{id} · {status}. Following it here. Nothing new was sent."
+      },
+      "already": {
+        "title": "{kind, select, claim {A claim is already running} merge {A merge is already running} other {An open is already running}}",
+        "body": "{kind, select, claim {SoDEX is still working on job #{id}. Following that one instead of sending a new claim.} merge {SoDEX is still working on job #{id}. Following that one instead of sending a new merge.} other {SoDEX is still working on job #{id}. Following that one instead of sending a new open.}}"
+      },
+      "unsure": {
+        "title": "{kind, select, claim {Not sure the claim went through} merge {Not sure the merge went through} other {Not sure the open went through}}",
+        "body": "Checking SoDEX for the job before doing anything else. We won't send it again.",
+        "checking": "Checking SoDEX…",
+        "notFound": "SoDEX shows no running job for it. Your boxes refresh from SoDEX."
+      }
     }
   },
   "rewardsDebug": {

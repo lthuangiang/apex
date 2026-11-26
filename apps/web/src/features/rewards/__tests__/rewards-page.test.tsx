@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
+import { resetActions } from "../action-store";
 import { resetRewardsRateLimit } from "../client";
 import { RewardsPage, resolveRewardsTab } from "../components/rewards-page";
 import { readRewardsToken, saveRewardsToken } from "../token-store";
@@ -80,7 +81,10 @@ vi.mock("wagmi", () => ({
   useConnect: () => ({ mutateAsync: connect }),
   useDisconnect: () => ({ mutateAsync: () => Promise.resolve() }),
   useConnectors: () => [],
+  useSwitchChain: () => ({ mutateAsync: () => Promise.resolve() }),
+  useSignTypedData: () => ({ mutateAsync: () => Promise.reject(new Error("not in this test")) }),
 }));
+vi.mock("@/lib/wagmi", () => ({ valueChain: { id: 286623 } }));
 vi.mock("wagmi/actions", () => ({ getConnection: () => ({ address: state.wallet }) }));
 
 function at<T>(xs: readonly T[], i: number): T {
@@ -119,6 +123,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  resetActions();
   vi.unstubAllGlobals();
   resetRewardsRateLimit();
 });

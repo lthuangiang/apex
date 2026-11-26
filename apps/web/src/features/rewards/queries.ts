@@ -6,6 +6,7 @@ import {
   lotteryDrawEntriesSchema,
   lotteryFeedSchema,
   lotteryHistorySchema,
+  lotteryJobSchema,
   lotteryJobsSchema,
   lotteryLedgerSchema,
   lotteryPfpsSchema,
@@ -49,6 +50,7 @@ export const rewardsKeys = {
   ledger: (address: string) => [...rewardsKeys.wallet(address), "ledger"] as const,
   history: (address: string) => [...rewardsKeys.wallet(address), "history"] as const,
   draw: (address: string) => [...rewardsKeys.wallet(address), "draw-entries"] as const,
+  job: (address: string, id: number) => [...rewardsKeys.wallet(address), "job", id] as const,
   profile: (id: number) => [...REWARDS_KEY, "public", "cybereator", id] as const,
 };
 
@@ -303,6 +305,30 @@ export function useCybereatorProfile(id: number) {
         schema: cybereatorProfileSchema,
         signal,
       }),
+  });
+}
+
+/**
+ * Một job (`lottery/job/{id}`, quy tắc 6): đọc lại 2 s khi submitting / pending, dừng khi revealed / failed hoặc khi
+ * SoDEX bắt dừng (429).
+ */
+export function useRewardsJob(s: RewardsSession, id: number | null) {
+  const { address, enabled } = walletQuery(s);
+  return useQuery({
+    ...COMMON,
+    staleTime: 0,
+    queryKey: rewardsKeys.job(address, id ?? -1),
+    queryFn: ({ signal }) =>
+      s.authed({ path: `lottery/job/${String(id)}`, schema: lotteryJobSchema, signal }),
+    refetchInterval: (q) =>
+      paused()
+        ? false
+        : q.state.data === undefined ||
+            q.state.data.status === "submitting" ||
+            q.state.data.status === "pending"
+          ? REWARDS_JOB_POLL_MS
+          : false,
+    enabled: enabled && id !== null,
   });
 }
 

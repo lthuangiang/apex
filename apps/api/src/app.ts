@@ -15,6 +15,7 @@ import {
   adaptiveDcaOn,
   aiDeskOn,
   listBots,
+  isTeamUser,
   signalResearchOn,
   volumeBotsOn,
 } from "./modules/bots/service";
@@ -171,7 +172,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       adaptiveDca: adca,
       signalResearch: sr,
       // DEC-397: công tắc toàn hệ thống (`REWARDS_ENABLED`), giống nhau cho mọi user; không phải cờ theo tài khoản.
-      sodexRewards: deps.rewardsEnabled?.() === true,
+      // Bổ sung #551: công tắc tắt thì role team vẫn thấy (thử bằng ví thật trên prod, như Signal Research).
+      sodexRewards:
+        deps.rewardsEnabled?.() === true ||
+        (request.auth !== null && (await isTeamUser(deps.db, request.auth.userId))),
       builderFees,
       mmFee,
     };

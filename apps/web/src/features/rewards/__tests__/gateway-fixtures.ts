@@ -249,6 +249,18 @@ export const fixtures = {
   }),
   pfps: ok({ total: 0, pfps: [], won: [] }),
   nonce: ok({ message: "Sign in to SoDEX rewards: nonce 1" }),
+  // Contract giả của test (không phải contract thật); khớp `verifyingContract` của sign-params giả.
+  meta: ok({
+    contracts: {
+      treasureBox: "0x00000000000000000000000000000000000000AA",
+      distribute: "0x00000000000000000000000000000000000000bb",
+      pfp: "0x00000000000000000000000000000000000000cc",
+    },
+    rules: {
+      mergeSize: { Common: 10, Uncommon: 10, Rare: 4, SuperRare: 0 },
+      limits: { maxTreasureOpen: 100, maxBoxOpen: 30 },
+    },
+  }),
 };
 
 export type Route =
@@ -265,6 +277,7 @@ export type Route =
   | "lottery/draw/entries"
   | "lottery/pfps"
   | "cybereator/profile/2051"
+  | "lottery/meta"
   | "auth/nonce";
 
 export function defaultRoutes(): Record<Route, Reply> {
@@ -282,20 +295,28 @@ export function defaultRoutes(): Record<Route, Reply> {
     "lottery/draw/entries": fixtures.draw,
     "lottery/pfps": fixtures.pfps,
     "cybereator/profile/2051": { body: { id: 2051, stage: "unopened" } },
+    "lottery/meta": fixtures.meta,
     "auth/nonce": fixtures.nonce,
   };
 }
 
 /** `fetch` giả: trả theo `routes`, ghi lại URL + header Authorization của mỗi lần gọi. */
-export function fakeGateway(routes: Partial<Record<Route, Reply>> = {}) {
-  const table = { ...defaultRoutes(), ...routes };
-  const calls: { path: string; url: string; auth: string | null }[] = [];
+export function fakeGateway(routes: Partial<Record<Route | (string & {}), Reply>> = {}) {
+  const table: Partial<Record<string, Reply>> = { ...defaultRoutes(), ...routes };
+  const calls: { path: string; url: string; auth: string | null; method: string; body: string }[] =
+    [];
   const fn = vi.fn<typeof fetch>((input, init) => {
     const url = new URL(urlOf(input));
     const path = url.pathname.replace(/^\/api\/v1\//, "");
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    calls.push({ path, url: url.href, auth: headers.Authorization ?? null });
-    const reply = table[path as Route] as Reply | undefined;
+    calls.push({
+      path,
+      url: url.href,
+      auth: headers.Authorization ?? null,
+      method: init?.method ?? "GET",
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    const reply = table[path];
     if (reply === undefined) return Promise.resolve(new Response("{}", { status: 404 }));
     if (reply === "network") return Promise.reject(new TypeError("Failed to fetch"));
     if (reply === "pending") return new Promise<Response>(() => undefined);

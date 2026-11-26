@@ -135,3 +135,13 @@ export function levelDotClass(level: string): string {
       return "bg-border-input";
   }
 }
+
+/** `mintedAt` (ISO trong dữ liệu thật; số thì giây hoặc ms) → ms; đọc không được thì null. */
+export function mintedMs(v: NumLike | null | undefined): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
+  const n = Number(v);
+  if (Number.isFinite(n)) return n < 1e12 ? n * 1000 : n;
+  const ms = Date.parse(v);
+  return Number.isNaN(ms) ? null : ms;
+}
