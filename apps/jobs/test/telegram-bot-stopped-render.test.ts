@@ -2,7 +2,7 @@ import { costPerMillion, type VolumeMakerState } from "@drift/strategies";
 import { describe, expect, it } from "vitest";
 
 import { runFacts, type RunInput, type StoppedRun } from "../src/stopped-run";
-import { compactUsd, durationText } from "../src/stopped-run-render";
+import { compactUsd, cpmText, durationText } from "../src/stopped-run-render";
 import { renderTelegram, type RenderRow } from "../src/telegram-render";
 
 // Tin `bot_stopped` dừng đúng kế hoạch có khối số liệu phiên (#566, mẫu duyệt 2026-11-26). Không cần Postgres.
@@ -251,28 +251,38 @@ describe("formatting helpers", () => {
     expect(compactUsd("850.567")).toBe("$850.56");
     expect(compactUsd("2500000000")).toBe("$2.5B");
   });
-  // Cùng bộ ví dụ với packages/shared và web (Trading Agent): chuỗi CPM trong tin = chuỗi trên Trading Agent.
+  // CÙNG bộ ví dụ với apps/web/src/features/bots/__tests__/cost-per-million-format.test.ts (chuỗi Trading Agent hiện).
+  const cpmRun = (strategy: string, v: string): StoppedRun => ({
+    strategy,
+    volume: null,
+    volumeTarget: null,
+    cost: null,
+    pnl: null,
+    costPerMillion: v,
+    ranMs: null,
+    stopDetail: null,
+  });
   it.each([
     ["201.61", "201.61"],
     ["201.6", "201.6"],
     ["50", "50"],
-    ["20.16", "20.16"],
+    ["0", "0"],
+    ["1234.5", "1234.5"],
+  ])("Market Making CPM %s → '%s per $1M' (Market Making card)", (v, text) => {
+    expect(cpmText("volume_maker", v)).toBe(text);
+    expect(render({ reasonCode: "BUDGET_DONE" }, cpmRun("volume_maker", v)).text).toContain(
+      `<pre>CPM      ${text} per $1M</pre>`,
+    );
+  });
+  it.each([
+    ["201.61", "201.61"],
+    ["201.6", "201.6"],
+    ["50", "50"],
     ["0", "0"],
     ["1234.5", "1,234.5"],
-    ["21778.85", "21,778.85"],
-    ["3.456", "3.46"],
-  ])("CPM %s → '%s per $1M' (Trading Agent format)", (v, text) => {
-    const run: StoppedRun = {
-      strategy: "volume_maker",
-      volume: null,
-      volumeTarget: null,
-      cost: null,
-      pnl: null,
-      costPerMillion: v,
-      ranMs: null,
-      stopDetail: null,
-    };
-    expect(render({ reasonCode: "BUDGET_DONE" }, run).text).toContain(
+  ])("Volume Builder CPM %s → '%s per $1M' (Net cost / $1M KPI)", (v, text) => {
+    expect(cpmText("volume_farm", v)).toBe(text);
+    expect(render({ reasonCode: "MAX_CYCLES" }, cpmRun("volume_farm", v)).text).toContain(
       `<pre>CPM      ${text} per $1M</pre>`,
     );
   });

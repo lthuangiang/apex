@@ -2,7 +2,7 @@ import {
   dec,
   Decimal,
   escapeTelegramHtml,
-  formatCostPerMillion,
+  formatDecimal,
   ReasonCode,
   Strategy,
 } from "@drift/shared";
@@ -15,7 +15,7 @@ import type { StoppedRun } from "./stopped-run";
 //
 //   Volume   $1.24M
 //   Cost     −25.00 USDC ▼ (limit 25.00)
-//   CPM      201.61 per $1M (cùng định dạng Trading Agent: `formatCostPerMillion`)
+//   CPM      201.61 per $1M (định dạng như màn Trading Agent của từng chiến lược: `cpmText`)
 //   Ran      6h 12m
 // Bảng nằm trong <pre> để thẳng cột. Thiếu số nào thì bỏ dòng đó, không bao giờ ghi 0 thay số thiếu (quy tắc 1.8).
 // Hàm thuần, không I/O.
@@ -88,6 +88,24 @@ export function signedMoney(v: Decimal, unit: string): string {
     : `−${grouped(r.abs().toFixed(2))} ${u} ▼`;
 }
 
+/**
+ * CPM như Trading Agent đang hiện (giữ đúng chuỗi của từng màn; test cùng bộ ví dụ với
+ * apps/web/src/features/bots/__tests__/cost-per-million-format.test.ts):
+ * - Market Making: thẻ Market Making hiện nguyên chuỗi `costPerMillion` của API ("201.61", "1234.5").
+ * - Volume Builder: KPI "Net cost / $1M" dùng `money(cpm, 2)` = `formatAmount(toFixed(2), null)` của web: 2 chữ số rồi
+ *   bỏ số 0 thừa, nhóm hàng nghìn en-US ("50", "1,234.5").
+ */
+export function cpmText(strategy: string, v: string): string {
+  if (strategy !== Strategy.volumeFarm) return escapeTelegramHtml(v);
+  return (
+    formatDecimal(dec(v).toFixed(2), {
+      locale: "en-US",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 8,
+    })?.replace("-", "−") ?? escapeTelegramHtml(v)
+  );
+}
+
 /** "6h 12m"; từ 1 ngày: "2d 3h" (cùng cách ghi Runtime của Trading Agent). */
 export function durationText(ms: number): string {
   const minutes = Math.round(Math.max(0, ms) / 60_000);
@@ -112,7 +130,10 @@ export function plannedStopBody(run: StoppedRun | null): string | null {
   if (run.pnl !== null)
     lines.push([L.pnl, withLimit(signedMoney(dec(run.pnl.value), run.pnl.unit), run.pnl.limit)]);
   if (run.costPerMillion !== null)
-    lines.push([L.cpm, PS.perMillion.replace("{value}", formatCostPerMillion(run.costPerMillion))]);
+    lines.push([
+      L.cpm,
+      PS.perMillion.replace("{value}", cpmText(run.strategy, run.costPerMillion)),
+    ]);
   if (run.ranMs !== null) lines.push([L.ran, durationText(run.ranMs)]);
   if (lines.length === 0) return null;
   // Cột giá trị cố định theo nhãn dài nhất ("Volume" + 3 dấu cách như mẫu), kể cả khi dòng đó bị bỏ.

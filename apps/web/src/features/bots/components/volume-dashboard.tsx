@@ -2,7 +2,6 @@
 
 import {
   type BotDetail,
-  formatCostPerMillion,
   VOLUME_PERIODS,
   volumeAnalyticsSchema,
   type VolumeAnalytics,
@@ -220,7 +219,7 @@ function Body({
           icon={<CircleDollarSign size={18} strokeWidth={2.4} />}
           tone="pos"
           label={t("kpiCpm")}
-          value={cpm === null ? "—" : `$${formatCostPerMillion(cpm.toFixed(2))}`}
+          value={cpm === null ? "—" : `$${money(cpm, 2)}`}
           sub={t("kpiCpmSub")}
           spark={cumFees}
           sparkTone="pos"
