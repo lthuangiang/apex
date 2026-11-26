@@ -13,6 +13,7 @@ import {
   fitModel,
   MM_FIT_MIN_ROUNDS,
   isActiveMinute,
+  isMmModelBotConfig,
   MM_MIN_ACTIVE_MINUTES,
   MM_MODEL_SEED,
   Strategy,
@@ -94,7 +95,7 @@ export async function fitMmModelDaily(
   }
   const groups = new Map<string, Group>();
   for (const r of rows) {
-    if ((r.config as { quoteLevel?: unknown }).quoteLevel !== 0) continue;
+    if (!isMmModelBotConfig(r.config)) continue;
     const key = `${r.botId}|${r.market}`;
     const g = groups.get(key) ?? {
       userId: r.userId,

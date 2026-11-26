@@ -5,13 +5,13 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { NextIntlClientProvider } from "next-intl";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
 import { MmSuggestions } from "../components/mm-markets";
 import { MmMarkoutCard } from "../components/mm-markout";
-import { applyMmSuggestion } from "../mm-cost";
+import { applyMmSuggestion, isMmLevelZero, mmVolumeSuggestions } from "../mm-cost";
 
 // Market Making · chi phí / $1M: gợi ý market dưới Contract (DEC-228) và Price PnL đến từ đâu (D2, DEC-227).
 
@@ -122,6 +122,7 @@ describe("Market Making · suggested markets under Contract (DEC-228)", () => {
     const picked: string[] = [];
     const { rerender } = wrap(
       <MmSuggestions
+        quoteLevel="0"
         value=""
         onPick={(m) => {
           picked.push(m);
@@ -141,7 +142,7 @@ describe("Market Making · suggested markets under Contract (DEC-228)", () => {
     rerender(
       <QueryClientProvider client={qc}>
         <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
-          <MmSuggestions value="SOL-USD" onPick={() => undefined} />
+          <MmSuggestions value="SOL-USD" quoteLevel="0" onPick={() => undefined} />
         </NextIntlClientProvider>
       </QueryClientProvider>,
     );
@@ -161,6 +162,7 @@ describe("Market Making · suggested markets under Contract (DEC-228)", () => {
     const picked: string[] = [];
     wrap(
       <MmSuggestions
+        quoteLevel="0"
         value="NEW-USD"
         onPick={(m) => {
           picked.push(m);
@@ -228,12 +230,195 @@ describe("Market Making · suggested markets under Contract (DEC-228)", () => {
 
   it("explains that suggestions need a day of data", async () => {
     state.empty = true;
-    wrap(<MmSuggestions value="" onPick={() => undefined} />);
+    wrap(<MmSuggestions value="" quoteLevel="0" onPick={() => undefined} />);
     expect(
       await screen.findByText("Suggestions appear once we have a day of SoDEX data."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Compare all markets" })).not.toBeInTheDocument();
     state.empty = false;
+  });
+});
+
+/** Ô "Where to quote" giả lập của form: khối gợi ý đọc thẳng giá trị thô như create-bot. */
+function WithQuoteField({ initial, market = "SOL-USD" }: { initial: string; market?: string }) {
+  const [level, setLevel] = useState(initial);
+  return (
+    <>
+      <label>
+        Where to quote
+        <input
+          value={level}
+          onChange={(e) => {
+            setLevel(e.target.value);
+          }}
+        />
+      </label>
+      <MmSuggestions value={market} quoteLevel={level} onPick={() => undefined} />
+    </>
+  );
+}
+
+/** Không có số nào của mô hình: không khoảng chi phí, không "0 or less", không "Estimated cost here: <số>". */
+function expectNoModelNumbers() {
+  const text = document.body.textContent;
+  expect(text).not.toMatch(/\d–\d/);
+  expect(text).not.toContain("0 or less");
+  expect(text).not.toMatch(/Estimated cost here: \d/);
+  expect(text).not.toContain("With usual price moves");
+}
+
+describe("Market Making · Where to quote above 0 shows fees only (DEC-396)", () => {
+  it("ranks suggestions by capacity without costs and states only the fees for the chosen market", async () => {
+    wrap(<MmSuggestions value="SOL-USD" quoteLevel="2" onPick={() => undefined} />);
+    const list = within(await screen.findByRole("list"));
+    expect(list.getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "BTC-USD · up to $2.7M/day",
+      expect.stringMatching(/^ETH-USD · up to \$1\.\dM\/day$/),
+      "ZERO-USD · up to $800K/day",
+    ]);
+    expect(
+      screen.getByText(
+        "Most volume first. Cost with the usual price moves is only estimated when Where to quote is 0.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Fees here: 150 per $1M. Price moves are not estimated when Where to quote is above 0, so the real cost can be higher.",
+      ),
+    ).toBeInTheDocument();
+    expectNoModelNumbers();
+  });
+
+  it("drops the estimate columns, the cheapest sort and badge from the comparison, sorted by volume", async () => {
+    const user = userEvent.setup({ delay: null });
+    wrap(<MmSuggestions value="SOL-USD" quoteLevel="2" onPick={() => undefined} />);
+    await user.click(await screen.findByRole("button", { name: "Compare all markets" }));
+    const dialog = await screen.findByRole("dialog", { name: "Compare all markets" });
+    expect(
+      within(dialog).getByText(
+        "Fees and volume for every market, from the last 24 hours on SoDEX. Most volume first. Cost with the usual price moves is only estimated when Where to quote is 0.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByRole("group", { name: "Sort markets" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Cheapest first" })).toBeNull();
+    const headers = within(dialog)
+      .getAllByRole("columnheader")
+      .map((h) => h.textContent);
+    expect(headers).toEqual([
+      "Market",
+      "One price step",
+      "1-min swing",
+      "Volume 24h",
+      "Up to / day",
+      "Fees only / $1M",
+      "Choose",
+    ]);
+    const names = within(within(dialog).getByRole("table"))
+      .getAllByRole("rowheader")
+      .map((h) => h.textContent);
+    expect(names).toEqual(["BTC-USD", "ETH-USDYour bot today", "ZERO-USD", "XAUT-USD", "SOL-USD"]);
+    const cells = within(
+      within(dialog).getByRole("rowheader", { name: "ZERO-USD" }).closest("tr") as HTMLElement,
+    )
+      .getAllByRole("cell")
+      .map((c) => c.textContent);
+    expect(cells.slice(4)).toEqual(["150", "Choose"]);
+    await user.click(within(dialog).getByRole("button", { name: "Show all markets (2 hidden)" }));
+    expect(
+      within(dialog).getByText(
+        "Fees only = the SoDEX maker fee plus the DeskLabs builder fee. Price moves at this Where to quote are not estimated, so the real cost can be higher.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText("Not enough data")).toBeNull();
+    expect(within(dialog).queryByText("Cheapest")).toBeNull();
+    expectNoModelNumbers();
+  }, 20_000);
+
+  it("switches between the estimate and fees only as soon as Where to quote changes (2 → 0 → 2)", async () => {
+    const user = userEvent.setup({ delay: null });
+    wrap(<WithQuoteField initial="2" />);
+    expect(await screen.findByText(/^Fees here: 150 per \$1M\./)).toBeInTheDocument();
+    const field = screen.getByRole("textbox", { name: "Where to quote" });
+    await user.clear(field);
+    await user.type(field, "0");
+    expect(
+      screen.getByText(
+        "Estimated cost here: 150–180 per $1M (fees only to fees plus the usual price moves, last 24 hours, not a forecast).",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^ZERO-USD · 0 or less per \$1M/ }),
+    ).toBeInTheDocument();
+    await user.clear(field);
+    await user.type(field, "2");
+    expect(screen.getByText(/^Fees here: 150 per \$1M\./)).toBeInTheDocument();
+    expectNoModelNumbers();
+  }, 15_000);
+
+  it("treats an empty or invalid Where to quote as fees only, never the level 0 estimate", async () => {
+    const user = userEvent.setup({ delay: null });
+    wrap(<WithQuoteField initial="0" />);
+    expect(await screen.findByText(/^Estimated cost here: 150–180/)).toBeInTheDocument();
+    const field = screen.getByRole("textbox", { name: "Where to quote" });
+    await user.clear(field);
+    expect(screen.getByText(/^Fees here: 150 per \$1M\./)).toBeInTheDocument();
+    expectNoModelNumbers();
+    await user.type(field, "x");
+    expect(screen.getByText(/^Fees here: 150 per \$1M\./)).toBeInTheDocument();
+    expectNoModelNumbers();
+  });
+
+  it("keeps 'not enough data' for a market without numbers", async () => {
+    wrap(<MmSuggestions value="GONE-USD" quoteLevel="2" onPick={() => undefined} />);
+    expect(
+      await screen.findByText("Estimated cost here: not enough data yet."),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["1440", 1440],
+    ["390", 390],
+  ])(
+    "has no accessibility violations at %s with the comparison open",
+    async (_label, width) => {
+      const before = window.innerWidth;
+      window.innerWidth = width;
+      try {
+        const user = userEvent.setup({ delay: null });
+        wrap(<MmSuggestions value="SOL-USD" quoteLevel="2" onPick={() => undefined} />);
+        for (const b of within(await screen.findByRole("list")).getAllByRole("button"))
+          expect(b.className).toContain("min-h-tap");
+        let r = await axe.run(document.body, AXE);
+        expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+        await user.click(screen.getByRole("button", { name: "Compare all markets" }));
+        const dialog = await screen.findByRole("dialog", { name: "Compare all markets" });
+        for (const b of within(dialog).getAllByRole("button", { name: /^Choose / }))
+          expect(b.className).toContain("min-h-tap");
+        r = await axe.run(document.body, AXE);
+        expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+      } finally {
+        window.innerWidth = before;
+      }
+    },
+    20_000,
+  );
+
+  it("only counts the exact number 0 as level 0", () => {
+    for (const v of ["0", " 0 ", "00", 0]) expect(isMmLevelZero(v)).toBe(true);
+    for (const v of ["2", "", " ", "0.5", "x", "-0", 2, undefined, null, false])
+      expect(isMmLevelZero(v)).toBe(false);
+  });
+
+  it("suggests up to 3 markets with data and enough volume, most volume first", () => {
+    const rows = [
+      row("A-USD", "100", "300000"),
+      row("B-USD", "100", "2000000"),
+      row("THIN-USD", "100", "50000"),
+      row("NEW-USD", null, "900000"),
+      row("C-USD", "-5", "500000"),
+      row("D-USD", "200", "400000"),
+    ] as Parameters<typeof mmVolumeSuggestions>[0];
+    expect(mmVolumeSuggestions(rows).map((r) => r.market)).toEqual(["B-USD", "C-USD", "D-USD"]);
   });
 });
 

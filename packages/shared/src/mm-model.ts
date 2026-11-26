@@ -32,6 +32,20 @@ export const MM_ACTIVE_MINUTE_MIN_USD = 50;
 export function isActiveMinute(c: { close: DecimalInput; volume: DecimalInput }): boolean {
   return dec(c.close).mul(c.volume).gte(MM_ACTIVE_MINUTE_MIN_USD);
 }
+/**
+ * Bot Market Making có được dùng làm dữ liệu cho mô hình chi phí không (DEC-228, DEC-396): chỉ khi cấu hình của version
+ * đang chạy có `quoteLevel` đúng bằng số 0. Thiếu `quoteLevel` (config cũ báo giá theo `distanceBp`), mức khác 0 hay
+ * cấu hình hỏng đều không. Dùng chung cho fit hằng ngày (scheduler), phần "Your bots" của chi phí / $1M và hiệu chỉnh
+ * Market hours.
+ */
+export function isMmModelBotConfig(config: unknown): boolean {
+  return (
+    typeof config === "object" &&
+    config !== null &&
+    (config as { quoteLevel?: unknown }).quoteLevel === 0
+  );
+}
+
 /** Một điểm fit chỉ tính khi bot có ≥ 50 vòng đóng trong ngày; dưới 5 điểm thì giữ a, chỉ fit k. */
 export const MM_FIT_MIN_ROUNDS = 50;
 export const MM_FIT_MIN_POINTS = 5;

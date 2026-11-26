@@ -483,6 +483,7 @@ export function CreateBot({
                     {strategy === "volume_maker" ? (
                       <MmSuggestions
                         value={typeof values.market === "string" ? values.market : ""}
+                        quoteLevel={values.quoteLevel}
                         onPick={(m) => {
                           setTouched(true);
                           update({ ...values, market: m });

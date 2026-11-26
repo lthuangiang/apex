@@ -119,28 +119,8 @@ describe("GET /api/v1/markets/mm-cost (DEC-228)", () => {
       tooLittleVolume: true,
     });
 
-    // Bot của chính người xem: 50 vòng lỗ ~0,5 bps → trộn đều với mô hình, nguồn "yours".
-    const made = await client.request("POST", "/api/v1/bots", {
-      body: { strategy: "volume_maker", name: "MM", paramSource: "manual", config: vmConfig },
-    });
-    const id = made.json<{ id: string }>().id;
-    for (let k = 0; k < 50; k += 1)
-      for (const [side, price, dt] of [
-        ["buy", "100", 0],
-        ["sell", "99.99", 10_000],
-      ] as const) {
-        await env.pool.query(
-          "with o as (insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, status, reduce_only, tag, epoch) select gen_random_uuid(), id, sodex_account_id, $2, 'BTC-USD', 'perps', $3, 'limit', 'GTX', 1, 'filled', false, 'x', 1 from bots where id = $1 returning id) insert into fills (id, order_id, sodex_trade_id, price, size, fee, is_maker, filled_at) select gen_random_uuid(), id, $4, $5, '1', '0', true, $6 from o",
-          [
-            id,
-            `rank-${String(k)}-${side}`,
-            side,
-            770_000 + k * 2 + (side === "buy" ? 0 : 1),
-            price,
-            at(-3_600_000 + k * 30_000 + dt),
-          ],
-        );
-      }
+    // Bot của chính người xem ở mức 0: 50 vòng lỗ ~0,5 bps → trộn đều với mô hình, nguồn "yours".
+    await seedRounds(client, 0, "rank");
     const mine = mmMarketCostsSchema.parse(
       (await client.request("GET", "/api/v1/markets/mm-cost")).json(),
     );
@@ -156,11 +136,56 @@ describe("GET /api/v1/markets/mm-cost (DEC-228)", () => {
     expect(theirs.markets.find((m) => m.market === "BTC-USD")?.source).toBe("model");
   });
 
+  it("only blends in your bots that quote at level 0, like the daily fit (DEC-396)", async () => {
+    // Chạy sau ca trên: nến BTC-USD đã có. Bot mức 2 và bot config cũ (distanceBp, không có quoteLevel) cùng 50 vòng lỗ
+    // nhưng không vào số "Your bots": chi phí vẫn là của mô hình.
+    const client = await connectedUser("mm-rank-level2@example.com");
+    await seedRounds(client, 2, "lvl2");
+    await seedRounds(client, undefined, "legacy");
+    const res = mmMarketCostsSchema.parse(
+      (await client.request("GET", "/api/v1/markets/mm-cost")).json(),
+    );
+    const btc = res.markets.find((m) => m.market === "BTC-USD");
+    expect(btc).toMatchObject({ source: "model", yourRoundTrips: 0 });
+    expect(Number(btc?.pricePnlPerMillion)).toBeCloseTo(-22.5, 0);
+  });
+
   it("needs a session", async () => {
     const res = await new TestClient(env.app).request("GET", "/api/v1/markets/mm-cost");
     expect(res.statusCode).toBe(401);
   });
 });
+
+/**
+ * Bot Market Making của `client` trên BTC-USD với `quoteLevel` cho trước (undefined = config cũ chỉ có distanceBp) và 50
+ * vòng mua 100 / bán 99,99 trong giờ vừa qua.
+ */
+async function seedRounds(client: TestClient, quoteLevel: number | undefined, tag: string) {
+  const config = quoteLevel === undefined ? vmConfig : { ...vmConfig, quoteLevel };
+  const made = await client.request("POST", "/api/v1/bots", {
+    body: { strategy: "volume_maker", name: "MM", paramSource: "manual", config },
+  });
+  const id = made.json<{ id: string }>().id;
+  const base = 770_000 + Math.floor(Math.random() * 1e8) * 100;
+  for (let k = 0; k < 50; k += 1)
+    for (const [side, price, dt] of [
+      ["buy", "100", 0],
+      ["sell", "99.99", 10_000],
+    ] as const) {
+      await env.pool.query(
+        "with o as (insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, status, reduce_only, tag, epoch) select gen_random_uuid(), id, sodex_account_id, $2, 'BTC-USD', 'perps', $3, 'limit', 'GTX', 1, 'filled', false, 'x', 1 from bots where id = $1 returning id) insert into fills (id, order_id, sodex_trade_id, price, size, fee, is_maker, filled_at) select gen_random_uuid(), id, $4, $5, '1', '0', true, $6 from o",
+        [
+          id,
+          `${tag}-${String(k)}-${side}`,
+          side,
+          base + k * 2 + (side === "buy" ? 0 : 1),
+          price,
+          at(-3_600_000 + k * 30_000 + dt),
+        ],
+      );
+    }
+  return id;
+}
 
 describe("GET /api/v1/bots/:id/mm-markout (D2)", () => {
   it("measures the bot's own fills against the mid after 5 / 30 / 60 s and counts losing round trips", async () => {

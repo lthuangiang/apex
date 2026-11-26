@@ -1,4 +1,9 @@
-import { mmMarketCostsSchema, mmMarkoutSchema, type MmMarketCost } from "@drift/shared";
+import {
+  MM_SUGGEST_MAX,
+  mmMarketCostsSchema,
+  mmMarkoutSchema,
+  type MmMarketCost,
+} from "@drift/shared";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
@@ -59,6 +64,29 @@ export function sortMarkets(rows: readonly MmMarketCost[], by: MmSort): MmMarket
       return x === y ? a.market.localeCompare(b.market) : x === null ? 1 : -1;
     return Number(y) - Number(x);
   });
+}
+
+/**
+ * "Where to quote" của form là mức 0 (DEC-396): chỉ khi ô chứa đúng số 0. Rỗng, đang gõ dở, giá trị sai hay thiếu
+ * (config cũ báo giá theo distanceBp) đều không phải mức 0, nên hiện bản "chỉ phí" (không bao giờ hiện số của mô hình,
+ * vốn chỉ đúng cho mức 0).
+ */
+export function isMmLevelZero(raw: unknown): boolean {
+  if (typeof raw === "number") return raw === 0;
+  return typeof raw === "string" && /^\s*0+\s*$/.test(raw);
+}
+
+/**
+ * Gợi ý market khi "Where to quote" khác 0 (DEC-396): không xếp theo chi phí mô hình mà theo sức chứa / ngày. Cùng điều
+ * kiện với gợi ý ở mức 0 (đủ dữ liệu, không "Too little volume", có sức chứa), tối đa `MM_SUGGEST_MAX`.
+ */
+export function mmVolumeSuggestions(rows: readonly MmMarketCost[]): MmMarketCost[] {
+  return sortMarkets(
+    rows.filter(
+      (r) => !r.tooLittleVolume && r.capacityPerDay !== null && r.totalCostPerMillion !== null,
+    ),
+    "volume",
+  ).slice(0, MM_SUGGEST_MAX);
 }
 
 export const MM_SUGGESTIONS = ["quote-back", "pause-fast"] as const;

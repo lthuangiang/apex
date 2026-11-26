@@ -26,6 +26,7 @@ const A = `CA${tag()}-USD`;
 const B = `CB${tag()}-USD`;
 const NONE = `CN${tag()}-USD`;
 const THIN = `CT${tag()}-USD`;
+const LEVEL2 = `CL${tag()}-USD`;
 const HOURS = [5, 6, 7] as const;
 // Mọi giờ cùng một dãy close: xen kẽ 100.1 / 100 (biến động 15 phút 10 bp < 15: không có ngày sốc, nên "incl. shock
 // days" = chi phí mô hình của ngày đó, không có phần cắt). Close của nến hh:01 = 100 = giá tham chiếu của fill hh:00.
@@ -33,9 +34,9 @@ const closes = Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? "100.1" : "10
 
 beforeAll(async () => {
   env = await startTestEnv();
-  for (const m of [A, B, NONE, THIN]) env.sodex.addPerpSymbol(m, { maxLeverage: 10 });
+  for (const m of [A, B, NONE, THIN, LEVEL2]) env.sodex.addPerpSymbol(m, { maxLeverage: 10 });
   env.clock.now = new Date("2026-11-02T23:00:00Z");
-  const values = [A, B, NONE, THIN].flatMap((m) =>
+  const values = [A, B, NONE, THIN, LEVEL2].flatMap((m) =>
     HOURS.flatMap((h) =>
       closes.map(
         (c, i) =>
@@ -78,13 +79,17 @@ interface Fill {
   size: string;
 }
 
-/** Một bot Market Making thật với order size và các fill (lệnh tạo cùng lúc với fill) ngày `day`. */
+/**
+ * Một bot Market Making thật với order size và các fill (lệnh tạo cùng lúc với fill) ngày `day`. `quoteLevel` của
+ * version đang chạy: mặc định 0 (bot dùng cho hiệu chỉnh); undefined = config cũ chỉ có distanceBp.
+ */
 async function seedBot(
   userId: string,
   market: string,
   orderSize: string,
   fills: readonly Fill[],
   day = "2026-11-02",
+  quoteLevel: number | undefined = 0,
 ) {
   const { rows: acc } = await env.pool.query<{ id: string }>(
     "insert into sodex_accounts (id, user_id, address, sodex_account_id, network, status) values (gen_random_uuid(), $1, $2, $3, 'mainnet', 'connected') returning id",
@@ -97,7 +102,7 @@ async function seedBot(
   const botId = bot[0]?.id ?? "";
   const { rows: ver } = await env.pool.query<{ id: string }>(
     "insert into bot_versions (id, bot_id, version, config, param_source, status) values (gen_random_uuid(), $1, 1, $2, 'manual', 'active') returning id",
-    [botId, JSON.stringify({ market, orderSize, maxOrders: 1, distanceBp: "1" })],
+    [botId, JSON.stringify({ market, orderSize, maxOrders: 1, distanceBp: "1", quoteLevel })],
   );
   await env.pool.query("update bots set active_version_id = $1 where id = $2", [ver[0]?.id, botId]);
   for (const [i, f] of fills.entries()) {
@@ -264,5 +269,26 @@ describe("Est. CPM · calibrated", () => {
     });
     const c = quantile([...ratiosOf(fillsA), ...ratiosOf(fillsB)], 0.5);
     expect(v.estimate.calibration).toBe(s2(c));
+  });
+
+  it("leaves out bots that do not quote at level 0, like the daily fit (DEC-396)", async () => {
+    const { userId, client } = await teamUser();
+    // Mức 2 và config cũ (chỉ distanceBp) trên LEVEL2, vị thế rất lớn: không vào R, F hay C, kể cả của market đó.
+    for (let i = 0; i < 3; i++)
+      await seedBot(userId, LEVEL2, "20", pattern("50", "1", "100.5"), undefined, 2);
+    await seedBot(userId, LEVEL2, "20", pattern("50", "1", "100.5"), undefined, undefined);
+    const v = await get(client, LEVEL2);
+    expect(v.estimate.cutScope).toMatchObject({ source: "pooled", marketBotHours: 0 });
+    expect(v.estimate.cutScope.markets).not.toContain(LEVEL2);
+    expect(v.estimate.calibrationScope).toMatchObject({
+      source: "pooled",
+      botHours: 18,
+      marketBotHours: 0,
+      markets: [A, B].sort(),
+    });
+    const c = quantile([...ratiosOf(fillsA), ...ratiosOf(fillsB)], 0.5);
+    expect(v.estimate.calibration).toBe(s2(c));
+    // Khối 3 (Markout cost thật) vẫn tính mọi bot: giờ 05 có 4 bot-hour.
+    expect(v.hours[5]?.bots.botHours).toBe(4);
   });
 });
