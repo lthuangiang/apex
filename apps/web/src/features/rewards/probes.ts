@@ -30,6 +30,8 @@ export interface ProbeSpec {
   schema: z.ZodType;
   envelope?: boolean;
   groupBy?: string;
+  /** Trường dạng enum cần liệt kê mọi giá trị khác nhau trong mảng (chỉ chuỗi / boolean / null, không số liệu). */
+  enums?: readonly string[];
 }
 
 export const PROBES: readonly ProbeSpec[] = [
@@ -39,6 +41,8 @@ export const PROBES: readonly ProbeSpec[] = [
     path: "sopoints/week/list",
     auth: true,
     schema: sopointsWeekListSchema,
+    // Giá trị thật của hai loại tuần chưa chốt (In progress / Snapshot done), PM review 2026-11-26.
+    enums: ["status", "pointsStatus", "isLive"],
   },
   {
     id: "sopoints/week/info",
@@ -123,6 +127,31 @@ export interface ProbeResult {
   retryAfterSec: number | null;
   /** Giữ trong bộ nhớ để dựng probe phụ thuộc; không hiện nguyên. */
   data: unknown;
+  /** Giá trị khác nhau của các trường enum (`ProbeSpec.enums`); null khi không yêu cầu. */
+  enums: { field: string; values: string[] }[] | null;
+}
+
+/**
+ * Mọi giá trị khác nhau của các trường enum trong một mảng object (ví dụ `week/list`): chỉ giữ chuỗi, boolean và
+ * null / thiếu; số và object bỏ qua (không hiện số liệu). Chuỗi dài hoặc trông như địa chỉ / hash thì bỏ (không lộ dữ liệu).
+ */
+export function distinctEnumValues(
+  data: unknown,
+  fields: readonly string[],
+): { field: string; values: string[] }[] {
+  const rows = Array.isArray(data) ? data : [];
+  return fields.map((field) => {
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (typeof row !== "object" || row === null) continue;
+      const v = (row as Record<string, unknown>)[field];
+      if (v === undefined) seen.add("(missing)");
+      else if (v === null) seen.add("null");
+      else if (typeof v === "boolean") seen.add(String(v));
+      else if (typeof v === "string" && v.length <= 40 && !/0x[0-9a-fA-F]{8,}/.test(v)) seen.add(v);
+    }
+    return { field, values: [...seen].sort() };
+  });
 }
 
 type Caller = <T extends z.ZodType>(req: Omit<RewardsRequest<T>, "token">) => Promise<z.output<T>>;
@@ -153,6 +182,7 @@ export async function runProbe(
       sodexMessage: null,
       retryAfterSec: null,
       data,
+      enums: spec.enums === undefined ? null : distinctEnumValues(data, spec.enums),
     };
   } catch (e) {
     const err = e instanceof RewardsError ? e : new RewardsError("network", 0);
@@ -165,6 +195,7 @@ export async function runProbe(
       sodexMessage: err.sodexMessage,
       retryAfterSec: err.retryAfterSec,
       data: null,
+      enums: null,
     };
   }
 }

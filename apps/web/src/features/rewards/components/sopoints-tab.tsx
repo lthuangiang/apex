@@ -10,9 +10,12 @@ import {
   formatCount,
   formatDay,
   formatDayTime,
+  formatRank,
   formatVolume,
   secToMs,
+  weekPoints,
   type NumLike,
+  type WeekState,
 } from "../format";
 import {
   useRewardsSummary,
@@ -217,22 +220,35 @@ function SummaryHero({ session, tz }: { session: RewardsSession; tz: string }) {
   );
 }
 
-export function PointsStatus({ status }: { status: string | null | undefined }) {
+/** Chip trạng thái tuần: Confirmed / In progress / Snapshot done (đối chiếu trang SoDEX). */
+export function WeekChip({ state }: { state: WeekState }) {
   const t = useTranslations("rewards.performance");
-  if (status === null || status === undefined || status === "") return null;
-  // `CONFIRMED` = điểm đã chốt; giá trị khác ([confirm]) coi là chưa chốt.
-  const confirmed = status.toUpperCase() === "CONFIRMED";
+  if (state === "unknown") return null;
+  const tone =
+    state === "confirmed"
+      ? "bg-pos-bg text-pos"
+      : state === "live"
+        ? "bg-accent-tint text-accent-ink"
+        : "bg-warn-bg text-warn";
+  const dot = state === "confirmed" ? "bg-pos-dot" : state === "live" ? "bg-accent" : "bg-warn-bar";
   return (
     <span
-      className={`inline-flex flex-none items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-extrabold ${confirmed ? "bg-pos-bg text-pos" : "bg-warn-bg text-warn"}`}
+      className={`inline-flex flex-none items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-extrabold ${tone}`}
     >
-      <span
-        aria-hidden="true"
-        className={`size-1.5 rounded-full ${confirmed ? "bg-pos-dot" : "bg-warn-bar"}`}
-      />
-      {confirmed ? t("confirmed") : t("notFinal")}
+      <span aria-hidden="true" className={`size-1.5 rounded-full ${dot}`} />
+      {state === "confirmed"
+        ? t("confirmed")
+        : state === "live"
+          ? t("inProgress")
+          : t("snapshotDone")}
     </span>
   );
+}
+
+/** Hạng chưa có: "–" mờ (như trang SoDEX). */
+export function NoRank() {
+  const t = useTranslations("rewards.performance");
+  return <span className="text-ink-2">{t("noRank")}</span>;
 }
 
 function WeeklyPerformance({ session, tz }: { session: RewardsSession; tz: string }) {
@@ -296,6 +312,7 @@ function WeeklyPerformance({ session, tz }: { session: RewardsSession; tz: strin
             <tbody>
               {rows.map((r) => {
                 const confirmed = r.pointsStatus?.toUpperCase() === "CONFIRMED";
+                const pts = weekPoints(r);
                 return (
                   <tr key={r.weekNo} className="border-b border-border">
                     <td className="px-2.5 py-3">
@@ -313,14 +330,16 @@ function WeeklyPerformance({ session, tz }: { session: RewardsSession; tz: strin
                     </td>
                     <td className="px-2.5 py-3 text-right">
                       <span className="inline-flex items-center justify-end gap-2">
-                        <span className={confirmed ? "font-bold" : undefined}>
-                          <Value text={formatCount(r.points)} />
-                        </span>
-                        <PointsStatus status={r.pointsStatus} />
+                        {pts.hide ? null : (
+                          <span className={confirmed ? "font-bold" : undefined}>
+                            <Value text={pts.text} />
+                          </span>
+                        )}
+                        <WeekChip state={pts.state} />
                       </span>
                     </td>
                     <td className="px-2.5 py-3 text-right">
-                      <Value text={formatCount(r.rank)} />
+                      {formatRank(r.rank) === null ? <NoRank /> : formatRank(r.rank)}
                     </td>
                     <td className="px-2.5 py-3 text-right">
                       <Value text={formatVolume(r.spotVolume)} />

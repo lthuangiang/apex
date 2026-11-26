@@ -9,6 +9,7 @@ import { shortAddress } from "@/lib/format";
 
 import { pickOldest } from "../actions";
 import {
+  capitalizeRaw,
   formatAssetTotal,
   formatCount,
   formatDayTime,
@@ -64,7 +65,8 @@ export function useFromLabel() {
   const source = (v: string | null | undefined): string | null => {
     if (v === null || v === undefined || v === "") return null;
     if (v === "trade" || v === "invitee" || v === "campaign") return t(v);
-    return v;
+    // Giá trị lạ (ví dụ "manual" trong dữ liệu thật): nguyên chuỗi, viết hoa chữ đầu; không đoán nghĩa.
+    return capitalizeRaw(v);
   };
   const transfer = (row: Pick<LotteryLedgerItem, "reason" | "round" | "direction">): string => {
     if (row.reason === "lottery_prize")
@@ -72,7 +74,8 @@ export function useFromLabel() {
         ? t("prize")
         : `${t("prize")} · ${t("round", { round: row.round })}`;
     if (row.direction === "out") return t("sent");
-    if (row.reason !== null && row.reason !== undefined && row.reason !== "") return row.reason;
+    if (row.reason !== null && row.reason !== undefined && row.reason !== "")
+      return capitalizeRaw(row.reason);
     return t("received");
   };
   return { source, transfer };

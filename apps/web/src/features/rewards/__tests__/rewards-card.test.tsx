@@ -186,10 +186,11 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
     await waitFor(() => {
       expect(row("Boxes in backpack")).toHaveTextContent("27");
     });
+    // Tuần đang chạy: chỉ chip In progress, không số (quy tắc 8).
     await waitFor(() => {
-      expect(row("This week")).toHaveTextContent("2,140");
+      expect(within(row("This week")).getByText("In progress")).toBeInTheDocument();
     });
-    expect(within(row("This week")).getByText("Not final")).toBeInTheDocument();
+    expect(row("This week")).not.toHaveTextContent("2,140");
     expect(within(card()).getByRole("link", { name: "Open Rewards" })).toHaveAttribute(
       "href",
       "/rewards",
@@ -324,7 +325,7 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
   it("passes axe", async () => {
     const { container } = show();
     await within(card()).findByText("48,210");
-    await within(card()).findByText("Not final");
+    await within(card()).findByText("In progress");
     expect((await axe.run(container)).violations).toEqual([]);
   });
 });

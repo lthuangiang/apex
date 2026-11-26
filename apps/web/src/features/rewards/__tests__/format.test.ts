@@ -4,6 +4,11 @@ import { describe, expect, it } from "vitest";
 import messages from "../../../../messages/en.json";
 import { tierProgress } from "../components/sopoints-tab";
 import {
+  capitalizeRaw,
+  formatRank,
+  formatUsdAmount,
+  weekPoints,
+  weekState,
   decimalOf,
   formatCoefficient,
   formatCount,
@@ -31,7 +36,7 @@ describe("rewards format", () => {
     expect(formatCount(48210)).toBe("48,210");
     expect(formatCount("1000000")).toBe("1,000,000");
     expect(formatCount(null)).toBeNull();
-    expect(formatVolume(84300)).toBe("$84,300");
+    expect(formatVolume(84300)).toBe("$84,300.00");
     expect(formatVolume(undefined)).toBeNull();
     expect(formatUsd("110.891")).toBe("$110.89");
     expect(formatCoefficient("1.20")).toBe("×1.2");
@@ -73,5 +78,41 @@ describe("rewards format", () => {
     expect(t("r.multipliers.showAll", { count: 6 })).toBe("Show all 6 markets");
     expect(t("r.summary.toNext", { points: 1, tier: "EPIC" })).toBe("1 point to EPIC");
     expect(t("r.summary.toNext", { points: 11790, tier: "EPIC" })).toBe("11,790 points to EPIC");
+  });
+
+  it("USD: always 2 decimals, whole numbers and 0 included", () => {
+    expect(formatUsdAmount(296474.7)).toBe("$296,474.70");
+    expect(formatUsdAmount("459.96")).toBe("$459.96");
+    expect(formatUsdAmount(6.48)).toBe("$6.48");
+    expect(formatUsdAmount(84300)).toBe("$84,300.00");
+    expect(formatUsdAmount(0)).toBe("$0.00");
+    expect(formatUsdAmount("12.40")).toBe("$12.40");
+    expect(formatUsdAmount(null)).toBeNull();
+  });
+
+  it("week state: isLive → live, ended non-CONFIRMED → snapshot, CONFIRMED 0 is a real 0", () => {
+    expect(weekState({ isLive: true, pointsStatus: "CONFIRMED" })).toBe("live");
+    expect(weekState({ isLive: false, pointsStatus: "PENDING" })).toBe("snapshot");
+    expect(weekState({ isLive: false, pointsStatus: "confirmed" })).toBe("confirmed");
+    expect(weekState({})).toBe("unknown");
+    expect(weekPoints({ isLive: true, points: 0, pointsStatus: "PENDING" })).toEqual({
+      state: "live",
+      text: null,
+      hide: true,
+    });
+    expect(weekPoints({ isLive: false, points: 0, pointsStatus: "SNAPSHOT" }).hide).toBe(true);
+    expect(weekPoints({ points: 0, pointsStatus: "CONFIRMED" })).toEqual({
+      state: "confirmed",
+      text: "0",
+      hide: false,
+    });
+  });
+
+  it("rank 0 or missing is no rank; unknown sources keep SoDEX's string, capitalised", () => {
+    expect(formatRank(0)).toBeNull();
+    expect(formatRank(null)).toBeNull();
+    expect(formatRank(1284)).toBe("1,284");
+    expect(capitalizeRaw("manual")).toBe("Manual");
+    expect(capitalizeRaw("")).toBe("");
   });
 });
