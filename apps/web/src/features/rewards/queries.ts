@@ -1,16 +1,21 @@
 "use client";
 
 import {
+  cybereatorProfileSchema,
   lotteryBoxesSchema,
+  lotteryDrawEntriesSchema,
   lotteryFeedSchema,
+  lotteryHistorySchema,
   lotteryJobsSchema,
+  lotteryLedgerSchema,
+  lotteryPfpsSchema,
   lotteryTreasuresSchema,
   sopointsSummarySchema,
   sopointsVolumeWeightsSchema,
   sopointsWeekInfoSchema,
   sopointsWeekListSchema,
 } from "@drift/shared";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 import {
@@ -40,7 +45,19 @@ export const rewardsKeys = {
   treasures: (address: string) => [...rewardsKeys.wallet(address), "treasures"] as const,
   boxes: (address: string) => [...rewardsKeys.wallet(address), "boxes"] as const,
   activeJobs: (address: string) => [...rewardsKeys.wallet(address), "jobs-active"] as const,
+  pfps: (address: string) => [...rewardsKeys.wallet(address), "pfps"] as const,
+  ledger: (address: string) => [...rewardsKeys.wallet(address), "ledger"] as const,
+  history: (address: string) => [...rewardsKeys.wallet(address), "history"] as const,
+  draw: (address: string) => [...rewardsKeys.wallet(address), "draw-entries"] as const,
+  profile: (id: number) => [...REWARDS_KEY, "public", "cybereator", id] as const,
 };
+
+/** `lottery/boxes`: tối đa 200 box mỗi trang (README bản phác, câu hỏi 8). */
+export const BOXES_PAGE = 200;
+/** Chặn trên số trang đọc liên tiếp, phòng gateway bỏ qua `offset`. */
+const BOXES_MAX_PAGES = 25;
+/** `lottery/ledger`: 100 dòng mỗi trang (dữ liệu thật). */
+export const LEDGER_PAGE = 100;
 
 export const REWARDS_REFRESH_MS = 60_000;
 export const REWARDS_JOB_POLL_MS = 2_000;
@@ -150,14 +167,40 @@ export function useRewardsTreasures(s: RewardsSession) {
   });
 }
 
-/** Box trong backpack (`total`, `byLevel`, `boxes`). */
+/**
+ * Box trong backpack (`total`, `byLevel`, `boxes`). Đọc hết các trang (`limit` 200 / `offset`) tới khi đủ `total`; trang
+ * không có box mới (gateway bỏ qua `offset`) hoặc thiếu box thì dừng, không đọc lặp.
+ */
 export function useRewardsBoxes(s: RewardsSession) {
   const { address, enabled } = walletQuery(s);
   return useQuery({
     ...COMMON,
     queryKey: rewardsKeys.boxes(address),
-    queryFn: ({ signal }) =>
-      s.authed({ path: "lottery/boxes", schema: lotteryBoxesSchema, signal }),
+    queryFn: async ({ signal }) => {
+      const first = await s.authed({
+        path: "lottery/boxes",
+        query: { limit: BOXES_PAGE, offset: 0 },
+        schema: lotteryBoxesSchema,
+        signal,
+      });
+      const boxes = [...first.boxes];
+      const seen = new Set(boxes.map((b) => b.tokenId));
+      for (let page = 1; page < BOXES_MAX_PAGES && boxes.length < first.total; page++) {
+        const next = await s.authed({
+          path: "lottery/boxes",
+          query: { limit: BOXES_PAGE, offset: boxes.length },
+          schema: lotteryBoxesSchema,
+          signal,
+        });
+        const fresh = next.boxes.filter((b) => !seen.has(b.tokenId));
+        if (fresh.length === 0) break;
+        for (const b of fresh) {
+          seen.add(b.tokenId);
+          boxes.push(b);
+        }
+      }
+      return { ...first, boxes };
+    },
     refetchInterval: every(REWARDS_REFRESH_MS),
     enabled,
   });
@@ -184,6 +227,82 @@ export function useRewardsActiveJobs(s: RewardsSession) {
           ? REWARDS_JOB_POLL_MS
           : REWARDS_REFRESH_MS,
     enabled,
+  });
+}
+
+/** PFP của ví (`lottery/pfps`); hình dạng phần tử còn chưa có mẫu thật. */
+export function useRewardsPfps(s: RewardsSession) {
+  const { address, enabled } = walletQuery(s);
+  return useQuery({
+    ...COMMON,
+    queryKey: rewardsKeys.pfps(address),
+    queryFn: ({ signal }) => s.authed({ path: "lottery/pfps", schema: lotteryPfpsSchema, signal }),
+    refetchInterval: every(REWARDS_REFRESH_MS),
+    enabled,
+  });
+}
+
+/** Tổng phần thưởng đã mở (`lottery/history`). */
+export function useRewardsHistory(s: RewardsSession) {
+  const { address, enabled } = walletQuery(s);
+  return useQuery({
+    ...COMMON,
+    queryKey: rewardsKeys.history(address),
+    queryFn: ({ signal }) =>
+      s.authed({ path: "lottery/history", schema: lotteryHistorySchema, signal }),
+    refetchInterval: every(REWARDS_REFRESH_MS),
+    enabled,
+  });
+}
+
+/** Sổ box (`lottery/ledger`), 100 dòng / trang theo `limit` / `offset`; trang sau đọc khi bấm "Load more". */
+export function useRewardsLedger(s: RewardsSession) {
+  const { address, enabled } = walletQuery(s);
+  return useInfiniteQuery({
+    ...COMMON,
+    queryKey: rewardsKeys.ledger(address),
+    initialPageParam: 0,
+    queryFn: ({ signal, pageParam }) =>
+      s.authed({
+        path: "lottery/ledger",
+        query: { limit: LEDGER_PAGE, offset: pageParam },
+        schema: lotteryLedgerSchema,
+        signal,
+      }),
+    getNextPageParam: (last, pages, lastParam) => {
+      const loaded = pages.reduce((n, p) => n + p.items.length, 0);
+      return last.items.length === 0 || loaded >= last.total ? undefined : lastParam + LEDGER_PAGE;
+    },
+    enabled,
+  });
+}
+
+/** Weekly draw của ví (`lottery/draw/entries`). */
+export function useRewardsDrawEntries(s: RewardsSession) {
+  const { address, enabled } = walletQuery(s);
+  return useQuery({
+    ...COMMON,
+    queryKey: rewardsKeys.draw(address),
+    queryFn: ({ signal }) =>
+      s.authed({ path: "lottery/draw/entries", schema: lotteryDrawEntriesSchema, signal }),
+    refetchInterval: every(REWARDS_REFRESH_MS),
+    enabled,
+  });
+}
+
+/** Hồ sơ Cybereator (công khai, không envelope): trạng thái mở của PFP. */
+export function useCybereatorProfile(id: number) {
+  return useQuery({
+    ...COMMON,
+    staleTime: 5 * 60_000,
+    queryKey: rewardsKeys.profile(id),
+    queryFn: ({ signal }) =>
+      rewardsRequest({
+        path: `cybereator/profile/${String(id)}`,
+        envelope: false,
+        schema: cybereatorProfileSchema,
+        signal,
+      }),
   });
 }
 

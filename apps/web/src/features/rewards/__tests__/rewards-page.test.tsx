@@ -169,8 +169,8 @@ describe("Rewards page, not signed in (mockup 08)", () => {
     expect(signMessage).not.toHaveBeenCalled();
     expect(gw.calls.some((c) => c.path.startsWith("sopoints/summary"))).toBe(false);
     expect(gw.calls.every((c) => c.auth === null)).toBe(true);
-    // Tab Blind Boxes ẩn tới #550.
-    expect(screen.queryByText("Blind Boxes")).toBeNull();
+    // Chưa ký: không có thanh tab (dữ liệu của ví chỉ có sau khi ký).
+    expect(screen.queryByRole("tab", { name: /Blind Boxes/ })).toBeNull();
   });
 
   it("lists volume multipliers highest first, ties in API order, with Show all", async () => {
@@ -322,7 +322,11 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(screen.getByText("Signed in as 0x3f2a…9c4e")).toBeInTheDocument();
     // JWT chỉ đi tới gateway SoDEX trong header Authorization, không bao giờ trong URL.
     const authed = gw.calls.filter((c) => c.auth !== null);
-    expect(authed.map((c) => c.path).sort()).toEqual(["sopoints/summary", "sopoints/week/list"]);
+    expect(authed.map((c) => c.path).sort()).toEqual([
+      "lottery/treasures",
+      "sopoints/summary",
+      "sopoints/week/list",
+    ]);
     expect(authed.every((c) => c.url.startsWith("https://mainnet-gw.sodex.dev/api/v1/"))).toBe(
       true,
     );
@@ -331,14 +335,18 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(gw.calls.some((c) => c.path === "lottery/feed")).toBe(false);
   });
 
-  it("?tab=boxes falls back to SoPoints while Blind Boxes is hidden (#550)", async () => {
+  it("?tab=boxes opens the Blind Boxes tab; unknown values fall back to SoPoints", async () => {
     state.tab = "boxes";
     show();
-    expect(await screen.findByText("48,210")).toBeInTheDocument();
-    expect(screen.queryByText("Blind Boxes")).toBeNull();
-    expect(resolveRewardsTab("boxes")).toBe("sopoints");
+    expect(
+      await screen.findByRole("tab", { name: /Blind Boxes/, selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Boxes in your backpack" }),
+    ).toBeInTheDocument();
+    expect(resolveRewardsTab("boxes")).toBe("boxes");
+    expect(resolveRewardsTab("other")).toBe("sopoints");
     expect(resolveRewardsTab(null)).toBe("sopoints");
-    expect(resolveRewardsTab("sopoints")).toBe("sopoints");
   });
 
   it("no progress bar when nextTierPoints is missing or not above the total", async () => {

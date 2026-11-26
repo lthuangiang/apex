@@ -99,7 +99,7 @@ describe("wallet rewards hooks", () => {
       await waitFor(() => {
         expect(h.result.current.isSuccess).toBe(true);
       });
-    expect(gw.calls.map((c) => c.path).sort()).toEqual([
+    expect([...new Set(gw.calls.map((c) => c.path))].sort()).toEqual([
       "lottery/boxes",
       "lottery/jobs",
       "lottery/treasures",

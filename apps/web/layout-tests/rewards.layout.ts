@@ -102,3 +102,32 @@ for (const narrow of [false, true]) {
     });
   }
 }
+
+// #550: tab Blind Boxes (bản phác 10–14) ở từng tab con, đã ký: không cuộn ngang.
+const SUBS = [
+  ["Backpack", "10", "Boxes in your backpack"],
+  ["History", "12", "Rewards from opened boxes"],
+  ["Weekly draw", "13", "Round 10"],
+  ["Live feed", "14", "0x67fc…c7a0"],
+] as const;
+for (const narrow of [false, true]) {
+  for (const [sub, shot, marker] of SUBS) {
+    test(`Rewards Blind Boxes › ${sub}${narrow ? " at 390" : ""}: no side scroll`, async ({
+      page,
+      baseURL,
+    }, info) => {
+      if (narrow) await page.setViewportSize({ width: 390, height: 844 });
+      await open(page, baseURL, true);
+      await page.getByRole("tab", { name: /^Blind Boxes/ }).click();
+      await page.getByRole("tab", { name: new RegExp(`^${sub}`) }).click();
+      await page.getByText(marker).first().waitFor();
+      expect.soft(await sideScroll(page), "page does not scroll sideways").toBeLessThanOrEqual(0);
+      const dir = process.env.REWARDS_SHOTS;
+      if (dir !== undefined && dir !== "")
+        await page.screenshot({
+          path: `${dir}/${shot}-${narrow ? "390" : info.project.name}.png`,
+          fullPage: true,
+        });
+    });
+  }
+}
