@@ -29,6 +29,9 @@ import { SoPointsTab } from "./sopoints-tab";
 // Trang /rewards (bản phác 08–09, DEC-397, #548). Sau công tắc toàn hệ thống `sodexRewards` (`/api/v1/features`): tắt thì
 // route Not found như chưa có. Trình duyệt đọc thẳng gateway SoDEX; token chỉ ở sessionStorage của tab.
 
+/** "Rules on SoDEX ↗" (PM chốt ở review #554). */
+export const REWARDS_RULES_URL = "https://sodex.com/documentation/sopoints/layer-1-season";
+
 /**
  * Tab có trong bản này. Blind Boxes (`?tab=boxes`) ẩn tới #550 (PM chốt): giá trị lạ hay tab chưa có đều rơi về
  * SoPoints. Chỉ còn một tab thì không vẽ thanh tab.
@@ -96,7 +99,17 @@ function RewardsContent() {
           ) : undefined
         }
       />
-      <p className="m-0 text-xs text-ink-2">{t("page.source")}</p>
+      <p className="m-0 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-2">
+        <span>{t("page.source")}</span>
+        <a
+          href={REWARDS_RULES_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-bold text-accent-ink no-underline"
+        >
+          {t("page.rules")}
+        </a>
+      </p>
       {problem === null ? null : <RewardsProblem error={problem} onRetry={retry} />}
       {auth.sodexLoading ? (
         <Skeleton className="h-56 rounded-hero" />

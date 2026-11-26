@@ -24,12 +24,9 @@ import { useRewardsFeed, useRewardsVolumeWeights, useRewardsWeekInfo } from "../
 export const CARD =
   "flex min-w-0 flex-col gap-3 rounded-card border border-border bg-surface px-5 py-[18px]";
 
-/**
- * `weekStatus` của SoDEX là chuỗi ([confirm] danh sách giá trị). Chỉ hiện "LIVE" khi giá trị nói rõ tuần đang chạy;
- * giá trị khác thì không hiện nhãn (không đoán).
- */
+/** `weekStatus` của SoDEX: chỉ đúng "LIVE" (không phân biệt hoa thường) mới là tuần đang chạy (PM review #554). */
 export function weekIsLive(status: string | null | undefined): boolean {
-  return status != null && /^(live|ongoing|active|open|in[_\s-]?progress|running)$/i.test(status);
+  return status?.trim().toUpperCase() === "LIVE";
 }
 
 export function LivePill() {
@@ -38,6 +35,17 @@ export function LivePill() {
     <span className="inline-flex flex-none items-center gap-1.5 rounded-full bg-pos-bg px-2 py-0.5 text-[11px] font-extrabold text-pos">
       <span aria-hidden="true" className="size-1.5 rounded-full bg-pos-dot" />
       {t("live")}
+    </span>
+  );
+}
+
+/** Nhãn tuần: "LIVE" khi SoDEX trả LIVE; giá trị khác hiện nguyên chuỗi SoDEX trả; thiếu thì không có nhãn. */
+export function WeekStatusPill({ status }: { status: string | null | undefined }) {
+  if (status == null || status.trim() === "") return null;
+  if (weekIsLive(status)) return <LivePill />;
+  return (
+    <span className="inline-flex flex-none items-center rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-extrabold text-ink-2">
+      {status}
     </span>
   );
 }
@@ -104,7 +112,7 @@ export function WeekCard({ tz }: { tz: string }) {
     <section aria-labelledby={id} className={CARD}>
       <div className="flex items-center justify-between gap-2">
         <H id={id}>{t("title")}</H>
-        {w !== undefined && weekIsLive(w.weekStatus) ? <LivePill /> : null}
+        {w === undefined ? null : <WeekStatusPill status={w.weekStatus} />}
       </div>
       {q.isPending && q.fetchStatus !== "idle" ? (
         <ListSkeleton rows={4} />

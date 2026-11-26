@@ -228,6 +228,54 @@ describe("Rewards page, not signed in (mockup 08)", () => {
     expect(gw.calls.some((c) => c.path === "auth/nonce")).toBe(false);
   });
 
+  it("links Rules on SoDEX in a new tab", async () => {
+    show();
+    const link = await screen.findByRole("link", { name: "Rules on SoDEX ↗" });
+    expect(link).toHaveAttribute("href", "https://sodex.com/documentation/sopoints/layer-1-season");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("LIVE only for weekStatus LIVE (any case); other values show as SoDEX sent them", async () => {
+    const week = (weekStatus: string) => ({
+      body: {
+        code: 0,
+        data: {
+          weekNo: 13,
+          weekName: "Week 13",
+          weekStatus,
+          weekPoolPoints: 1000000,
+          nextWeekStartTime: 1764586800,
+          distributionTime: 1764846000,
+        },
+      },
+    });
+    gateway({ "sopoints/week/info": week("live") });
+    show();
+    let card = screen.getByRole("region", { name: "This week on SoDEX" });
+    expect(await within(card).findByText("LIVE")).toBeInTheDocument();
+    cleanup();
+    gateway({ "sopoints/week/info": week("ongoing") });
+    show();
+    card = screen.getByRole("region", { name: "This week on SoDEX" });
+    expect(await within(card).findByText("ongoing")).toBeInTheDocument();
+    expect(within(card).queryByText("LIVE")).toBeNull();
+  });
+
+  it("empty feed and no multipliers: say so", async () => {
+    gateway({
+      "lottery/feed": { body: { code: 0, data: { items: [] } } },
+      "sopoints/volume-weights": {
+        body: { code: 0, data: { round: { round_id: 13, end_ts_ms: 1764586800000 }, weights: [] } },
+      },
+    });
+    show();
+    expect(await screen.findByText("No big opens to show right now.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("SoDEX lists no markets with a volume multiplier right now."),
+    ).toBeInTheDocument();
+  });
+
   it("passes axe", async () => {
     const { container } = show();
     const week = screen.getByRole("region", { name: "This week on SoDEX" });
@@ -247,6 +295,7 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(screen.getByText("41,880")).toBeInTheDocument();
     expect(screen.getByText("4,190")).toBeInTheDocument();
     expect(screen.getByText("Current tier: Tier 3")).toBeInTheDocument();
+    expect(screen.getByText("Next: Tier 4")).toBeInTheDocument();
     expect(screen.getByText("1,284")).toBeInTheDocument();
     expect(screen.getByText("of 38,902")).toBeInTheDocument();
     expect(await screen.findByText("SoPoints shared this week")).toBeInTheDocument();

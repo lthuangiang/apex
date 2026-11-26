@@ -21,14 +21,7 @@ import {
   type RewardsSession,
 } from "../queries";
 
-import {
-  CARD,
-  CardUnavailable,
-  LivePill,
-  MultipliersCard,
-  Value,
-  weekIsLive,
-} from "./public-cards";
+import { CARD, CardUnavailable, MultipliersCard, Value, WeekStatusPill } from "./public-cards";
 
 // Rewards › SoPoints (bản phác 09): tổng điểm, tier, hạng, tuần hiện tại, weekly pool, weekly performance và cặp có hệ
 // số nhân. Mọi số lấy từ SoDEX; thiếu thì "Not available" (quy tắc 8).
@@ -187,7 +180,7 @@ function SummaryHero({ session, tz }: { session: RewardsSession; tz: string }) {
             ) : (
               <>
                 <Value text={w?.weekName} />
-                {w !== undefined && weekIsLive(w.weekStatus) ? <LivePill /> : null}
+                {w === undefined ? null : <WeekStatusPill status={w.weekStatus} />}
               </>
             )
           }
