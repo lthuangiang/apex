@@ -43,6 +43,7 @@ import { z } from "zod";
 
 import { parseOrThrow } from "../../lib/http";
 import { latestMmModel } from "../bots/mm-cost";
+import { mmModelBotSql } from "../bots/mm-model-bots";
 
 import { requireTeam } from "./team";
 
@@ -275,7 +276,7 @@ function estimateFor(
 
 /**
  * Ô hiệu chỉnh của một market (DEC-293): mỗi giờ địa phương có ≥ 3 bot-hour của bot Market
- * Making tiền thật trong 14 ngày và có CPM thật (cùng công thức khối 3) → { CPM thật, "incl. shock days" của 14 ngày đó }.
+ * Making tiền thật quoteLevel 0 (DEC-396) trong 14 ngày và có CPM thật (cùng công thức khối 3) → { CPM thật, "incl. shock days" của 14 ngày đó }.
  * Market không có nến / tick size → không có ô.
  */
 async function calibrationPairs(
@@ -286,7 +287,13 @@ async function calibrationPairs(
     volatility(c.db, market, c.from, c.tz),
     largestMoves15(c.db, market, c.from, c.tz),
     positionCuts(c.db, { market, from: c.from }),
-    botHourCells(c.db, { market, from: c.from, tz: c.tz, strategies: [Strategy.volumeMaker] }),
+    botHourCells(c.db, {
+      market,
+      from: c.from,
+      tz: c.tz,
+      strategies: [Strategy.volumeMaker],
+      modelBotsOnly: true,
+    }),
   ]);
   const e = estimateFor(market, vol, moves, cutFills, c.ctx);
   return cells.flatMap((b, h) => {
@@ -345,7 +352,8 @@ const orderSizeOf = (config: unknown): string | null => {
 };
 
 /**
- * Mỗi bot Market Making tiền thật (mọi market) có lệnh tạo trong 14 ngày (DEC-293):
+ * Mỗi bot Market Making tiền thật (mọi market) có lệnh tạo trong 14 ngày (DEC-293), chỉ bot quoteLevel 0 (version đang
+ * chạy, như fit hằng ngày; DEC-396) vì Est. CPM mô hình hoá báo giá ở giá tốt nhất:
  * - bot-hour = giờ UTC có ít nhất một lệnh tạo trong cửa sổ (như khối 3);
  * - fill trong cửa sổ (lệnh tạo từ 1 ngày trước cửa sổ, như khối 3) đi theo orders_bot_idx (bot_id, created_at) +
  *   fills_order_idx; vị thế = tổng chạy của size có dấu (mua +, bán −) theo filled_at (window function, coi vị thế
@@ -357,8 +365,9 @@ async function mmBotWindows(db: Db, from: Date): Promise<MmBotWindow[]> {
     with h as (
       select o.bot_id, count(distinct date_trunc('hour', o.created_at))::int as n
         from bots b
+        join bot_versions v on v.id = b.active_version_id
         join orders o on o.bot_id = b.id and o.created_at >= ${from}
-        where b.mode = 'live' and b.strategy = ${Strategy.volumeMaker}
+        where b.mode = 'live' and b.strategy = ${Strategy.volumeMaker} and ${mmModelBotSql(sql`v.config`)}
         group by 1),
     f as (
       select o.bot_id, f.price, f.size,
@@ -633,10 +642,16 @@ interface BotHoursQuery {
   tz: string;
   strategies: string[];
   userId?: string;
+  /** Chỉ bot quoteLevel 0 (ô hiệu chỉnh C, DEC-396); khối 3 thì không đặt (mọi bot). */
+  modelBotsOnly?: boolean;
 }
 
 const botFilter = (q: BotHoursQuery) => ({
-  own: q.userId === undefined ? sql`true` : sql`b.user_id = ${q.userId}`,
+  own: sql`${q.userId === undefined ? sql`true` : sql`b.user_id = ${q.userId}`} and ${
+    q.modelBotsOnly === true
+      ? mmModelBotSql(sql`(select v.config from bot_versions v where v.id = b.active_version_id)`)
+      : sql`true`
+  }`,
   strategies: sql.join(
     q.strategies.map((s) => sql`${s}`),
     sql`, `,

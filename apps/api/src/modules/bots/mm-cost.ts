@@ -1,4 +1,13 @@
-import { bots, candles1m, fills, mid1s, mmMarketHourly, mmModelCoefs, orders } from "@drift/db";
+import {
+  bots,
+  botVersions,
+  candles1m,
+  fills,
+  mid1s,
+  mmMarketHourly,
+  mmModelCoefs,
+  orders,
+} from "@drift/db";
 import {
   AppError,
   avgMarkout,
@@ -35,6 +44,7 @@ import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import { builderFeesOf } from "../account/builder-fees";
 
+import { mmModelBotSql } from "./mm-model-bots";
 import { ownBot, type BotDeps } from "./service";
 
 // Market Making: chi phí / $1M theo market (DEC-228, thay phần xếp hạng của DEC-227) và Price PnL đến từ
@@ -109,10 +119,15 @@ async function botFillsWithMids(
   return { byMarket, mids };
 }
 
+/**
+ * Fill của các bot khớp `where` từ `since`. `modelOnly`: chỉ bot mà mô hình dùng được (version đang chạy có `quoteLevel`
+ * 0, cùng quy tắc với fit hằng ngày, DEC-396); dùng cho phần trộn "Your bots" của chi phí / $1M.
+ */
 async function botFills(
   deps: BotDeps,
   where: ReturnType<typeof and>,
   since: Date,
+  modelOnly = false,
 ): Promise<Map<string, MarkoutFill[]>> {
   const rows = await deps.db
     .select({
@@ -125,7 +140,14 @@ async function botFills(
     .from(fills)
     .innerJoin(orders, eq(orders.id, fills.orderId))
     .innerJoin(bots, eq(bots.id, orders.botId))
-    .where(and(where, gte(fills.filledAt, since)))
+    .leftJoin(botVersions, eq(botVersions.id, bots.activeVersionId))
+    .where(
+      and(
+        where,
+        gte(fills.filledAt, since),
+        modelOnly ? mmModelBotSql(botVersions.config) : undefined,
+      ),
+    )
     .orderBy(asc(fills.filledAt))
     .limit(20_000);
   const byMarket = new Map<string, MarkoutFill[]>();
@@ -236,7 +258,8 @@ export async function mmMarketCosts(deps: BotDeps, userId: string): Promise<MmMa
       ),
     );
   const running = new Set(mine.map((m) => m.market));
-  // Chỉ bot của chính người xem (live) mới trộn vào số của người xem ("Your bots").
+  // Chỉ bot của chính người xem (live) mới trộn vào số của người xem ("Your bots"), và chỉ bot quoteLevel 0: mô hình chỉ
+  // đúng cho mức đó (DEC-396).
   const own = await botFills(
     deps,
     and(
@@ -245,6 +268,7 @@ export async function mmMarketCosts(deps: BotDeps, userId: string): Promise<MmMa
       eq(bots.mode, "live"),
     ),
     new Date(now - DAY),
+    true,
   );
   const base = perpsMakerFeeBps(undefined).mul(PER_MILLION_FROM_BPS);
   const rows = part.rows.map((r): MmMarketCost => {

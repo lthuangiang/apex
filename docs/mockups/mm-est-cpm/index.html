@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MM Est. CPM by level</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Design sheet: khung trang theo theme người xem; mỗi artboard là khung DeskLabs sáng (sản phẩm chỉ có light). */
+:root {
+  --page: #eceff8; --page-ink: #141a33; --page-ink-2: #4a5170; --page-muted: #6b7190; --page-line: #d9deef; --page-card: #ffffff;
+  --note: #fff6e5; --note-ink: #7a4a00;
+  /* Token sản phẩm, chép từ packages/ui/src/styles/tokens.css */
+  --bg: #eef1fa; --surface: #ffffff; --surface-2: #f5f7fd; --border: #e3e7f5; --border-input: #d5dcf2;
+  --ink: #141a33; --ink-2: #3b4262; --muted: #5f6684; --accent: #2e62e8; --accent-ink: #1d47b8; --accent-tint: #e6ecfe;
+  --pos: #0f7a43; --pos-bg: #ddf4e7; --neg-ink: #a72826; --warn: #7a3e00; --warn-bg: #fdebd3; --warn-bar: #e08a2e;
+  --mh-cost-0: #fff4e8; --mh-cost-1: #fde0bd; --mh-cost-2: #f9c48c; --mh-cost-3: #f2a25a;
+  --new: #d9480f; --new-bg: #fff1e8;
+  --radius-control: 12px; --radius-tile: 18px; --radius-card: 24px;
+  --font: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --page: #0f1324; --page-ink: #e8ebf7; --page-ink-2: #b4bad3; --page-muted: #8a91ad; --page-line: #2a3150; --page-card: #171c31;
+  --note: #3b2e14; --note-ink: #f3c977; } }
+:root[data-theme="dark"] {
+  --page: #0f1324; --page-ink: #e8ebf7; --page-ink-2: #b4bad3; --page-muted: #8a91ad; --page-line: #2a3150; --page-card: #171c31;
+  --note: #3b2e14; --note-ink: #f3c977; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--page-ink); font-family: var(--font); font-size: 15px; line-height: 1.55; overflow-x: hidden; }
+.wrap { max-width: 1260px; margin: 0 auto; padding: 32px 16px 64px; display: flex; flex-direction: column; gap: 40px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(26px, 4.5vw, 36px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+h2 { font-size: 21px; font-weight: 800; }
+p { margin: 0; }
+code { font-family: var(--mono); font-size: 0.84em; padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--page-line) 60%, transparent); overflow-wrap: anywhere; }
+.eyebrow { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #2e62e8; }
+.lede { color: var(--page-ink-2); max-width: 80ch; }
+.section { display: flex; flex-direction: column; gap: 16px; }
+.section-head { display: flex; flex-direction: column; gap: 4px; }
+.section-head p { color: var(--page-ink-2); max-width: 86ch; }
+.boards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 540px), 1fr)); gap: 22px; align-items: start; }
+.boards.phones { grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 390px)); justify-content: start; }
+.board { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 4px; }
+.board-label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; color: var(--page-ink); }
+.tag { font-size: 11px; font-weight: 800; letter-spacing: 0.04em; border-radius: 999px; padding: 2px 9px; }
+.tag.keep { background: #e5f5ec; color: #1f7a4d; }
+.tag.chg { background: var(--new-bg); color: var(--new); }
+.notes { font-size: 13.5px; color: var(--page-ink-2); display: flex; flex-direction: column; gap: 4px; padding-left: 18px; margin: 0; }
+.callout { background: var(--note); color: var(--note-ink); border-radius: 14px; padding: 12px 16px; font-size: 14px; }
+
+/* ---------- Khung DeskLabs (luôn sáng) ---------- */
+.frame { color-scheme: light; background: var(--bg); color: var(--ink); border: 1px solid var(--page-line); border-radius: 18px; padding: 18px; min-width: 0; }
+.phone { max-width: 390px; width: 100%; padding: 12px; border-radius: 28px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 18px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 14px; font-weight: 600; }
+.input { min-height: 44px; border: 1px solid var(--border-input); border-radius: var(--radius-control); background: var(--surface); padding: 0 12px; display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-variant-numeric: tabular-nums; }
+.input .unit { font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.hint { font-size: 12px; color: var(--muted); }
+.mm { background: var(--surface-2); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.mm h3 { font-size: 13px; font-weight: 800; }
+.mm ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.row-btn { min-height: 44px; width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-control); padding: 0 12px; font-size: 13px; font-weight: 700; color: var(--ink); }
+.row-btn.on { border-color: var(--accent); background: var(--accent-tint); color: var(--accent-ink); }
+.row-btn small { font-size: 11px; font-weight: 800; flex-shrink: 0; }
+.link { min-height: 44px; display: inline-flex; align-items: center; font-size: 13px; font-weight: 700; color: var(--accent-ink); align-self: flex-start; }
+.small { font-size: 12px; color: var(--ink-2); }
+.fold { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+.fold-h { font-size: 14px; font-weight: 800; display: flex; justify-content: space-between; }
+.dim { opacity: .55; }
+
+/* Đánh dấu câu mới / phần đổi */
+.new { outline: 2px dashed var(--new); outline-offset: 3px; border-radius: 6px; position: relative; }
+.new-badge { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .04em; color: #fff; background: var(--new); border-radius: 999px; padding: 1px 7px; margin-left: 6px; vertical-align: 1px; white-space: nowrap; font-style: normal; }
+.arrow { font-size: 12px; font-weight: 700; color: var(--new); }
+
+/* Dialog Compare */
+.dialog { background: var(--surface); border-radius: var(--radius-card); padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 8px 24px rgb(20 26 51 / .1); min-width: 0; }
+.dlg-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.dlg-head h3 { font-size: 18px; font-weight: 700; }
+.x { width: 44px; height: 44px; border-radius: 50%; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.desc { font-size: 14px; color: var(--ink-2); }
+.seg { display: flex; gap: 8px; }
+.seg span { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: var(--radius-control); border: 1px solid var(--border); font-size: 13px; font-weight: 700; }
+.seg .on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.tbl-wrap { overflow-x: auto; max-width: 100%; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+table.l0 { min-width: 980px; }
+table.l2 { min-width: 720px; }
+th, td { padding: 10px 12px 10px 0; text-align: right; white-space: nowrap; }
+thead th { font-size: 12px; color: var(--muted); font-weight: 700; padding-top: 8px; padding-bottom: 8px; }
+thead th:first-child, tbody th { text-align: left; }
+tbody tr { border-top: 1px solid var(--border); }
+tbody th { font-weight: 800; }
+tbody tr.sel { background: var(--accent-tint); }
+.b { margin-left: 6px; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 800; }
+.b.cheap { background: var(--pos-bg); color: var(--pos); }
+.b.mine { background: var(--surface-2); color: var(--ink-2); }
+.neg { color: var(--neg-ink); }
+.tot { font-weight: 800; }
+.choose { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: var(--radius-control); border: 1px solid var(--border); font-size: 13px; font-weight: 700; }
+.gone { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--new) 14%, transparent) 6px 12px); }
+
+/* Market hours snippet */
+.mh { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 16px; display: flex; flex-direction: column; gap: 8px; font-size: 12px; min-width: 0; }
+.mh-row { display: flex; align-items: center; gap: 3px; overflow: hidden; }
+.mh-row .lab { width: 170px; flex-shrink: 0; font-weight: 700; font-size: 12.5px; }
+.mh-row i { width: 30px; height: 22px; border: 1px solid #e9d7c0; border-radius: 4px; flex-shrink: 0; }
+.leg { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--ink-2); align-items: center; }
+.leg i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; border: 1px solid #e9d7c0; }
+
+.copy-list { background: var(--page-card); border: 1px solid var(--page-line); border-radius: 16px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+.copy-item { display: flex; flex-direction: column; gap: 4px; }
+.copy-item .en { font-weight: 700; color: var(--page-ink); }
+.copy-item .why { font-size: 13.5px; color: var(--page-ink-2); }
+.impl { background: var(--page-card); border: 1px solid var(--page-line); border-radius: 16px; padding: 18px 22px; }
+.impl ol, .impl ul { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--page-ink-2); font-size: 14.5px; }
+.impl h3 { font-size: 16px; margin-top: 14px; }
+.impl h3:first-child { margin-top: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="section-head" style="gap:10px">
+  <span class="eyebrow">Issue #543 · người dùng duyệt bố cục 2026-11-26 · DEC-396</span>
+  <h1>Market Making: chỉ hiện ước tính chi phí khi Where to quote = 0</h1>
+  <p class="lede">Mô hình chi phí / $1M (DEC-228) chỉ fit trên bot <code>quoteLevel</code> 0. Từ DEC-395 bot mới mặc định mức 2, nên ở mức khác 0 màn Create chỉ hiện phần phí (số thật), không mượn số của mức 0 và không bao giờ hiện 0. Mức 0 giữ nguyên như hiện nay. Số liệu market trong bản phác là <b>số minh hoạ</b>; phí 150 / $1M = phí maker perps cơ bản 1,2 bp + builder fee MM 0,3 bp.</p>
+  <p class="lede">Ký hiệu: khung <span class="new" style="padding:0 4px">nét đứt cam</span> + nhãn <span class="new-badge">NEW COPY</span> = câu mới (PM đã duyệt 2026-11-26); nền gạch chéo = phần bị bỏ ở mức ≠ 0. Phần còn lại chép đúng câu chữ trong <code>apps/web/messages/en.json</code> (<code>createBot.mmMarkets</code>).</p>
+</header>
+
+<!-- ================= 1440: form ================= -->
+<section class="section">
+  <div class="section-head">
+    <h2>1 · Màn Create, cột Settings (1440)</h2>
+    <p>Khối nằm ngay dưới field Contract (<code>afterMarket</code> trong <code>create-bot.tsx</code>). "Where to quote" nằm trong Advanced settings; đổi giá trị ở đó thì khối phía trên đổi ngay (đọc từ <code>values.quoteLevel</code> của form, không gọi lại API).</p>
+  </div>
+  <div class="boards">
+    <!-- L0 -->
+    <div class="board" id="b-l0">
+      <div class="board-label">quoteLevel 0 (giữ nguyên) <span class="tag keep">KHÔNG ĐỔI</span></div>
+      <div class="frame">
+        <div class="card">
+          <div class="field">
+            <label>Contract</label>
+            <div class="input">ETH-USD <span class="unit">▾</span></div>
+            <span class="hint">Any SoDEX perp. Thin markets fill less often and can move against your quotes.</span>
+          </div>
+          <section class="mm">
+            <h3>Suggested for market making</h3>
+            <ul>
+              <li><div class="row-btn on"><span>ETH-USD · 150–212 per $1M · up to $1.4M/day</span><small>Selected</small></div></li>
+              <li><div class="row-btn"><span>BTC-USD · 150–238 per $1M · up to $2.9M/day</span></div></li>
+              <li><div class="row-btn"><span>SOL-USD · 150–261 per $1M · up to $610K/day</span></div></li>
+            </ul>
+            <span class="link">Compare all markets</span>
+            <p class="small">Estimated cost here: 150–212 per $1M (fees only to fees plus the usual price moves, last 24 hours, not a forecast).</p>
+          </section>
+          <div class="fold dim">
+            <div class="fold-h"><span>Advanced settings</span><span>▴</span></div>
+          </div>
+          <div class="field">
+            <label>Where to quote</label>
+            <div class="input">0 <span class="unit">steps back</span></div>
+            <span class="hint">0 = at the best buy and sell price, the most fills. 1, 2… = that many price steps behind the best price: fewer fills, fewer quotes caught by a fast move.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- L2 -->
+    <div class="board" id="b-l2">
+      <div class="board-label">quoteLevel 2 (mới) <span class="tag chg">ĐỔI</span></div>
+      <div class="frame">
+        <div class="card">
+          <div class="field">
+            <label>Contract</label>
+            <div class="input">ETH-USD <span class="unit">▾</span></div>
+            <span class="hint">Any SoDEX perp. Thin markets fill less often and can move against your quotes.</span>
+          </div>
+          <section class="mm">
+            <h3>Suggested for market making</h3>
+            <ul>
+              <li><div class="row-btn"><span class="new">BTC-USD · up to $2.9M/day<em class="new-badge">NEW COPY 1</em></span></div></li>
+              <li><div class="row-btn on"><span class="new">ETH-USD · up to $1.4M/day</span><small>Selected</small></div></li>
+              <li><div class="row-btn"><span class="new">SOL-USD · up to $610K/day</span></div></li>
+            </ul>
+            <p class="small new">Most volume first. Cost with the usual price moves is only estimated when Where to quote is 0.<em class="new-badge">NEW COPY 2</em></p>
+            <span class="link">Compare all markets</span>
+            <p class="small new">Fees here: 150 per $1M. Price moves are not estimated when Where to quote is above 0, so the real cost can be higher.<em class="new-badge">NEW COPY 3</em></p>
+          </section>
+          <div class="fold dim">
+            <div class="fold-h"><span>Advanced settings</span><span>▴</span></div>
+          </div>
+          <div class="field">
+            <label>Where to quote</label>
+            <div class="input" style="border-color:var(--new)">2 <span class="unit">steps back</span></div>
+            <span class="arrow">↑ Mặc định bot mới (DEC-395). Đổi về 0 → khối trên quay lại đúng bản bên trái ngay lập tức.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li><b>Suggested (mức ≠ 0):</b> giữ khối, xếp theo sức chứa "up to / day" (5% volume 24h, số thật) thay vì theo chi phí mô hình. Dòng chỉ còn market và sức chứa: phí gần như bằng nhau ở mọi market (cùng phí maker cơ bản + builder fee của người xem), nên ghi phí trên từng dòng không giúp chọn mà còn dễ bị đọc nhầm là tổng chi phí.</li>
+    <li>Không ẩn cả khối: bot mới mặc định mức 2, ẩn đi thì phần lớn người dùng mất luôn gợi ý market; sức chứa và "Too little volume" vẫn là dữ liệu thật và hữu ích.</li>
+    <li><b>Estimated cost here (mức ≠ 0):</b> chỉ hiện phí, gọi đúng tên "Fees here …" và nói chi phí thật có thể cao hơn, không dùng chữ "Estimated cost" để không ngầm hiểu đó là tổng chi phí. Contract chưa có trong danh sách: giữ "Estimated cost here: not enough data yet." như hiện nay.</li>
+  </ul>
+</section>
+
+<!-- ================= 1440: Compare ================= -->
+<section class="section" id="compare">
+  <div class="section-head">
+    <h2>2 · Dialog "Compare all markets" (1440, <code>BottomSheet wide</code>)</h2>
+    <p>Mức ≠ 0: <b>bỏ hẳn</b> hai cột "Price PnL / $1M" và "With usual price moves / $1M", bỏ nút sắp xếp "Cheapest first" và nhãn "Cheapest"; mặc định xếp "Most volume" (dùng sẵn <code>sortMarkets(rows, "volume")</code>).</p>
+  </div>
+  <div class="board" id="c-l0">
+    <div class="board-label">quoteLevel 0 (giữ nguyên) <span class="tag keep">KHÔNG ĐỔI</span></div>
+    <div class="frame">
+      <div class="dialog">
+        <div class="dlg-head"><h3>Compare all markets</h3><span class="x">×</span></div>
+        <p class="desc">Estimated cost for every $1M of volume, from the last 24 hours on SoDEX. Cheapest first. Not a forecast.</p>
+        <div class="seg"><span class="on">Cheapest first</span><span>Most volume</span></div>
+        <div class="tbl-wrap"><table class="l0">
+          <thead><tr><th>Market</th><th>One price step</th><th>1-min swing</th><th>Volume 24h</th><th>Up to / day</th><th class="gone">Price PnL / $1M</th><th>Fees only / $1M</th><th class="gone">With usual price moves / $1M</th><th></th></tr></thead>
+          <tbody>
+            <tr class="sel"><th>ETH-USD<span class="b cheap">Cheapest</span></th><td>0.27 bps</td><td>3.1 bps</td><td>$28M</td><td>$1.4M</td><td class="neg">−62</td><td>150</td><td class="tot">212</td><td><span class="choose">Choose</span></td></tr>
+            <tr><th>BTC-USD<span class="b mine">Your bot today</span></th><td>0.15 bps</td><td>2.4 bps</td><td>$58M</td><td>$2.9M</td><td class="neg">−88</td><td>150</td><td class="tot">238</td><td><span class="choose">Choose</span></td></tr>
+            <tr><th>SOL-USD</th><td>0.58 bps</td><td>4.6 bps</td><td>$12.2M</td><td>$610K</td><td class="neg">−111</td><td>150</td><td class="tot">261</td><td><span class="choose">Choose</span></td></tr>
+            <tr><th>XRP-USD</th><td>0.41 bps</td><td>5.9 bps</td><td>$6.4M</td><td>$320K</td><td class="neg">−146</td><td>150</td><td class="tot">296</td><td><span class="choose">Choose</span></td></tr>
+            <tr><th>DOGE-USD</th><td>0.62 bps</td><td>6.8 bps</td><td>$3.1M</td><td>$155K</td><td class="neg">−170</td><td>150</td><td class="tot">320</td><td><span class="choose">Choose</span></td></tr>
+          </tbody>
+        </table></div>
+        <span class="link">Show all markets (4 hidden)</span>
+        <p class="small">Estimated from the SoDEX maker fee, the DeskLabs builder fee and how much the price usually moves against a market-making bot on this market, over the last 24 hours. Not a forecast. The higher number is not a maximum: costs can be higher when the price moves a lot.</p>
+      </div>
+    </div>
+    <p class="notes" style="padding-left:0">Gạch chéo = hai cột sẽ bị bỏ khi mức ≠ 0 (ở mức 0 vẫn hiện bình thường).</p>
+  </div>
+  <div class="board" id="c-l2">
+    <div class="board-label">quoteLevel 2 (mới) <span class="tag chg">ĐỔI</span></div>
+    <div class="frame">
+      <div class="dialog">
+        <div class="dlg-head"><h3>Compare all markets</h3><span class="x">×</span></div>
+        <p class="desc new">Fees and volume for every market, from the last 24 hours on SoDEX. Most volume first. Cost with the usual price moves is only estimated when Where to quote is 0.<em class="new-badge">NEW COPY 4</em></p>
+        <div class="tbl-wrap"><table class="l2">
+          <thead><tr><th>Market</th><th>One price step</th><th>1-min swing</th><th>Volume 24h</th><th>Up to / day</th><th>Fees only / $1M</th><th></th></tr></thead>
+          <tbody>
+            <tr><th>BTC-USD<span class="b mine">Your bot today</span></th><td>0.15 bps</td><td>2.4 bps</td><td>$58M</td><td>$2.9M</td><td class="tot">150</td><td><span class="choose">Choose</span></td></tr>
+            <tr class="sel"><th>ETH-USD</th><td>0.27 bps</td><td>3.1 bps</td><td>$28M</td><td>$1.4M</td><td class="tot">150</td><td><span class="choose">Choose</span></td></tr>
+            <tr><th>SOL-USD</th><td>0.58 bps</td><td>4.6 bps</td><td>$12.2M</td><td>$610K</td><td class="tot">150</td><td><span class="choose">Choose</span></td></tr>
+            <tr><th>XRP-USD</th><td>0.41 bps</td><td>5.9 bps</td><td>$6.4M</td><td>$320K</td><td class="tot">150</td><td><span class="choose">Choose</span></td></tr>
+            <tr><th>DOGE-USD</th><td>0.62 bps</td><td>6.8 bps</td><td>$3.1M</td><td>$155K</td><td class="tot">150</td><td><span class="choose">Choose</span></td></tr>
+          </tbody>
+        </table></div>
+        <span class="link">Show all markets (4 hidden)</span>
+        <p class="small new">Fees only = the SoDEX maker fee plus the DeskLabs builder fee. Price moves at this Where to quote are not estimated, so the real cost can be higher.<em class="new-badge">NEW COPY 5</em></p>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li><b>Vì sao bỏ cột thay vì điền "Not available":</b> lý do thiếu số nằm ở cấu hình (mức báo giá), không ở từng market. Một cột toàn "Not available" lặp 30 lần không thêm thông tin, đẩy nút Choose ra xa và trên 390 px làm bảng cuộn ngang dài hơn. Một câu ở đầu dialog nói lý do một lần (câu 4) và một câu cuối bảng nói chi phí thật có thể cao hơn (câu 5).</li>
+    <li>"Price PnL / $1M" cũng bỏ: đó là PnL giá của mô hình (có trộn bot của người xem), cùng gốc với cột "With usual price moves".</li>
+    <li>Bỏ "Cheapest first" và nhãn "Cheapest": xếp theo phí thì gần như mọi market hoà nhau, nhãn "Cheapest" sẽ gán ngẫu nhiên. "Your bot today" và "Too little volume" giữ (dữ liệu thật). Nút "Show all markets ({n} hidden)" giữ; điều kiện ẩn vẫn như cũ.</li>
+  </ul>
+</section>
+
+<!-- ================= 390 ================= -->
+<section class="section">
+  <div class="section-head">
+    <h2>3 · Bản 390 px</h2>
+    <p>Trên mobile khối nằm dưới Contract, trước chart inline. "Compare all markets" mở bottom sheet; bảng cuộn ngang bên trong sheet, trang không cuộn ngang.</p>
+  </div>
+  <div class="boards phones">
+    <div class="board" id="m-l0">
+      <div class="board-label">quoteLevel 0 (giữ nguyên) <span class="tag keep">KHÔNG ĐỔI</span></div>
+      <div class="frame phone">
+        <div class="card" style="padding:14px">
+          <div class="field">
+            <label>Contract</label>
+            <div class="input">ETH-USD <span class="unit">▾</span></div>
+          </div>
+          <section class="mm">
+            <h3>Suggested for market making</h3>
+            <ul>
+              <li><div class="row-btn on"><span>ETH-USD · 150–212 per $1M · up to $1.4M/day</span><small>Selected</small></div></li>
+              <li><div class="row-btn"><span>BTC-USD · 150–238 per $1M · up to $2.9M/day</span></div></li>
+              <li><div class="row-btn"><span>SOL-USD · 150–261 per $1M · up to $610K/day</span></div></li>
+            </ul>
+            <span class="link">Compare all markets</span>
+            <p class="small">Estimated cost here: 150–212 per $1M (fees only to fees plus the usual price moves, last 24 hours, not a forecast).</p>
+          </section>
+        </div>
+        <div class="dialog" style="margin-top:12px;padding:16px;border-radius:24px 24px 0 0">
+          <div class="dlg-head"><h3>Compare all markets</h3><span class="x">×</span></div>
+          <p class="desc">Estimated cost for every $1M of volume, from the last 24 hours on SoDEX. Cheapest first. Not a forecast.</p>
+          <div class="seg"><span class="on">Cheapest first</span><span>Most volume</span></div>
+          <div class="tbl-wrap"><table class="l0">
+            <thead><tr><th>Market</th><th>One price step</th><th>1-min swing</th><th>Volume 24h</th><th>Up to / day</th><th>Price PnL / $1M</th><th>Fees only / $1M</th><th>With usual price moves / $1M</th><th></th></tr></thead>
+            <tbody>
+              <tr class="sel"><th>ETH-USD<span class="b cheap">Cheapest</span></th><td>0.27 bps</td><td>3.1 bps</td><td>$28M</td><td>$1.4M</td><td class="neg">−62</td><td>150</td><td class="tot">212</td><td><span class="choose">Choose</span></td></tr>
+              <tr><th>BTC-USD</th><td>0.15 bps</td><td>2.4 bps</td><td>$58M</td><td>$2.9M</td><td class="neg">−88</td><td>150</td><td class="tot">238</td><td><span class="choose">Choose</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+    <div class="board" id="m-l2">
+      <div class="board-label">quoteLevel 2 (mới) <span class="tag chg">ĐỔI</span></div>
+      <div class="frame phone">
+        <div class="card" style="padding:14px">
+          <div class="field">
+            <label>Contract</label>
+            <div class="input">ETH-USD <span class="unit">▾</span></div>
+          </div>
+          <section class="mm">
+            <h3>Suggested for market making</h3>
+            <ul>
+              <li><div class="row-btn"><span class="new">BTC-USD · up to $2.9M/day<em class="new-badge">1</em></span></div></li>
+              <li><div class="row-btn on"><span class="new">ETH-USD · up to $1.4M/day</span><small>Selected</small></div></li>
+              <li><div class="row-btn"><span class="new">SOL-USD · up to $610K/day</span></div></li>
+            </ul>
+            <p class="small new">Most volume first. Cost with the usual price moves is only estimated when Where to quote is 0.<em class="new-badge">2</em></p>
+            <span class="link">Compare all markets</span>
+            <p class="small new">Fees here: 150 per $1M. Price moves are not estimated when Where to quote is above 0, so the real cost can be higher.<em class="new-badge">3</em></p>
+          </section>
+        </div>
+        <div class="dialog" style="margin-top:12px;padding:16px;border-radius:24px 24px 0 0">
+          <div class="dlg-head"><h3>Compare all markets</h3><span class="x">×</span></div>
+          <p class="desc new">Fees and volume for every market, from the last 24 hours on SoDEX. Most volume first. Cost with the usual price moves is only estimated when Where to quote is 0.<em class="new-badge">4</em></p>
+          <div class="tbl-wrap"><table class="l2">
+            <thead><tr><th>Market</th><th>One price step</th><th>1-min swing</th><th>Volume 24h</th><th>Up to / day</th><th>Fees only / $1M</th><th></th></tr></thead>
+            <tbody>
+              <tr><th>BTC-USD</th><td>0.15 bps</td><td>2.4 bps</td><td>$58M</td><td>$2.9M</td><td class="tot">150</td><td><span class="choose">Choose</span></td></tr>
+              <tr class="sel"><th>ETH-USD</th><td>0.27 bps</td><td>3.1 bps</td><td>$28M</td><td>$1.4M</td><td class="tot">150</td><td><span class="choose">Choose</span></td></tr>
+            </tbody>
+          </table></div>
+          <p class="small new">Fees only = the SoDEX maker fee plus the DeskLabs builder fee. Price moves at this Where to quote are not estimated, so the real cost can be higher.<em class="new-badge">5</em></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Market hours ================= -->
+<section class="section" id="mh">
+  <div class="section-head">
+    <h2>4 · Trang Market hours (team)</h2>
+    <p><b>Đề xuất: thêm một ghi chú nhỏ</b> ở chú giải dòng "Est. CPM (estimate)", không đổi gì khác.</p>
+  </div>
+  <div class="boards">
+    <div class="board">
+      <div class="board-label">Chú giải dưới dòng Est. CPM (1440; 390 đặt cùng chỗ trong phần chi tiết của giờ)</div>
+      <div class="frame">
+        <div class="mh">
+          <div class="mh-row"><span class="lab">Est. CPM (estimate)</span>
+            <i style="background:var(--mh-cost-0)"></i><i style="background:var(--mh-cost-1)"></i><i style="background:var(--mh-cost-1)"></i><i style="background:var(--mh-cost-2)"></i><i style="background:var(--mh-cost-3)"></i><i style="background:var(--mh-cost-2)"></i><i style="background:var(--mh-cost-1)"></i><i style="background:var(--mh-cost-0)"></i><i style="background:var(--mh-cost-0)"></i><i style="background:var(--mh-cost-1)"></i><i style="background:var(--mh-cost-2)"></i>
+          </div>
+          <div class="leg">
+            <span><b>Est. CPM</b></span>
+            <span><i style="background:var(--mh-cost-0)"></i>…</span><span><i style="background:var(--mh-cost-3)"></i>…</span>
+            <span class="new">Est. CPM models quotes at the best price (Where to quote 0).<em class="new-badge">NEW COPY 6</em></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Trang trả lời "giờ nào đắt" cho một market, không gắn với một bot nên không có <code>quoteLevel</code> để ẩn / hiện như màn Create. Giữ dòng Est. CPM.</li>
+    <li>Nhưng sau DEC-395 bot mức 2 sẽ chiếm dần khối 3 (Markout cost / $1M thật). Team dễ so Est. CPM (mô hình mức 0) với chi phí thật của bot mức 2 rồi kết luận sai, nên cần một dòng nói rõ ước tính là cho mức 0.</li>
+    <li>Cùng PR (PM chốt): hệ số hiệu chỉnh C và R / số fill một bot-hour của Market hours (<code>calibrationPairs</code> / <code>mmBotWindows</code>) chỉ lấy bot quoteLevel 0 như fit hằng ngày, nên câu 6 đúng cho cả phần hiệu chỉnh. Khối 3 (Markout cost thật) vẫn tính mọi bot.</li>
+  </ul>
+</section>
+
+<!-- ================= Copy list ================= -->
+<section class="section">
+  <div class="section-head"><h2>Câu chữ mới (PM đã duyệt 2026-11-26)</h2><p>Tất cả trong <code>createBot.mmMarkets</code>, riêng câu 6 trong <code>marketHours.vol</code>. Câu tái dùng: "Suggested for market making", "Compare all markets", "Selected", "Fees only / $1M", "Show all markets ({n} hidden)", "Your bot today", "Too little volume", "Estimated cost here: not enough data yet.", "Most volume".</p></div>
+  <div class="copy-list">
+    <div class="copy-item"><span>1 · <code>suggestRowVolume</code></span><span class="en">{market} · up to {capacity}/day</span><span class="why">Dòng gợi ý ở mức ≠ 0, không có chi phí.</span></div>
+    <div class="copy-item"><span>2 · <code>suggestByVolume</code></span><span class="en">Most volume first. Cost with the usual price moves is only estimated when Where to quote is 0.</span><span class="why">Giải thích vì sao thứ tự khác và cách lấy lại ước tính.</span></div>
+    <div class="copy-item"><span>3 · <code>hereFees</code></span><span class="en">Fees here: {fees} per $1M. Price moves are not estimated when Where to quote is above 0, so the real cost can be higher.</span><span class="why">Thay dòng "Estimated cost here" ở mức ≠ 0; {fees} = <code>feesPerMillion</code>.</span></div>
+    <div class="copy-item"><span>4 · <code>subtitleFees</code></span><span class="en">Fees and volume for every market, from the last 24 hours on SoDEX. Most volume first. Cost with the usual price moves is only estimated when Where to quote is 0.</span><span class="why">Mô tả của dialog / sheet ở mức ≠ 0 (thay <code>subtitle</code>).</span></div>
+    <div class="copy-item"><span>5 · <code>methodFees</code></span><span class="en">Fees only = the SoDEX maker fee plus the DeskLabs builder fee. Price moves at this Where to quote are not estimated, so the real cost can be higher.</span><span class="why">Thay <code>method</code> + <code>notMax</code> dưới bảng ở mức ≠ 0.</span></div>
+    <div class="copy-item"><span>6 · <code>marketHours.vol.estLevel0</code></span><span class="en">Est. CPM models quotes at the best price (Where to quote 0).</span><span class="why">Ghi chú nhỏ ở chú giải Est. CPM trên trang Market hours (team).</span></div>
+  </div>
+</section>
+
+<!-- ================= Implementation ================= -->
+<section class="section">
+  <div class="section-head"><h2>Ghi chú triển khai (DEC-396)</h2></div>
+  <div class="impl">
+    <h3>Web</h3>
+    <ul>
+      <li>Chỉ màn <b>Create</b> (kể cả tiếp tục draft) có khối này (<code>afterMarket</code> trong <code>create-bot.tsx</code>); màn Edit khoá Contract nên không hiện khối.</li>
+      <li><code>MmSuggestions</code> nhận giá trị thô của ô "Where to quote"; <code>isMmLevelZero</code> chỉ coi đúng số 0 là mức 0 (rỗng / sai / thiếu → bản chỉ phí). Gợi ý ở mức ≠ 0: <code>mmVolumeSuggestions</code> (cùng điều kiện với mức 0, xếp theo sức chứa, tối đa 3).</li>
+      <li>Không gọi thêm API: <code>GET /api/v1/markets/mm-cost</code> đã có <code>feesPerMillion</code>, <code>capacityPerDay</code>, <code>tooLittleVolume</code>, <code>yourBot</code>.</li>
+    </ul>
+    <h3>Backend (cùng quy tắc với fit hằng ngày)</h3>
+    <ul>
+      <li>Phần trộn "Your bots" của chi phí / $1M và hiệu chỉnh Market hours chỉ lấy bot có version đang chạy với <code>quoteLevel</code> đúng bằng 0, như scheduler. Không migration.</li>
+    </ul>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

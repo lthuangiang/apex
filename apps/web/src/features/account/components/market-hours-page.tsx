@@ -992,6 +992,8 @@ function Desktop({
               : t("vol.estThinLegend", { n: v.estimate.calibrationHours })}
           </span>
           <span>{t("botBlock.naLegend")}</span>
+          {/* Mô hình chỉ đúng cho báo giá ở giá tốt nhất; C cũng chỉ hiệu chỉnh trên bot mức 0 (DEC-396). */}
+          <span>{t("vol.estLevel0")}</span>
         </Legend>
         <div className="mt-0.5 mb-0.5 flex flex-col gap-1.5 rounded-tile bg-surface-2 px-3 py-2.5">
           <div className="flex flex-wrap items-baseline gap-2.5">
@@ -1764,6 +1766,7 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
                           source: sourceOf(v.estimate.calibrationScope, v.market),
                         })}
                   </span>
+                  <span className="text-[11.5px] text-ink-2">{tv("estLevel0")}</span>
                   <button
                     type="button"
                     aria-expanded={modelOpen}

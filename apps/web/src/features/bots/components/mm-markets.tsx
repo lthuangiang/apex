@@ -7,15 +7,29 @@ import { useState } from "react";
 
 import { useMarketNames } from "@/lib/markets";
 
-import { compactUsd, plain, signed, sortMarkets, useMmMarketCosts, type MmSort } from "../mm-cost";
+import {
+  compactUsd,
+  isMmLevelZero,
+  mmVolumeSuggestions,
+  plain,
+  signed,
+  sortMarkets,
+  useMmMarketCosts,
+  type MmSort,
+} from "../mm-cost";
 
 // Gợi ý market cho bot Market Making ngay dưới field Contract (DEC-228): tối đa 3 market rẻ nhất có đủ dữ
 // liệu và đủ sức chứa, dòng chi phí của contract đang chọn, và "Compare all markets" mở bảng đầy đủ (sheet trên mobile,
 // dialog trên desktop). Chi phí ước tính cho bot của mình, số quá khứ 24 giờ, không dự báo; ≤ 0 ghi "0 or less".
 // Chi phí hiện dạng khoảng: đầu dưới = chỉ phí (giá không chạy ngược), đầu trên = có cả lỗ giá thường gặp. Bảng mặc
 // định ẩn market "Too little volume" và chưa đủ dữ liệu; lựa chọn giữ trong phiên.
+// Mô hình chỉ đúng cho "Where to quote" 0 (DEC-396): ô khác 0 (kể cả rỗng / sai) thì không hiện số nào của mô hình, gợi ý
+// xếp theo sức chứa, dòng "here" chỉ còn phí, bảng bỏ hai cột ước tính và nút "Cheapest first". Đổi ô là đổi ngay.
 
 const isZero = (cost: string) => Number(cost) <= 0;
+const COLS = ["market", "step", "swing", "volume", "capacity", "pnl", "fees", "withMoves"] as const;
+/** "Where to quote" khác 0: bỏ "Price PnL" và "With usual price moves" (cùng là số của mô hình). */
+const FEE_COLS = ["market", "step", "swing", "volume", "capacity", "fees"] as const;
 /** Đầu trên lớn hơn đầu dưới thì hiện khoảng; bằng (PnL giá = 0) thì một số. */
 const isRange = (r: MmMarketCost) =>
   r.totalCostPerMillion !== null && Number(r.totalCostPerMillion) > Number(r.feesPerMillion);
@@ -28,10 +42,13 @@ const single = (r: MmMarketCost) =>
 
 export function MmSuggestions({
   value,
+  quoteLevel,
   onPick,
 }: {
   /** Contract đang chọn trong form ("" khi chưa chọn). */
   value: string;
+  /** Giá trị thô của ô "Where to quote" trong form; chỉ đúng số 0 mới hiện ước tính của mô hình. */
+  quoteLevel: unknown;
   onPick: (market: string) => void;
 }) {
   const t = useTranslations("createBot.mmMarkets");
@@ -43,11 +60,14 @@ export function MmSuggestions({
   const data = q.data;
   if (data === undefined) return null;
   const label = (m: string) => names.market(m);
+  const levelZero = isMmLevelZero(quoteLevel);
   const byName = new Map(data.markets.map((m) => [m.market, m]));
-  const rows = data.suggested.flatMap((m) => {
-    const r = byName.get(m);
-    return r === undefined || r.totalCostPerMillion === null ? [] : [r];
-  });
+  const rows = levelZero
+    ? data.suggested.flatMap((m) => {
+        const r = byName.get(m);
+        return r === undefined || r.totalCostPerMillion === null ? [] : [r];
+      })
+    : mmVolumeSuggestions(data.markets);
   const current = value === "" ? undefined : byName.get(value);
   const cap = (r: MmMarketCost) => compactUsd(r.capacityPerDay) ?? "";
 
@@ -82,20 +102,22 @@ export function MmSuggestions({
                     }`}
                   >
                     <span className="min-w-0">
-                      {isZero(cost)
-                        ? t("suggestRowZero", { market: label(r.market), capacity: cap(r) })
-                        : isRange(r)
-                          ? t("suggestRow", {
-                              market: label(r.market),
-                              low: plain(r.feesPerMillion, 0) ?? "",
-                              high: plain(cost, 0) ?? "",
-                              capacity: cap(r),
-                            })
-                          : t("suggestRowOne", {
-                              market: label(r.market),
-                              low: plain(single(r), 0) ?? "",
-                              capacity: cap(r),
-                            })}
+                      {!levelZero
+                        ? t("suggestRowVolume", { market: label(r.market), capacity: cap(r) })
+                        : isZero(cost)
+                          ? t("suggestRowZero", { market: label(r.market), capacity: cap(r) })
+                          : isRange(r)
+                            ? t("suggestRow", {
+                                market: label(r.market),
+                                low: plain(r.feesPerMillion, 0) ?? "",
+                                high: plain(cost, 0) ?? "",
+                                capacity: cap(r),
+                              })
+                            : t("suggestRowOne", {
+                                market: label(r.market),
+                                low: plain(single(r), 0) ?? "",
+                                capacity: cap(r),
+                              })}
                     </span>
                     {on ? (
                       <span className="shrink-0 text-[11px] font-extrabold">{t("selected")}</span>
@@ -105,6 +127,7 @@ export function MmSuggestions({
               );
             })}
           </ul>
+          {levelZero ? null : <p className="m-0 text-xs text-ink-2">{t("suggestByVolume")}</p>}
           <button
             type="button"
             onClick={() => {
@@ -118,28 +141,33 @@ export function MmSuggestions({
       )}
       {value === "" ? null : (
         <p className="m-0 text-xs text-ink-2">
-          {current?.totalCostPerMillion == null
-            ? t("hereNone")
-            : isZero(current.totalCostPerMillion)
-              ? t("hereZero")
-              : isRange(current)
-                ? t("hereRange", {
-                    low: plain(current.feesPerMillion, 0) ?? "",
-                    high: plain(current.totalCostPerMillion, 0) ?? "",
-                  })
-                : t("here", { cost: plain(single(current), 0) ?? "" })}
+          {!levelZero
+            ? current === undefined
+              ? t("hereNone")
+              : t("hereFees", { fees: plain(current.feesPerMillion, 0) ?? "" })
+            : current?.totalCostPerMillion == null
+              ? t("hereNone")
+              : isZero(current.totalCostPerMillion)
+                ? t("hereZero")
+                : isRange(current)
+                  ? t("hereRange", {
+                      low: plain(current.feesPerMillion, 0) ?? "",
+                      high: plain(current.totalCostPerMillion, 0) ?? "",
+                    })
+                  : t("here", { cost: plain(single(current), 0) ?? "" })}
         </p>
       )}
       <BottomSheet
         open={open}
         onOpenChange={setOpen}
         title={t("compare")}
-        description={t("subtitle")}
+        description={t(levelZero ? "subtitle" : "subtitleFees")}
         closeLabel={t("close")}
         wide
       >
         <MmMarketTable
           value={value}
+          levelZero={levelZero}
           showAll={showAll}
           onShowAll={setShowAll}
           onChoose={(m) => {
@@ -155,11 +183,14 @@ export function MmSuggestions({
 /** Bảng xếp hạng đầy đủ (trong "Compare all markets"). */
 export function MmMarketTable({
   value,
+  levelZero,
   onChoose,
   showAll,
   onShowAll,
 }: {
   value: string;
+  /** "Where to quote" là 0: có cột ước tính và nút "Cheapest first"; khác 0 thì chỉ phí, xếp theo sức chứa. */
+  levelZero: boolean;
   onChoose: (market: string) => void;
   /** Hiện cả market "Too little volume" và chưa đủ dữ liệu. */
   showAll: boolean;
@@ -170,7 +201,8 @@ export function MmMarketTable({
   const te = useTranslations("common.errors");
   const q = useMmMarketCosts();
   const names = useMarketNames();
-  const [sort, setSort] = useState<MmSort>("cost");
+  const [picked, setSort] = useState<MmSort>("cost");
+  const sort: MmSort = levelZero ? picked : "volume";
   const data = q.data;
   const na = tm("notAvailable");
   const label = (m: string) => names.market(m);
@@ -192,41 +224,34 @@ export function MmMarketTable({
   if (data === undefined) return <Skeleton className="h-64" />;
   return (
     <div className="flex flex-col gap-3">
-      <div role="group" aria-label={t("sortLabel")} className="flex gap-2">
-        {(["cost", "volume"] as const).map((k) => (
-          <button
-            key={k}
-            type="button"
-            aria-pressed={sort === k}
-            onClick={() => {
-              setSort(k);
-            }}
-            className={`min-h-tap rounded-control border px-3.5 text-[13px] font-bold ${
-              sort === k
-                ? "border-ink bg-ink text-surface"
-                : "border-border bg-surface text-ink hover:bg-surface-2"
-            }`}
-          >
-            {t(`sort.${k}`)}
-          </button>
-        ))}
-      </div>
+      {levelZero ? (
+        <div role="group" aria-label={t("sortLabel")} className="flex gap-2">
+          {(["cost", "volume"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={sort === k}
+              onClick={() => {
+                setSort(k);
+              }}
+              className={`min-h-tap rounded-control border px-3.5 text-[13px] font-bold ${
+                sort === k
+                  ? "border-ink bg-ink text-surface"
+                  : "border-border bg-surface text-ink hover:bg-surface-2"
+              }`}
+            >
+              {t(`sort.${k}`)}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="relative overflow-x-auto">
-        <table className="w-full min-w-[980px] border-collapse text-sm tabular-nums">
+        <table
+          className={`w-full border-collapse text-sm tabular-nums ${levelZero ? "min-w-[980px]" : "min-w-[720px]"}`}
+        >
           <thead>
             <tr className="text-left text-xs text-muted">
-              {(
-                [
-                  "market",
-                  "step",
-                  "swing",
-                  "volume",
-                  "capacity",
-                  "pnl",
-                  "fees",
-                  "withMoves",
-                ] as const
-              ).map((c) => (
+              {(levelZero ? COLS : FEE_COLS).map((c) => (
                 <th
                   key={c}
                   scope="col"
@@ -285,21 +310,31 @@ export function MmMarketTable({
                   </td>
                   <td className="py-2.5 pr-3 text-right">{compactUsd(r.volume24h) ?? na}</td>
                   <td className="py-2.5 pr-3 text-right">{compactUsd(r.capacityPerDay) ?? na}</td>
-                  <td
-                    className={`py-2.5 pr-3 text-right ${
-                      pnl === null || pnl === "0"
-                        ? ""
-                        : pnl.startsWith("−")
-                          ? "text-neg-ink"
-                          : "text-pos"
-                    }`}
-                  >
-                    {pnl ?? na}
+                  {levelZero ? (
+                    <td
+                      className={`py-2.5 pr-3 text-right ${
+                        pnl === null || pnl === "0"
+                          ? ""
+                          : pnl.startsWith("−")
+                            ? "text-neg-ink"
+                            : "text-pos"
+                      }`}
+                    >
+                      {pnl ?? na}
+                    </td>
+                  ) : null}
+                  <td className={`py-2.5 pr-3 text-right ${levelZero ? "" : "font-extrabold"}`}>
+                    {plain(r.feesPerMillion, 0)}
                   </td>
-                  <td className="py-2.5 pr-3 text-right">{plain(r.feesPerMillion, 0)}</td>
-                  <td className="py-2.5 pr-3 text-right font-extrabold">
-                    {total === null ? t("notEnough") : isZero(total) ? t("zero") : plain(total, 0)}
-                  </td>
+                  {levelZero ? (
+                    <td className="py-2.5 pr-3 text-right font-extrabold">
+                      {total === null
+                        ? t("notEnough")
+                        : isZero(total)
+                          ? t("zero")
+                          : plain(total, 0)}
+                    </td>
+                  ) : null}
                   <td className="py-2 text-right">
                     <button
                       type="button"
@@ -331,7 +366,7 @@ export function MmMarketTable({
         </button>
       )}
       <p className="m-0 text-xs text-ink-2">
-        {t("method")} {t("notMax")}
+        {levelZero ? `${t("method")} ${t("notMax")}` : t("methodFees")}
       </p>
     </div>
   );

@@ -312,7 +312,10 @@ describe("GET /api/v1/admin/market-hours", () => {
       // Order size $50: mỗi lệnh cắt $99.98 ≈ 2× order size.
       const { rows: ver } = await env.pool.query<{ id: string }>(
         "insert into bot_versions (id, bot_id, version, config, param_source, status) values (gen_random_uuid(), $1, 1, $2, 'manual', 'active') returning id",
-        [botId, JSON.stringify({ market, orderSize: "50", maxOrders: 1, distanceBp: "1" })],
+        [
+          botId,
+          JSON.stringify({ market, orderSize: "50", maxOrders: 1, distanceBp: "1", quoteLevel: 0 }),
+        ],
       );
       await env.pool.query("update bots set active_version_id = $1 where id = $2", [
         ver[0]?.id,
@@ -421,7 +424,10 @@ describe("GET /api/v1/admin/market-hours", () => {
     const botId = bot[0]?.id ?? "";
     const { rows: ver } = await env.pool.query<{ id: string }>(
       "insert into bot_versions (id, bot_id, version, config, param_source, status) values (gen_random_uuid(), $1, 1, $2, 'manual', 'active') returning id",
-      [botId, JSON.stringify({ market, orderSize: "20", maxOrders: 1, distanceBp: "1" })],
+      [
+        botId,
+        JSON.stringify({ market, orderSize: "20", maxOrders: 1, distanceBp: "1", quoteLevel: 0 }),
+      ],
     );
     await env.pool.query("update bots set active_version_id = $1 where id = $2", [
       ver[0]?.id,

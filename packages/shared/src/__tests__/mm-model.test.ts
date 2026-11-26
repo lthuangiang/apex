@@ -8,6 +8,7 @@ import {
   capacityPerDay,
   fitModel,
   isActiveMinute,
+  isMmModelBotConfig,
   mmBuilderFeeBps,
   MM_MODEL_SEED,
   modelCostPerMillion,
@@ -215,5 +216,16 @@ describe("calibrated cost per $1M (DEC-293)", () => {
     expect(calibratedCostPerMillion(dec("215"), "1.4")?.toString()).toBe("301");
     expect(calibratedCostPerMillion(dec("215"), "1")?.toString()).toBe("215");
     expect(calibratedCostPerMillion(null, "1.4")).toBeNull();
+  });
+});
+
+describe("isMmModelBotConfig (DEC-396)", () => {
+  it("only counts a running config whose quoteLevel is exactly 0", () => {
+    expect(isMmModelBotConfig({ quoteLevel: 0, orderSize: "20" })).toBe(true);
+    expect(isMmModelBotConfig({ quoteLevel: 2 })).toBe(false);
+    expect(isMmModelBotConfig({ quoteLevel: "0" })).toBe(false);
+    expect(isMmModelBotConfig({ distanceBp: "1" })).toBe(false);
+    expect(isMmModelBotConfig(null)).toBe(false);
+    expect(isMmModelBotConfig("0")).toBe(false);
   });
 });

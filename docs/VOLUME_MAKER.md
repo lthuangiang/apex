@@ -145,6 +145,18 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   đa. Bảng mặc định ẩn market "Too little volume" và chưa đủ dữ liệu, nút "Show all markets ({n} hidden)" ↔ "Hide markets
   with too little volume", lựa chọn giữ trong phiên. Chưa market nào đủ dữ liệu: "Suggestions appear once we have a day of
   SoDEX data.".
+- **"Where to quote" khác 0 (DEC-396, docs/mockups/mm-est-cpm):** mô hình chỉ đúng cho `quoteLevel` 0, nên ô "Where to
+  quote" của form khác 0 thì không hiện số nào của mô hình (không mượn số của mức 0, không bao giờ hiện 0). Chỉ đúng số 0
+  mới là mức 0; ô rỗng / sai cũng hiện bản chỉ phí. Đổi ô là khối đổi ngay (đọc giá trị form, không gọi lại API, backend
+  không cần biết `quoteLevel`). (1) Gợi ý: cùng điều kiện (đủ dữ liệu, không "Too little volume"), tối đa 3, xếp theo sức
+  chứa; dòng "{market} · up to {capacity}/day" + câu "Most volume first. Cost with the usual price moves is only estimated
+  when Where to quote is 0.". (2) Dòng contract đang chọn: "Fees here: {fees} per $1M. Price moves are not estimated when
+  Where to quote is above 0, so the real cost can be higher." (`feesPerMillion`); market không có trong danh sách vẫn
+  "Estimated cost here: not enough data yet.". (3) Bảng: bỏ cột "Price PnL / $1M" và "With usual price moves / $1M", bỏ
+  nút "Cheapest first" và nhãn "Cheapest", xếp theo sức chứa; mô tả "Fees and volume for every market, from the last 24
+  hours on SoDEX. Most volume first. Cost with the usual price moves is only estimated when Where to quote is 0." và dòng
+  dưới bảng "Fees only = the SoDEX maker fee plus the DeskLabs builder fee. Price moves at this Where to quote are not
+  estimated, so the real cost can be higher.". Mức 0 giữ nguyên như trên. Chỉ màn Create có khối này (Edit khoá Contract).
 - **API** `GET /api/v1/markets/mm-cost` (phần thị trường cache 5 phút; phần của người xem tính mỗi lần): mỗi market có
   `stepBps`, `swingBps`, `volume24h`, `capacityPerDay`, `tooLittleVolume`, `candleMinutes24h`, `activeMinutes24h`,
   `hoursWithData`, `trades24h`, `notional24h`, `publicPricePnlPerMillion` (đối chiếu), `pricePnlPerMillion`, `source`,
@@ -152,7 +164,8 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - **Mô hình:** PnL giá (bps trên volume) = a × bước − k × dao động 1 phút, chặn ≤ 0. Bước = tick ÷ giá đóng nến 1m mới
   nhất; dao động = độ lệch chuẩn mẫu % thay đổi giữa các nến 1m 24 giờ, chỉ tính khi ≥ 720 nến và ≥ 720 phút có volume (một phút có volume = volume quote ≥ $50; market thưa gần như phút nào cũng có giao dịch vài cent, nên đếm volume > 0 không chặn được)
   (thiếu → không đủ dữ liệu). Hệ số mới nhất trong `mm_model_coefs`, chưa có thì a = 0,25, k = 0,095 (version 0).
-- **Bot của người xem:** fill 24 giờ của bot MM live của chính người xem ở market đó → PnL giá gồm phần chưa chốt (vị thế
+- **Bot của người xem:** fill 24 giờ của bot MM live **quoteLevel 0** (version đang chạy, cùng quy tắc với fit hằng ngày;
+  DEC-396) của chính người xem ở market đó → PnL giá gồm phần chưa chốt (vị thế
   ròng trong cửa sổ định giá ở giá đóng nến mới nhất), trộn (n × thực + 50 × mô hình) / (n + 50), n = số vòng đóng; nguồn
   `source` = "yours" (không hiện trên bảng). Bot của người khác không bao giờ hiện trong số của người xem.
 - **Chi phí / $1M** = phí maker SoDEX của market (`makerFee` × 1.000.000, thiếu thì 0,012%) + builder fee MM của người
