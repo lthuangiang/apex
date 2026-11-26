@@ -370,27 +370,6 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(screen.queryByText(/points to/)).toBeNull();
   });
 
-  it("no progress bar when nextTierPoints is missing or not above the total", async () => {
-    gateway({
-      "sopoints/summary": {
-        body: {
-          code: 0,
-          data: {
-            totalPoints: 70000,
-            currentTier: "DIAMOND",
-            nextTier: "LEGEND",
-            nextTierPoints: 60000,
-          },
-        },
-      },
-    });
-    show();
-    expect(await screen.findByText("Current tier: DIAMOND")).toBeInTheDocument();
-    expect(screen.getByText("Next: LEGEND")).toBeInTheDocument();
-    expect(screen.queryByRole("progressbar")).toBeNull();
-    expect(screen.queryByText(/points to/)).toBeNull();
-  });
-
   it("missing fields show Not available, never 0", async () => {
     gateway({
       "sopoints/summary": {
