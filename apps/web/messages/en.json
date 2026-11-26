@@ -10161,7 +10161,7 @@
       "of": "of {total}",
       "thisWeek": "This week",
       "pool": "Weekly pool",
-      "poolHint": "SoPoints shared this week",
+      "poolHint": "from SoDEX",
       "nextDistribution": "Next distribution",
       "weekEnds": "Week ends {time}"
     },
@@ -10174,10 +10174,12 @@
       "spot": "Spot volume",
       "perps": "Perps volume",
       "confirmed": "Confirmed",
-      "notFinal": "Not final",
       "range": "{start} – {end}",
       "emptyTitle": "No weekly points yet",
-      "emptyBody": "Weeks appear after SoDEX takes its weekly snapshot."
+      "emptyBody": "Weeks appear after SoDEX takes its weekly snapshot.",
+      "inProgress": "In progress",
+      "snapshotDone": "Snapshot done",
+      "noRank": "–"
     },
     "card": {
       "title": "SoDEX rewards",
@@ -10480,6 +10482,7 @@
     "hidden": "Hidden",
     "claims": "Sign-in token claims",
     "claimsNone": "The token isn't a JWT, so it has no readable claims.",
-    "empty": "No fields."
+    "empty": "No fields.",
+    "valuesSeen": "Values seen"
   }
 }

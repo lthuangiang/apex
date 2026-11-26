@@ -148,7 +148,8 @@ describe("Blind Boxes › Backpack (mockup 10)", () => {
     ]);
     expect(within(table).getByText("Trading")).toBeInTheDocument();
     expect(within(table).getByText("Invite")).toBeInTheDocument();
-    expect(within(table).getByText("milestone")).toBeInTheDocument();
+    // Source lạ: nguyên chuỗi, viết hoa chữ đầu.
+    expect(within(table).getByText("Milestone")).toBeInTheDocument();
     expect(screen.getByText("27 · newest first")).toBeInTheDocument();
     expect(
       screen.getByText("Vouchers and other items that aren't Blind Boxes show only on SoDEX."),

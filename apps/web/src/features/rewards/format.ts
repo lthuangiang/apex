@@ -26,14 +26,11 @@ export function formatCount(value: NumLike | null | undefined): string | null {
   return d === null ? null : formatDecimal(d, { locale: LOCALE, maximumFractionDigits: 2 });
 }
 
-/** Khối lượng: "$84,300" ([confirm] đơn vị; bản phác đã duyệt hiện USD). */
-export function formatVolume(value: NumLike | null | undefined): string | null {
-  const text = formatCount(value);
-  return text === null ? null : `$${text}`;
-}
-
-/** Giá trị USD của phần thưởng (`rewardUsd`): "$110.89". */
-export function formatUsd(value: string | null | undefined): string | null {
+/**
+ * Một cách hiện USD cho mọi chỗ trong Rewards (khối lượng tuần, giá trị phần thưởng, tổng kết, history): luôn 2 chữ số
+ * thập phân, kể cả số nguyên và 0 ("$84,300.00", "$0.00"), khớp trang SoDEX và bản phác (PM review #574).
+ */
+export function formatUsdAmount(value: NumLike | null | undefined): string | null {
   const d = decimalOf(value);
   if (d === null) return null;
   const text = formatDecimal(d, {
@@ -42,6 +39,56 @@ export function formatUsd(value: string | null | undefined): string | null {
     maximumFractionDigits: 2,
   });
   return text === null ? null : `$${text}`;
+}
+
+/** Khối lượng tuần (USD, dữ liệu thật). */
+export function formatVolume(value: NumLike | null | undefined): string | null {
+  return formatUsdAmount(value);
+}
+
+/** Giá trị USD của phần thưởng (`rewardUsd`). */
+export function formatUsd(value: string | null | undefined): string | null {
+  return formatUsdAmount(value);
+}
+
+export type WeekState = "confirmed" | "live" | "snapshot" | "unknown";
+
+/**
+ * Trạng thái điểm của một tuần (đối chiếu trang SoPoints của SoDEX, PM 2026-11-26): `isLive` → đang chạy ("In progress");
+ * đã kết thúc mà `pointsStatus` khác CONFIRMED → đã chụp, chưa chốt ("Snapshot done"); CONFIRMED → điểm đã chốt (kể cả 0
+ * thật). Tới khi biết giá trị thật, mọi `pointsStatus` khác CONFIRMED đều coi là chưa chốt. Không có `pointsStatus` và
+ * không live → "unknown" (hiện số SoDEX trả nếu có).
+ */
+export function weekState(row: {
+  isLive?: boolean | null | undefined;
+  pointsStatus?: string | null | undefined;
+}): WeekState {
+  if (row.isLive === true) return "live";
+  const st = row.pointsStatus;
+  if (st == null || st === "") return "unknown";
+  return st.toUpperCase() === "CONFIRMED" ? "confirmed" : "snapshot";
+}
+
+/** Điểm hiện được của một tuần: tuần chưa chốt (live / snapshot) không có số (quy tắc 8). */
+export function weekPoints(row: {
+  points?: NumLike | null | undefined;
+  isLive?: boolean | null | undefined;
+  pointsStatus?: string | null | undefined;
+}): { state: WeekState; text: string | null; hide: boolean } {
+  const state = weekState(row);
+  if (state === "live" || state === "snapshot") return { state, text: null, hide: true };
+  return { state, text: formatCount(row.points), hide: false };
+}
+
+/** Hạng: 0 hoặc thiếu là chưa có hạng → null (bảng tuần hiện "–" mờ). */
+export function formatRank(value: NumLike | null | undefined): string | null {
+  const d = decimalOf(value);
+  return d === null || dec(d).isZero() ? null : formatCount(d);
+}
+
+/** Giá trị lạ chưa có nhãn duyệt: hiện nguyên chuỗi SoDEX trả, viết hoa chữ đầu ("manual" → "Manual"). */
+export function capitalizeRaw(v: string): string {
+  return v.length === 0 ? v : v.charAt(0).toUpperCase() + v.slice(1);
 }
 
 /** Số lượng token phần thưởng: giữ tối đa 4 chữ số thập phân như bản phác ("0.9945 vANT"). */
