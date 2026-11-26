@@ -311,15 +311,18 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "80");
     expect(screen.getByText("1,284")).toBeInTheDocument();
     expect(screen.getByText("of 38,902")).toBeInTheDocument();
-    expect(await screen.findByText("SoPoints shared this week")).toBeInTheDocument();
-    // Weekly performance: tuần mới nhất trước; CONFIRMED → Confirmed, giá trị khác → Not final.
+    expect(await screen.findByText("Weekly pool · from SoDEX")).toBeInTheDocument();
+    expect(screen.queryByText("SoPoints shared this week")).toBeNull();
+    // Weekly performance: tuần mới nhất trước; isLive → In progress (không số), CONFIRMED → Confirmed + số.
     const table = await screen.findByRole("table");
     const rows = within(table).getAllByRole("row").slice(1);
     expect(
       rows.map((r) => within(r).getAllByRole("cell")[0]?.querySelector("b")?.textContent),
     ).toEqual(["Week 13", "Week 12"]);
-    expect(within(at(rows, 0)).getByText("Not final")).toBeInTheDocument();
+    expect(within(at(rows, 0)).getByText("In progress")).toBeInTheDocument();
+    expect(within(at(rows, 0)).queryByText("2,140")).toBeNull();
     expect(within(at(rows, 1)).getByText("Confirmed")).toBeInTheDocument();
+    expect(within(at(rows, 1)).getByText("3,420")).toBeInTheDocument();
     expect(within(at(rows, 0)).getByText("$84,300")).toBeInTheDocument();
     // Tuần đang chạy theo isLive; không hiện số squad (team*, totalBonusPct).
     expect(within(at(rows, 0)).getByText("LIVE")).toBeInTheDocument();
@@ -404,9 +407,74 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(await screen.findByText("1,200")).toBeInTheDocument();
     const table = await screen.findByRole("table");
     const cells = within(at(within(table).getAllByRole("row"), 1)).getAllByRole("cell");
-    for (const c of cells.slice(1)) expect(c).toHaveTextContent("Not available");
-    expect(screen.getAllByText("Not available").length).toBeGreaterThan(4);
+    // Points / volume thiếu → "Not available"; rank thiếu → "–" mờ.
+    expect(cells[1]).toHaveTextContent("Not available");
+    expect(cells[2]).toHaveTextContent("–");
+    expect(cells[3]).toHaveTextContent("Not available");
+    expect(cells[4]).toHaveTextContent("Not available");
     expect(screen.queryByText("0")).toBeNull();
+  });
+
+  it("unconfirmed weeks hide SoDEX's 0 points / 0 rank; a CONFIRMED 0 is a real 0; volume has 2 decimals", async () => {
+    const week = (n: number, extra: Record<string, unknown>) => ({
+      weekNo: n,
+      weekName: `Week ${String(n)}`,
+      weekStartTime: 1763942400 - (13 - n) * 604800,
+      weekEndTime: 1764547200 - (13 - n) * 604800,
+      ...extra,
+    });
+    gateway({
+      "sopoints/week/list": {
+        body: {
+          code: 0,
+          data: [
+            week(13, {
+              isLive: true,
+              points: 0,
+              rank: 0,
+              pointsStatus: "PENDING",
+              spotVolume: 7.65,
+              futuresVolume: 95954.95,
+            }),
+            week(12, {
+              isLive: false,
+              points: 0,
+              rank: 0,
+              pointsStatus: "SNAPSHOT",
+              spotVolume: 0,
+              futuresVolume: 296474.7,
+            }),
+            week(11, {
+              isLive: false,
+              points: 0,
+              rank: 900,
+              pointsStatus: "CONFIRMED",
+              spotVolume: 459.96,
+              futuresVolume: 6.48,
+            }),
+          ],
+        },
+      },
+    });
+    show();
+    const table = await screen.findByRole("table");
+    const rows = within(table).getAllByRole("row").slice(1);
+    const cells = (i: number) => within(at(rows, i)).getAllByRole("cell");
+    // Week 13 (live): chỉ chip In progress, rank "–".
+    expect(cells(0)[1]).toHaveTextContent(/^In progress$/);
+    expect(cells(0)[2]).toHaveTextContent(/^–$/);
+    expect(cells(0)[3]).toHaveTextContent("$7.65");
+    expect(cells(0)[4]).toHaveTextContent("$95,954.95");
+    // Week 12 (đã chụp, chưa chốt): chỉ chip Snapshot done.
+    expect(cells(1)[1]).toHaveTextContent(/^Snapshot done$/);
+    expect(cells(1)[2]).toHaveTextContent(/^–$/);
+    expect(cells(1)[3]).toHaveTextContent(/^\$0$/);
+    expect(cells(1)[4]).toHaveTextContent("$296,474.70");
+    // Week 11 CONFIRMED: 0 thật vẫn hiện.
+    expect(cells(2)[1]).toHaveTextContent(/^0\s*Confirmed$/);
+    expect(cells(2)[2]).toHaveTextContent("900");
+    expect(cells(2)[3]).toHaveTextContent("$459.96");
+    expect(cells(2)[4]).toHaveTextContent("$6.48");
   });
 
   it("no weeks yet: empty state", async () => {

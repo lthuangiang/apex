@@ -203,6 +203,20 @@ function ProbeCard({ result: r }: { result: ProbeResult }) {
           {r.sodexMessage === null ? "" : ` · ${tr("errors.said")} “${r.sodexMessage}”`}
         </p>
       )}
+      {r.enums === null ? null : (
+        <div className="flex flex-col gap-1">
+          <p className="m-0 text-xs font-bold tracking-wide text-muted uppercase">
+            {t("valuesSeen")}
+          </p>
+          <ul className="m-0 pl-5 font-mono text-xs text-ink-2">
+            {r.enums.map((e) => (
+              <li key={e.field}>
+                {e.field}: {e.values.join(" | ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {r.rows === null ? null : <FieldTable rows={r.rows} />}
     </Card>
   );

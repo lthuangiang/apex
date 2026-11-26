@@ -15,6 +15,7 @@ import {
   formatCoefficient,
   formatCount,
   formatDayTime,
+  weekPoints,
   secToMs,
   sortByCoefficient,
 } from "../format";
@@ -38,7 +39,7 @@ import { Value, WeekStatusPill } from "./public-cards";
 import { ReceivedPopup } from "./received-popup";
 import { Banner, MismatchBanner } from "./rewards-states";
 import { Spinner, useRewardsSignIn } from "./sign-in-hero";
-import { PointsStatus, useTierText } from "./sopoints-tab";
+import { WeekChip, useTierText } from "./sopoints-tab";
 import { WatchPausedNote } from "./watch-ui";
 
 // Thẻ SoDEX rewards trên Overview (phương án B, bản phác 02–06; DEC-397, #549): thay thẻ Trading Agent khi công tắc
@@ -503,6 +504,8 @@ function SignedCard({ auth, data }: { auth: Auth; data: CardData }) {
       : weekList.data?.find((r) => r.weekNo === week.data.weekNo));
   const next =
     week.data === undefined ? null : formatDayTime(secToMs(week.data.distributionTime), tz);
+  // Tuần chưa chốt (In progress / Snapshot done): chỉ chip, không số (quy tắc 8).
+  const thisWeek = current === undefined ? null : weekPoints(current);
   return (
     <Shell>
       <BotBox
@@ -553,8 +556,14 @@ function SignedCard({ auth, data }: { auth: Auth; data: CardData }) {
               <Value text={formatCount(boxes.data?.total)} />
             </Row>
             <Row label={t("thisWeek")}>
-              <Value text={formatCount(current?.points)} />
-              {current === undefined ? null : <PointsStatus status={current.pointsStatus} />}
+              {thisWeek === null ? (
+                <Value text={null} />
+              ) : (
+                <>
+                  {thisWeek.hide ? null : <Value text={thisWeek.text} />}
+                  <WeekChip state={thisWeek.state} />
+                </>
+              )}
             </Row>
             <Row label={tr("week.next")}>
               <Value text={next} />
