@@ -73,6 +73,49 @@ describe("jwtClaimRows", () => {
     expect(JSON.stringify(rows)).not.toContain("0xabc");
   });
 
+  it("shows aud (array) and iss values, keeps sub / sid / jti hidden (#558)", () => {
+    const token = `${b64url({ alg: "none" })}.${b64url({
+      sub: "user-1",
+      sid: "session-1",
+      jti: "jti-1",
+      aud: ["rewards", "lottery"],
+      iss: "sodex-gateway",
+      exp: 1796000000,
+    })}.sig`;
+    const rows = jwtClaimRows(token);
+    const by = Object.fromEntries((rows ?? []).map((r) => [r.path, r]));
+    expect(by.aud).toMatchObject({ hidden: false, sample: "rewards, lottery", types: ["array"] });
+    expect(by.iss).toMatchObject({ hidden: false, sample: "sodex-gateway", types: ["string"] });
+    for (const k of ["sub", "sid", "jti"])
+      expect(by[k]).toMatchObject({ hidden: true, sample: null });
+    const text = JSON.stringify(rows);
+    for (const secret of ["user-1", "session-1", "jti-1", token])
+      expect(text).not.toContain(secret);
+  });
+
+  it("shows a string aud", () => {
+    const token = `${b64url({ alg: "none" })}.${b64url({ aud: "rewards" })}.sig`;
+    expect(jwtClaimRows(token)?.[0]).toMatchObject({
+      path: "aud",
+      sample: "rewards",
+      hidden: false,
+    });
+  });
+
+  it("hides aud / iss that contain a wallet address or are not strings", () => {
+    // Địa chỉ giả, không phải ví của ai.
+    const addr = "0x0000000000000000000000000000000000000001";
+    const token = `${b64url({ alg: "none" })}.${b64url({
+      aud: ["rewards", `wallet:${addr}`],
+      iss: { name: "x" },
+    })}.sig`;
+    const rows = jwtClaimRows(token);
+    const by = Object.fromEntries((rows ?? []).map((r) => [r.path, r]));
+    expect(by.aud).toMatchObject({ hidden: true, sample: null });
+    expect(by.iss).toMatchObject({ hidden: true, sample: null });
+    expect(JSON.stringify(rows)).not.toContain(addr);
+  });
+
   it("returns null for a token that is not a JWT", () => {
     expect(jwtClaimRows("opaque")).toBeNull();
     expect(jwtClaimRows(null)).toBeNull();

@@ -125,6 +125,29 @@ export function describeShape(value: unknown, opts: { groupBy?: string } = {}): 
 /** Claim thời gian của JWT được hiện giá trị (để biết hạn token); claim khác chỉ hiện kiểu. */
 const TIME_CLAIMS = new Set(["exp", "iat", "nbf"]);
 
+/**
+ * Claim phạm vi `aud` / `iss` (#558): hiện giá trị để biết token dùng được cho gì (không bí mật). Chỉ chuỗi hoặc mảng
+ * chuỗi; giá trị có địa chỉ ví (quy tắc theo giá trị của #555) hay kiểu khác thì vẫn chỉ hiện kiểu.
+ */
+const SCOPE_CLAIMS = new Set(["aud", "iss"]);
+const MAX_SCOPE_SAMPLE = 200;
+
+function scopeSample(v: unknown): string | null {
+  const values = typeof v === "string" ? [v] : Array.isArray(v) ? v : null;
+  if (values === null || values.length === 0) return null;
+  if (!values.every((x): x is string => typeof x === "string")) return null;
+  if (values.some(looksLikeAddress)) return null;
+  const text = values.join(", ");
+  return text.length > MAX_SCOPE_SAMPLE ? `${text.slice(0, MAX_SCOPE_SAMPLE)}…` : text;
+}
+
+function claimSample(k: string, v: unknown): string | null {
+  if (TIME_CLAIMS.has(k) && typeof v === "number")
+    return `${String(v)} (${new Date(v * 1000).toISOString()})`;
+  if (SCOPE_CLAIMS.has(k)) return scopeSample(v);
+  return null;
+}
+
 function base64UrlDecode(part: string): string {
   const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
   const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
@@ -135,7 +158,7 @@ function base64UrlDecode(part: string): string {
 
 /**
  * Tên claim và kiểu trong payload JWT (không kiểm chữ ký; chỉ để chẩn đoán). Không bao giờ trả token hay giá trị của
- * claim khác `exp` / `iat` / `nbf`. Token không phải JWT → null.
+ * claim khác `exp` / `iat` / `nbf` / `aud` / `iss` (`sub`, `sid`, `jti`… chỉ hiện kiểu). Token không phải JWT → null.
  */
 export function jwtClaimRows(token: string | null): FieldRow[] | null {
   if (token === null) return null;
@@ -149,8 +172,7 @@ export function jwtClaimRows(token: string | null): FieldRow[] | null {
   }
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
   return Object.entries(payload as Record<string, unknown>).map(([k, v]) => {
-    const show = TIME_CLAIMS.has(k) && typeof v === "number";
-    const sample = show ? `${String(v)} (${new Date(v * 1000).toISOString()})` : null;
+    const sample = claimSample(k, v);
     const type =
       v === null
         ? "null"
@@ -159,6 +181,6 @@ export function jwtClaimRows(token: string | null): FieldRow[] | null {
           : typeof v === "number"
             ? numberType(v)
             : typeof v;
-    return { path: pathKey(k), types: [type], sample, hidden: !show };
+    return { path: pathKey(k), types: [type], sample, hidden: sample === null };
   });
 }
