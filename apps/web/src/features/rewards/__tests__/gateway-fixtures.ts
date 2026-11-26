@@ -249,6 +249,18 @@ export const fixtures = {
   }),
   pfps: ok({ total: 0, pfps: [], won: [] }),
   nonce: ok({ message: "Sign in to SoDEX rewards: nonce 1" }),
+  // Contract giả của test (không phải contract thật); khớp `verifyingContract` của sign-params giả.
+  meta: ok({
+    contracts: {
+      treasureBox: "0x00000000000000000000000000000000000000AA",
+      distribute: "0x00000000000000000000000000000000000000bb",
+      pfp: "0x00000000000000000000000000000000000000cc",
+    },
+    rules: {
+      mergeSize: { Common: 10, Uncommon: 10, Rare: 4, SuperRare: 0 },
+      limits: { maxTreasureOpen: 100, maxBoxOpen: 30 },
+    },
+  }),
 };
 
 export type Route =
@@ -265,6 +277,7 @@ export type Route =
   | "lottery/draw/entries"
   | "lottery/pfps"
   | "cybereator/profile/2051"
+  | "lottery/meta"
   | "auth/nonce";
 
 export function defaultRoutes(): Record<Route, Reply> {
@@ -282,6 +295,7 @@ export function defaultRoutes(): Record<Route, Reply> {
     "lottery/draw/entries": fixtures.draw,
     "lottery/pfps": fixtures.pfps,
     "cybereator/profile/2051": { body: { id: 2051, stage: "unopened" } },
+    "lottery/meta": fixtures.meta,
     "auth/nonce": fixtures.nonce,
   };
 }

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   boxTypedData,
+  contractMatches,
   busyTokenIds,
   findActiveJob,
   inProgressJobId,
@@ -175,6 +176,18 @@ describe("postAction (rule 7: never resend an unknown outcome)", () => {
       }).fn,
     );
     expect(await postAction(authed, "lottery/box/open", {})).toEqual({ kind: "busy" });
+  });
+});
+
+describe("contractMatches", () => {
+  it("pins verifyingContract to meta treasureBox, case-insensitive; missing or odd → false", () => {
+    const a = "0x00000000000000000000000000000000000000aa";
+    expect(contractMatches(a, a.toUpperCase().replace("0X", "0x"))).toBe(true);
+    expect(contractMatches(a, "0x00000000000000000000000000000000000000ab")).toBe(false);
+    expect(contractMatches(a, null)).toBe(false);
+    expect(contractMatches(a, undefined)).toBe(false);
+    expect(contractMatches(a, "")).toBe(false);
+    expect(contractMatches("nope", "nope")).toBe(false);
   });
 });
 

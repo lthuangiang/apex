@@ -94,6 +94,23 @@ export function boxTypedData(
   };
 }
 
+/**
+ * Ghim contract trước khi ký (PM review #564): `sign-params.verifyingContract` phải đúng `lottery/meta`
+ * `contracts.treasureBox` (không phân biệt hoa thường). Thiếu một trong hai hoặc không phải địa chỉ → không ký.
+ */
+export function contractMatches(
+  verifyingContract: string,
+  treasureBox: string | null | undefined,
+): boolean {
+  const addr = /^0x[0-9a-fA-F]{40}$/;
+  return (
+    treasureBox != null &&
+    addr.test(treasureBox) &&
+    addr.test(verifyingContract) &&
+    treasureBox.toLowerCase() === verifyingContract.toLowerCase()
+  );
+}
+
 /** "previous … still in progress (job N)" của SoDEX → N. */
 export function inProgressJobId(message: string | null): number | null {
   if (message === null) return null;

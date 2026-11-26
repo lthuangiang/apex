@@ -1,6 +1,11 @@
 "use client";
 
-import { lotterySignParamsSchema, sameWallet, type LotteryJob } from "@drift/shared";
+import {
+  lotteryMetaSchema,
+  lotterySignParamsSchema,
+  sameWallet,
+  type LotteryJob,
+} from "@drift/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useSyncExternalStore } from "react";
 import { UserRejectedRequestError } from "viem";
@@ -27,8 +32,15 @@ import {
   type Flow,
   type Pick,
 } from "./action-store";
-import { actionOfJob, boxTypedData, findActiveJob, postAction, type PostOutcome } from "./actions";
-import { RewardsError } from "./client";
+import {
+  actionOfJob,
+  boxTypedData,
+  contractMatches,
+  findActiveJob,
+  postAction,
+  type PostOutcome,
+} from "./actions";
+import { RewardsError, rewardsRequest } from "./client";
 import { REWARDS_KEY, type RewardsSession } from "./queries";
 
 // Điều khiển popup Claim / Open / Merge (#551). Claim chỉ cần JWT; open / merge: sign-params mới → ví ký EIP-712 (chuyển
@@ -186,6 +198,26 @@ export function useBoxActions(auth: Auth) {
       setFlow({ step: "error", reason: "rejected", said: null, ...pick });
       return;
     }
+    // Ghim contract: verifyingContract phải là contract TreasureBox SoDEX công bố ở `lottery/meta`. Không đọc được meta
+    // hoặc khác nhau thì không ký.
+    let treasureBox: string | null | undefined = null;
+    try {
+      const meta = await qc.query({
+        queryKey: [...REWARDS_KEY, "public", "meta"],
+        queryFn: ({ signal }) =>
+          rewardsRequest({ path: "lottery/meta", schema: lotteryMetaSchema, signal }),
+        staleTime: 5 * 60_000,
+        retry: false,
+      });
+      treasureBox = meta.contracts?.treasureBox;
+    } catch {
+      treasureBox = null;
+    }
+    if (actionToken() !== my) return;
+    if (!contractMatches(params.verifyingContract, treasureBox)) {
+      setFlow({ step: "error", reason: "rejected", said: null, ...pick });
+      return;
+    }
     let signature: string;
     try {
       if (getConnection(config).chainId !== valueChain.id)
@@ -209,7 +241,7 @@ export function useBoxActions(auth: Auth) {
         signature,
       }),
     );
-  }, [authed, config, handle, master, setFlow, signTypedDataAsync, switchChainAsync]);
+  }, [authed, config, handle, master, qc, setFlow, signTypedDataAsync, switchChainAsync]);
 
   /** Chọn ví ở bước picker rồi ký tiếp (người dùng đã bấm ký). */
   const pickWallet = useCallback(

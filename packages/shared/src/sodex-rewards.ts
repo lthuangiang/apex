@@ -127,6 +127,14 @@ export const sopointsVolumeWeightsSchema = z.object({
 // Lottery (Blind Boxes; tài liệu SoDEX gọi Treasure Boxes)
 
 export const lotteryMetaSchema = z.object({
+  /** Contract của chương trình (dữ liệu thật): `treasureBox` dùng để ghim `verifyingContract` trước khi ký (#551). */
+  contracts: z
+    .object({
+      treasureBox: z.string().nullish(),
+      distribute: z.string().nullish(),
+      pfp: z.string().nullish(),
+    })
+    .nullish(),
   rewardTokens: z
     .array(z.object({ asset: rewardAssetSchema, destination: z.string().optional() }))
     .optional(),

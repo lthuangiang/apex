@@ -276,6 +276,47 @@ describe("Open (mockup 16)", () => {
     );
   });
 
+  it("signs only when verifyingContract matches lottery/meta contracts.treasureBox (any case)", async () => {
+    gateway({
+      "lottery/box/sign-params": SIGN,
+      "lottery/box/open": ok({ jobId: 62, kind: "open", status: "submitting" }),
+      "lottery/job/62": jobRoute({ jobId: 62, kind: "open" }, ["pending"]),
+    });
+    const user = userEvent.setup();
+    show();
+    await openCommon(user, 1);
+    await user.click(await screen.findByRole("button", { name: "Sign and open" }));
+    expect(await screen.findByText("Job #62")).toBeInTheDocument();
+    expect(signTyped).toHaveBeenCalledTimes(1);
+  });
+
+  for (const [name, meta] of [
+    [
+      "a different contract",
+      ok({
+        contracts: { treasureBox: "0x00000000000000000000000000000000000000ff" },
+        rules: { mergeSize: {}, limits: { maxTreasureOpen: 1, maxBoxOpen: 1 } },
+      }),
+    ],
+    [
+      "no treasureBox in meta",
+      ok({ rules: { mergeSize: {}, limits: { maxTreasureOpen: 1, maxBoxOpen: 1 } } }),
+    ],
+    ["meta unreachable", "network"],
+  ] as const) {
+    it(`does not sign or send with ${name}`, async () => {
+      gateway({ "lottery/box/sign-params": SIGN, "lottery/meta": meta });
+      const user = userEvent.setup();
+      show();
+      await openCommon(user, 1);
+      await user.click(await screen.findByRole("button", { name: "Sign and open" }));
+      expect(await screen.findByRole("dialog", { name: "Open failed" })).toBeInTheDocument();
+      expect(screen.getByText("SoDEX couldn't do that.")).toBeInTheDocument();
+      expect(signTyped).not.toHaveBeenCalled();
+      expect(posts("lottery/box/open")).toHaveLength(0);
+    });
+  }
+
   it("wallet rejection goes back to confirm, nothing sent", async () => {
     signTyped.mockImplementationOnce(() =>
       Promise.reject(
