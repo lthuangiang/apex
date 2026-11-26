@@ -2905,7 +2905,14 @@
     "signalAnalysis.research.live.batch",
     "rewards.multipliers.empty",
     "rewards.feed.empty",
-    "rewards.summary.nextOnly"
+    "rewards.summary.nextOnly",
+    "rewards.card.rank",
+    "rewards.card.job.openingAny",
+    "rewards.card.job.merging",
+    "rewards.card.job.claiming",
+    "rewards.card.job.claimingAny",
+    "rewards.card.job.other",
+    "rewards.card.job.submitting"
   ],
   "beta": {
     "label": "Beta",
@@ -10150,6 +10157,35 @@
       "range": "{start} – {end}",
       "emptyTitle": "No weekly points yet",
       "emptyBody": "Weeks appear after SoDEX takes its weekly snapshot."
+    },
+    "card": {
+      "title": "SoDEX rewards",
+      "from": "From SoDEX",
+      "weeklyPool": "Weekly pool {points} SoPoints",
+      "multiplier": "Volume multiplier",
+      "more": "+{count} more",
+      "signTitle": "Sign in to see your points and boxes",
+      "signBody": "One signature, no gas. It can't trade, withdraw or transfer.",
+      "goToRewards": "Go to Rewards →",
+      "points": "SoPoints",
+      "rankOf": "Rank {rank} of {total}",
+      "rank": "Rank {rank}",
+      "toClaim": "Blind Boxes to claim",
+      "backpack": "Boxes in backpack",
+      "thisWeek": "This week",
+      "open": "Open Rewards",
+      "job": {
+        "opening": "Opening {count} boxes…",
+        "openingAny": "Opening boxes…",
+        "merging": "Merging boxes…",
+        "claiming": "Claiming {count} boxes…",
+        "claimingAny": "Claiming boxes…",
+        "other": "SoDEX is working on a job…",
+        "pending": "Job #{id} · recording on-chain",
+        "submitting": "Job #{id} · sent to SoDEX",
+        "more": "+{count} more",
+        "view": "View"
+      }
     }
   },
   "rewardsDebug": {

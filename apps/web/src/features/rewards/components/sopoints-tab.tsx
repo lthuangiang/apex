@@ -42,7 +42,7 @@ export function nextTierPointsIsThreshold(): boolean {
 }
 
 /** Tier của SoDEX: số (hoặc chuỗi số) thì "Tier 3"; chuỗi tên thì hiện nguyên. */
-function useTierText(): (v: NumLike | null | undefined) => string | null {
+export function useTierText(): (v: NumLike | null | undefined) => string | null {
   const t = useTranslations("rewards.summary");
   return (v) => {
     if (v === null || v === undefined || v === "") return null;
@@ -225,7 +225,7 @@ function SummaryHero({ session, tz }: { session: RewardsSession; tz: string }) {
   );
 }
 
-function PointsStatus({ status }: { status: string | null | undefined }) {
+export function PointsStatus({ status }: { status: string | null | undefined }) {
   const t = useTranslations("rewards.performance");
   if (status === null || status === undefined || status === "") return null;
   // `CONFIRMED` = điểm đã chốt; giá trị khác ([confirm]) coi là chưa chốt.
