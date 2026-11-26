@@ -2906,12 +2906,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "notifications.types.rewards_week_snapshot",
-    "notifications.types.rewards_week_points",
-    "notifications.panel.rewards.weekPointsNoNumber",
-    "notifications.panel.rewards.weekFallback",
-    "notifications.panel.rewards.rank"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
