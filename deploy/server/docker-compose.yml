@@ -120,6 +120,8 @@ services:
       REWARDS_ENABLED: ${REWARDS_ENABLED:-false}
       # #558 / DEC-398: báo box mới SoDEX rewards; cùng giá trị cho api và scheduler. Mặc định tắt (DEPLOY 2.23).
       REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}
+      # #558 / DEC-398: aud được phép của JWT rewards (chỉ api); trống = từ chối mọi token (DEPLOY 2.23).
+      REWARDS_JWT_AUD_ALLOW: ${REWARDS_JWT_AUD_ALLOW:-}
     depends_on:
       <<: *app-deps
       signer: { condition: service_healthy }

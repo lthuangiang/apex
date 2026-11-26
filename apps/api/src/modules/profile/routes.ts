@@ -25,6 +25,7 @@ import { AuditAction, audit } from "../../lib/audit";
 import { parseOrThrow } from "../../lib/http";
 import { idempotent } from "../../lib/idempotency";
 import { clearSessionCookie, requireAuth } from "../../plugins/session";
+import { removeRewardsWatch } from "../rewards-watch/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
 
 // Settings › Trading defaults / Profile (SCREENS.md mục 8.5, DEC-42): tuỳ chọn hiển thị, xuất CSV, xoá tài khoản.
@@ -186,6 +187,8 @@ export function registerProfileRoutes(
       // Xoá tài khoản thì xoá cả kết nối Telegram và token (docs/NOTIFICATIONS.md mục 8).
       await tx.delete(telegramLinks).where(eq(telegramLinks.userId, auth.userId));
       await tx.delete(telegramLinkTokens).where(eq(telegramLinkTokens.userId, auth.userId));
+      // #558 (DEC-398): xoá phiên rewards lưu ở server (FK `rewards_watch.user_id` không cascade).
+      await removeRewardsWatch(tx, auth.userId, "account_deleted", request.ip);
     });
     await audit(db, {
       userId: auth.userId,

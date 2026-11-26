@@ -58,6 +58,24 @@ const envSchema = z.object({
    * báo cờ, route `rewards/watch` (PR3) đọc cờ này. Cùng giá trị với scheduler.
    */
   REWARDS_WATCH_ENABLED: z.stringbool().default(false),
+  /**
+   * #558 (DEC-398): giá trị `aud` của JWT rewards được phép lưu ở server, cách nhau bằng dấu phẩy. Mọi giá trị `aud` của
+   * token phải nằm trong danh sách. Trống (mặc định) = từ chối mọi token: PM đặt sau khi xem `aud` trên
+   * `/admin/rewards-debug`; `aud` cho thấy token dùng được cho giao dịch thì không đặt.
+   */
+  REWARDS_JWT_AUD_ALLOW: z
+    .string()
+    .default("")
+    .transform((v) =>
+      v
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s !== ""),
+    ),
+  /** #558: trần riêng weight / phút của lời gọi gateway rewards từ server (bucket `rl:sodex:rewards:<egress>`). */
+  REWARDS_WATCH_MAX_WEIGHT_PER_MIN: z.coerce.number().int().positive().default(120),
+  /** #558: origin gateway rewards cho server (trống = mainnet; client chỉ nhận https). */
+  SODEX_REWARDS_GATEWAY: z.string().default(""),
   /** Notifications v2: kênh Telegram (DEC-170). Tắt thì mọi route `/api/v1/telegram/*` trả 404. */
   TELEGRAM_ENABLED: z.stringbool().default(false),
   /** Morning brief qua Telegram (N4): chỉ chạy khi TELEGRAM_ENABLED cũng bật. */

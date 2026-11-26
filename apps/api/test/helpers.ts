@@ -71,6 +71,8 @@ export async function startTestEnv(
     newsBots?: { enabled: boolean };
     /** #547: `REWARDS_ENABLED`, đổi được giữa các test. Thiếu = tắt. */
     rewards?: { enabled: boolean };
+    /** #558: báo box mới SoDEX rewards (reader / signer giả). Thiếu = tắt (route 404). */
+    rewardsWatch?: AppDeps["rewardsWatch"];
   } = {},
 ): Promise<TestEnv> {
   const container = await new PostgreSqlContainer(POSTGRES_IMAGE).start();
@@ -158,6 +160,7 @@ export async function startTestEnv(
     now: () => clock.now,
     ...(options.telegram === undefined ? {} : { telegram: options.telegram }),
     ...(options.oauth === undefined ? {} : { oauth: options.oauth }),
+    ...(options.rewardsWatch === undefined ? {} : { rewardsWatch: options.rewardsWatch }),
     deskLlm: options.deskLlm ?? null,
     logStream: new Writable({
       write(chunk: Buffer, _enc, done) {

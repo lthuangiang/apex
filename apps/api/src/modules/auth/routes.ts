@@ -19,6 +19,7 @@ import { AuditAction } from "../../lib/audit";
 import { parseOrThrow } from "../../lib/http";
 import { idempotent } from "../../lib/idempotency";
 import { clearSessionCookie, requireAuth, setSessionCookie } from "../../plugins/session";
+import { removeRewardsWatch } from "../rewards-watch/service";
 import { enableTwoFactor, listSessions, setupTwoFactor } from "../security/service";
 
 import {
@@ -117,6 +118,9 @@ export function registerAuthRoutes(
       request.ip,
       AuditAction.signOut,
     );
+    // #558 (DEC-398): đăng xuất chủ động thì xoá phiên rewards lưu ở server. Phiên tự hết hạn thì giữ (token có hạn
+    // riêng 15 ngày, mục đích là báo khi người dùng vắng mặt).
+    await removeRewardsWatch(db, auth.userId, "sign_out", request.ip);
     clearSessionCookie(reply, cookieSecure);
     return reply.status(204).send();
   });

@@ -3,6 +3,7 @@ import {
   auditLog,
   builderApprovals,
   outbox,
+  rewardsWatch,
   sodexAccounts,
   sodexSignatureRequests,
   type Db,
@@ -131,6 +132,20 @@ export async function reconcileSignatureRequest(
         .update(sodexAccounts)
         .set({ status: "connected" })
         .where(eq(sodexAccounts.id, account.id));
+      // #558 (DEC-398): đổi ví (kết nối account SoDEX khác) thì xoá phiên rewards của account cũ lưu ở server.
+      const stale = await tx
+        .delete(rewardsWatch)
+        .where(
+          and(eq(rewardsWatch.userId, row.userId), ne(rewardsWatch.sodexAccountId, account.id)),
+        )
+        .returning({ userId: rewardsWatch.userId });
+      if (stale.length > 0)
+        await tx.insert(auditLog).values({
+          userId: row.userId,
+          action: "rewards.watch_disabled",
+          metadata: { reason: "wallet_changed" },
+          ip: null,
+        });
       await tx
         .update(sodexSignatureRequests)
         .set({ status: SignatureRequestStatus.succeeded, resolvedAt: now })
@@ -163,6 +178,8 @@ export async function reconcileSignatureRequest(
           .update(sodexAccounts)
           .set({ status: "disconnected" })
           .where(eq(sodexAccounts.id, account.id));
+        // #558 (DEC-398): key DeskLabs đã bị xoá trên SoDEX: xoá luôn phiên rewards của account này lưu ở server.
+        await tx.delete(rewardsWatch).where(eq(rewardsWatch.sodexAccountId, account.id));
         // Cùng bản ghi như `AuditAction.disconnected` của api.
         await tx.insert(auditLog).values({
           userId: row.userId,

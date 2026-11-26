@@ -3,7 +3,9 @@ import { loadClientTls, createBotApi } from "@drift/runtime";
 import { SR_LANE_KEY, SR_MARKETS_KEY, SR_QUOTES_KEY } from "@drift/shared";
 import {
   createSodexCallRecorder,
+  ipBucket,
   RedisRateLimitStore,
+  RewardsReadClient,
   SignedWriteClient,
   SodexRestClient,
 } from "@drift/sodex";
@@ -14,7 +16,7 @@ import { buildApp } from "./app";
 import { loadApiConfig } from "./config";
 import { smtpMailer } from "./lib/mailer";
 import { httpRecoClient } from "./lib/reco-client";
-import { httpSignerClient } from "./lib/signer-client";
+import { httpRewardsSigner, httpSignerClient } from "./lib/signer-client";
 import { hyperliquidProvider } from "./modules/chart/hyperliquid";
 import { anthropicLlm } from "./modules/desk/llm";
 import { redisRateLimiter } from "./plugins/rate-limit";
@@ -76,6 +78,19 @@ const app = await buildApp({
   newsSignalBotsEnabled: () => config.SIGNAL_NEWS_BOTS_ENABLED,
   // #547 / DEC-397: công tắc toàn hệ thống của SoDEX rewards (mặc định tắt tới #551).
   rewardsEnabled: () => config.REWARDS_ENABLED,
+  // #558 / DEC-398: báo box mới SoDEX rewards (mặc định tắt). Gateway chỉ đọc qua client chỉ đọc dùng chung.
+  rewardsWatch: {
+    enabled: () => config.REWARDS_WATCH_ENABLED,
+    audAllow: config.REWARDS_JWT_AUD_ALLOW,
+    reader: new RewardsReadClient({
+      gateway: config.SODEX_REWARDS_GATEWAY,
+      rateLimit,
+      egressKey: config.SODEX_EGRESS_KEY,
+      ipBucket: ipBucket(config.sodex.restWeightPerMinute),
+      maxWeightPerMinute: config.REWARDS_WATCH_MAX_WEIGHT_PER_MIN,
+    }),
+    signer: httpRewardsSigner(config.SIGNER_URL, loadClientTls(process.env, "SIGNER_CLIENT")),
+  },
   reco: httpRecoClient(config.RECO_URL),
   // `none`: tab Liquidation map ẩn (IMP-05, DEC-92).
   liquidations: config.LIQUIDATION_PROVIDER === "hyperliquid" ? hyperliquidProvider(redis) : null,

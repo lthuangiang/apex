@@ -47,7 +47,8 @@ function build(opts: {
     pool,
     vault: {} as VaultTransit,
     ...(rv === null ? {} : { rewardsVault: rv }),
-    logLevel: "info",
+    // debug: dòng "rewards token decrypted" ở mức debug (#558, review PM); token vẫn không được có trong log.
+    logLevel: "debug",
     logStream,
   });
   return { app, logs, query };
