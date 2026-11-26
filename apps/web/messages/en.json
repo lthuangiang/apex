@@ -2902,7 +2902,8 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch"
+    "signalAnalysis.research.live.batch",
+    "rewards.received.levelCount"
   ],
   "beta": {
     "label": "Beta",
@@ -10354,6 +10355,22 @@
         "checking": "Checking SoDEX…",
         "notFound": "SoDEX shows no running job for it. Your boxes refresh from SoDEX."
       }
+    },
+    "received": {
+      "titleOne": "You received a {level} box",
+      "titleOneNoLevel": "You received a box",
+      "titleMany": "{n, plural, one {You received # box} other {You received # boxes}}",
+      "from": "From",
+      "receivedAt": "Received {time}",
+      "viewBoxes": "View boxes",
+      "findLater": "You can find them later in Blind Boxes › History.",
+      "drawRound": "Weekly draw · Round {round}",
+      "ticket": "Ticket",
+      "prizeOnly": "Weekly draw prize received",
+      "combined": "New boxes in your backpack",
+      "receivedCount": "Received · {n}",
+      "box": "Box",
+      "levelCount": "{n} {level}"
     }
   },
   "rewardsDebug": {
