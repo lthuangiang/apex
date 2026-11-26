@@ -101,6 +101,33 @@ describe("NotificationToasts", () => {
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
+  it("toasts received boxes and draw wins (DEC-398), not claimable boxes or paused alerts", async () => {
+    const s = setup();
+    s.push([]);
+    s.push([
+      item("cl", "rewards_claimable", { count: 3 }),
+      item("pa", "rewards_watch_paused", { reason: "expired" }),
+    ]);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    s.push([
+      item("cl", "rewards_claimable", { count: 3 }),
+      item("pa", "rewards_watch_paused", { reason: "expired" }),
+      item("rc", "rewards_box_received", {
+        count: 2,
+        levels: [
+          { level: "Common", count: 1 },
+          { level: "Uncommon", count: 1 },
+        ],
+      }),
+    ]);
+    expect(await screen.findByText("You received 2 boxes")).toBeInTheDocument();
+    expect(screen.getByText("1 Common, 1 Uncommon · SoDEX rewards")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View boxes" })).toHaveAttribute(
+      "href",
+      "/rewards?tab=boxes",
+    );
+  });
+
   it("does not toast other groups", () => {
     const s = setup();
     s.push([]);

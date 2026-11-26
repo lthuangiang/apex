@@ -104,6 +104,11 @@ export interface AccountDeps extends TwoFactorDeps {
   builderId: bigint;
   /** Account builder được miễn builder fee (DEC-47); false = thu như mọi account (DEC-124). Thiếu = true. */
   builderExempt?: boolean | undefined;
+  /**
+   * #558: user có thấy SoDEX rewards không (`REWARDS_ENABLED` hoặc team, cùng điều kiện với /features.sodexRewards).
+   * Không thấy thì nhóm thông báo `rewards` không có trong Settings và không đổi được. Thiếu = không thấy.
+   */
+  rewardsVisible?: (userId: string) => Promise<boolean>;
 }
 
 /**
@@ -654,11 +659,14 @@ export async function notificationSettingsOf(deps: AccountDeps, userId: string) 
     .where(eq(users.id, userId))
     .limit(1);
   const team = u?.role === UserRole.team;
+  const rewards = (await deps.rewardsVisible?.(userId)) === true;
   return {
-    // Nhóm hệ thống không có trong bảng Settings (DEC-183); nhóm `teamOps` chỉ hiện với role team (DEC-184).
+    // Nhóm hệ thống không có trong bảng Settings (DEC-183); nhóm `teamOps` chỉ hiện với role team (DEC-184); nhóm
+    // `rewards` chỉ hiện với user thấy SoDEX rewards (#558, cùng điều kiện với /features.sodexRewards).
     groups: (Object.keys(NOTIFICATION_GROUPS) as NotificationGroup[])
       .filter((group) => !SYSTEM_GROUPS.includes(group))
       .filter((group) => team || !TEAM_ONLY_GROUPS.includes(group))
+      .filter((group) => rewards || group !== "rewards")
       .map((group) => {
         const alwaysOn = ALWAYS_ON_GROUPS.includes(group);
         const val = (c: NotificationChannel) =>
@@ -690,6 +698,8 @@ export async function setNotification(
     throw new AppError(ErrorCode.validationFailed, "Bot error notifications are always on.");
   if (TEAM_ONLY_GROUPS.includes(group))
     await requireTeam(deps.db, userId, "These notifications are for the DeskLabs team only.");
+  if (group === "rewards" && (await deps.rewardsVisible?.(userId)) !== true)
+    throw new AppError(ErrorCode.forbidden, "SoDEX rewards notifications are not available yet.");
   if (TELEGRAM_ONLY_GROUPS.includes(group) && channel !== "telegram")
     throw new AppError(
       ErrorCode.validationFailed,

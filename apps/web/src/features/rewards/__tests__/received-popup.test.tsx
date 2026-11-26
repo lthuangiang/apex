@@ -29,6 +29,12 @@ const state = vi.hoisted<{
   signer: string | undefined;
 }>(() => ({ master: null, wallet: undefined, signer: undefined }));
 const signMessage = vi.hoisted(() => vi.fn(() => Promise.resolve("0xsig")));
+/** #558: watch phía server (null = tính năng tắt) và thông báo server giả. */
+const srv = vi.hoisted<{
+  watch: unknown;
+  notes: { items: unknown[]; unread: number } | undefined;
+  reads: string[];
+}>(() => ({ watch: null, notes: undefined, reads: [] }));
 const connect = vi.hoisted(() => vi.fn(() => Promise.resolve({})));
 const signTyped = vi.hoisted(() =>
   vi.fn<(td: unknown) => Promise<string>>(() => Promise.resolve("0xsig")),
@@ -48,12 +54,18 @@ vi.mock("@/lib/queries", () => ({
       connection: state.master === null ? null : { address: state.master, status: "connected" },
     },
   }),
-  // #558: thông báo server (nguồn popup khi watch active); api giả trả null = tính năng tắt.
-  useNotifications: () => ({ data: undefined }),
+  // #558: thông báo server (nguồn popup khi watch active).
+  useNotifications: (enabled = true) => ({ data: enabled ? srv.notes : undefined }),
+  NOTIFICATIONS_KEY: ["notifications"],
 }));
 vi.mock("@/lib/api", () => ({
   ApiError: class extends Error {},
-  api: () => Promise.resolve(null),
+  api: (method: string, path: string) => {
+    if (path === "/api/v1/rewards/watch") return Promise.resolve(srv.watch);
+    const read = /^\/api\/v1\/notifications\/([^/]+)\/read$/.exec(path);
+    if (method === "POST" && read?.[1] !== undefined) srv.reads.push(read[1]);
+    return Promise.resolve(null);
+  },
 }));
 vi.mock("wagmi", () => ({
   useConfig: () => ({}),
@@ -131,6 +143,9 @@ function seenAt(ts = SEEN_AT, drawRounds: number[] = []) {
 }
 
 beforeEach(() => {
+  srv.watch = null;
+  srv.notes = undefined;
+  srv.reads = [];
   sessionStorage.clear();
   localStorage.clear();
   state.master = MASTER;
@@ -324,5 +339,63 @@ describe("other tabs and the action popup", () => {
     expect(
       await screen.findByRole("dialog", { name: "You received a Common box" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("server alerts as the event source (#558, watch active)", () => {
+  const ACTIVE = {
+    status: "active",
+    reason: null,
+    expiresAt: "2026-12-11T07:02:00.000Z",
+    lastCheckedAt: null,
+    delayed: false,
+  };
+  const note = (id: string, type: string, readAt: string | null = null) => ({
+    id,
+    type,
+    data: { count: 1, levels: [] },
+    createdAt: "2026-11-26T08:00:00Z",
+    readAt,
+  });
+
+  it("no unread server alert: no popup even with new ledger rows (another device already showed them)", async () => {
+    srv.watch = ACTIVE;
+    srv.notes = { items: [note("n1", "rewards_box_received", "2026-11-26T08:05:00Z")], unread: 0 };
+    seenAt();
+    gateway({ "lottery/ledger": ledger([recv(0)]), "lottery/draw/entries": noDraw });
+    show();
+    await new Promise((r) => setTimeout(r, 80));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("unread server alert: popup from the ledger rows; closing marks the server alerts read", async () => {
+    srv.watch = ACTIVE;
+    srv.notes = {
+      items: [note("n2", "rewards_box_received"), note("n3", "rewards_claimable")],
+      unread: 2,
+    };
+    seenAt();
+    gateway({ "lottery/ledger": ledger([recv(0)]), "lottery/draw/entries": noDraw });
+    const user = userEvent.setup();
+    show();
+    const dialog = await screen.findByRole("dialog", { name: "You received a Common box" });
+    const close = within(dialog).getAllByRole("button", { name: "Close" }).at(-1);
+    if (close === undefined) throw new Error("no Close");
+    await user.click(close);
+    await waitFor(() => {
+      expect(srv.reads).toEqual(["n2"]);
+    });
+    expect(readSeen(MASTER)?.ledgerTsMs).toBe(SEEN_AT + 1000);
+  });
+
+  it("watch off or paused: falls back to the localStorage mark", async () => {
+    srv.watch = { ...ACTIVE, status: "paused", reason: "expired" };
+    seenAt();
+    gateway({ "lottery/ledger": ledger([recv(0)]), "lottery/draw/entries": noDraw });
+    show();
+    expect(
+      await screen.findByRole("dialog", { name: "You received a Common box" }),
+    ).toBeInTheDocument();
+    expect(srv.reads).toEqual([]);
   });
 });

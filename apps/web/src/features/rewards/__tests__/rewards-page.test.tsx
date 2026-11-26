@@ -71,6 +71,7 @@ vi.mock("@/lib/queries", () => ({
   }),
   // #558: thông báo server (nguồn popup khi watch active); api giả trả null = tính năng tắt.
   useNotifications: () => ({ data: undefined }),
+  NOTIFICATIONS_KEY: ["notifications"],
 }));
 vi.mock("@/lib/api", () => ({
   ApiError: class extends Error {},

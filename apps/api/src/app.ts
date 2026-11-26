@@ -15,7 +15,6 @@ import {
   adaptiveDcaOn,
   aiDeskOn,
   listBots,
-  isTeamUser,
   signalResearchOn,
   volumeBotsOn,
 } from "./modules/bots/service";
@@ -37,6 +36,7 @@ import { registerPublicRoutes } from "./modules/public/routes";
 import { registerRecoRoutes } from "./modules/reco/routes";
 import { registerRewardsWatchRoutes } from "./modules/rewards-watch/routes";
 import type { RewardsWatchDeps } from "./modules/rewards-watch/service";
+import { rewardsVisibleTo } from "./modules/rewards-watch/visibility";
 import { registerSignalAnalysisRoutes } from "./modules/signal-analysis/routes";
 import { registerSignalResearchRoutes } from "./modules/signal-research/routes";
 import { registerSodexRoutes } from "./modules/sodex/routes";
@@ -186,9 +186,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       signalResearch: sr,
       // DEC-397: công tắc toàn hệ thống (`REWARDS_ENABLED`), giống nhau cho mọi user; không phải cờ theo tài khoản.
       // Bổ sung #551: công tắc tắt thì role team vẫn thấy (thử bằng ví thật trên prod, như Signal Research).
-      sodexRewards:
-        deps.rewardsEnabled?.() === true ||
-        (request.auth !== null && (await isTeamUser(deps.db, request.auth.userId))),
+      sodexRewards: await rewardsVisibleTo(
+        deps.db,
+        deps.rewardsEnabled,
+        request.auth === null ? null : request.auth.userId,
+      ),
       builderFees,
       mmFee,
     };
@@ -240,6 +242,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     bots: botDeps,
     builderId: deps.sodex.builderId,
     builderExempt: deps.sodex.builderExempt,
+    // #558: nhóm thông báo SoDEX rewards chỉ với user thấy Rewards (cùng điều kiện với /features.sodexRewards).
+    rewardsVisible: (userId: string) => rewardsVisibleTo(deps.db, deps.rewardsEnabled, userId),
   };
   registerAccountRoutes(app, accountDeps);
   const recoDeps = { db: deps.db, reco: deps.reco, rest: deps.sodex.rest, now };

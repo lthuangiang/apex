@@ -241,8 +241,8 @@ describe("Telegram link", () => {
       fills: false,
       daily: true,
       copyTrading: false,
-      // #558 (DEC-398): SoDEX rewards bật Telegram mặc định (chỉ gửi khi đã kết nối).
-      rewards: true,
+      // #558: nhóm `rewards` không có khi user không thấy Rewards (REWARDS_ENABLED tắt); mặc định của nó kiểm ở
+      // rewards-switch.test.ts.
     });
   });
 });
