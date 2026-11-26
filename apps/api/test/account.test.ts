@@ -101,6 +101,15 @@ describe("portfolio, risk and notifications", () => {
       body: { group: "botErrors", channel: "email", enabled: false },
     });
     expect(errorOf(off.body).code).toBe("VALIDATION_FAILED");
+    // #558: nhóm rewards đổi được như nhóm thường (bật email).
+    const rewardsEmail = await client.request("PUT", "/api/v1/notifications/settings", {
+      body: { group: "rewards", channel: "email", enabled: true },
+    });
+    expect(
+      notificationSettingsSchema
+        .parse(rewardsEmail.json())
+        .groups.find((g) => g.group === "rewards"),
+    ).toMatchObject({ in_app: true, email: true, telegram: true });
     const on = await client.request("PUT", "/api/v1/notifications/settings", {
       body: { group: "fills", channel: "in_app", enabled: true },
     });
