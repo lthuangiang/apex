@@ -49,6 +49,7 @@ import { z } from "zod";
 
 import { AuditAction, audit } from "../../lib/audit";
 import { markSideEffect } from "../../lib/idempotency";
+import { removeRewardsWatch } from "../rewards-watch/service";
 import { iso } from "../security/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
 
@@ -376,6 +377,8 @@ export async function startDisconnect(
   return withAccountLock(deps, account.id, async (tx) => {
     const spot = await create(tx, RevokeEngine.spot);
     const perps = await create(tx, RevokeEngine.perps);
+    // #558 (DEC-398): ngắt SoDEX thì xoá luôn phiên rewards lưu ở server (cùng transaction).
+    await removeRewardsWatch(tx, userId, "sodex_disconnect", ip);
     return { spot, perps };
   });
 }

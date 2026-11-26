@@ -34,8 +34,15 @@ export const IDEMPOTENCY_FINGERPRINT_PREFIX = "v2:";
  * (vd `/bots/A/actions/start` rồi `/bots/B/actions/start`) phát lại response của bot A.
  * Dùng params thay cho URL thô để `%41` và `A` không thành hai request khác nhau; query không
  * tính vì không route ghi nào đọc query.
+ *
+ * `body` (tuỳ chọn): thay body trong phần băm. Route mà body chứa secret (#558: JWT rewards) truyền một bản tóm tắt
+ * không chứa secret, để `idempotency_keys` không giữ bất kỳ dẫn xuất nào của nó. Thiếu = body của request (như cũ).
  */
-export function idempotencyFingerprint(request: FastifyRequest, userId: string): string {
+export function idempotencyFingerprint(
+  request: FastifyRequest,
+  userId: string,
+  body: unknown = request.body,
+): string {
   const raw = (request.params ?? {}) as Record<string, unknown>;
   const params = Object.keys(raw)
     .sort()
@@ -43,7 +50,7 @@ export function idempotencyFingerprint(request: FastifyRequest, userId: string):
   const route = request.routeOptions.url ?? request.url.split("?")[0];
   return (
     IDEMPOTENCY_FINGERPRINT_PREFIX +
-    sha256(JSON.stringify([request.method, route, params, userId, request.body ?? null]))
+    sha256(JSON.stringify([request.method, route, params, userId, body ?? null]))
   );
 }
 
@@ -83,6 +90,11 @@ export const PRE_SIDE_EFFECT_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>(
   ErrorCode.telegramLinkExpired,
   // #305: danh sách market của Signal research (Redis `sr:markets`) chưa có; ném ra lúc kiểm tài sản, trước khi lưu.
   ErrorCode.marketListUnavailable,
+  // #558: bật báo box mới bị từ chối hoặc chưa làm được trước khi ghi DB (kiểm ví, kiểm token, gateway / signer lỗi; mã
+  // hoá ở signer không để lại gì). Dòng `rewards_watch` chỉ được ghi sau `markSideEffect()`.
+  ErrorCode.rewardsWalletMismatch,
+  ErrorCode.rewardsTokenInvalid,
+  ErrorCode.rewardsWatchUnavailable,
   // #420: cờ `SIGNAL_NEWS_BOTS_ENABLED` tắt; kiểm trước mọi thao tác ghi.
   ErrorCode.featureNotReady,
 ]);
@@ -119,7 +131,11 @@ export async function idempotent(
   userId: string,
   now: Date,
   handler: () => Promise<IdempotentResult>,
-  options: { sensitive?: boolean } = {},
+  options: {
+    sensitive?: boolean;
+    /** Thay body khi băm fingerprint (body chứa secret, xem `idempotencyFingerprint`). */
+    fingerprintBody?: unknown;
+  } = {},
 ): Promise<FastifyReply> {
   const raw = request.headers[IDEMPOTENCY_KEY_HEADER.toLowerCase()];
   const parsed = idempotencyKeySchema.safeParse(raw);
@@ -129,7 +145,10 @@ export async function idempotent(
     });
   }
   const key = parsed.data;
-  const requestHash = idempotencyFingerprint(request, userId);
+  const requestHash =
+    options.fingerprintBody === undefined
+      ? idempotencyFingerprint(request, userId)
+      : idempotencyFingerprint(request, userId, options.fingerprintBody);
   const where = and(eq(idempotencyKeys.userId, userId), eq(idempotencyKeys.key, key));
 
   // Hết 24 h thì key được giải phóng (C7). Trước đây `expires_at` không được dùng tới, nên một

@@ -282,7 +282,7 @@ export function buildSignerApp(deps: SignerDeps): FastifyInstance {
       const token = raw.toString("utf8");
       if (!rewardsJwtSchema.safeParse(token).success)
         return await reply.status(422).send({ error: "token_unusable" });
-      request.log.info({ userId: parsed.data.userId }, "rewards token decrypted");
+      request.log.debug({ userId: parsed.data.userId }, "rewards token decrypted");
       return await reply.send({ token });
     } finally {
       raw.fill(0);

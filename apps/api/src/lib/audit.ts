@@ -35,6 +35,9 @@ export const AuditAction = {
   /** #420: Close now / Edit TP/SL trên lệnh của bot `news_signal` (target = trade, metadata có command id, seq). */
   newsTradeClose: "news_signal.close",
   newsTradeEditTpsl: "news_signal.edit_tpsl",
+  /** #558 (DEC-398): bật / tắt báo box mới SoDEX rewards. metadata không bao giờ chứa token. */
+  rewardsWatchEnabled: "rewards.watch_enabled",
+  rewardsWatchDisabled: "rewards.watch_disabled",
 } as const;
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 

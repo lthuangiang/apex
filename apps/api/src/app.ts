@@ -35,6 +35,8 @@ import { registerOauthRoutes } from "./modules/oauth/routes";
 import { registerProfileRoutes } from "./modules/profile/routes";
 import { registerPublicRoutes } from "./modules/public/routes";
 import { registerRecoRoutes } from "./modules/reco/routes";
+import { registerRewardsWatchRoutes } from "./modules/rewards-watch/routes";
+import type { RewardsWatchDeps } from "./modules/rewards-watch/service";
 import { registerSignalAnalysisRoutes } from "./modules/signal-analysis/routes";
 import { registerSignalResearchRoutes } from "./modules/signal-research/routes";
 import { registerSodexRoutes } from "./modules/sodex/routes";
@@ -62,6 +64,9 @@ export const REDACT_PATHS = [
   // MCP (DEC-167): shared secret apps/mcp → api và token MCP của người dùng.
   'req.headers["x-mcp-introspect-secret"]',
   'req.headers["x-mcp-token"]',
+  // #558 (DEC-398): JWT rewards trong body `POST /api/v1/rewards/watch`.
+  "*.token",
+  "*.accessToken",
 ];
 
 export interface AppDeps {
@@ -106,6 +111,14 @@ export interface AppDeps {
   newsSignalBotsEnabled?: () => boolean;
   /** #547 / DEC-397: `REWARDS_ENABLED`, công tắc toàn hệ thống của SoDEX rewards. Thiếu = tắt. */
   rewardsEnabled?: () => boolean;
+  /**
+   * #558 (DEC-398): báo box mới SoDEX rewards. `enabled` = `REWARDS_WATCH_ENABLED`. Không truyền = tắt: mọi route
+   * `/api/v1/rewards/watch` trả 404.
+   */
+  rewardsWatch?: { enabled: () => boolean } & Pick<
+    RewardsWatchDeps,
+    "audAllow" | "reader" | "signer"
+  >;
   rateLimiter: RateLimiter;
   /** Nhà cung cấp bản đồ thanh lý (IMP-05). Không có / null: tab Liquidation map ẩn. */
   liquidations?: LiquidationProvider | null;
@@ -281,6 +294,19 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     oauth: oauthDeps,
     introspectSecret: oauth.introspectSecret,
     resources: { user: `${mcpBase}/mcp`, team: `${mcpBase}/team/mcp` },
+  });
+  const rw = deps.rewardsWatch;
+  registerRewardsWatchRoutes(app, {
+    enabled: rw?.enabled ?? (() => false),
+    deps: {
+      db: deps.db,
+      now,
+      audAllow: rw?.audAllow ?? (() => []),
+      reader: rw?.reader ?? {
+        getSopointsSummary: () => Promise.resolve({ kind: "error", code: "network" }),
+      },
+      signer: rw?.signer ?? { encrypt: () => Promise.resolve(null) },
+    },
   });
   const tg = deps.telegram;
   registerTelegramRoutes(app, {
