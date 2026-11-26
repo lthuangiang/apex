@@ -1,4 +1,10 @@
 {
+  "_pendingReview": [
+    "plannedStop.reasons.MAX_CYCLES_VOLUME",
+    "plannedStop.reasons.MAX_CYCLES_END_TIME",
+    "plannedStop.reasons.MAX_CYCLES_MM",
+    "plannedStop.labels.pnl"
+  ],
   "telegram": {
     "aBot": "A bot",
     "goalLimit": "your goal’s loss limit",
@@ -22,6 +28,7 @@
     "titles": {
       "bot_paused": "🔴 <b>{bot} paused</b>",
       "bot_stopped": "⏹ <b>{bot} stopped</b>",
+      "bot_stopped_planned": "✅ <b>{bot} stopped: {reason}</b>",
       "paper_paused": "🧪 <b>Fake-money test {bot} paused</b>",
       "paper_stopped": "🧪 <b>Fake-money test {bot} stopped</b>",
       "unknown_order": "⚠️ <b>Order result unknown · {bot}</b>",
@@ -138,6 +145,23 @@
     "min_hold": "This trader now trades too fast to copy",
     "low_liquidity": "Not enough SoDEX liquidity near the price",
     "other": "Open the bot to see why"
+  },
+  "plannedStop": {
+    "reasons": {
+      "MM_BUDGET_DONE": "cost limit reached",
+      "MAX_CYCLES_VOLUME": "volume target reached",
+      "MAX_CYCLES_END_TIME": "end time reached",
+      "MAX_CYCLES_MM": "target reached"
+    },
+    "labels": {
+      "volume": "Volume",
+      "cost": "Cost",
+      "pnl": "PnL",
+      "cpm": "CPM",
+      "ran": "Ran"
+    },
+    "limit": "(limit {limit})",
+    "perMillion": "{value} per $1M"
   },
   "reasons": {
     "BUILDER_FEE_REVOKED": "builder fee approval is 0",

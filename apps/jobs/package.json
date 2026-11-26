@@ -15,6 +15,7 @@
     "@drift/shared": "workspace:*",
     "@drift/sodex": "workspace:*",
     "@drift/sodex-reconcile": "workspace:*",
+    "@drift/strategies": "workspace:*",
     "@nats-io/jetstream": "3.4.0",
     "@nats-io/transport-node": "3.4.0",
     "drizzle-orm": "0.45.4",

@@ -26,6 +26,7 @@ export { entryReady, type EntryCondition, type NextCycle, type WaitingInfo } fro
 export { gridPrices, stepCoversFees } from "./common/grid";
 export { gridStopLimits, leverageCapIssue, perpsStopMaxPct } from "./common/perps";
 export { nextRun } from "./recurring-buy/schedule";
+export { botCostPerMillion, farmCostPerMillion, netCostPerMillion, settledNet } from "./run-facts";
 export { initialBuyProgress, REBALANCE_CHECK_MS, type RebalancingState } from "./rebalancing";
 export { sliceIntervalMs } from "./twap";
 export {

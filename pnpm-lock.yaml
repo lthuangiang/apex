@@ -403,6 +403,9 @@ importers:
       '@drift/sodex-reconcile':
         specifier: workspace:*
         version: link:../../packages/sodex-reconcile
+      '@drift/strategies':
+        specifier: workspace:*
+        version: link:../../packages/strategies
       '@nats-io/jetstream':
         specifier: 3.4.0
         version: 3.4.0
