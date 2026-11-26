@@ -1,6 +1,6 @@
 "use client";
 
-import type { LotteryJob } from "@drift/shared";
+import type { LotteryJob, SopointsSummary } from "@drift/shared";
 import { Skeleton } from "@drift/ui";
 import { Gift, Lock } from "lucide-react";
 import Link from "next/link";
@@ -32,7 +32,7 @@ import {
 } from "../queries";
 import { useRewardsAuth } from "../use-rewards-auth";
 
-import { LivePill, Value, weekIsLive } from "./public-cards";
+import { Value, WeekStatusPill } from "./public-cards";
 import { Banner, MismatchBanner } from "./rewards-states";
 import { Spinner, useRewardsSignIn } from "./sign-in-hero";
 import { PointsStatus, useTierText } from "./sopoints-tab";
@@ -172,12 +172,7 @@ function Busy({ onRetry }: { onRetry: () => void }) {
         title={!pause.active ? t("busyNoTime") : s === null ? t("busyNoTime") : t("busy", { s })}
       />
       {pause.active ? <p className="m-0 text-xs text-ink-2">{t("busyBody")}</p> : null}
-      <button
-        type="button"
-        disabled={pause.active}
-        onClick={onRetry}
-        className={TONAL_BUTTON}
-      >
+      <button type="button" disabled={pause.active} onClick={onRetry} className={TONAL_BUTTON}>
         {pause.active && s !== null ? t("retryIn", { s }) : t("retry")}
       </button>
     </>
@@ -186,7 +181,7 @@ function Busy({ onRetry }: { onRetry: () => void }) {
 
 function jobTitle(job: LotteryJob, t: ReturnType<typeof useTranslations<"rewards.card.job">>) {
   const kind = job.kind.toLowerCase();
-  if (/merge/.test(kind)) return t("merging");
+  if (kind.includes("merge")) return t("merging");
   if (/treasure|claim/.test(kind)) {
     const n = job.minted?.length ?? 0;
     return n > 0 ? t("claiming", { count: n }) : t("claimingAny");
@@ -222,7 +217,9 @@ function JobLine({ jobs }: { jobs: readonly LotteryJob[] }) {
         </span>
       </div>
       {active.length > 1 ? (
-        <span className="flex-none text-xs font-bold">{t("more", { count: active.length - 1 })}</span>
+        <span className="flex-none text-xs font-bold">
+          {t("more", { count: active.length - 1 })}
+        </span>
       ) : null}
       <Link href="/rewards?tab=boxes" className="flex-none text-[13px] font-bold text-accent-ink">
         {t("view")}
@@ -231,27 +228,48 @@ function JobLine({ jobs }: { jobs: readonly LotteryJob[] }) {
   );
 }
 
+/**
+ * Mọi query của thẻ gọi một lần ở đây, không theo nhánh: chuyển chưa ký ↔ đã ký (ký xong, 401) không gỡ observer giữa
+ * lúc đang đọc (gỡ hết observer thì TanStack Query huỷ request đang chạy).
+ */
+function useCardData(auth: Auth) {
+  return {
+    week: useRewardsWeekInfo(),
+    weights: useRewardsVolumeWeights(),
+    summary: useRewardsSummary(auth),
+    treasures: useRewardsTreasures(auth),
+    boxes: useRewardsBoxes(auth),
+    weekList: useRewardsWeekList(auth),
+    jobs: useRewardsActiveJobs(auth),
+  };
+}
+type CardData = ReturnType<typeof useCardData>;
+
 export function RewardsCard() {
   const auth = useRewardsAuth();
+  const data = useCardData(auth);
   const signedIn = auth.signedIn && auth.master !== null;
-  return signedIn ? <SignedCard auth={auth} /> : <UnsignedCard auth={auth} />;
+  return signedIn ? (
+    <SignedCard auth={auth} data={data} />
+  ) : (
+    <UnsignedCard auth={auth} data={data} />
+  );
 }
 
 type Auth = ReturnType<typeof useRewardsAuth>;
 
 /** Chưa ký (bản phác 02) và hết hạn (bản phác 05). */
-function UnsignedCard({ auth }: { auth: Auth }) {
+function UnsignedCard({ auth, data }: { auth: Auth; data: CardData }) {
   const t = useTranslations("rewards.card");
   const tr = useTranslations("rewards");
   const tz = useZone();
   const retry = useRewardsRetry();
   const tierText = useTierText();
   const flow = useRewardsSignIn(auth);
-  const week = useRewardsWeekInfo();
-  const weights = useRewardsVolumeWeights();
+  const { week, weights } = data;
   // Hết hạn: dữ liệu ví còn trong cache (đọc trước 401) hiện mờ, không đọc lại.
-  const stale = useRewardsSummary(auth).data;
-  const staleBoxes = useRewardsBoxes(auth).data;
+  const stale = data.summary.data;
+  const staleBoxes = data.boxes.data;
   const signing = auth.phase === "signing";
   const mismatch = auth.last?.kind === "wrong_wallet" ? auth.last.connected : null;
   const error = firstRewardsError(week.error, weights.error);
@@ -350,7 +368,7 @@ function UnsignedCard({ auth }: { auth: Auth }) {
         big={
           <>
             <Value text={week.data?.weekName} />
-            {week.data !== undefined && weekIsLive(week.data.weekStatus) ? <LivePill /> : null}
+            {week.data === undefined ? null : <WeekStatusPill status={week.data.weekStatus} />}
           </>
         }
         sub={
@@ -407,7 +425,7 @@ function TierRank({
   s,
   tierText,
 }: {
-  s: { currentTier?: string | number | null; rank?: string | number | null; totalUser?: string | number | null };
+  s: Pick<SopointsSummary, "currentTier" | "rank" | "totalUser">;
   tierText: ReturnType<typeof useTierText>;
 }) {
   const t = useTranslations("rewards.card");
@@ -423,18 +441,13 @@ function TierRank({
 }
 
 /** Đã ký (bản phác 03), có job (04), 429 (06). */
-function SignedCard({ auth }: { auth: Auth }) {
+function SignedCard({ data }: { auth: Auth; data: CardData }) {
   const t = useTranslations("rewards.card");
   const tr = useTranslations("rewards");
   const tz = useZone();
   const retry = useRewardsRetry();
   const tierText = useTierText();
-  const summary = useRewardsSummary(auth);
-  const treasures = useRewardsTreasures(auth);
-  const boxes = useRewardsBoxes(auth);
-  const weekList = useRewardsWeekList(auth);
-  const week = useRewardsWeekInfo();
-  const jobs = useRewardsActiveJobs(auth);
+  const { summary, treasures, boxes, weekList, week, jobs } = data;
   const error = firstRewardsError(
     summary.error,
     treasures.error,
@@ -461,9 +474,7 @@ function SignedCard({ auth }: { auth: Auth }) {
 
   const busy = error?.kind === "rate_limited";
   const current =
-    week.data === undefined
-      ? undefined
-      : weekList.data?.find((r) => r.weekNo === week.data.weekNo);
+    week.data === undefined ? undefined : weekList.data?.find((r) => r.weekNo === week.data.weekNo);
   const next =
     week.data === undefined ? null : formatDayTime(secToMs(week.data.distributionTime), tz);
   return (

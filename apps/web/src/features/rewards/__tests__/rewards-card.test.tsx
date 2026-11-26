@@ -1,0 +1,281 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
+import { NextIntlClientProvider } from "next-intl";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import messages from "../../../../messages/en.json";
+import { resetRewardsRateLimit } from "../client";
+import { RewardsCard } from "../components/rewards-card";
+import { readRewardsToken, saveRewardsToken } from "../token-store";
+
+import { FAKE_TOKEN, MASTER, OTHER, fakeGateway, type Reply, type Route } from "./gateway-fixtures";
+
+// Thẻ SoDEX rewards trên Overview (#549, bản phác 02–06): chưa ký, đã ký, dòng job, hết hạn, lỗi mạng, 429, đang tải.
+// Nút Claim ẩn tới #551. Gateway SoDEX, wagmi và API DeskLabs đều giả; không ký ví thật.
+
+const state = vi.hoisted<{ master: string | null; wallet: string | undefined }>(() => ({
+  master: null,
+  wallet: undefined,
+}));
+const signMessage = vi.hoisted(() => vi.fn(() => Promise.resolve("0xsig")));
+const connect = vi.hoisted(() => vi.fn(() => Promise.resolve({})));
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+vi.mock("@/lib/queries", () => ({
+  useSodexConnection: () => ({
+    isPending: false,
+    data: {
+      connection: state.master === null ? null : { address: state.master, status: "connected" },
+    },
+  }),
+}));
+vi.mock("@/lib/api", () => ({
+  ApiError: class extends Error {},
+  api: () => Promise.resolve(null),
+}));
+vi.mock("wagmi", () => ({
+  useConfig: () => ({}),
+  useConnection: () => ({ address: state.wallet, isConnected: state.wallet !== undefined }),
+  useSignMessage: () => ({ mutateAsync: signMessage }),
+  useConnect: () => ({ mutateAsync: connect }),
+  useDisconnect: () => ({ mutateAsync: () => Promise.resolve() }),
+  useConnectors: () => [],
+}));
+vi.mock("wagmi/actions", () => ({ getConnection: () => ({ address: state.wallet }) }));
+
+let gw: ReturnType<typeof fakeGateway>;
+function gateway(routes: Partial<Record<Route, Reply>> = {}) {
+  gw = fakeGateway(routes);
+  vi.stubGlobal("fetch", gw.fn);
+}
+
+function show() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <RewardsCard />
+      </NextIntlClientProvider>
+    </QueryClientProvider>,
+  );
+}
+
+const card = () => screen.getByRole("region", { name: "SoDEX rewards" });
+
+beforeEach(() => {
+  sessionStorage.clear();
+  state.master = MASTER;
+  state.wallet = undefined;
+  signMessage.mockClear();
+  connect.mockClear();
+  gateway();
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  resetRewardsRateLimit();
+});
+
+describe("SoDEX rewards card, not signed in (mockup 02)", () => {
+  it("shows week, LIVE, pool, next distribution, the top multiplier and the sign-in row", async () => {
+    show();
+    expect(await within(card()).findByText("Week 13")).toBeInTheDocument();
+    expect(within(card()).getByText("LIVE")).toBeInTheDocument();
+    expect(within(card()).getByText("Weekly pool 1,000,000 SoPoints")).toBeInTheDocument();
+    expect(within(card()).getByText("Next distribution")).toBeInTheDocument();
+    // Hệ số cao nhất trước, bằng nhau theo thứ tự API: NVDA (1.2) trước GOOGL (1.20).
+    expect(await within(card()).findByText("NVDA-USD ×1.2")).toBeInTheDocument();
+    expect(within(card()).getByText("+5 more")).toBeInTheDocument();
+    expect(within(card()).getByText("Sign in to see your points and boxes")).toBeInTheDocument();
+    expect(
+      within(card()).getByText("One signature, no gas. It can't trade, withdraw or transfer."),
+    ).toBeInTheDocument();
+    expect(within(card()).getByRole("button", { name: "Sign with wallet" })).toBeInTheDocument();
+    expect(within(card()).getByRole("link", { name: "Go to Rewards →" })).toHaveAttribute(
+      "href",
+      "/rewards",
+    );
+    expect(connect).not.toHaveBeenCalled();
+    expect(gw.calls.every((c) => c.auth === null)).toBe(true);
+  });
+
+  it("Sign with wallet without a wallet opens the wallet list, never auto-connects", async () => {
+    const user = userEvent.setup();
+    show();
+    await user.click(await within(card()).findByRole("button", { name: "Sign with wallet" }));
+    expect(await within(card()).findByText("MetaMask")).toBeInTheDocument();
+    expect(connect).not.toHaveBeenCalled();
+    expect(signMessage).not.toHaveBeenCalled();
+  });
+
+  it("wrong wallet: says so, signs nothing", async () => {
+    state.wallet = OTHER;
+    const user = userEvent.setup();
+    show();
+    await user.click(await within(card()).findByRole("button", { name: "Sign with wallet" }));
+    expect(
+      await within(card()).findByText("This wallet isn't your SoDEX account"),
+    ).toBeInTheDocument();
+    expect(signMessage).not.toHaveBeenCalled();
+  });
+
+  it("loading: skeleton only", () => {
+    gateway({ "sopoints/week/info": "pending" });
+    const { container } = show();
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(screen.queryByText("Not available")).toBeNull();
+  });
+
+  it("network error: Couldn't reach SoDEX rewards with Try again", async () => {
+    gateway({ "sopoints/week/info": "network" });
+    const user = userEvent.setup();
+    show();
+    expect(await within(card()).findByText("Couldn't reach SoDEX rewards.")).toBeInTheDocument();
+    const before = gw.calls.filter((c) => c.path === "sopoints/week/info").length;
+    await user.click(within(card()).getByRole("button", { name: "Try again" }));
+    await waitFor(() => {
+      expect(gw.calls.filter((c) => c.path === "sopoints/week/info").length).toBeGreaterThan(
+        before,
+      );
+    });
+  });
+
+  it("passes axe", async () => {
+    const { container } = show();
+    await within(card()).findByText("NVDA-USD ×1.2");
+    expect((await axe.run(container)).violations).toEqual([]);
+  });
+});
+
+describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
+  beforeEach(() => {
+    saveRewardsToken(MASTER, FAKE_TOKEN);
+  });
+
+  it("shows points, tier, rank, boxes to claim (number only), backpack, this week and Open Rewards", async () => {
+    show();
+    expect(await within(card()).findByText("48,210")).toBeInTheDocument();
+    expect(within(card()).getByText("Tier 3 · Rank 1,284 of 38,902")).toBeInTheDocument();
+    const row = (label: string) => within(card()).getByText(label).closest("li") as HTMLElement;
+    await waitFor(() => {
+      expect(row("Blind Boxes to claim")).toHaveTextContent("3");
+    });
+    // Nút Claim ẩn tới #551.
+    expect(within(card()).queryByRole("button", { name: /Claim/ })).toBeNull();
+    expect(within(card()).queryByText("Claim")).toBeNull();
+    await waitFor(() => {
+      expect(row("Boxes in backpack")).toHaveTextContent("27");
+    });
+    await waitFor(() => {
+      expect(row("This week")).toHaveTextContent("2,140");
+    });
+    expect(within(row("This week")).getByText("Not final")).toBeInTheDocument();
+    expect(within(card()).getByRole("link", { name: "Open Rewards" })).toHaveAttribute(
+      "href",
+      "/rewards",
+    );
+    expect(gw.calls.find((c) => c.path === "lottery/jobs")?.url).toContain("active=true");
+    expect(gw.calls.some((c) => c.url.includes(FAKE_TOKEN))).toBe(false);
+  });
+
+  it("job line: newest running job, +1 more, View goes to the Blind Boxes tab", async () => {
+    gateway({
+      "lottery/jobs": {
+        body: {
+          code: 0,
+          data: {
+            jobs: [
+              { jobId: 88230, kind: "box_merge", status: "pending" },
+              { jobId: 88231, kind: "box_open", status: "pending" },
+              { jobId: 88229, kind: "box_open", status: "revealed" },
+            ],
+          },
+        },
+      },
+    });
+    show();
+    expect(await within(card()).findByText("Job #88231 · recording on-chain")).toBeInTheDocument();
+    expect(within(card()).getByText("+1 more")).toBeInTheDocument();
+    expect(within(card()).getByRole("link", { name: "View" })).toHaveAttribute(
+      "href",
+      "/rewards?tab=boxes",
+    );
+  });
+
+  it("no job: no job line", async () => {
+    show();
+    await within(card()).findByText("48,210");
+    expect(within(card()).queryByRole("link", { name: "View" })).toBeNull();
+  });
+
+  it("missing fields show Not available, never 0", async () => {
+    gateway({
+      "sopoints/summary": { body: { code: 0, data: { totalPoints: 48210 } } },
+      "lottery/treasures": "network",
+    });
+    show();
+    expect(await within(card()).findByText("48,210")).toBeInTheDocument();
+    const row = within(card()).getByText("Blind Boxes to claim").closest("li") as HTMLElement;
+    await waitFor(() => {
+      expect(row).toHaveTextContent("Not available");
+    });
+    expect(within(row).queryByText("0")).toBeNull();
+  });
+
+  it("429 with retryAfter: busy, countdown, Try again disabled", async () => {
+    gateway({ "sopoints/summary": { status: 429, body: { code: 429, data: { retryAfter: 42 } } } });
+    show();
+    expect(
+      await within(card()).findByText(/^SoDEX rewards is busy\. Try again in 4[12] s\.$/),
+    ).toBeInTheDocument();
+    expect(
+      within(card()).getByText(
+        "SoDEX limits how often one connection can ask. Auto refresh is paused.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(card()).getByRole("button", { name: /^Try again in 4[12] s$/ })).toBeDisabled();
+  });
+
+  it("429 without retryAfter: no number", async () => {
+    gateway({ "sopoints/summary": { status: 429, body: { code: 429 } } });
+    show();
+    expect(await within(card()).findByText("SoDEX rewards is busy.")).toBeInTheDocument();
+    expect(within(card()).getByRole("button", { name: "Try again" })).toBeDisabled();
+    expect(within(card()).queryByText(/Try again in/)).toBeNull();
+  });
+
+  it("network error with nothing to show: Couldn't reach SoDEX rewards", async () => {
+    gateway({ "sopoints/summary": "network" });
+    show();
+    expect(await within(card()).findByText("Couldn't reach SoDEX rewards.")).toBeInTheDocument();
+    expect(within(card()).getByRole("button", { name: "Try again" })).toBeEnabled();
+  });
+
+  it("expired (401): token cleared, banner, Sign again and Go to Rewards (mockup 05)", async () => {
+    gateway({ "lottery/boxes": { status: 401, body: {} } });
+    show();
+    // Thẻ vẽ lại (đã ký → chưa ký): đọc lại vùng sau khi đổi, không giữ phần tử cũ.
+    expect(await screen.findByText("Your rewards sign-in expired.")).toBeInTheDocument();
+    expect(within(card()).getByRole("button", { name: "Sign again" })).toBeInTheDocument();
+    expect(within(card()).getByRole("link", { name: "Go to Rewards →" })).toBeInTheDocument();
+    expect(readRewardsToken(MASTER)).toBeNull();
+  });
+
+  it("passes axe", async () => {
+    const { container } = show();
+    await within(card()).findByText("48,210");
+    await within(card()).findByText("Not final");
+    expect((await axe.run(container)).violations).toEqual([]);
+  });
+});

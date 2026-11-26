@@ -13,9 +13,11 @@ import { Card, PageHead, Workspace } from "@/components/workspace";
 import { botCapital, botMarket } from "@/features/bots/bot-label";
 import { BotProfit } from "@/features/bots/components/bot-profit";
 import { useStateLabel } from "@/features/bots/components/bots-page";
+import { RewardsCard } from "@/features/rewards/components/rewards-card";
 import { api } from "@/lib/api";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { useMarketNames } from "@/lib/markets";
+import { useFeatures } from "@/lib/queries";
 
 import { EquityChart, Meter } from "./charts";
 import { limitsSet } from "./risk-page";
@@ -102,6 +104,8 @@ export function OverviewPage() {
   const money = (x: string | null) => (x === null ? null : `${formatMoney(x) ?? ""} USDC`);
   const r = v?.risk ?? null;
   const missing = useSodexMissing();
+  // DEC-397 phương án B (#549): công tắc `sodexRewards` bật thì thẻ SoDEX rewards thay thẻ Trading Agent, cùng chỗ.
+  const rewards = useFeatures().data?.sodexRewards === true;
   // Thay đổi equity trong kỳ = điểm cuối − điểm đầu của chuỗi snapshot (gồm cả nạp/rút: SoDEX không
   // có lịch sử nạp, xem "Net deposits"). Ít hơn 2 điểm thì không hiện.
   const curve = v?.equityCurve ?? [];
@@ -341,7 +345,11 @@ export function OverviewPage() {
             ) : null}
           </Card>
 
-          <AgentCard bots={v?.bots ?? []} activity={v?.activity ?? []} loading={loading} />
+          {rewards ? (
+            <RewardsCard />
+          ) : (
+            <AgentCard bots={v?.bots ?? []} activity={v?.activity ?? []} loading={loading} />
+          )}
         </div>
 
         <div className="flex flex-wrap items-stretch gap-5">
