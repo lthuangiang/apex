@@ -198,6 +198,18 @@ describe("/api/v1/rewards/watch", () => {
     expect(again.statusCode).toBe(200);
     expect(again.headers["idempotent-replayed"]).toBe("true");
     expect(state.summaryCalls).toBe(1);
+    // Fingerprint không băm token: cùng claim, khác chữ ký (token khác) vẫn là cùng request → phát lại.
+    const [h, p] = token.split(".");
+    const resigned = await t.client.request("POST", "/api/v1/rewards/watch", {
+      body: { token: `${h ?? ""}.${p ?? ""}.b3RoZXItc2ln`, address: t.address },
+      idempotencyKey: key,
+    });
+    expect(resigned.headers["idempotent-replayed"]).toBe("true");
+    const stored = await env.pool.query<{ request_hash: string }>(
+      "select request_hash from idempotency_keys where user_id = $1 and key = $2",
+      [t.userId, key],
+    );
+    expect(stored.rows[0]?.request_hash).not.toContain(p ?? "");
     const other = await t.client.request("POST", "/api/v1/rewards/watch", {
       body: { token: fakeToken(), address: t.address },
       idempotencyKey: key,

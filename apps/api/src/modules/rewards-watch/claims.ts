@@ -70,3 +70,25 @@ export function checkRewardsAud(
   if (allow.length === 0) return "aud_not_allowed";
   return aud.every((a) => allow.includes(a)) ? null : "aud_not_allowed";
 }
+
+/**
+ * Tóm tắt KHÔNG chứa token để băm fingerprint idempotency của `POST /api/v1/rewards/watch` (kế hoạch #558 mục 1.2):
+ * `jti` + `exp` + `iat` + ví. Token không đọc được thì chỉ còn ví (service sẽ từ chối token đó).
+ */
+export function rewardsTokenFingerprint(token: string, address: string): Record<string, unknown> {
+  let p: Record<string, unknown> = {};
+  try {
+    const payload = decodePart(token.split(".")[1] ?? "");
+    if (typeof payload === "object" && payload !== null && !Array.isArray(payload))
+      p = payload as Record<string, unknown>;
+  } catch {
+    p = {};
+  }
+  const pick = (v: unknown) => (typeof v === "string" || typeof v === "number" ? v : null);
+  return {
+    jti: pick(p.jti),
+    exp: pick(p.exp),
+    iat: pick(p.iat),
+    address: address.toLowerCase(),
+  };
+}

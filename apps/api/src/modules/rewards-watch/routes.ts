@@ -5,6 +5,7 @@ import { parseOrThrow } from "../../lib/http";
 import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 
+import { rewardsTokenFingerprint } from "./claims";
 import {
   enableRewardsWatch,
   getRewardsWatchState,
@@ -33,10 +34,19 @@ export function registerRewardsWatchRoutes(
     ensureEnabled();
     const auth = requireAuth(request);
     const body = parseOrThrow(rewardsWatchEnableBodySchema, request.body);
-    return idempotent(deps.db, request, reply, auth.userId, deps.now(), async () => ({
-      status: 200,
-      body: await enableRewardsWatch(deps, auth.userId, body, request.ip),
-    }));
+    // Fingerprint không băm token (DB thường không giữ dẫn xuất nào của token, kế hoạch #558 mục 1.2).
+    return idempotent(
+      deps.db,
+      request,
+      reply,
+      auth.userId,
+      deps.now(),
+      async () => ({
+        status: 200,
+        body: await enableRewardsWatch(deps, auth.userId, body, request.ip),
+      }),
+      { fingerprintBody: rewardsTokenFingerprint(body.token, body.address) },
+    );
   });
 
   app.get("/api/v1/rewards/watch", async (request) => {
