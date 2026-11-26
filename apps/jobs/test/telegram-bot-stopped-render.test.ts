@@ -131,7 +131,7 @@ describe("CPM only for Market Making and Volume Builder", () => {
         "",
         "<pre>Volume   $52K",
         "PnL      −2.60 USDC ▼ (limit 50.00)",
-        "CPM      50.00 per $1M",
+        "CPM      50 per $1M",
         "Ran      6h 12m</pre>",
       ].join("\n"),
     );
