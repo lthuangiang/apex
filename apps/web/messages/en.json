@@ -10217,7 +10217,8 @@
         "ready": "{n, plural, one {# merge ready} other {# merges ready}}",
         "toMerge": "{n} more to merge",
         "cantMerge": "Can't be merged",
-        "none": "No boxes at this level."
+        "none": "No boxes at this level.",
+        "unit": "{n, plural, one {box} other {boxes}}"
       },
       "list": {
         "title": "Boxes in your backpack",
@@ -10283,7 +10284,13 @@
         "prize": "Prize: {level} box",
         "received": "Prize boxes received in round {round}",
         "source": "Results from SoDEX's weekly draw."
-      }
+      },
+      "fromTrading": "From trading",
+      "rewardRange": "Reward range · set by SoDEX",
+      "view": "View",
+      "grid": "Grid",
+      "table": "Table",
+      "unclaimed": "Unclaimed"
     },
     "action": {
       "cancel": "Cancel",

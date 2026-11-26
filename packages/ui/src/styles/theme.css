@@ -32,6 +32,16 @@
   --color-warn-bar: var(--warn-bar);
   --color-unknown: var(--unknown);
   --color-unknown-bg: var(--unknown-bg);
+  --color-lvl-common: var(--lvl-common);
+  --color-lvl-common-tint: var(--lvl-common-tint);
+  --color-lvl-uncommon: var(--lvl-uncommon);
+  --color-lvl-uncommon-tint: var(--lvl-uncommon-tint);
+  --color-lvl-rare: var(--lvl-rare);
+  --color-lvl-rare-tint: var(--lvl-rare-tint);
+  --color-lvl-superrare: var(--lvl-superrare);
+  --color-lvl-superrare-tint: var(--lvl-superrare-tint);
+  --color-lvl-mystery: var(--lvl-mystery);
+  --color-lvl-mystery-tint: var(--lvl-mystery-tint);
   --color-old: var(--old);
   --color-old-bg: var(--old-bg);
   --color-bot-orange: var(--bot-orange);

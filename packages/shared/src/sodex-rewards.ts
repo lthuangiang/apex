@@ -141,6 +141,21 @@ export const lotteryMetaSchema = z.object({
   rules: z.object({
     mergeSize: z.record(z.string(), z.number().int()),
     limits: z.object({ maxTreasureOpen: z.number().int(), maxBoxOpen: z.number().int() }),
+    /**
+     * Khoảng giá trị thưởng theo cấp do SoDEX đặt (#575, DEC-400: hiện "Reward range · set by SoDEX"; không hiện xác
+     * suất). Phần tử lệch bị bỏ qua ở UI.
+     */
+    rewardBands: z
+      .array(
+        z.object({
+          level: z.string(),
+          minUsd: z.union([z.number(), z.string()]).nullish(),
+          maxUsd: z.union([z.number(), z.string()]).nullish(),
+        }),
+      )
+      .nullish(),
+    /** Cấp box có từ giao dịch ("From trading"). */
+    tradeBoxLevels: z.array(z.string()).nullish(),
   }),
 });
 

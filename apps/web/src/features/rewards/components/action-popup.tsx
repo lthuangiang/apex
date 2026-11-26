@@ -11,12 +11,13 @@ import { WalletPicker } from "@/features/onboarding/components/wallet-picker";
 import { shortAddress } from "@/lib/format";
 
 import { setActionState, type Flow, type Pick } from "../action-store";
-import { formatCount, formatTokenAmount, formatUsd, levelDotClass } from "../format";
+import { formatCount, formatTokenAmount, formatUsd, levelDotClass, rewardRange } from "../format";
 import { SODEX_BLIND_BOX_URL } from "../links";
 import {
   useCybereatorProfile,
   useRewardsBoxes,
   useRewardsJob,
+  useRewardsMeta,
   type RewardsSession,
 } from "../queries";
 import { useActionState, useBoxActions } from "../use-box-actions";
@@ -236,6 +237,7 @@ function Body({
               <IdList ids={flow.tokenIds} />
               {flow.kind === "open" ? (
                 <>
+                  <OpenRange level={flow.level} />
                   <p className="m-0 text-sm text-ink-2">{t("open.body")}</p>
                   <p className="m-0 text-xs text-ink-2">{t("open.inside")}</p>
                 </>
@@ -346,6 +348,20 @@ function Body({
     case "job":
       return <JobBody flow={flow} job={job} auth={auth} actions={actions} closeBtn={closeBtn} />;
   }
+}
+
+/** Một dòng "Reward range · set by SoDEX" trong xác nhận Open (#575, DEC-400); không có band thì không hiện. */
+function OpenRange({ level }: { level: string | null }) {
+  const tb = useTranslations("rewards.boxes");
+  const meta = useRewardsMeta();
+  const range = rewardRange(meta.data?.rules.rewardBands, level);
+  if (range === null) return null;
+  return (
+    <p className="m-0 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 rounded-[10px] border border-dashed border-border-input px-2.5 py-1.5 text-xs text-ink-2">
+      <span>{tb("rewardRange")}</span>
+      <b className="text-[13px] text-ink tabular-nums">{range}</b>
+    </p>
+  );
 }
 
 function ErrorBanner({ said }: { said: string | null }) {

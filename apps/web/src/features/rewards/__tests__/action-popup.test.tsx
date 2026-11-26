@@ -246,6 +246,8 @@ describe("Open (mockup 16)", () => {
     expect(
       within(dialog).getByText("What's inside is decided by SoDEX when the box opens."),
     ).toBeInTheDocument();
+    // Fixture meta không có rewardBands → không có dòng Reward range (#575).
+    expect(within(dialog).queryByText("Reward range · set by SoDEX")).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Sign and open" }));
     expect(
       await screen.findByRole("dialog", { name: "2 boxes opened" }, { timeout: 4000 }),
@@ -481,6 +483,27 @@ describe("Restoring a running job after reload (mockup 18)", () => {
     );
     expect((await axe.run(dialog)).violations).toEqual([]);
     expect(gw.calls.some((c) => c.method === "POST")).toBe(false);
+  });
+});
+
+describe("Reward range in the Open confirm (#575, DEC-400)", () => {
+  it("shows one line from rules.rewardBands for the level", async () => {
+    gateway({
+      "lottery/meta": ok({
+        contracts: { treasureBox: "0x00000000000000000000000000000000000000aa" },
+        rules: {
+          mergeSize: {},
+          limits: { maxTreasureOpen: 100, maxBoxOpen: 30 },
+          rewardBands: [{ level: "Common", minUsd: 1, maxUsd: 8 }],
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    show();
+    await openCommon(user, 1);
+    const dialog = await screen.findByRole("dialog", { name: "Open 1 Common box" });
+    expect(await within(dialog).findByText("$1.00 – $8.00")).toBeInTheDocument();
+    expect(within(dialog).getByText("Reward range · set by SoDEX")).toBeInTheDocument();
   });
 });
 
