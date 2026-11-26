@@ -2280,6 +2280,10 @@
           "teamOps": {
             "name": "Team updates",
             "body": "New signups, SoDEX connections and real-money bot starts. Telegram only."
+          },
+          "rewards": {
+            "name": "SoDEX rewards",
+            "body": "New boxes to claim, boxes you received and weekly draw wins."
           }
         }
       },
@@ -2902,8 +2906,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "rewards.received.levelCount"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
@@ -4482,7 +4485,8 @@
       "review": "Review",
       "seeAll": "See all",
       "dismiss": "Dismiss",
-      "merged": "{n} alerts need you"
+      "merged": "{n} alerts need you",
+      "viewBoxes": "View boxes"
     }
   },
   "adminUser": {
@@ -10386,6 +10390,51 @@
       "receivedCount": "Received · {n}",
       "box": "Box",
       "levelCount": "{n} {level}"
+    },
+    "watch": {
+      "toggle": "Tell me about new boxes",
+      "consentOn": "DeskLabs keeps this sign-in on its servers to check SoDEX for new boxes and weekly draw wins, even when DeskLabs is closed. DeskLabs only uses it to read. It never claims, opens or merges boxes. Turn it off any time to delete it from DeskLabs.",
+      "consentOff": "Only this browser keeps the sign-in. You won’t get alerts about new boxes while DeskLabs is closed.",
+      "serversYes": "Yes",
+      "serversYesNote": "Used only to read, to tell you about new boxes",
+      "strip": "New box alerts",
+      "on": "On",
+      "off": "Off",
+      "activeBody": "DeskLabs checks SoDEX for new boxes until {date}, when this sign-in expires. Used only to read.",
+      "settingsLink": "Notification settings",
+      "offBody": "Off. Nothing is kept on DeskLabs servers. Turn on to get alerts while DeskLabs is closed.",
+      "pausedTitle": "Notifications paused: sign in again",
+      "pausedBody": "Your rewards sign-in expired on {date}, so DeskLabs stopped checking for new boxes and deleted it.",
+      "signInAgain": "Sign in again",
+      "signInAgainOnRewards": "Sign in again on Rewards",
+      "expiredToo": "New box alerts are paused too. Sign in again to turn them back on.",
+      "turningOn": "Turning on…",
+      "turningOff": "Turning off…",
+      "savingOn": "Saving the sign-in on DeskLabs…",
+      "deletingOff": "Deleting the sign-in from DeskLabs…",
+      "enableFailed": "Couldn’t turn on alerts.",
+      "enableFailedBody": "Nothing was kept on DeskLabs. Rewards still works in this browser.",
+      "disableFailed": "Couldn’t turn off alerts.",
+      "disableFailedBody": "The sign-in is still kept on DeskLabs. Try again.",
+      "wrongWallet": "This sign-in is for another wallet.",
+      "wrongWalletBody": "Alerts only work for your SoDEX account. Nothing was kept.",
+      "needSignIn": "Sign in to rewards again to turn on alerts.",
+      "delayed": "Checks are delayed: SoDEX is busy.",
+      "tryAgain": "Try again",
+      "card": {
+        "title": "SoDEX rewards alerts",
+        "watching": "Watching",
+        "paused": "Paused · sign-in expired",
+        "off": "Off",
+        "kept": "DeskLabs keeps your rewards sign-in for {address} to check SoDEX for new boxes. DeskLabs only uses it to read. It never claims, opens or merges boxes.",
+        "expires": "Sign-in expires",
+        "lastChecked": "Last checked",
+        "notAvailable": "Not available",
+        "turnOff": "Turn off and delete",
+        "turnOffNote": "Turning off deletes the sign-in from DeskLabs servers. Rewards keeps working in this browser.",
+        "offBody": "Off. Nothing is kept on DeskLabs servers.",
+        "turnOnFromRewards": "Turn on from Rewards"
+      }
     }
   },
   "rewardsDebug": {

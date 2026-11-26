@@ -73,6 +73,7 @@ vi.mock("@/lib/queries", () => ({
   useMe: () => ({ data: { email: "mai.nguyen@gmail.com", timezone: "UTC" } }),
   useFeatures: () => ({ data: { aiDesk: true } }),
   useNotifications: () => ({ data: { items: [], unread: 0 } }),
+  useSodexConnection: () => ({ data: undefined }),
 }));
 // QR thật cần canvas; ở đây chỉ cần một data URL.
 vi.mock("qrcode", () => ({

@@ -1,4 +1,10 @@
-import { groupOf, ReasonCode, type NotificationGroup, type NotificationType } from "@drift/shared";
+import {
+  groupOf,
+  ReasonCode,
+  REWARDS_TOAST_TYPES,
+  type NotificationGroup,
+  type NotificationType,
+} from "@drift/shared";
 
 // Logic thuần cho panel chuông và toast (docs/NOTIFICATIONS.md mục 7, artboard NT-InApp).
 
@@ -144,8 +150,13 @@ export function actionOf(
   return "open";
 }
 
+/** Tin rewards có toast (DEC-398, đổi DEC-170 mục 6): box nhận được và vé trúng; không vào "Needs you". */
+export function isRewardsToast(n: Pick<NotificationItem, "type">): boolean {
+  return (REWARDS_TOAST_TYPES as readonly string[]).includes(n.type);
+}
+
 /**
- * Toast: những sự cố thật chưa đọc, chưa từng thấy trong tab này. Lần tải đầu chỉ ghi nhận
+ * Toast: những sự cố thật (và tin rewards có toast, DEC-398) chưa đọc, chưa từng thấy trong tab này. Lần tải đầu chỉ ghi nhận
  * (không bật toast cho tin cũ). Trả về danh sách mới (mới nhất trước) và tập id đã thấy cập nhật.
  */
 export function newAlerts(
@@ -155,7 +166,9 @@ export function newAlerts(
   const next = new Set(seen ?? []);
   for (const n of items) next.add(n.id);
   if (seen === null) return { fresh: [], seen: next };
-  const fresh = items.filter((n) => !seen.has(n.id) && n.readAt === null && isIncident(n));
+  const fresh = items.filter(
+    (n) => !seen.has(n.id) && n.readAt === null && (isIncident(n) || isRewardsToast(n)),
+  );
   return { fresh, seen: next };
 }
 

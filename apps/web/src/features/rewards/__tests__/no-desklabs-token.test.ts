@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { SODEX_REWARDS_DEFAULT_ORIGIN } from "@drift/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,8 +12,11 @@ import { readRewardsToken } from "../token-store";
 
 import { bodyOf, urlOf } from "./fetch-helpers";
 
-// #547: token rewards không bao giờ rời trình duyệt tới origin DeskLabs. Chạy cả luồng đăng nhập và mọi probe đọc của
-// trang chẩn đoán với fetch giả, rồi kiểm từng request.
+// #547: token rewards không rời trình duyệt tới origin DeskLabs, với MỘT ngoại lệ (#558, DEC-398): khi người dùng để
+// công tắc "Tell me about new boxes" bật, `POST /api/v1/rewards/watch` gửi token đúng một lần (test luồng đó ở
+// `rewards-watch-ui.test.tsx`: chỉ POST đó mang token; gạt tắt thì không có request nào tới DeskLabs mang token). Ở đây:
+// luồng đăng nhập và mọi probe đọc của trang chẩn đoán chỉ gọi gateway SoDEX; trong feature rewards chỉ `watch.ts` vừa
+// đọc token vừa gọi API DeskLabs.
 
 const MASTER = "0x3f2a000000000000000000000000000000009c4e";
 const FAKE_TOKEN = "fake-test-value";
@@ -72,6 +78,23 @@ describe("rewards token never reaches DeskLabs", () => {
       if (init?.method === "POST")
         expect(url.pathname).toMatch(/^\/api\/v1\/auth\/(nonce|verify)$/);
     }
+  });
+
+  it("only watch.ts both reads the token and calls the DeskLabs API (the one allowed POST)", () => {
+    // Môi trường jsdom: `import.meta.url` không phải file://; vitest chạy từ apps/web.
+    const dir = join(process.cwd(), "src/features/rewards");
+    const files = readdirSync(dir, { recursive: true })
+      .map(String)
+      .filter((f) => /\.(ts|tsx)$/.test(f) && !f.includes("__tests__"));
+    const both = files.filter((f) => {
+      const src = readFileSync(join(dir, f), "utf8");
+      return src.includes("readRewardsToken(") && src.includes('"@/lib/api"');
+    });
+    expect(both).toEqual(["watch.ts"]);
+    const watch = readFileSync(join(dir, "watch.ts"), "utf8");
+    // Token chỉ nằm trong body của POST /api/v1/rewards/watch.
+    expect(watch.match(/readRewardsToken\(/g)).toHaveLength(1);
+    expect(watch).toContain('api("POST", "/api/v1/rewards/watch"');
   });
 
   it("refuses to build a rewards URL on the DeskLabs origin", () => {

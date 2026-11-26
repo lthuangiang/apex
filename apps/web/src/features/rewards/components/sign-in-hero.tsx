@@ -14,14 +14,18 @@ import type { SignInResult } from "../sign-in";
 import type { useRewardsAuth } from "../use-rewards-auth";
 
 import { ExpiredBanner, MismatchBanner, RewardsProblem } from "./rewards-states";
+import { ServersValue, useEnableAfterSignIn, WatchConsent } from "./watch-ui";
 
 // Khối mời ký của trang Rewards (bản phác 08, trạng thái ở 18): một chữ ký `personal_sign`, không gas. Ví chỉ được bật
 // khi người dùng bấm (không tự bật ví, DEC-397); ví khác master wallet thì không ký gì.
 
 type Auth = ReturnType<typeof useRewardsAuth>;
 
-/** Bắt đầu đăng nhập rewards; chưa kết nối ví thì mở danh sách ví, chọn xong thì ký tiếp (người dùng đã bấm ký). */
-export function useRewardsSignIn(auth: Auth) {
+/**
+ * Bắt đầu đăng nhập rewards; chưa kết nối ví thì mở danh sách ví, chọn xong thì ký tiếp (người dùng đã bấm ký).
+ * `onSignedIn`: chạy sau khi ký xong (#558: gửi phiên lên server khi công tắc "Tell me about new boxes" bật).
+ */
+export function useRewardsSignIn(auth: Auth, onSignedIn?: () => Promise<void> | void) {
   const { isConnected } = useConnection();
   const { mutateAsync: connectAsync } = useConnect();
   const { mutateAsync: disconnectAsync } = useDisconnect();
@@ -30,6 +34,7 @@ export function useRewardsSignIn(auth: Auth) {
   async function start(): Promise<SignInResult | null> {
     const r = await auth.signIn();
     if (r?.kind === "no_wallet") setPicking(true);
+    if (r?.kind === "signed_in" && onSignedIn !== undefined) await onSignedIn();
     return r;
   }
 
@@ -64,7 +69,14 @@ export function Spinner() {
 
 export function SignInHero({ auth }: { auth: Auth }) {
   const t = useTranslations("rewards");
-  const flow = useRewardsSignIn(auth);
+  // #558 (DEC-398): công tắc "Tell me about new boxes" bật sẵn; chỉ hiện khi tính năng có ở server (GET không 404).
+  // Bật lúc ký thì sau auth/verify gửi phiên lên server đúng một lần; gạt tắt thì token chỉ ở trình duyệt.
+  const [keep, setKeep] = useState(true);
+  const watch = useEnableAfterSignIn(auth.master);
+  const flow = useRewardsSignIn(auth, async () => {
+    if (keep) await watch.run();
+  });
+  const watching = watch.available && keep;
   const master = auth.master;
   const signing = auth.phase === "signing";
   const mismatch = auth.last?.kind === "wrong_wallet" ? auth.last.connected : null;
@@ -107,6 +119,7 @@ export function SignInHero({ auth }: { auth: Auth }) {
             <RewardsProblem error={auth.error} onRetry={flow.start} />
           </div>
         )}
+        {watch.available ? <WatchConsent keep={keep} onKeep={setKeep} /> : null}
         {auth.expired ? null : (
           <Button pending={signing} onClick={flow.start} className="px-5 text-[15px] font-bold">
             {signing ? (
@@ -139,7 +152,13 @@ export function SignInHero({ auth }: { auth: Auth }) {
               className="flex items-center justify-between gap-3 border-b border-border py-2.5 last:border-b-0"
             >
               <dt>{t(`thisSignIn.${k}`)}</dt>
-              <dd className="m-0 font-bold text-neg-ink">{t("thisSignIn.no")}</dd>
+              <dd className="m-0 font-bold text-neg-ink">
+                {k === "servers" && watch.available ? (
+                  <ServersValue keep={watching} />
+                ) : (
+                  t("thisSignIn.no")
+                )}
+              </dd>
             </div>
           ))}
         </dl>
