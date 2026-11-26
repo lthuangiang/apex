@@ -17,7 +17,8 @@
       "stats": "Open Stats",
       "botMonitor": "Open Bot Monitor",
       "debugger": "Open SoDEX Debugger",
-      "signalAnalysis": "Open Signal Analysis"
+      "signalAnalysis": "Open Signal Analysis",
+      "rewards": "Open Rewards"
     },
     "titles": {
       "bot_paused": "🔴 <b>{bot} paused</b>",
@@ -55,7 +56,17 @@
       "team_invariant_resolved": "✅ <b>Invariant {invariant} OK again</b> · {strategy} {market} {bot}{paper}{detail}",
       "team_sr_new_market": "🆕 <b>New SoDEX market {market}</b> is not in the Signal research asset map ({version}). Classify it as stock or crypto and bump NEWS_ASSET_MAP_VERSION.",
       "team_sr_new_markets": "🆕 <b>{n} new SoDEX markets</b> are not in the Signal research asset map ({version}): {markets}{more}. Classify each as stock or crypto and bump NEWS_ASSET_MAP_VERSION.",
-      "team_sr_new_markets_more": " and {n} more"
+      "team_sr_new_markets_more": " and {n} more",
+      "rewards_claimable_one": "🎁 <b>1 new Blind Box to claim</b>",
+      "rewards_claimable": "🎁 <b>{n} new Blind Boxes to claim</b>",
+      "rewards_received_level": "🎁 <b>You received a {level} box</b>",
+      "rewards_received_one": "🎁 <b>You received a box</b>",
+      "rewards_received": "🎁 <b>You received {n} boxes</b>",
+      "rewards_draw_won": "🎉 <b>{wins} of your {tickets} tickets won</b>",
+      "rewards_draw_won_one_ticket": "🎉 <b>{wins} of your 1 ticket won</b>",
+      "rewards_draw_prize": "🎉 <b>Weekly draw prize received</b>",
+      "rewards_paused": "⏸ <b>New box alerts paused</b>",
+      "rewards_claimable_any": "🎁 <b>New Blind Boxes to claim</b>"
     },
     "bodies": {
       "pausedReason": "{reason}. Open orders were kept.",
@@ -78,7 +89,10 @@
       "leader_big_move": "Market: {coin}.",
       "leader_position": "Following only. Nothing was copied.",
       "copy_bot_opened": "{size} {coin} at an average entry of {price}.",
-      "copy_bot_skipped": "{reason}."
+      "copy_bot_skipped": "{reason}.",
+      "rewards_claimable": "Claim them on Rewards.",
+      "rewards_draw_round": "Weekly draw · Round {round}",
+      "rewards_paused": "Your rewards sign-in expired. Sign in again to turn them back on."
     },
     "merged": {
       "samePause": "🔴 <b>{n} bots paused: {reason}.</b>",

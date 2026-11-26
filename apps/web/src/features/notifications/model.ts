@@ -123,6 +123,13 @@ export function targetOf(n: Pick<NotificationItem, "type" | "data">, aiDesk: boo
       return "/admin/bot-monitor";
     case "team_sr_new_market":
       return "/admin/signal-analysis";
+    // SoDEX rewards (#558): Blind Boxes; tin tạm dừng mở đầu trang Rewards (ký lại ở đó).
+    case "rewards_claimable":
+    case "rewards_box_received":
+    case "rewards_draw_won":
+      return "/rewards?tab=boxes";
+    case "rewards_watch_paused":
+      return "/rewards";
   }
 }
 

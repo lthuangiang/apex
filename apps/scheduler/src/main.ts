@@ -21,8 +21,10 @@ import {
 } from "@drift/shared";
 import {
   createSodexCallRecorder,
+  ipBucket,
   loadSodexConfig,
   RedisRateLimitStore,
+  RewardsReadClient,
   SodexRestClient,
 } from "@drift/sodex";
 import { connect, RequestError, TimeoutError, type NatsConnection } from "@nats-io/transport-node";
@@ -41,6 +43,12 @@ import { computeDailyStats, utcDate } from "./market-stats";
 import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
 import { purgeMcp } from "./mcp-purge";
 import { fitMmModelDaily } from "./mm-model";
+import {
+  purgeRewardsWatch,
+  runRewardsWatchTick,
+  type RewardsWatchJobDeps,
+} from "./rewards-watch/job";
+import { httpRewardsDecrypt } from "./rewards-watch/signer-decrypt";
 import { loadRewardsSignerState } from "./rewards-watch/signer-tls";
 import { snapshotAndCheck } from "./risk";
 import {
@@ -98,11 +106,17 @@ const env = z
       .enum(["true", "false"])
       .default("false")
       .transform((v) => v === "true"),
+    /** #558: chu kỳ đọc mỗi user (phút, 5–60). Sai giá trị thì dùng mặc định, không làm scheduler dừng. */
+    REWARDS_WATCH_INTERVAL_MIN: z.coerce.number().int().min(5).max(60).default(15).catch(15),
+    /** #558: trần riêng weight / phút của gateway rewards (bucket `rl:sodex:rewards:<egress>`). */
+    REWARDS_WATCH_MAX_WEIGHT_PER_MIN: z.coerce.number().int().positive().default(120).catch(120),
+    /** #558: origin gateway rewards (trống = mainnet; client chỉ nhận https). */
+    SODEX_REWARDS_GATEWAY: z.string().default(""),
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "scheduler" } });
 // #558 (DEC-398): cert mTLS của scheduler cho signer (giải mã phiên rewards). Thiếu cert (prod chưa tạo lại cert) thì
-// job rewards tắt, log một lần, scheduler vẫn chạy mọi việc khác. Job dùng `rewardsSigner` ở PR4.
+// job rewards tắt, log một lần, scheduler vẫn chạy mọi việc khác.
 const rewardsSigner = loadRewardsSignerState(process.env, env.REWARDS_WATCH_ENABLED);
 if (env.REWARDS_WATCH_ENABLED && rewardsSigner.kind === "off")
   log.warn({ reason: rewardsSigner.reason }, "rewards watch off: signer client cert unavailable");
@@ -414,6 +428,68 @@ if (signals !== null && env.NATS_URL !== "") {
     log.warn({ err: error }, "signal research: NATS unavailable, using Redis prices only");
   }
 }
+// #558 (DEC-398): job báo box mới SoDEX rewards. Chỉ chạy khi `REWARDS_WATCH_ENABLED` và có cert client cho signer.
+const REWARDS_TICK_MS = 30_000;
+const REWARDS_PAUSE_KEY = "rewards:watch:pause_until";
+const rewardsJob: RewardsWatchJobDeps | null =
+  rewardsSigner.kind === "ready"
+    ? {
+        db,
+        now: () => new Date(),
+        log: log.child({ job: "rewards-watch" }),
+        reader: new RewardsReadClient({
+          gateway: env.SODEX_REWARDS_GATEWAY,
+          rateLimit: new RedisRateLimitStore(redis),
+          egressKey: env.SODEX_EGRESS_KEY,
+          ipBucket: ipBucket(loadSodexConfig(process.env).restWeightPerMinute),
+          maxWeightPerMinute: env.REWARDS_WATCH_MAX_WEIGHT_PER_MIN,
+        }),
+        decrypt: httpRewardsDecrypt(rewardsSigner.url, rewardsSigner.tls),
+        pause: {
+          async get() {
+            const v = await redis.get(REWARDS_PAUSE_KEY);
+            return v === null ? null : Number(v);
+          },
+          async set(untilMs) {
+            await redis.set(
+              REWARDS_PAUSE_KEY,
+              String(untilMs),
+              "PX",
+              Math.max(1, untilMs - Date.now()),
+            );
+          },
+        },
+        intervalMs: env.REWARDS_WATCH_INTERVAL_MIN * 60_000,
+        batch: 20,
+      }
+    : null;
+let rewardsRunning = false;
+let rewardsLastSummary = 0;
+const rewardsTotals = { checked: 0, baselined: 0, notified: 0, paused: 0, errors: 0, stops: 0 };
+async function rewardsTick() {
+  if (rewardsJob === null || rewardsRunning) return;
+  rewardsRunning = true;
+  try {
+    const r = await runRewardsWatchTick(rewardsJob);
+    rewardsTotals.checked += r.checked;
+    rewardsTotals.baselined += r.baselined;
+    rewardsTotals.notified += r.notified;
+    rewardsTotals.paused += r.paused;
+    rewardsTotals.errors += r.errors;
+    if (r.stopped !== null) rewardsTotals.stops += 1;
+    if (r.stopped === "rate_limited") log.warn("rewards watch paused: SoDEX rate limit (429)");
+    // Mỗi giờ một dòng tổng (chỉ số đếm, không user, không token).
+    if (Date.now() - rewardsLastSummary >= 3_600_000) {
+      log.info(rewardsTotals, "rewards watch cycle");
+      rewardsLastSummary = Date.now();
+      for (const k of Object.keys(rewardsTotals) as (keyof typeof rewardsTotals)[])
+        rewardsTotals[k] = 0;
+    }
+  } finally {
+    rewardsRunning = false;
+  }
+}
+let rewardsTimer: ReturnType<typeof setInterval> | null = null;
 let signalTimer: ReturnType<typeof setInterval> | null = null;
 let watchTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -458,6 +534,12 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
     void feeTierTick().catch((error: unknown) => {
       log.error({ err: error }, "builder fee tiers failed");
     });
+    if (rewardsJob !== null)
+      rewardsTimer = setInterval(() => {
+        void rewardsTick().catch((error: unknown) => {
+          log.error({ err: error }, "rewards watch tick failed");
+        });
+      }, REWARDS_TICK_MS);
     riskTimer = setInterval(() => {
       // Theo dõi MCP (DEC-225): mỗi phút, cửa sổ 5 phút.
       void checkMcpAlerts(db, mcpAlertStore, Date.now())
@@ -528,6 +610,14 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
       void feeTierTick().catch((error: unknown) => {
         log.error({ err: error }, "builder fee tiers failed");
       });
+      // #558: dọn dòng rewards_watch tạm dừng quá 30 ngày (chạy cả khi cờ tắt: chỉ xoá, không gọi SoDEX).
+      void purgeRewardsWatch(db, new Date())
+        .then((n) => {
+          if (n > 0) log.info({ deleted: n }, "old paused rewards watch rows deleted");
+        })
+        .catch((error: unknown) => {
+          log.error({ err: error }, "rewards watch purge failed");
+        });
     }, 10 * 60_000);
   },
   onLose: () => {
@@ -537,6 +627,8 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
     watchTimer = null;
     if (timer !== null) clearInterval(timer);
     if (riskTimer !== null) clearInterval(riskTimer);
+    if (rewardsTimer !== null) clearInterval(rewardsTimer);
+    rewardsTimer = null;
     timer = null;
     riskTimer = null;
   },

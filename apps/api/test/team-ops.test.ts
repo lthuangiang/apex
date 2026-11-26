@@ -51,6 +51,15 @@ describe("teamOps setting", () => {
         (await c.request("GET", "/api/v1/notifications/settings")).json(),
       ).groups;
     expect((await groups(customer)).map((g) => g.group)).not.toContain("teamOps");
+    // #558 (DEC-398): user thường thấy nhóm SoDEX rewards với mặc định đã chốt (in-app bật, Telegram bật khi đã kết
+    // nối, email tắt).
+    expect((await groups(customer)).find((g) => g.group === "rewards")).toEqual({
+      group: "rewards",
+      alwaysOn: false,
+      in_app: true,
+      email: false,
+      telegram: true,
+    });
     const denied = await customer.request("PUT", "/api/v1/notifications/settings", {
       body: { group: "teamOps", channel: "telegram", enabled: false },
     });
