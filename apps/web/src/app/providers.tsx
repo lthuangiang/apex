@@ -4,18 +4,19 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@ta
 import { useState, type ReactNode } from "react";
 import { WagmiProvider } from "wagmi";
 
+import { clearAllRewardsTokens } from "@/features/rewards/token-store";
 import { ApiError } from "@/lib/api";
 import { wagmiConfig } from "@/lib/wagmi";
 
-/** Phiên hết hạn hoặc bị thu hồi (api trả UNAUTHENTICATED): về trang đăng ký / đăng nhập. */
+/**
+ * Phiên hết hạn hoặc bị thu hồi (api trả UNAUTHENTICATED): xoá token rewards của tab (DEC-397) rồi về trang đăng ký /
+ * đăng nhập.
+ */
 function onApiError(error: unknown) {
-  if (
-    error instanceof ApiError &&
-    error.code === "UNAUTHENTICATED" &&
-    window.location.pathname !== "/signup" &&
-    window.location.pathname !== "/signin"
-  ) {
-    window.location.assign("/signup");
+  if (error instanceof ApiError && error.code === "UNAUTHENTICATED") {
+    clearAllRewardsTokens();
+    if (window.location.pathname !== "/signup" && window.location.pathname !== "/signin")
+      window.location.assign("/signup");
   }
 }
 

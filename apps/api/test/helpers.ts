@@ -69,6 +69,8 @@ export async function startTestEnv(
     oauth?: AppDeps["oauth"];
     /** #420: `SIGNAL_NEWS_BOTS_ENABLED`, đổi được giữa các test. Thiếu = tắt. */
     newsBots?: { enabled: boolean };
+    /** #547: `REWARDS_ENABLED`, đổi được giữa các test. Thiếu = tắt. */
+    rewards?: { enabled: boolean };
   } = {},
 ): Promise<TestEnv> {
   const container = await new PostgreSqlContainer(POSTGRES_IMAGE).start();
@@ -103,6 +105,7 @@ export async function startTestEnv(
     srQuotes: () => Promise.resolve(srQuotes.value),
     srLane: () => Promise.resolve(srLane.value),
     newsSignalBotsEnabled: () => options.newsBots?.enabled === true,
+    rewardsEnabled: () => options.rewards?.enabled === true,
     rateLimiter: memoryRateLimiter(),
     rateLimits: { perIp: 1_000_000, perUser: 1_000_000, windowMs: 60_000 },
     prices: (markets) =>
