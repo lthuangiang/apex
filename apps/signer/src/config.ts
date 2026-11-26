@@ -27,6 +27,11 @@ const envSchema = z
       .string()
       .regex(/^[a-z0-9-]+$/)
       .default("drift-api-keys"),
+    /** #558 (DEC-398): khoá transit riêng cho phiên rewards; tách khỏi khoá API key để xoay / huỷ riêng. */
+    VAULT_REWARDS_TRANSIT_KEY: z
+      .string()
+      .regex(/^[a-z0-9-]+$/)
+      .default("drift-rewards"),
   })
   .refine(
     (env) =>

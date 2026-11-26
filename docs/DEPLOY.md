@@ -503,7 +503,14 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 - **Giữ `false`** tới khi PM đã xem `aud` / `iss` của token trên `/admin/rewards-debug` và đặt `REWARDS_JWT_AUD_ALLOW` (api, PR3) theo đó. `aud` cho thấy token dùng được cho giao dịch thì không bật, báo người dùng. PR1 chỉ khai báo cờ; route (PR3), job (PR4), web (PR5) làm sau, nên bật cờ ở bản PR1 không làm gì.
 - Mẫu `deploy/server/docker-compose.yml` có dòng `REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}` trong khối `environment` của `api` và của `scheduler`. Compose trên VPS thiếu thì thêm vào (như mẫu).
 - **Migration `0063_rewards_watch`:** chỉ thêm bảng `rewards_watch` (một dòng mỗi user đã bật; JWT chỉ ở dạng ciphertext Vault transit). Bản trước không đọc bảng này, nên rollback image không cần làm gì với bảng.
-- Các bước sau (khoá transit `drift-rewards`, policy của signer, cert mTLS cho `scheduler`) sẽ ghi vào mục này ở PR2.
+- **PR2 (signer + client chỉ đọc):**
+  - Signer có hai endpoint mới: `POST /v1/rewards-tokens/encrypt` (chỉ CN `api`) và `POST /v1/rewards-tokens/decrypt` (chỉ CN `scheduler`, theo `userId`, chỉ dòng `active`). Signer **không** gọi ra ngoài Vault.
+  - Biến mới (tuỳ chọn) `VAULT_REWARDS_TRANSIT_KEY` (signer, mặc định `drift-rewards`).
+  - Migration `0064_rewards_watch_signer_grant`: `GRANT SELECT (user_id, status, token_ciphertext) ON rewards_watch TO drift_signer` (chỉ khi role có). Rollback không cần làm gì.
+  - Signer khởi động bình thường khi Vault chưa có khoá `drift-rewards`: lúc đó hai endpoint trả 503, không ảnh hưởng ký lệnh.
+- **Việc làm tay trước khi bật cờ (chưa có trong PR2, cần người dùng duyệt vì đụng Vault / cert prod):**
+  - Vault: tạo khoá `transit/keys/drift-rewards` (aes256-gcm96) và thêm `transit/encrypt/drift-rewards`, `transit/decrypt/drift-rewards` (update) vào policy `signer` (`infra/vault/prod-init.sh`, dev: `infra/vault/dev-init.sh`).
+  - Cert mTLS CN `scheduler`: thêm vào `infra/certs/gen-dev-certs.sh` (dev) và service `certs` của compose prod. Prod xoá `ca.key` sau khi tạo cert, nên thêm cert mới nghĩa là tạo lại toàn bộ cert (mục 2.4) rồi khởi động lại api, engine, signer, scheduler cùng lúc. Làm cùng PR4 (scheduler), có hướng dẫn riêng.
 
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
