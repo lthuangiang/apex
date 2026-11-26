@@ -2901,9 +2901,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "rewards.errors.busyNoTime",
-    "rewardsDebug"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
