@@ -151,7 +151,7 @@ function SummaryHero({ session, tz }: { session: RewardsSession; tz: string }) {
                 />
               </div>
               <span className="text-xs text-ink-2 tabular-nums">
-                {t("toNext", { points: formatCount(progress.left) ?? "", tier: next })}
+                {t("toNext", { points: Number(progress.left), tier: next })}
               </span>
             </>
           )}

@@ -2902,14 +2902,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "rewards.card.rank",
-    "rewards.card.job.openingAny",
-    "rewards.card.job.merging",
-    "rewards.card.job.claiming",
-    "rewards.card.job.claimingAny",
-    "rewards.card.job.other",
-    "rewards.card.job.submitting"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
@@ -10114,7 +10107,7 @@
     "multipliers": {
       "title": "Markets with a volume multiplier",
       "setBy": "Set by SoDEX for round {round} · ends {time}",
-      "showAll": "Show all {count} markets",
+      "showAll": "{count, plural, one {Show all # market} other {Show all # markets}}",
       "showLess": "Show less",
       "empty": "SoDEX lists no markets with a volume multiplier right now."
     },
@@ -10130,7 +10123,7 @@
       "currentTier": "Current tier: {tier}",
       "nextAt": "Next: {tier} at {points}",
       "nextOnly": "Next: {tier}",
-      "toNext": "{points} points to {tier}",
+      "toNext": "{points, plural, one {# point} other {# points}} to {tier}",
       "rank": "Rank",
       "of": "of {total}",
       "thisWeek": "This week",
@@ -10170,10 +10163,10 @@
       "thisWeek": "This week",
       "open": "Open Rewards",
       "job": {
-        "opening": "Opening {count} boxes…",
+        "opening": "{count, plural, one {Opening # box…} other {Opening # boxes…}}",
         "openingAny": "Opening boxes…",
         "merging": "Merging boxes…",
-        "claiming": "Claiming {count} boxes…",
+        "claiming": "{count, plural, one {Claiming # box…} other {Claiming # boxes…}}",
         "claimingAny": "Claiming boxes…",
         "other": "SoDEX is working on a job…",
         "pending": "Job #{id} · recording on-chain",

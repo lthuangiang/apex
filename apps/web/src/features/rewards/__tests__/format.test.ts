@@ -1,5 +1,7 @@
+import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
 
+import messages from "../../../../messages/en.json";
 import { tierProgress } from "../components/sopoints-tab";
 import {
   decimalOf,
@@ -60,5 +62,16 @@ describe("rewards format", () => {
     expect(tierProgress(70000, "60000")).toBeNull();
     expect(tierProgress(48210, null)).toBeNull();
     expect(tierProgress(null, 60000)).toBeNull();
+  });
+
+  it("count strings use the singular for 1", () => {
+    const t = createTranslator({ locale: "en", messages: { r: messages.rewards } });
+    expect(t("r.card.job.opening", { count: 1 })).toBe("Opening 1 box…");
+    expect(t("r.card.job.opening", { count: 5 })).toBe("Opening 5 boxes…");
+    expect(t("r.card.job.claiming", { count: 1 })).toBe("Claiming 1 box…");
+    expect(t("r.multipliers.showAll", { count: 1 })).toBe("Show all 1 market");
+    expect(t("r.multipliers.showAll", { count: 6 })).toBe("Show all 6 markets");
+    expect(t("r.summary.toNext", { points: 1, tier: "EPIC" })).toBe("1 point to EPIC");
+    expect(t("r.summary.toNext", { points: 11790, tier: "EPIC" })).toBe("11,790 points to EPIC");
   });
 });

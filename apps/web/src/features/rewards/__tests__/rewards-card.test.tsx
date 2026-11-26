@@ -213,6 +213,46 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
     );
   });
 
+  it("job line uses the singular for one box", async () => {
+    gateway({
+      "lottery/jobs": {
+        body: {
+          code: 0,
+          data: {
+            jobs: [{ jobId: 9, kind: "box_open", status: "pending", boxes: [{ tokenId: 1 }] }],
+          },
+        },
+      },
+    });
+    show();
+    expect(await within(card()).findByText("Opening 1 box…")).toBeInTheDocument();
+    expect(within(card()).queryByText(/\+\d+ more/)).toBeNull();
+    cleanup();
+    gateway({
+      "lottery/jobs": {
+        body: {
+          code: 0,
+          data: {
+            jobs: [
+              {
+                jobId: 10,
+                kind: "treasure_open",
+                status: "submitting",
+                minted: [
+                  { tokenId: 1, level: "Common" },
+                  { tokenId: 2, level: "Common" },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    });
+    show();
+    expect(await screen.findByText("Claiming 2 boxes…")).toBeInTheDocument();
+    expect(screen.getByText("Job #10 · sent to SoDEX")).toBeInTheDocument();
+  });
+
   it("no job: no job line", async () => {
     show();
     await within(card()).findByText("48,210");
