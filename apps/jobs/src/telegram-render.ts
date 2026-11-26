@@ -2,9 +2,13 @@ import {
   escapeTelegramHtml,
   feeTierChangeText,
   groupOf,
+  rewardsBoxReceivedDataSchema,
+  rewardsClaimableDataSchema,
+  rewardsDrawWonDataSchema,
   TEAM_INCIDENT_KINDS,
   TEAM_INCIDENT_SEVERITY,
   type NotificationType,
+  type RewardsNotificationType,
   type TeamIncidentKind,
 } from "@drift/shared";
 
@@ -154,6 +158,13 @@ function targetOf(row: RenderRow): { path: string; label: string } {
       return { path: "/admin/bot-monitor", label: M.buttons.botMonitor };
     case "team_sr_new_market":
       return { path: "/admin/signal-analysis", label: M.buttons.signalAnalysis };
+    // SoDEX rewards (#558): mở trang Rewards (tab Blind Boxes, trừ tin tạm dừng: ký lại ở đầu trang).
+    case "rewards_claimable":
+    case "rewards_box_received":
+    case "rewards_draw_won":
+      return { path: "/rewards?tab=boxes", label: M.buttons.rewards };
+    case "rewards_watch_paused":
+      return { path: "/rewards", label: M.buttons.rewards };
   }
 }
 
@@ -342,6 +353,41 @@ function teamTitle(row: RenderRow): string {
   return fill(M.titles.team_bot_started, { email, details: parts.join(" · ") });
 }
 
+/**
+ * Tiêu đề tin SoDEX rewards (#558, câu đã duyệt plan-558 NEW COPY 19–22). Dữ liệu sai dạng thì dùng câu không có số. Không
+ * bao giờ có địa chỉ ví; cấp box là chuỗi SoDEX trả, được escape.
+ */
+function rewardsTitle(type: RewardsNotificationType, row: RenderRow): string {
+  switch (type) {
+    case "rewards_claimable": {
+      const d = rewardsClaimableDataSchema.safeParse(row.data);
+      if (!d.success) return M.titles.rewards_claimable_any;
+      return d.data.count === 1
+        ? M.titles.rewards_claimable_one
+        : fill(M.titles.rewards_claimable, { n: d.data.count });
+    }
+    case "rewards_box_received": {
+      const d = rewardsBoxReceivedDataSchema.safeParse(row.data);
+      if (!d.success) return M.titles.rewards_received_one;
+      if (d.data.count > 1) return fill(M.titles.rewards_received, { n: d.data.count });
+      const level = d.data.levels[0]?.level ?? null;
+      return level === null
+        ? M.titles.rewards_received_one
+        : fill(M.titles.rewards_received_level, { level: escapeTelegramHtml(level) });
+    }
+    case "rewards_draw_won": {
+      const d = rewardsDrawWonDataSchema.safeParse(row.data);
+      if (!d.success || d.data.wins === null || d.data.tickets === null)
+        return M.titles.rewards_draw_prize;
+      return d.data.tickets === 1
+        ? fill(M.titles.rewards_draw_won_one_ticket, { wins: d.data.wins })
+        : fill(M.titles.rewards_draw_won, { wins: d.data.wins, tickets: d.data.tickets });
+    }
+    case "rewards_watch_paused":
+      return M.titles.rewards_paused;
+  }
+}
+
 function title(row: RenderRow): string {
   const bot = botOf(row);
   const paper = row.data.paper === true;
@@ -420,6 +466,11 @@ function title(row: RenderRow): string {
       return INC.digestTitle;
     case "team_sr_new_market":
       return newMarketTitle(row.data);
+    case "rewards_claimable":
+    case "rewards_box_received":
+    case "rewards_draw_won":
+    case "rewards_watch_paused":
+      return rewardsTitle(row.type, row);
   }
 }
 
@@ -490,6 +541,18 @@ function body(row: RenderRow): string | null {
     case "team_incident_digest":
     case "team_sr_new_market":
       return null;
+    case "rewards_claimable":
+      return M.bodies.rewards_claimable;
+    case "rewards_box_received":
+      return null;
+    case "rewards_draw_won": {
+      const d = rewardsDrawWonDataSchema.safeParse(row.data);
+      return d.success && d.data.round !== null
+        ? fill(M.bodies.rewards_draw_round, { round: d.data.round })
+        : null;
+    }
+    case "rewards_watch_paused":
+      return M.bodies.rewards_paused;
   }
 }
 

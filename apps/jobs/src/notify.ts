@@ -153,6 +153,17 @@ export function emailText(
     case "team_sr_new_market":
       // Nhóm `teamOps` chỉ đi Telegram (DEC-184), không bao giờ email; nhánh này chỉ để switch đủ.
       return { subject: "DeskLabs: team update", text: "Open Users in DeskLabs." };
+    // SoDEX rewards (#558, DEC-398; tiêu đề email đã duyệt, plan-558 NEW COPY 30). Không có địa chỉ ví hay token.
+    case "rewards_claimable":
+    case "rewards_box_received":
+      return { subject: "DeskLabs: new SoDEX reward boxes", text: "Open Rewards in DeskLabs." };
+    case "rewards_draw_won":
+      return { subject: "DeskLabs: weekly draw result", text: "Open Rewards in DeskLabs." };
+    case "rewards_watch_paused":
+      return {
+        subject: "DeskLabs: rewards alerts paused",
+        text: "Your rewards sign-in expired. Sign in again on Rewards in DeskLabs to turn alerts back on.",
+      };
   }
 }
 

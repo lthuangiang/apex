@@ -599,6 +599,13 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
   - Xoá dòng `rewards_watch` khi: `DELETE`, đăng xuất chủ động (`DELETE /api/v1/auth/session`; phiên tự hết hạn thì giữ), ngắt SoDEX (`POST /api/v1/sodex/disconnection` và khi đối soát thấy key đã bị xoá), kết nối account SoDEX khác, xoá tài khoản.
   - Biến mới của api: `REWARDS_JWT_AUD_ALLOW` (giá trị `aud` cách nhau bằng dấu phẩy; **trống = từ chối mọi token**, mặc định), `REWARDS_WATCH_MAX_WEIGHT_PER_MIN` (mặc định `120`), `SODEX_REWARDS_GATEWAY` (trống = mainnet). Mẫu compose có dòng `REWARDS_JWT_AUD_ALLOW: ${REWARDS_JWT_AUD_ALLOW:-}` trong khối `api`.
   - Đặt `REWARDS_JWT_AUD_ALLOW` sau khi PM xem `aud` / `iss` trên `/admin/rewards-debug`. `aud` cho thấy token dùng được cho giao dịch thì không đặt, báo người dùng.
+- **PR4 (scheduler):**
+  - Job báo box mới chạy ở scheduler (bản leader) mỗi 30 s khi `REWARDS_WATCH_ENABLED=true` **và** có cert client cho signer; tắt thì không chạy. Mỗi lượt tối đa 20 user tới hạn; mỗi user: signer giải mã token (biến cục bộ một lượt), đọc `lottery/treasures` (1) + `lottery/ledger` (5, tối đa 3 trang tới mốc) + `lottery/draw/entries` (5, chỉ khi có giải quay số mới) qua client chỉ đọc (bucket IP chung ưu tiên `idle` 50% + trần riêng), so với mốc ở DB, ghi thông báo vào outbox `jobs.notify` cùng transaction với mốc mới.
+  - Lượt đầu chỉ đặt mốc (không báo lịch sử cũ). Phân loại chỉ theo `reason` của ledger: `lottery_prize` → vé trúng (gộp theo round), transfer vào khác → box nhận được; `lifetime.granted` tăng → box chờ claim.
+  - 401 / giải mã lỗi → `paused` (`unauthorized`), xoá ciphertext, báo "New box alerts paused" một lần; hết `exp` → `paused` (`expired`) không gọi SoDEX; đổi ví → `paused` (`wallet_changed`); 429 → dừng cả job theo `retryAfter` (Redis `rewards:watch:pause_until`, thiếu thì 60 s); hết ngân sách weight → dừng lượt; lỗi mạng / 5xx → lùi chu kỳ × 2^n (tối đa 6 giờ). Mỗi giờ một dòng log `rewards watch cycle` (chỉ số đếm).
+  - Dọn dẹp mỗi 10 phút: dòng `paused` quá 30 ngày bị xoá.
+  - Biến mới của scheduler: `REWARDS_WATCH_INTERVAL_MIN` (mặc định `15`, 5–60), `REWARDS_WATCH_MAX_WEIGHT_PER_MIN` (mặc định `120`), `SODEX_REWARDS_GATEWAY` (trống = mainnet). Mẫu compose có hai dòng đầu trong khối `scheduler`.
+  - Nhóm thông báo mới `rewards`: in-app bật, **Telegram bật khi user đã kết nối Telegram**, email tắt (DEC-398). Hiện trong chuông. Bảng Settings › Notifications và toast ở PR5.
 - **Việc prod cho #558:** chỉ cập nhật `/opt/drift/docker-compose.yml` theo mẫu (configs `vault-init`, `certs-init`; khối `scheduler`) rồi deploy như mục 3. Không tạo lại cert, không cửa sổ bảo trì, không dừng bot. Hành vi bot khi signer / engine bị tạo lại (ghi chú vận hành chung): mục 2.4.2.
 
 ## 3. Deploy hằng ngày

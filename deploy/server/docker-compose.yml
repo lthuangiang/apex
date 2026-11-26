@@ -230,6 +230,9 @@ services:
       SIGNAL_NEWS_EVENT_SPLIT_ENABLED: ${SIGNAL_NEWS_EVENT_SPLIT_ENABLED:-false}
       # #558 / DEC-398: báo box mới SoDEX rewards; cùng giá trị với api. Mặc định tắt (DEPLOY 2.23).
       REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}
+      # #558: chu kỳ đọc mỗi user (phút, 5–60) và trần weight / phút riêng của rewards (DEPLOY 2.23).
+      REWARDS_WATCH_INTERVAL_MIN: ${REWARDS_WATCH_INTERVAL_MIN:-15}
+      REWARDS_WATCH_MAX_WEIGHT_PER_MIN: ${REWARDS_WATCH_MAX_WEIGHT_PER_MIN:-120}
       # #558: mTLS tới signer để giải mã phiên rewards. Dùng chung cert của api (DEC-398): volume cert prod không có
       # ca.key nên không cấp lẻ scheduler.crt được; khi tạo lại toàn bộ cert (DEPLOY 2.4.1) thì chuyển sang scheduler.crt.
       SIGNER_URL: https://signer:8090
