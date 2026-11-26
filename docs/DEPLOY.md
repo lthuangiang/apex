@@ -479,6 +479,19 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 - **Rollback scheduler / api về bản trước PR này** (kể cả v2.18.8): không cần chạy lệnh nào với bảng. Bản cũ không đọc `signal_context_coins`; dữ liệu ở đó giữ nguyên và được bản mới đọc lại khi lên lại. Trong thời gian chạy bản cũ, coin khác của bài nhiều coin không có snapshot (bản cũ chỉ ghi một tín hiệu mỗi bài).
 - Không bao giờ cần `DROP TABLE signal_context_coins` để rollback. Nếu muốn dọn hẳn (chỉ khi đã bỏ hẳn PR này): `DROP TABLE signal_context_coins;` (mất snapshot của các coin khác, không ảnh hưởng lệnh, câu chuyện hay `signal_contexts`).
 
+### 2.22 SoDEX rewards: công tắc `REWARDS_ENABLED` (#546, #547, DEC-397)
+
+| Biến | Service | Ý nghĩa |
+|---|---|---|
+| `REWARDS_ENABLED` | api | **Mới (#547).** Công tắc toàn hệ thống của SoDEX rewards (mục Rewards, thẻ Overview, `/rewards`) cho **mọi** user; api trả `sodexRewards` trong `GET /api/v1/features`, web đọc lúc chạy (không build lại image web). Mặc định **`false`** |
+| `SODEX_REWARDS_GATEWAY` → build arg `NEXT_PUBLIC_SODEX_REWARDS_GATEWAY` | web (lúc build) | **Mới (#547), tuỳ chọn.** Origin gateway Rewards API. Trống = `https://mainnet-gw.sodex.dev` (prod không cần đặt). Chỉ nhận https; CSP `connect-src` mở đúng origin này |
+
+- **Trong lúc xây (#547–#550): giữ `false`.** Tắt = sidebar, Overview và route `/rewards` như trước. #551 sẽ đổi mặc định sang `true`; từ đó biến chỉ còn là **nút tắt khẩn** khi gateway SoDEX có sự cố.
+- Mẫu `deploy/server/docker-compose.yml` có dòng `REWARDS_ENABLED: ${REWARDS_ENABLED:-false}` trong khối `environment` của `api`. Compose trên VPS thiếu dòng này thì thêm vào (như mẫu), rồi `cd /opt/drift && docker compose up -d api`.
+- Bật / tắt: đặt `REWARDS_ENABLED=true` / `false` trong `/opt/drift/.env`, rồi `docker compose up -d api`. Web nhận giá trị mới khi trình duyệt tải lại `/features` (tối đa ~1 phút).
+- **Trang chẩn đoán `/admin/rewards-debug`** (chỉ role team, không có mục sidebar) chạy **cả khi công tắc tắt**: chủ sản phẩm thử bằng ví thật trên prod trước khi mở. Token ký ví chỉ nằm trong trình duyệt (sessionStorage); server DeskLabs không nhận, không log.
+- Không migration. Không đổi gì ở engine / scheduler.
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push image các app đổi (app không đổi được gắn tag mới vào image của tag trước) → PM trả tag (`docs/RELEASE.md`).

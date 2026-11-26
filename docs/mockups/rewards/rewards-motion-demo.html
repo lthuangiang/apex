@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rewards motion demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1fa;--surface:#fff;--surface-2:#f5f7fd;--border:#e3e7f5;--border-input:#d5dcf2;--ink:#141a33;--ink-2:#3b4262;--muted:#5f6684;--accent:#2e62e8;--accent-ink:#1d47b8;--accent-tint:#e6ecfe;--pos:#0f7a43;--pos-bg:#ddf4e7;--pos-dot:#16a05a;--neg:#c2312f;--neg-ink:#a72826;--neg-bg:#fde4e1;--warn:#7a3e00;--warn-bg:#fdebd3;--warn-border:#f0c27e;--unknown:#5a2ca0;--unknown-bg:#f0e6ff;--l1:#9aa3c2;--l2:#16a05a;--l3:#2e62e8;--l4:#7a4cc8;--ease-out:cubic-bezier(.2,.8,.2,1);--ease-pop:cubic-bezier(.3,1.4,.5,1)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;font-size:14px;overflow-x:hidden}
+.wrap{max-width:900px;margin:0 auto;padding:32px 16px 80px;display:flex;flex-direction:column;gap:18px}
+h1{font-size:22px;margin:0}
+p{margin:0}
+.note{border:2px dashed #b48ae6;background:var(--unknown-bg);color:var(--unknown);border-radius:14px;padding:12px 16px;font-size:13px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border-radius:12px;padding:0 16px;font:600 14px inherit;font-family:inherit;border:0;cursor:pointer}
+.primary{background:var(--accent);color:#fff}.secondary{background:var(--surface);color:var(--ink);border:1px solid var(--border-input)}
+.btn:disabled{background:var(--surface-2);color:var(--muted);cursor:not-allowed}
+.toggle{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:6px 12px;font-weight:700;cursor:pointer;user-select:none}
+.toggle input{width:18px;height:18px}
+.strip{display:none;align-items:center;gap:10px;background:var(--accent-tint);border:1px solid #cdd8fb;border-radius:18px;padding:12px 16px}
+.strip.show{display:flex}
+.strip.done{background:var(--pos-bg);border-color:#a9dcbf}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--accent-tint);border-top-color:var(--accent);animation:spin .9s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.overlay{position:fixed;inset:0;background:rgb(20 26 51 / .38);display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
+.overlay.open{display:flex}
+.dialog{background:var(--surface);border-radius:24px;box-shadow:0 24px 60px rgb(20 26 51 / .25);width:min(480px,100%);max-height:calc(100dvh - 32px);overflow:auto;padding:20px;display:flex;flex-direction:column;gap:12px;animation:dlgIn 180ms var(--ease-out)}
+@keyframes dlgIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.dh{display:flex;justify-content:space-between;align-items:center;gap:8px}.dh h3{margin:0;font-size:17px}
+.x{background:none;border:0;font-size:16px;color:var(--muted);cursor:pointer;min-width:44px;min-height:44px}
+.small{font-size:13px;color:var(--ink-2)}.xs{font-size:12px;color:var(--muted)}
+.btns{display:flex;flex-wrap:wrap;gap:10px}
+.center{display:flex;justify-content:center;padding:8px 0}
+.box{width:64px;height:56px;border-radius:14px;background:linear-gradient(180deg,#7a96ef,var(--accent));position:relative;box-shadow:inset 0 -5px 0 rgb(0 0 0 / .12)}
+.box::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:7px;margin-left:-3.5px;background:rgb(255 255 255 / .55)}
+.box.wobble{animation:wobble 2.4s ease-in-out infinite}
+@keyframes wobble{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+.wallet{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;padding:18px 8px;background:var(--surface-2);border-radius:18px}
+.wicon{width:56px;height:56px;border-radius:18px;background:var(--accent);color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 8px var(--accent-tint);animation:breathe 1.6s ease-in-out infinite}
+@keyframes breathe{50%{transform:scale(1.06)}}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.steps li{display:flex;gap:10px;align-items:center;color:var(--muted);transition:color 240ms}
+.steps li i{width:20px;height:20px;border-radius:50%;border:2px solid var(--border-input);flex:none;font-style:normal;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;transition:all 240ms}
+.steps li.done{color:var(--ink-2)}.steps li.done i{background:var(--pos-dot);border-color:var(--pos-dot);color:#fff}
+.steps li.act{color:var(--ink);font-weight:700}.steps li.act i{border-color:var(--accent);background:radial-gradient(var(--accent) 35%,transparent 40%);animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 2px var(--accent-tint)}50%{box-shadow:0 0 0 6px var(--accent-tint)}}
+.grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;perspective:600px}
+.card{aspect-ratio:3/4;position:relative;transform-style:preserve-3d;transition:transform 520ms var(--ease-pop)}
+.card.flipped{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;border-radius:12px;backface-visibility:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;text-align:center;padding:4px}
+.front{background:linear-gradient(160deg,#7a96ef,var(--accent));color:#fff;font-size:20px;font-weight:800}
+.backf{transform:rotateY(180deg);background:var(--surface-2);border:2px solid var(--lc,var(--border))}
+.backf b{font-size:11px}.backf .amt{font-weight:800;font-size:10.5px}
+.card.glow .backf{animation:glow 600ms ease-out}
+@keyframes glow{from{box-shadow:0 0 0 0 var(--lc)}to{box-shadow:0 0 0 10px transparent}}
+.pfp{display:inline-block;background:var(--unknown-bg);color:var(--unknown);border-radius:999px;padding:0 6px;font-size:10px;font-weight:800}
+.card.pf .pfp{animation:sparkle 800ms ease-out 1}
+@keyframes sparkle{0%{transform:scale(.6)}50%{transform:scale(1.25)}100%{transform:none}}
+.asset{display:flex;justify-content:space-between;background:var(--surface-2);border-radius:12px;padding:10px 12px}
+.asset b{font-variant-numeric:tabular-nums}
+.drops{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;min-height:70px}
+.dbox{display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px 10px;font-size:12px;font-weight:800;animation:drop 420ms var(--ease-pop) both}
+.dbox i{width:22px;height:18px;border-radius:5px;background:var(--lc)}
+@keyframes drop{from{opacity:0;transform:translateY(-40px)}to{opacity:1;transform:none}}
+.pack{text-align:center;font-size:16px;font-weight:800}
+.mini{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;position:relative;height:30px}
+.mini span{border-radius:5px;background:var(--l1);transition:transform 450ms ease-in,opacity 450ms ease-in}
+.newbox{display:flex;flex-direction:column;align-items:center;gap:4px;border-radius:18px;padding:16px 26px;background:var(--pos-bg);animation:popIn 320ms var(--ease-pop) both}
+@keyframes popIn{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.08);opacity:1}100%{transform:none}}
+.check{width:64px;height:64px;border-radius:50%;background:var(--pos-bg);display:flex;align-items:center;justify-content:center}
+.check path{stroke-dasharray:30;stroke-dashoffset:30;animation:draw 300ms ease-out forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.box.out{animation:out 360ms ease-in forwards}
+@keyframes out{to{transform:translateX(60px);opacity:0}}
+.err{background:var(--neg-bg);color:var(--neg-ink);border-radius:14px;padding:10px 12px;font-weight:700;animation:shake 260ms}
+@keyframes shake{25%{transform:translateX(-4px)}50%{transform:translateX(4px)}75%{transform:translateX(-4px)}}
+.warn{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn);border-radius:14px;padding:10px 12px}
+.addr{font-family:ui-monospace,Menlo,monospace;font-size:13px;word-break:break-all;background:var(--surface-2);border-radius:10px;padding:8px 10px}
+input[type=text]{width:100%;min-height:44px;border:1px solid var(--border-input);border-radius:12px;padding:0 12px;font:inherit}
+.ids{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ids span{background:var(--surface-2);border-radius:8px;padding:2px 8px;font-size:12.5px;font-variant-numeric:tabular-nums}.ids .more{background:none;font-weight:600;color:var(--ink-2)}.ids button{background:none;border:0;color:var(--accent-ink);font:700 12px inherit;font-family:inherit;cursor:pointer;min-height:32px}
+.fakeflag{font-size:11px;font-weight:800;color:var(--unknown)}
+/* Reduced motion: nút bật trên trang hoặc cài đặt hệ thống */
+body.rm *,body.rm *::before,body.rm *::after{animation:none !important;transition:opacity 150ms linear !important}
+body.rm .card{transition:none !important}
+body.rm .card.flipped{transform:none}
+body.rm .card .front{display:none}
+body.rm .card .backf{transform:none}
+body.rm .check path{stroke-dashoffset:0}
+body.rm .dialog{animation:fadeOnly 120ms linear !important}
+@keyframes fadeOnly{from{opacity:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Rewards · demo hiệu ứng dialog</h1>
+  <p class="note"><b>Dữ liệu giả, chỉ để bấm thử chuyển động.</b> Không gọi SoDEX, không mở ví. Bước "ví" và trạng thái job (submitting → pending → revealed) được giả bằng hẹn giờ; trong app các bước đổi theo trạng thái thật SoDEX trả về. Open / Merge chọn box cũ nhất trước (theo ngày mint giả), danh sách token ID sắp tăng dần như khi ký. Bấm ✕ giữa chừng: job vẫn chạy và hiện ở dải bên dưới, bấm "View" để mở lại. Câu chữ theo bản đã duyệt (README.md).</p>
+  <div class="bar">
+    <button class="btn primary" data-run="claim">Claim 3 boxes</button>
+    <button class="btn primary" data-run="open">Open 5 boxes</button>
+    <button class="btn primary" data-run="merge">Merge 10 boxes</button>
+    <button class="btn secondary" data-run="openFail">Open (fails)</button>
+    <label class="toggle"><input type="checkbox" id="rm"> Reduced motion</label>
+  </div>
+  <div class="strip" id="strip" aria-live="polite"><span class="spin" id="stripSpin"></span><div style="flex:1;min-width:0"><b id="stripText"></b> <span class="xs" id="stripSub"></span></div><button class="btn secondary" id="stripView" style="min-height:36px">View</button></div>
+</div>
+<div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="dlgTitle"><div class="dialog" id="dlg"></div></div>
+<script>
+(function(){
+  var rm = document.getElementById('rm');
+  try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { rm.checked = true; } } catch(e) {}
+  function applyRm(){ document.body.classList.toggle('rm', rm.checked); }
+  rm.addEventListener('change', applyRm); applyRm();
+  var reduced = function(){ return rm.checked; };
+
+  var ov = document.getElementById('ov'), dlg = document.getElementById('dlg');
+  var strip = document.getElementById('strip'), stripText = document.getElementById('stripText'), stripSub = document.getElementById('stripSub'), stripSpin = document.getElementById('stripSpin');
+  var job = null; // {kind, render: function}
+
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function show(html){ dlg.innerHTML = html; ov.classList.add('open'); dlg.style.animation='none'; void dlg.offsetWidth; dlg.style.animation=''; bindClose(); }
+  function head(t, sub){ return '<div class="dh"><h3 id="dlgTitle">'+t+'</h3><button class="x" data-close aria-label="Close">✕</button></div>' + (sub ? '<p class="xs">'+sub+'</p>' : ''); }
+  function steps(list, active){ return '<ol class="steps">' + list.map(function(s,i){ var c = i < active ? 'done' : i === active ? 'act' : ''; return '<li class="'+c+'"><i>'+(i<active?'✓':'')+'</i>'+s+'</li>'; }).join('') + '</ol>'; }
+  function bindClose(){
+    dlg.querySelectorAll('[data-close]').forEach(function(b){ b.onclick = closeDlg; });
+  }
+  function closeDlg(){
+    ov.classList.remove('open');
+    if (job && !job.finished) { strip.classList.add('show'); strip.classList.remove('done'); stripSpin.style.display=''; stripText.textContent = job.label; stripSub.textContent = job.sub || ''; }
+    else if (job && job.finished && !job.seen) { strip.classList.add('show','done'); stripSpin.style.display='none'; stripText.textContent = job.doneLabel; stripSub.textContent=''; }
+    else { strip.classList.remove('show'); }
+  }
+  ov.addEventListener('click', function(e){ if (e.target === ov) closeDlg(); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && ov.classList.contains('open')) closeDlg(); });
+  document.getElementById('stripView').onclick = function(){ if (!job) return; if (job.finished) job.seen = true; strip.classList.remove('show'); job.render(true); };
+  function setStrip(){ if (!ov.classList.contains('open') && job) { closeDlg(); } }
+  function wait(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+  var WALLET = '<div class="wallet"><span class="wicon">◈</span><b>Confirm in your wallet</b><span class="small">Check the request in your wallet app. Nothing is sent until you approve.</span><span class="fakeflag">DEMO: approves by itself in 1.5 s</span></div>';
+
+
+  // Chọn box cũ nhất trước (theo mintedAt, bằng nhau thì tokenId), rồi sắp tokenId tăng dần để ký / gửi. DỮ LIỆU GIẢ.
+  var COMMON = [
+    {id:201640, minted:'2026-11-26'},{id:199702, minted:'2026-11-08'},{id:196233, minted:'2026-11-06'},{id:193410, minted:'2026-11-05'},
+    {id:191005, minted:'2026-11-12'},{id:190077, minted:'2026-11-03'},{id:188540, minted:'2026-11-02'},{id:191220, minted:'2026-11-09'},
+    {id:192301, minted:'2026-11-10'},{id:194118, minted:'2026-11-11'},{id:198050, minted:'2026-11-13'},{id:200912, minted:'2026-11-20'},
+    {id:200101, minted:'2026-11-21'},{id:200344, minted:'2026-11-22'}];
+  function pickOldest(n){
+    return COMMON.slice().sort(function(a,b){ return a.minted < b.minted ? -1 : a.minted > b.minted ? 1 : a.id - b.id; })
+      .slice(0,n).map(function(b){ return b.id; }).sort(function(a,b){ return a - b; });
+  }
+  function idList(ids){
+    var all = ids.map(function(i){ return '<span>#'+i+'</span>'; });
+    if (ids.length <= 5) return '<div class="ids">'+all.join('')+'</div>';
+    return '<div class="ids" data-ids="'+ids.join(',')+'">'+all.slice(0,4).join('')+'<span class="more">and '+(ids.length-4)+' more</span><button type="button" data-showall>Show all</button></div>';
+  }
+  dlg.addEventListener('click', function(e){
+    var t = e.target; if (!t || !t.hasAttribute) return;
+    if (t.hasAttribute('data-showall')) { var w = t.parentNode, ids = w.getAttribute('data-ids').split(','); w.innerHTML = ids.map(function(i){ return '<span>#'+i+'</span>'; }).join('') + '<button type="button" data-showless>Show less</button>'; }
+    else if (t.hasAttribute('data-showless')) { var w2 = t.parentNode, ids2 = w2.getAttribute('data-ids').split(','); w2.outerHTML = idList(ids2.map(Number)); }
+  });
+
+  // ---------- CLAIM ----------
+  function runClaim(){
+    var minted = [['#201640','Common','var(--l1)'],['#201641','Common','var(--l1)'],['#201642','Uncommon','var(--l2)']];
+    job = {kind:'claim', label:'Claiming 3 boxes…', sub:'Job #88213', doneLabel:'3 boxes claimed', step:0, finished:false};
+    var S = ['Sent to SoDEX','Minting your boxes','Ready'];
+    job.render = function(){
+      if (job.finished) {
+        var html = minted.map(function(m,i){ return '<span class="dbox" style="--lc:'+m[2]+';animation-delay:'+(i*120)+'ms"><i></i>'+m[1]+'<small>'+m[0]+'</small></span>'; }).join('');
+        show(head('3 boxes claimed') + '<div class="drops">'+html+'</div><div class="pack"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px"><path d="M4 10a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M8 14h8"/></svg> <span id="cnt">27</span></div><div class="btns"><button class="btn primary" data-close>Done</button></div>');
+        var cnt = document.getElementById('cnt'), n = 27;
+        if (reduced()) { cnt.textContent = '30'; return; }
+        minted.forEach(function(_,i){ setTimeout(function(){ n++; if (cnt) cnt.textContent = String(n); }, 420 + i*120); });
+        return;
+      }
+      show(head('Claiming 3 boxes','Job #88213') + '<div class="center"><span class="box wobble"></span></div>' + steps(S, job.step) + '<p class="xs">You can close this. It keeps going and shows on Overview.</p><div class="btns"><button class="btn secondary" data-close>Close</button></div>');
+    };
+    show(head('Claim 3 boxes') + '<p class="small">They go into your backpack and SoDEX shows each level. No wallet signature needed.</p><div class="btns"><button class="btn primary" id="go">Claim 3</button><button class="btn secondary" data-close>Cancel</button></div>');
+    document.getElementById('go').onclick = async function(){
+      var j = job; j.step = 0; j.render();
+      await wait(1200); if (job !== j) return; j.step = 1; if (ov.classList.contains('open')) j.render(); else setStrip();
+      await wait(2200); if (job !== j) return; j.finished = true; if (ov.classList.contains('open')) { j.seen = true; j.render(); } else setStrip();
+    };
+  }
+
+  // ---------- OPEN ----------
+  var BOXES = [['#188540','Common','0.0612 vANT','$5.07',false,'var(--l1)'],['#190077','Common','12.40 vsoUSDC','$12.40',false,'var(--l1)'],['#193410','Common','0.0897 vANT','$7.43',false,'var(--l1)'],['#196233','Common','0.1702 vANT','$14.09',false,'var(--l1)'],['#199702','Common','0.1007 vANT','$8.33',true,'var(--l1)']];
+  function runOpen(fail){
+    job = {kind:'open', label:'Opening 5 boxes…', sub:'Job #88231 · recording on-chain', doneLabel:'5 boxes opened', step:0, finished:false, failed:false};
+    var S = ['Signed','Sent to SoDEX','Recording on-chain','Revealed'];
+    job.render = function(){
+      if (job.failed) {
+        show(head('Open failed') + '<div class="err">SoDEX said: “signature deadline expired”</div><p class="small">Your boxes are still in your backpack. Trying again asks your wallet for a new signature.</p><div class="btns"><button class="btn primary" id="again">Try again</button><button class="btn secondary" data-close>Close</button></div>');
+        document.getElementById('again').onclick = function(){ runOpen(false); };
+        return;
+      }
+      if (job.finished) { reveal(); return; }
+      show(head('Opening 5 boxes','Job #88231') + '<div class="center"><span class="box wobble"></span></div>' + steps(S, job.step) + '<p class="xs">You can close this. It keeps going and shows on Overview.</p><div class="btns"><button class="btn secondary" data-close>Close</button></div>');
+    };
+    show(head('Open 5 Common boxes') + '<p class="small">Uses your oldest Common boxes first.</p>' + idList(pickOldest(5)) + '<p class="small">Your wallet will ask you to sign. This signature only opens these boxes. Rewards go to your SoDEX account.</p><p class="xs">What’s inside is decided by SoDEX when the box opens.</p><div class="btns"><button class="btn primary" id="go">Sign and open</button><button class="btn secondary" data-close>Cancel</button></div>');
+    document.getElementById('go').onclick = async function(){
+      var j = job;
+      show(head('Open 5 boxes') + WALLET + '<div class="btns"><button class="btn secondary" data-close>Cancel</button></div>');
+      await wait(1500); if (job !== j) return;
+      if (!ov.classList.contains('open')) { job = null; strip.classList.remove('show'); return; } // cancelled at wallet step
+      j.step = 1; j.render();
+      await wait(1200); if (job !== j) return; j.step = 2; if (ov.classList.contains('open')) j.render(); else setStrip();
+      await wait(2500); if (job !== j) return;
+      if (fail) { j.failed = true; j.finished = true; j.doneLabel = 'Open failed'; } else { j.finished = true; }
+      if (ov.classList.contains('open')) { j.seen = true; j.render(); } else setStrip();
+    };
+  }
+  function reveal(){
+    var cards = BOXES.map(function(b){
+      return '<div class="card'+(b[4]?' pf':'')+'" style="--lc:'+b[5]+'"><div class="face front">?</div><div class="face backf"><span class="xs">'+b[0]+'</span><b>'+b[1]+'</b><span class="amt">'+esc(b[2])+'</span><span class="xs">'+b[3]+'</span>'+(b[4]?'<span class="pfp">PFP</span>':'')+'</div></div>';
+    }).join('');
+    show(head('5 boxes opened') + '<div class="grid" id="grid">'+cards+'</div><div id="sum" style="display:none;flex-direction:column;gap:8px"><div class="asset"><span>vANT</span><span><b id="a1">0.42183</b> <span class="xs">≈ $34.92</span></span></div><div class="asset"><span>vsoUSDC</span><span><b>12.40</b> <span class="xs">≈ $12.40</span></span></div><p class="xs">PFP dropped · Cybereator #2051 (open it on SoDEX). USD values are at open time, from SoDEX.</p></div><div class="btns"><button class="btn secondary" id="skip">Skip</button><button class="btn primary" data-close>Done</button></div>');
+    var els = Array.prototype.slice.call(document.querySelectorAll('#grid .card'));
+    var sum = document.getElementById('sum');
+    function finish(){ els.forEach(function(c){ c.classList.add('flipped'); }); sum.style.display='flex'; var s = document.getElementById('skip'); if (s) s.remove(); }
+    document.getElementById('skip').onclick = finish;
+    if (reduced()) { finish(); return; }
+    els.forEach(function(c,i){
+      setTimeout(function(){ c.classList.add('flipped'); if (BOXES[i][1] !== 'Common') c.classList.add('glow'); }, 200 + i*140);
+    });
+    setTimeout(function(){
+      sum.style.display='flex';
+      var a = document.getElementById('a1'), t0 = performance.now(), target = 0.42183;
+      (function tick(t){ var k = Math.min(1,(t-t0)/400); if (a) a.textContent = (target*k).toFixed(5); if (k<1) requestAnimationFrame(tick); else { var s=document.getElementById('skip'); if(s) s.remove(); } })(t0);
+    }, 200 + els.length*140 + 520);
+  }
+
+  // ---------- MERGE ----------
+  function runMerge(){
+    job = {kind:'merge', label:'Merging 10 boxes…', sub:'Job #88240', doneLabel:'Merge done', step:0, finished:false};
+    var S = ['Signed','Sent to SoDEX','Recording on-chain','New box ready'];
+    var mini = '<div class="mini" id="mini">' + new Array(11).join('<span></span>') + '</div>';
+    job.render = function(){
+      if (job.finished) {
+        show(head('Merge done') + mini + '<div class="center" id="nb" style="min-height:96px"></div><div class="btns"><button class="btn primary" data-close>Done</button></div>');
+        var nb = document.getElementById('nb');
+        var put = function(){ nb.innerHTML = '<div class="newbox"><span class="xs">New box</span><b>#201877</b><span style="font-weight:800;color:var(--pos)">Uncommon</span></div>'; };
+        var tiles = Array.prototype.slice.call(document.querySelectorAll('#mini span'));
+        if (reduced()) { document.getElementById('mini').style.display='none'; put(); return; }
+        var mid = document.getElementById('mini').getBoundingClientRect();
+        tiles.forEach(function(t,i){ var r = t.getBoundingClientRect(); var dx = (mid.left + mid.width/2) - (r.left + r.width/2); setTimeout(function(){ t.style.transform = 'translate('+dx+'px, 30px) scale(.4)'; t.style.opacity = '0'; }, i*30); });
+        setTimeout(put, 450 + 9*30);
+        return;
+      }
+      show(head('Merging 10 boxes','Job #88240') + mini + steps(S, job.step) + '<div class="btns"><button class="btn secondary" data-close>Close</button></div>');
+    };
+    show(head('Merge 10 Common boxes') + '<p class="small">Uses your oldest Common boxes first.</p>' + idList(pickOldest(10)) + '<p class="small">These 10 boxes are used up and SoDEX gives you one new box. Its level shows when it’s done.</p><div class="btns"><button class="btn primary" id="go">Sign and merge</button><button class="btn secondary" data-close>Cancel</button></div>');
+    document.getElementById('go').onclick = async function(){
+      var j = job;
+      show(head('Merge 10 Common boxes') + WALLET);
+      await wait(1500); if (job !== j) return;
+      if (!ov.classList.contains('open')) { job = null; return; }
+      j.step = 1; j.render();
+      await wait(1200); if (job !== j) return; j.step = 2; if (ov.classList.contains('open')) j.render(); else setStrip();
+      await wait(2200); if (job !== j) return; j.finished = true; if (ov.classList.contains('open')) { j.seen = true; j.render(); } else setStrip();
+    };
+  }
+
+  document.querySelectorAll('[data-run]').forEach(function(b){
+    b.onclick = function(){
+      strip.classList.remove('show');
+      var k = b.getAttribute('data-run');
+      if (k === 'claim') runClaim(); else if (k === 'open') runOpen(false); else if (k === 'openFail') runOpen(true); else runMerge();
+    };
+  });
+})();
+</script>
+</body>
+</html>

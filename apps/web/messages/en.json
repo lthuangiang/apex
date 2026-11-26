@@ -10035,5 +10035,68 @@
         "30d": "30d"
       }
     }
+  },
+  "rewards": {
+    "signIn": {
+      "sign": "Sign with wallet",
+      "checkWallet": "Check your wallet…",
+      "rejected": "Rejected in the wallet? Nothing changes. You can sign again any time."
+    },
+    "signedInAs": "Signed in as {address}",
+    "signOut": "Sign out of rewards",
+    "mismatch": {
+      "title": "This wallet isn't your SoDEX account",
+      "connected": "Connected:",
+      "account": "SoDEX account:",
+      "switch": "Switch to {address} in your wallet to see its rewards.",
+      "choose": "Choose another wallet"
+    },
+    "notConnected": "Connect your SoDEX account to see its rewards.",
+    "expired": {
+      "title": "Your rewards sign-in expired.",
+      "body": "Sign again to keep reading.",
+      "action": "Sign again"
+    },
+    "errors": {
+      "network": "Couldn't reach SoDEX rewards.",
+      "networkBody": "Nothing was changed. Try again in a moment.",
+      "retry": "Try again",
+      "busy": "SoDEX rewards is busy. Try again in {s} s.",
+      "busyNoTime": "SoDEX rewards is busy.",
+      "business": "SoDEX couldn't do that.",
+      "said": "SoDEX said:"
+    }
+  },
+  "rewardsDebug": {
+    "title": "Rewards diagnostics",
+    "subtitle": "Team only. Field names and types from SoDEX rewards, read with your own wallet. The sign-in token is never shown.",
+    "switch": {
+      "on": "Rewards is on for all users.",
+      "off": "Rewards is off for users. This page works either way."
+    },
+    "read": "Read endpoints",
+    "reading": "Reading…",
+    "public": "Public",
+    "wallet": "Wallet JWT",
+    "schemaOk": "Matches DeskLabs schema",
+    "schemaFail": "Differs from DeskLabs schema",
+    "outcome": {
+      "expired": "HTTP 401: sign-in expired",
+      "rate_limited": "HTTP 429",
+      "business": "SoDEX returned an error",
+      "http": "HTTP {status}",
+      "network": "Network error",
+      "schema": "Unexpected response shape"
+    },
+    "retryAfter": "retryAfter: {s} s",
+    "cols": {
+      "field": "Field",
+      "type": "Type",
+      "sample": "Sample"
+    },
+    "hidden": "Hidden",
+    "claims": "Sign-in token claims",
+    "claimsNone": "The token isn't a JWT, so it has no readable claims.",
+    "empty": "No fields."
   }
 }

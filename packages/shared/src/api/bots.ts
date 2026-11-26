@@ -57,6 +57,11 @@ export const featuresSchema = z.object({
   adaptiveDca: z.boolean().default(false),
   /** #423: Signal Research (BETA) trên menu chính: role team, hoặc team đã bật cờ cho tài khoản. */
   signalResearch: z.boolean().default(false),
+  /**
+   * #547 / DEC-397: SoDEX rewards (Rewards trên sidebar, thẻ Overview, `/rewards`). Công tắc toàn hệ thống
+   * `REWARDS_ENABLED` của api, giống nhau cho mọi user; mặc định tắt tới #551.
+   */
+  sodexRewards: z.boolean().default(false),
   /** Builder fee hiệu lực theo chiến lược của user (DEC-159), phần mười bp; thiếu key = mặc định. */
   builderFees: z.record(z.string(), z.number().int()).default({}),
   /** Thẻ builder fee Market Making; null khi chưa đăng nhập. */

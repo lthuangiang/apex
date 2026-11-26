@@ -12,7 +12,7 @@ import { WorkspaceShell } from "../workspace-shell";
 
 // Thứ tự sidebar và menu More (DEC-181; Trading Agent vẫn thứ 3, DEC-108).
 
-const flags = vi.hoisted(() => ({ aiDesk: true, signalResearch: false }));
+const flags = vi.hoisted(() => ({ aiDesk: true, signalResearch: false, sodexRewards: false }));
 
 vi.mock("@/lib/api", () => ({
   ApiError: class extends Error {},
@@ -21,7 +21,11 @@ vi.mock("@/lib/api", () => ({
 vi.mock("@/lib/queries", () => ({
   NOTIFICATIONS_KEY: ["notifications"],
   useFeatures: () => ({
-    data: { aiDesk: flags.aiDesk, signalResearch: flags.signalResearch },
+    data: {
+      aiDesk: flags.aiDesk,
+      signalResearch: flags.signalResearch,
+      sodexRewards: flags.sodexRewards,
+    },
   }),
   useMe: () => ({ data: undefined }),
   useSodexConnection: () => ({ data: undefined, isSuccess: false, dataUpdatedAt: 0 }),
@@ -182,5 +186,31 @@ describe("Signal Research (BETA, #423)", () => {
     await user.click(screen.getByRole("button", { name: "More" }));
     const sheet = await screen.findByRole("dialog", { name: "More" });
     expect(linkNames(sheet).slice(0, 2)).toEqual(["Portfolio", "Signal ResearchBeta"]);
+  });
+});
+
+describe("SoDEX rewards switch off (#547, DEC-397)", () => {
+  it("leaves the sidebar and the More sheet exactly as before, for team and users", async () => {
+    flags.aiDesk = true;
+    flags.signalResearch = false;
+    const hrefs = (root: HTMLElement) =>
+      within(root)
+        .getAllByRole("link")
+        .map((a) => a.getAttribute("href"));
+    for (const team of [true, false]) {
+      flags.sodexRewards = false;
+      renderShell(team);
+      const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
+      if (nav === undefined) throw new Error("sidebar nav missing");
+      const off = linkNames(nav);
+      expect(hrefs(nav).some((h) => h?.includes("rewards") === true)).toBe(false);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "More" }));
+      const sheet = await screen.findByRole("dialog", { name: "More" });
+      expect(hrefs(sheet).some((h) => h?.includes("rewards") === true)).toBe(false);
+      expect(off).toContain("Overview");
+      cleanup();
+    }
+    flags.sodexRewards = false;
   });
 });

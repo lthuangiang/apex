@@ -74,6 +74,8 @@ const app = await buildApp({
   srLane: () => redis.get(SR_LANE_KEY),
   // #420: chốt chặn bot `news_signal` mainnet (mặc định tắt).
   newsSignalBotsEnabled: () => config.SIGNAL_NEWS_BOTS_ENABLED,
+  // #547 / DEC-397: công tắc toàn hệ thống của SoDEX rewards (mặc định tắt tới #551).
+  rewardsEnabled: () => config.REWARDS_ENABLED,
   reco: httpRecoClient(config.RECO_URL),
   // `none`: tab Liquidation map ẩn (IMP-05, DEC-92).
   liquidations: config.LIQUIDATION_PROVIDER === "hyperliquid" ? hyperliquidProvider(redis) : null,

@@ -103,6 +103,8 @@ export interface AppDeps {
    * đổi được giữa chừng.
    */
   newsSignalBotsEnabled?: () => boolean;
+  /** #547 / DEC-397: `REWARDS_ENABLED`, công tắc toàn hệ thống của SoDEX rewards. Thiếu = tắt. */
+  rewardsEnabled?: () => boolean;
   rateLimiter: RateLimiter;
   /** Nhà cung cấp bản đồ thanh lý (IMP-05). Không có / null: tab Liquidation map ẩn. */
   liquidations?: LiquidationProvider | null;
@@ -168,6 +170,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       aiDesk: desk,
       adaptiveDca: adca,
       signalResearch: sr,
+      // DEC-397: công tắc toàn hệ thống (`REWARDS_ENABLED`), giống nhau cho mọi user; không phải cờ theo tài khoản.
+      sodexRewards: deps.rewardsEnabled?.() === true,
       builderFees,
       mmFee,
     };

@@ -31,10 +31,13 @@ Desktop và mobile dùng **cùng một route**, layout responsive. Artboard mobi
 | `/admin/builder-revenue` | Desktop · Builder Revenue (chỉ đội DRIFT) | Mobile · Builder Revenue |
 | `/admin/users` | Chưa có artboard (DEC-64, chỉ role `team`, chỉ đọc) | Chưa có artboard |
 | `/admin/signal-analysis` | Signal Analysis (`docs/mockups/signal-analysis`, tab All / Volume Builder / Market Making; chỉ role `team`, chỉ đọc, DEC-318) | bảng cuộn ngang, nút cao 44 px |
+| `/rewards?tab=sopoints\|boxes` | Rewards (`docs/mockups/rewards`, màn 08–18; DEC-397). **Chưa có** (#548–#550). Sau công tắc toàn hệ thống `REWARDS_ENABLED` (`/api/v1/features` → `sodexRewards`); tắt = route Not found, sidebar và Overview như cũ | cùng bộ bản phác, bản 390 |
+| `/admin/rewards-debug` | Chẩn đoán SoDEX rewards (#547, DEC-397): chỉ role `team` (người khác Not found), không có mục sidebar; chạy cả khi `REWARDS_ENABLED` tắt. Đăng nhập ví (master wallet), đọc các endpoint ĐỌC của Rewards API, hiện tên trường · kiểu · giá trị mẫu (trường ví / chữ ký / nonce / token chỉ hiện kiểu), tên claim JWT (giá trị chỉ với `exp` / `iat` / `nbf`); không bao giờ hiện token. Không có thao tác ghi | bảng cuộn ngang |
 
 **Điều hướng:**
 - Sidebar desktop: Overview, Portfolio, Trading Agent, Strategy Lab, Execution & Orders, Risk Center, AI Analyst | Builder Revenue (chỉ đội DRIFT), Settings.
 - Bottom nav mobile: Home, Portfolio, Agent (ở giữa), Strategy, More (gồm Settings và link tới Orders, Risk, AI Analyst).
+- **SoDEX rewards (DEC-397, khi `REWARDS_ENABLED` bật, #548–#551):** Rewards ở vị trí 2 có chip New, Trading Agent vẫn vị trí 3 (DEC-108), Portfolio xuống nhóm dưới ngay trên Settings; mobile: thanh dưới giữ nguyên (DEC-208), Rewards đứng đầu More. Overview phương án B: thẻ SoDEX rewards thay thẻ Trading Agent (cùng vị trí, cùng độ rộng; hero giữ nguyên). Tắt thì sidebar, More và Overview như hiện tại.
 - Mục "Trading Agent" trên sidebar mở bot đang chạy gần nhất. Nếu người dùng có nhiều bot thì có thanh chọn bot ở đầu trang.
 
 **Không có wizard nhiều bước.** Nút "New bot" mở tab catalog của `/bots`. Mỗi thẻ trong catalog dẫn tới `/bots/new/:strategy`.

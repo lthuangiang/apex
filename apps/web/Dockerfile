@@ -38,6 +38,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # WalletConnect Cloud (Reown) Project ID: Next nhúng biến NEXT_PUBLIC_* lúc build. Trống thì ẩn WalletConnect.
 ARG NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=""
 ENV NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=$NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
+# Gateway Rewards API của SoDEX (DEC-397): trống thì web dùng https://mainnet-gw.sodex.dev.
+ARG NEXT_PUBLIC_SODEX_REWARDS_GATEWAY=""
+ENV NEXT_PUBLIC_SODEX_REWARDS_GATEWAY=$NEXT_PUBLIC_SODEX_REWARDS_GATEWAY
 RUN pnpm --filter @drift/web build
 ENV NODE_ENV=production
 CMD ["pnpm", "--filter", "@drift/web", "start"]

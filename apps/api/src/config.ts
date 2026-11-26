@@ -46,6 +46,13 @@ const envSchema = z.object({
    * `FEATURE_NOT_READY` cho mọi người. Người dùng tự bật sau khi engine nối tín hiệu và đã thử lệnh nhỏ thật.
    */
   SIGNAL_NEWS_BOTS_ENABLED: z.stringbool().default(false),
+  /**
+   * #546 / DEC-397: công tắc toàn hệ thống của SoDEX rewards (mục sidebar Rewards, thẻ Overview, route `/rewards`), trả
+   * về web qua `GET /api/v1/features` (`sodexRewards`) để đổi lúc chạy mà không build lại image web. Mặc định tắt trong
+   * lúc xây (#547–#550); PR cuối (#551) đổi mặc định sang bật cho mọi user, sau đó biến chỉ còn là nút tắt khẩn khi
+   * gateway SoDEX có sự cố. Trang chẩn đoán `/admin/rewards-debug` (team) không phụ thuộc công tắc này.
+   */
+  REWARDS_ENABLED: z.stringbool().default(false),
   /** Notifications v2: kênh Telegram (DEC-170). Tắt thì mọi route `/api/v1/telegram/*` trả 404. */
   TELEGRAM_ENABLED: z.stringbool().default(false),
   /** Morning brief qua Telegram (N4): chỉ chạy khi TELEGRAM_ENABLED cũng bật. */

@@ -6,11 +6,13 @@ import { useTranslations } from "next-intl";
 import { useDisconnect } from "wagmi";
 import { z } from "zod";
 
+import { clearAllRewardsTokens } from "@/features/rewards/token-store";
 import { api } from "@/lib/api";
 
 /**
  * Thu hồi phiên ở server (`DELETE /api/v1/auth/session`, có audit), ngắt kết nối ví trong trình duyệt, rồi
- * về trang đăng nhập. Không ngắt ví thì tài khoản DRIFT kế tiếp trên cùng trình duyệt dùng lại ví cũ.
+ * về trang đăng nhập. Không ngắt ví thì tài khoản DRIFT kế tiếp trên cùng trình duyệt dùng lại ví cũ. Token rewards
+ * của SoDEX (sessionStorage, DEC-397) bị xoá cùng lúc.
  */
 export function SignOutButton() {
   const t = useTranslations("common.nav");
@@ -20,6 +22,7 @@ export function SignOutButton() {
     mutationFn: () =>
       api("DELETE", "/api/v1/auth/session", z.unknown(), { idempotencyKey: crypto.randomUUID() }),
     onSettled: async () => {
+      clearAllRewardsTokens();
       qc.clear();
       await disconnectWallet().catch(() => undefined);
       window.location.assign("/signin");

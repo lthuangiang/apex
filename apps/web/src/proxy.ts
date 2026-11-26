@@ -1,6 +1,8 @@
 import { SESSION_COOKIE } from "@drift/shared";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { REWARDS_GATEWAY_ORIGIN } from "./features/rewards/gateway";
+
 // Content-Security-Policy chặt (CODING_STANDARDS C12): script chỉ chạy khi có nonce của request này, không có
 // `unsafe-inline` cho script. Next đọc nonce từ header CSP của request và gắn vào script của nó.
 // Style giữ `unsafe-inline` (thuộc tính `style` động của biểu đồ); C12 chỉ cấm cho script.
@@ -18,7 +20,12 @@ const WALLETCONNECT = {
   font: "https://fonts.reown.com",
 };
 
-export function buildCsp(nonce: string, dev: boolean, walletConnect = false): string {
+export function buildCsp(
+  nonce: string,
+  dev: boolean,
+  walletConnect = false,
+  rewardsGateway: string = REWARDS_GATEWAY_ORIGIN,
+): string {
   const wc = (k: keyof typeof WALLETCONNECT) => (walletConnect ? ` ${WALLETCONNECT[k]}` : "");
   return [
     "default-src 'self'",
@@ -26,8 +33,9 @@ export function buildCsp(nonce: string, dev: boolean, walletConnect = false): st
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob:${wc("img")}`,
     `font-src 'self'${wc("font")}`,
-    // RPC ValueChain: wagmi đọc chain khi chuyển mạng trong ví.
-    `connect-src 'self' https://mainnet.valuechain.xyz${dev ? " ws: wss:" : " wss:"}${wc("connect")}`,
+    // RPC ValueChain: wagmi đọc chain khi chuyển mạng trong ví. Gateway Rewards API của SoDEX (DEC-397): trình duyệt
+    // gọi thẳng, luôn mở (trang chẩn đoán team chạy cả khi công tắc REWARDS_ENABLED tắt).
+    `connect-src 'self' https://mainnet.valuechain.xyz ${rewardsGateway}${dev ? " ws: wss:" : " wss:"}${wc("connect")}`,
     `frame-src 'self'${wc("frame")}`,
     "object-src 'none'",
     "base-uri 'self'",
