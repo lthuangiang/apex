@@ -176,10 +176,18 @@ export const notificationListSchema = z.object({
   unread: z.number().int(),
 });
 
+/**
+ * Nhóm có trong bảng cài đặt (GET / PUT `/api/v1/notifications/settings`): mọi nhóm của `NOTIFICATION_GROUPS` trừ nhóm hệ
+ * thống (DEC-183). Suy từ `NOTIFICATION_GROUPS` để thêm nhóm mới không bị sót schema (#558: nhóm `rewards`).
+ */
+export const SETTINGS_NOTIFICATION_GROUPS = (
+  Object.keys(NOTIFICATION_GROUPS) as NotificationGroup[]
+).filter((g) => !SYSTEM_GROUPS.includes(g)) as [NotificationGroup, ...NotificationGroup[]];
+
 export const notificationSettingsSchema = z.object({
   groups: z.array(
     z.object({
-      group: z.enum(["botErrors", "risk", "keyFee", "fills", "daily", "copyTrading", "teamOps"]),
+      group: z.enum(SETTINGS_NOTIFICATION_GROUPS),
       alwaysOn: z.boolean(),
       in_app: z.boolean(),
       email: z.boolean(),
@@ -189,7 +197,7 @@ export const notificationSettingsSchema = z.object({
   ),
 });
 export const notificationSettingsBodySchema = z.object({
-  group: z.enum(["botErrors", "risk", "keyFee", "fills", "daily", "copyTrading", "teamOps"]),
+  group: z.enum(SETTINGS_NOTIFICATION_GROUPS),
   channel: z.enum(NOTIFICATION_CHANNELS),
   enabled: z.boolean(),
 });
