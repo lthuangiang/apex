@@ -30,14 +30,36 @@ export class RewardsError extends Error {
 
 /** Hết hạn tạm dừng do 429 (ms epoch), theo origin gateway. */
 const pausedUntil = new Map<string, number>();
+/** Origin đang dừng mà SoDEX có trả `retryAfter` (được hiện đếm ngược); thiếu = dừng 60 s nhưng không hiện số. */
+const pausedKnown = new Set<string>();
+
+const pauseListeners = new Set<() => void>();
+function emitPause() {
+  for (const l of pauseListeners) l();
+}
+
+/** Cho `useSyncExternalStore`: báo khi bắt đầu dừng do 429. */
+export function subscribeRewardsPause(listener: () => void): () => void {
+  pauseListeners.add(listener);
+  return () => {
+    pauseListeners.delete(listener);
+  };
+}
 
 export function rewardsPausedUntil(origin = REWARDS_GATEWAY_ORIGIN): number | null {
   return pausedUntil.get(origin) ?? null;
 }
 
+/** Lần dừng hiện tại có số giây từ SoDEX không (#548: không có thì UI không đếm ngược). */
+export function rewardsPauseKnown(origin = REWARDS_GATEWAY_ORIGIN): boolean {
+  return pausedKnown.has(origin);
+}
+
 /** Chỉ cho test. */
 export function resetRewardsRateLimit(): void {
   pausedUntil.clear();
+  pausedKnown.clear();
+  emitPause();
 }
 
 export interface RewardsRequest<T extends z.ZodType> {
@@ -92,8 +114,15 @@ export async function rewardsRequest<T extends z.ZodType>(
   const until = pausedUntil.get(origin);
   if (until !== undefined) {
     if (now() < until)
-      throw new RewardsError("rate_limited", 429, null, Math.ceil((until - now()) / 1000));
+      throw new RewardsError(
+        "rate_limited",
+        429,
+        null,
+        // Không có `retryAfter` từ SoDEX thì không đưa số dừng dự phòng ra UI (DEC-397).
+        pausedKnown.has(origin) ? Math.ceil((until - now()) / 1000) : null,
+      );
     pausedUntil.delete(origin);
+    pausedKnown.delete(origin);
   }
   const url = rewardsUrl(req.path, req.query, origin);
   const method = req.method ?? "GET";
@@ -122,6 +151,9 @@ export async function rewardsRequest<T extends z.ZodType>(
   if (response.status === 429) {
     const retryAfter = retryAfterOf(json, response.headers.get("Retry-After"));
     pausedUntil.set(origin, now() + (retryAfter ?? RATE_LIMIT_FALLBACK_SEC) * 1000);
+    if (retryAfter === null) pausedKnown.delete(origin);
+    else pausedKnown.add(origin);
+    emitPause();
     throw new RewardsError("rate_limited", 429, null, retryAfter);
   }
   if (!response.ok) throw new RewardsError("http", response.status);

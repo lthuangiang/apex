@@ -10,6 +10,7 @@ import {
   RATE_LIMIT_FALLBACK_SEC,
   RewardsError,
   rewardsPausedUntil,
+  rewardsPauseKnown,
   rewardsRequest,
   rewardsUrl,
   resetRewardsRateLimit,
@@ -200,6 +201,13 @@ describe("rewardsRequest", () => {
     );
     expect(e.retryAfterSec).toBeNull();
     expect(rewardsPausedUntil()).toBe(RATE_LIMIT_FALLBACK_SEC * 1000);
+    expect(rewardsPauseKnown()).toBe(false);
+    // #548: các request bị chặn trong lúc dừng cũng không lộ số giây dự phòng (UI không đếm ngược).
+    const later = await caught(
+      rewardsRequest({ path: "lottery/feed", schema: z.unknown(), now: () => 10_000 }),
+    );
+    expect(later.kind).toBe("rate_limited");
+    expect(later.retryAfterSec).toBeNull();
   });
 
   it("maps fetch failures to network and other HTTP errors to http", async () => {

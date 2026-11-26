@@ -59,7 +59,8 @@
       "architecture": "System Architecture Diagram",
       "sodexDebugger": "SoDEX Debugger",
       "signalAnalysis": "Signal Analysis",
-      "signalResearch": "Signal Research"
+      "signalResearch": "Signal Research",
+      "rewards": "Rewards"
     },
     "dialog": {
       "consequences": "What happens"
@@ -2901,7 +2902,10 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch"
+    "signalAnalysis.research.live.batch",
+    "rewards.multipliers.empty",
+    "rewards.feed.empty",
+    "rewards.summary.nextOnly"
   ],
   "beta": {
     "label": "Beta",
@@ -10040,7 +10044,12 @@
     "signIn": {
       "sign": "Sign with wallet",
       "checkWallet": "Check your wallet…",
-      "rejected": "Rejected in the wallet? Nothing changes. You can sign again any time."
+      "rejected": "Rejected in the wallet? Nothing changes. You can sign again any time.",
+      "title": "Sign in to see your SoDEX rewards",
+      "body": "Your wallet signs one message. It lets this browser read your SoPoints and Blind Boxes from SoDEX.",
+      "wallet": "Wallet:",
+      "walletNote": "(your SoDEX account)",
+      "stay": "You'll stay signed in on this browser until the sign-in expires or you sign out."
     },
     "signedInAs": "Signed in as {address}",
     "signOut": "Sign out of rewards",
@@ -10064,7 +10073,83 @@
       "busy": "SoDEX rewards is busy. Try again in {s} s.",
       "busyNoTime": "SoDEX rewards is busy.",
       "business": "SoDEX couldn't do that.",
-      "said": "SoDEX said:"
+      "said": "SoDEX said:",
+      "busyBody": "SoDEX limits how often one connection can ask. Auto refresh is paused.",
+      "retryIn": "Try again in {s} s"
+    },
+    "newChip": "New",
+    "page": {
+      "title": "Rewards",
+      "subtitle": "Your SoPoints and Blind Boxes, read straight from SoDEX in this browser.",
+      "source": "SoDEX rewards program. SoDEX sets the rules and pays the rewards, not DeskLabs."
+    },
+    "thisSignIn": {
+      "title": "This sign-in",
+      "gas": "Costs gas",
+      "trades": "Places trades or changes bots",
+      "funds": "Withdraws or transfers funds",
+      "servers": "Sent to DeskLabs servers",
+      "no": "No",
+      "again": "Opening or merging boxes asks your wallet again each time."
+    },
+    "locked": {
+      "title": "Your points, tier and rank",
+      "body": "Shows after you sign in."
+    },
+    "notConnectedAction": "Connect SoDEX",
+    "week": {
+      "title": "This week on SoDEX",
+      "live": "LIVE",
+      "week": "Week",
+      "pool": "Weekly pool",
+      "ends": "Week ends",
+      "next": "Next distribution",
+      "public": "Public data, no sign-in needed."
+    },
+    "multipliers": {
+      "title": "Markets with a volume multiplier",
+      "setBy": "Set by SoDEX for round {round} · ends {time}",
+      "showAll": "Show all {count} markets",
+      "showLess": "Show less",
+      "empty": "SoDEX lists no markets with a volume multiplier right now."
+    },
+    "feed": {
+      "title": "Live feed",
+      "body": "Recent big opens across SoDEX (USD 50+ or a PFP). Shown with a 5-minute delay.",
+      "pfp": "PFP",
+      "empty": "No big opens to show right now."
+    },
+    "summary": {
+      "total": "Total SoPoints",
+      "base": "Base",
+      "boost": "Boost",
+      "referral": "Referral",
+      "tier": "Tier {tier}",
+      "currentTier": "Current tier: {tier}",
+      "nextAt": "Next: {tier} at {points}",
+      "nextOnly": "Next: {tier}",
+      "toNext": "{points} points to {tier}",
+      "rank": "Rank",
+      "of": "of {total}",
+      "thisWeek": "This week",
+      "pool": "Weekly pool",
+      "poolHint": "SoPoints shared this week",
+      "nextDistribution": "Next distribution",
+      "weekEnds": "Week ends {time}"
+    },
+    "performance": {
+      "title": "Weekly performance",
+      "timeZone": "Times in your time zone: {tz}",
+      "week": "Week",
+      "points": "Points",
+      "rank": "Rank",
+      "spot": "Spot volume",
+      "perps": "Perps volume",
+      "confirmed": "Confirmed",
+      "notFinal": "Not final",
+      "range": "{start} – {end}",
+      "emptyTitle": "No weekly points yet",
+      "emptyBody": "Weeks appear after SoDEX takes its weekly snapshot."
     }
   },
   "rewardsDebug": {
