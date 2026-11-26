@@ -436,6 +436,7 @@ const rewardsJob: RewardsWatchJobDeps | null =
     ? {
         db,
         now: () => new Date(),
+        log: log.child({ job: "rewards-watch" }),
         reader: new RewardsReadClient({
           gateway: env.SODEX_REWARDS_GATEWAY,
           rateLimit: new RedisRateLimitStore(redis),

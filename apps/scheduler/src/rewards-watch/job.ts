@@ -48,6 +48,8 @@ export interface RewardsWatchJobDeps {
   intervalMs: number;
   /** Số user tối đa mỗi lượt (trần weight vẫn do bucket của client quyết). */
   batch: number;
+  /** Ghi cảnh báo khi lỗi bất ngờ ở một user (review PR #569: không nuốt lỗi). Thiếu thì không ghi. */
+  log?: { warn: (obj: Record<string, unknown>, msg: string) => void };
 }
 
 export interface RewardsWatchTickResult {
@@ -341,9 +343,18 @@ export async function runRewardsWatchTick(
     let stop: Stop | null;
     try {
       stop = await processRow(deps, row, result);
-    } catch {
-      // Lỗi DB / bất ngờ: lùi user này (chỉ mã, không chi tiết có thể chứa dữ liệu).
+    } catch (err) {
+      // Lỗi DB / bất ngờ: lùi user này. Log chỉ tên / mã lỗi + userId, không message / body (có thể chứa dữ liệu).
       result.errors += 1;
+      deps.log?.warn(
+        {
+          userId: row.userId,
+          errorName: err instanceof Error ? err.name : typeof err,
+          errorCode:
+            typeof err === "object" && err !== null && "code" in err ? String(err.code) : undefined,
+        },
+        "rewards watch: user check failed",
+      );
       await backoffRow(deps.db, row, "internal", deps.now(), deps.intervalMs).catch(
         () => undefined,
       );
