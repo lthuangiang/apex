@@ -2903,9 +2903,6 @@
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
     "signalAnalysis.research.live.batch",
-    "rewards.multipliers.empty",
-    "rewards.feed.empty",
-    "rewards.summary.nextOnly",
     "rewards.card.rank",
     "rewards.card.job.openingAny",
     "rewards.card.job.merging",
@@ -10088,7 +10085,8 @@
     "page": {
       "title": "Rewards",
       "subtitle": "Your SoPoints and Blind Boxes, read straight from SoDEX in this browser.",
-      "source": "SoDEX rewards program. SoDEX sets the rules and pays the rewards, not DeskLabs."
+      "source": "SoDEX rewards program. SoDEX sets the rules and pays the rewards, not DeskLabs.",
+      "rules": "Rules on SoDEX ↗"
     },
     "thisSignIn": {
       "title": "This sign-in",
