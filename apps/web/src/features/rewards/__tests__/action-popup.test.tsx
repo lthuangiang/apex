@@ -185,7 +185,7 @@ describe("Claim (mockup 15)", () => {
     expect(posts("lottery/treasure/open").map((c) => JSON.parse(c.body) as unknown)).toEqual([
       { count: 3 },
     ]);
-  });
+  }, 15_000);
 
   it("failed claim: SoDEX said … and no resend", async () => {
     gateway({

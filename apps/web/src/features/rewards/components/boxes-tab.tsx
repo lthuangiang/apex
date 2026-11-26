@@ -490,7 +490,6 @@ export function BoxesTab({ session, tz }: { session: RewardsSession; tz: string 
 
 function Backpack({ session, tz }: { session: RewardsSession; tz: string }) {
   const t = useTranslations("rewards.boxes");
-  const tl = useTranslations("rewards.boxes.level");
   const tr = useTranslations("rewards.page");
   const from = useFromLabel();
   const boxes = useRewardsBoxes(session);
