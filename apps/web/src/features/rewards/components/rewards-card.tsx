@@ -35,6 +35,7 @@ import { useRewardsAuth } from "../use-rewards-auth";
 
 import { ActionHost, DoneStrip } from "./action-popup";
 import { Value, WeekStatusPill } from "./public-cards";
+import { ReceivedPopup } from "./received-popup";
 import { Banner, MismatchBanner } from "./rewards-states";
 import { Spinner, useRewardsSignIn } from "./sign-in-hero";
 import { PointsStatus, useTierText } from "./sopoints-tab";
@@ -267,6 +268,7 @@ export function RewardsCard() {
     <>
       {signedIn ? <SignedCard auth={auth} data={data} /> : <UnsignedCard auth={auth} data={data} />}
       {signedIn ? <ActionHost auth={auth} /> : null}
+      {signedIn ? <ReceivedPopup session={auth} /> : null}
     </>
   );
 }

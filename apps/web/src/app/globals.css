@@ -525,3 +525,23 @@
     transform: translateX(-4px);
   }
 }
+
+/* #556: popup box mới nhận / vé trúng. Box rơi −24 px + nảy nhẹ; chip level mờ + trượt 8 px. */
+@keyframes rw-fall {
+  from {
+    transform: translateY(-24px);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes rw-chip {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
