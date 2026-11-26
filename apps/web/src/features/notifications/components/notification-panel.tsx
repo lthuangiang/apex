@@ -76,6 +76,9 @@ const ICONS: Record<NotificationItem["type"], { icon: LucideIcon; tone: string }
   rewards_box_received: { icon: Gift, tone: "bg-accent-tint text-accent" },
   rewards_draw_won: { icon: Gift, tone: "bg-pos-bg text-pos" },
   rewards_watch_paused: { icon: Pause, tone: "bg-warn-bg text-warn" },
+  // #567: tin tuần SoDEX.
+  rewards_week_snapshot: { icon: Gift, tone: "bg-accent-tint text-accent" },
+  rewards_week_points: { icon: Gift, tone: "bg-pos-bg text-pos" },
 };
 /** Bot dừng đúng kế hoạch hoặc bot tiền ảo: không tô đỏ (DEC-180). */
 const QUIET_TONE = "bg-bg text-ink-2";

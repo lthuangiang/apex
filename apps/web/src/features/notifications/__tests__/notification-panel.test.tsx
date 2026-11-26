@@ -280,6 +280,85 @@ describe("NotificationPanel", () => {
     expect(within(screen.getByRole("tabpanel")).queryByText(/Market Making fee/)).toBeNull();
   });
 
+  it("words the weekly SoDEX messages (#567) from the data, drops missing parts, opens Rewards", async () => {
+    const user = userEvent.setup({ delay: null });
+    const week = { weekNo: 13, weekName: "Week 13", timeZone: "Asia/Ho_Chi_Minh" };
+    const pointsData = {
+      ...week,
+      points: "521",
+      rank: "1410",
+      totalUser: "226582",
+      rankPercentile: "Top 0.06%",
+      totalPoints: "29556",
+      currentTier: "DIAMOND",
+      nextTier: "EPIC",
+      nextTierPoints: "50000",
+    };
+    state.list = {
+      unread: 4,
+      items: [
+        {
+          id: "a1111111-1111-4111-8111-111111111111",
+          type: "rewards_week_snapshot",
+          data: {
+            ...week,
+            weekStartTime: 1_763_942_400,
+            weekEndTime: 1_764_547_200,
+            futuresVolume: "70722.87",
+            spotVolume: "7.65",
+            oi: null,
+            accountValue: null,
+            vaultHolding: "0",
+            wealthTvl: "2.57",
+            boosted: null,
+            distributionTime: 1_764_849_600,
+          },
+          createdAt: minutesAgo(1),
+          readAt: null,
+        },
+        {
+          id: "a2222222-2222-4222-8222-222222222222",
+          type: "rewards_week_points",
+          data: pointsData,
+          createdAt: minutesAgo(2),
+          readAt: null,
+        },
+        {
+          // Không có tên tuần, chưa có điểm, thứ hạng 0 (chưa xếp hạng): nhãn dự phòng, không số 0.
+          id: "a3333333-3333-4333-8333-333333333333",
+          type: "rewards_week_points",
+          data: { ...pointsData, weekNo: 12, weekName: null, points: null, rank: "0" },
+          createdAt: minutesAgo(3),
+          readAt: null,
+        },
+        {
+          // Dữ liệu sai dạng: tiêu đề chung.
+          id: "a4444444-4444-4444-8444-444444444444",
+          type: "rewards_week_snapshot",
+          data: { weekNo: "x" },
+          createdAt: minutesAgo(4),
+          readAt: null,
+        },
+      ],
+    };
+    wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);
+    expect(await screen.findByText("SoDEX · Week 13 snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Week 13 SoPoints: +521")).toBeInTheDocument();
+    expect(screen.getByText("Rank 1,410 of 226,582")).toBeInTheDocument();
+    expect(screen.getByText("Week 12 SoPoints")).toBeInTheDocument();
+    expect(screen.queryByText(/Rank 0/)).toBeNull();
+    expect(screen.getByText("Your SoDEX week")).toBeInTheDocument();
+    expect(screen.getAllByText("SoDEX rewards")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: /Week 13 snapshot/ })).toHaveAttribute(
+      "href",
+      "/rewards",
+    );
+    expect(screen.getByRole("link", { name: /\+521/ })).toHaveAttribute("href", "/rewards");
+    // Không phải sự cố: không vào Needs you.
+    await user.click(screen.getByRole("tab", { name: /Needs you/ }));
+    expect(within(screen.getByRole("tabpanel")).queryByText(/SoPoints|snapshot/)).toBeNull();
+  });
+
   it("Needs you shows only unread real incidents, not a planned finish", async () => {
     const user = userEvent.setup({ delay: null });
     wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);

@@ -13,6 +13,7 @@ import {
 } from "@drift/shared";
 
 import messages from "./messages/en.json" with { type: "json" };
+import { rewardsWeekMessage } from "./rewards-week-render";
 import { isPlannedStop, type StoppedRun } from "./stopped-run";
 import { plannedStopBody, plannedStopReason } from "./stopped-run-render";
 
@@ -170,7 +171,10 @@ function targetOf(row: RenderRow): { path: string; label: string } {
     case "rewards_box_received":
     case "rewards_draw_won":
       return { path: "/rewards?tab=boxes", label: M.buttons.rewards };
+    // #567: tin tuần cũng mở trang Rewards.
     case "rewards_watch_paused":
+    case "rewards_week_snapshot":
+    case "rewards_week_points":
       return { path: "/rewards", label: M.buttons.rewards };
   }
 }
@@ -392,6 +396,10 @@ function rewardsTitle(type: RewardsNotificationType, row: RenderRow): string {
     }
     case "rewards_watch_paused":
       return M.titles.rewards_paused;
+    // #567: dữ liệu sai dạng thì tiêu đề chung (không số).
+    case "rewards_week_snapshot":
+    case "rewards_week_points":
+      return rewardsWeekMessage(type, row.data)?.title ?? M.titles.rewards_week;
   }
 }
 
@@ -482,6 +490,8 @@ function title(row: RenderRow): string {
     case "rewards_box_received":
     case "rewards_draw_won":
     case "rewards_watch_paused":
+    case "rewards_week_snapshot":
+    case "rewards_week_points":
       return rewardsTitle(row.type, row);
   }
 }
@@ -566,6 +576,9 @@ function body(row: RenderRow): string | null {
     }
     case "rewards_watch_paused":
       return M.bodies.rewards_paused;
+    case "rewards_week_snapshot":
+    case "rewards_week_points":
+      return rewardsWeekMessage(row.type, row.data)?.body ?? null;
   }
 }
 
