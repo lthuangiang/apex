@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
+import { resetActions } from "../action-store";
 import { resetRewardsRateLimit } from "../client";
 import { RewardsCard } from "../components/rewards-card";
 import { readRewardsToken, saveRewardsToken } from "../token-store";
@@ -16,7 +17,7 @@ import { readRewardsToken, saveRewardsToken } from "../token-store";
 import { FAKE_TOKEN, MASTER, OTHER, fakeGateway, type Reply, type Route } from "./gateway-fixtures";
 
 // Thẻ SoDEX rewards trên Overview (#549, bản phác 02–06): chưa ký, đã ký, dòng job, hết hạn, lỗi mạng, 429, đang tải.
-// Nút Claim ẩn tới #551. Gateway SoDEX, wagmi và API DeskLabs đều giả; không ký ví thật.
+// Claim mở popup tại chỗ (#551). Gateway SoDEX, wagmi và API DeskLabs đều giả; không ký ví thật.
 
 const state = vi.hoisted<{ master: string | null; wallet: string | undefined }>(() => ({
   master: null,
@@ -51,7 +52,10 @@ vi.mock("wagmi", () => ({
   useConnect: () => ({ mutateAsync: connect }),
   useDisconnect: () => ({ mutateAsync: () => Promise.resolve() }),
   useConnectors: () => [],
+  useSwitchChain: () => ({ mutateAsync: () => Promise.resolve() }),
+  useSignTypedData: () => ({ mutateAsync: () => Promise.reject(new Error("not in this test")) }),
 }));
+vi.mock("@/lib/wagmi", () => ({ valueChain: { id: 286623 } }));
 vi.mock("wagmi/actions", () => ({ getConnection: () => ({ address: state.wallet }) }));
 
 let gw: ReturnType<typeof fakeGateway>;
@@ -83,6 +87,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  resetActions();
   vi.unstubAllGlobals();
   resetRewardsRateLimit();
 });
@@ -171,9 +176,10 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
     await waitFor(() => {
       expect(row("Blind Boxes to claim")).toHaveTextContent("3");
     });
-    // Nút Claim ẩn tới #551.
-    expect(within(card()).queryByRole("button", { name: /Claim/ })).toBeNull();
-    expect(within(card()).queryByText("Claim")).toBeNull();
+    // Claim mở popup tại chỗ (bản phác 07, #551).
+    expect(
+      within(row("Blind Boxes to claim")).getByRole("button", { name: "Claim" }),
+    ).toBeInTheDocument();
     await waitFor(() => {
       expect(row("Boxes in backpack")).toHaveTextContent("27");
     });
@@ -189,7 +195,7 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
     expect(gw.calls.some((c) => c.url.includes(FAKE_TOKEN))).toBe(false);
   });
 
-  it("job line: newest running job, +1 more, View goes to the Blind Boxes tab", async () => {
+  it("job line: newest running job, +1 more, View reopens the popup", async () => {
     gateway({
       "lottery/jobs": {
         body: {
@@ -207,10 +213,10 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
     show();
     expect(await within(card()).findByText("Job #88231 · recording on-chain")).toBeInTheDocument();
     expect(within(card()).getByText("+1 more")).toBeInTheDocument();
-    expect(within(card()).getByRole("link", { name: "View" })).toHaveAttribute(
-      "href",
-      "/rewards?tab=boxes",
-    );
+    // View mở lại popup ở bước job (#551).
+    await userEvent.setup().click(within(card()).getByRole("button", { name: "View" }));
+    expect(await screen.findByRole("dialog", { name: "Opening boxes…" })).toBeInTheDocument();
+    expect(screen.getByText("Picked up an open that was still running")).toBeInTheDocument();
   });
 
   it("job line uses the singular for one box", async () => {
@@ -256,7 +262,7 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
   it("no job: no job line", async () => {
     show();
     await within(card()).findByText("48,210");
-    expect(within(card()).queryByRole("link", { name: "View" })).toBeNull();
+    expect(within(card()).queryByRole("button", { name: "View" })).toBeNull();
   });
 
   it("missing fields show Not available, never 0", async () => {

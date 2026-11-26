@@ -30,8 +30,10 @@ import {
   useRewardsWeekInfo,
   useRewardsWeekList,
 } from "../queries";
+import { pickOfJob, useBoxActions } from "../use-box-actions";
 import { useRewardsAuth } from "../use-rewards-auth";
 
+import { ActionHost, DoneStrip } from "./action-popup";
 import { Value, WeekStatusPill } from "./public-cards";
 import { Banner, MismatchBanner } from "./rewards-states";
 import { Spinner, useRewardsSignIn } from "./sign-in-hero";
@@ -193,14 +195,13 @@ function jobTitle(job: LotteryJob, t: ReturnType<typeof useTranslations<"rewards
   return t("other");
 }
 
-/** Dòng job (bản phác 04): job mới nhất + "+N more"; View → `/rewards?tab=boxes` (popup ở #551). */
+/** Dòng job (bản phác 04, 11): job mới nhất + "+N more"; "View" mở lại popup đúng bước (#551). */
 export function JobLine({
   jobs,
-  view = true,
+  onView,
 }: {
   jobs: readonly LotteryJob[];
-  /** Tab Blind Boxes: không có "View" (đang ở đúng chỗ đó; popup ở #551). */
-  view?: boolean;
+  onView: (job: LotteryJob) => void;
 }) {
   const t = useTranslations("rewards.card.job");
   const active = jobs.filter((j) => ACTIVE.includes(j.status));
@@ -228,11 +229,15 @@ export function JobLine({
           {t("more", { count: active.length - 1 })}
         </span>
       ) : null}
-      {view ? (
-        <Link href="/rewards?tab=boxes" className="flex-none text-[13px] font-bold text-accent-ink">
-          {t("view")}
-        </Link>
-      ) : null}
+      <button
+        type="button"
+        onClick={() => {
+          onView(latest);
+        }}
+        className="min-h-tap flex-none px-1 text-[13px] font-bold text-accent-ink"
+      >
+        {t("view")}
+      </button>
     </div>
   );
 }
@@ -258,10 +263,11 @@ export function RewardsCard() {
   const auth = useRewardsAuth();
   const data = useCardData(auth);
   const signedIn = auth.signedIn && auth.master !== null;
-  return signedIn ? (
-    <SignedCard auth={auth} data={data} />
-  ) : (
-    <UnsignedCard auth={auth} data={data} />
+  return (
+    <>
+      {signedIn ? <SignedCard auth={auth} data={data} /> : <UnsignedCard auth={auth} data={data} />}
+      {signedIn ? <ActionHost auth={auth} /> : null}
+    </>
   );
 }
 
@@ -450,8 +456,10 @@ function TierRank({
 }
 
 /** Đã ký (bản phác 03), có job (04), 429 (06). */
-function SignedCard({ data }: { auth: Auth; data: CardData }) {
+function SignedCard({ auth, data }: { auth: Auth; data: CardData }) {
   const t = useTranslations("rewards.card");
+  const ta = useTranslations("rewards.action");
+  const actions = useBoxActions(auth);
   const tr = useTranslations("rewards");
   const tz = useZone();
   const retry = useRewardsRetry();
@@ -506,11 +514,35 @@ function SignedCard({ data }: { auth: Auth; data: CardData }) {
         <Busy onRetry={retry} />
       ) : (
         <>
-          <JobLine jobs={jobs.data?.jobs ?? []} />
+          <DoneStrip auth={auth} />
+          <JobLine
+            jobs={jobs.data?.jobs ?? []}
+            onView={(job) => {
+              actions.view(job.jobId, pickOfJob(job), "recovered");
+            }}
+          />
           <Rows>
-            {/* Chỉ hiện số; nút Claim (popup tại chỗ) vào ở #551. */}
             <Row label={t("toClaim")}>
               <Value text={formatCount(treasures.data?.total)} />
+              {/* Claim mở popup tại chỗ (bản phác 07, PM chốt). */}
+              {treasures.data !== undefined && treasures.data.total > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const td = treasures.data;
+                    actions.start({
+                      kind: "claim",
+                      count: Math.min(td.total, td.maxPerOpen),
+                      level: null,
+                      tokenIds: [],
+                      before: boxes.data?.total ?? null,
+                    });
+                  }}
+                  className="flex min-h-9 items-center rounded-control bg-accent px-3 text-[13px] font-bold text-white"
+                >
+                  {ta("claim.chip")}
+                </button>
+              ) : null}
             </Row>
             <Row label={t("backpack")}>
               <Value text={formatCount(boxes.data?.total)} />

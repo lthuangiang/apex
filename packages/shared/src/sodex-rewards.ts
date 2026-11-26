@@ -201,6 +201,38 @@ export type LotteryJob = z.infer<typeof lotteryJobSchema>;
 export const lotteryJobsSchema = z.object({ jobs: z.array(lotteryJobSchema) });
 
 /**
+ * `GET lottery/box/sign-params?action=open|merge` (docs.sodex.com › Rewards API › Lottery): domain + nonce / deadline cho
+ * chữ ký EIP-712 `RequestOpen` / `RequestMerge`. Mỗi lần thử lấy mới (DEC-397, quy tắc 7).
+ */
+export const lotterySignParamsSchema = z.object({
+  chainId: z.coerce.number().int(),
+  verifyingContract: evmAddress,
+  domainName: z.string(),
+  domainVersion: z.string(),
+  primaryType: z.enum(["RequestOpen", "RequestMerge"]),
+  /** uint256; gửi lại dạng chuỗi trong body. */
+  nonce: numOrString,
+  /** Unix giây. */
+  deadline: z.coerce.number().int(),
+});
+export type LotterySignParams = z.infer<typeof lotterySignParamsSchema>;
+
+/** Trường của message EIP-712 (thứ tự theo tài liệu SoDEX). */
+export const LOTTERY_REQUEST_FIELDS = [
+  { name: "owner", type: "address" },
+  { name: "tokenIds", type: "uint256[]" },
+  { name: "nonce", type: "uint256" },
+  { name: "deadline", type: "uint256" },
+] as const;
+
+/** Trả lời của `treasure/open`, `box/open`, `box/merge`: job để theo dõi (`job/{id}`). */
+export const lotteryJobRefSchema = z.object({
+  jobId: z.number().int(),
+  kind: z.string().optional(),
+  status: z.string().optional(),
+});
+
+/**
  * Một dòng `lottery/ledger` (dữ liệu thật 2026-11-26), trường theo `kind`: treasure {level, tokenId, txHash, source,
  * mintId}; open {level, tokenId, requestId, status, rewardUsd, reward}; merge {level, requestId, status,
  * consumedTokenIds, resultTokenId, resultLevel}; transfer {level, tokenId, txHash, direction, from, to, blockNumber,

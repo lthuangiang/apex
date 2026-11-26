@@ -1,12 +1,13 @@
 "use client";
 
 import { lotteryRewardByAssetSchema, type LotteryBox, type LotteryLedgerItem } from "@drift/shared";
-import { Skeleton } from "@drift/ui";
+import { Button, Skeleton } from "@drift/ui";
 import { useTranslations } from "next-intl";
 import { useId, useState, type ReactNode } from "react";
 
 import { shortAddress } from "@/lib/format";
 
+import { pickOldest } from "../actions";
 import {
   formatAssetTotal,
   formatCount,
@@ -14,6 +15,7 @@ import {
   formatTokenAmount,
   formatUsd,
   levelDotClass,
+  mintedMs,
 } from "../format";
 import { REWARDS_RULES_URL, SODEX_BLIND_BOX_URL } from "../links";
 import {
@@ -29,7 +31,9 @@ import {
   useRewardsTreasures,
   type RewardsSession,
 } from "../queries";
+import { pickOfJob, useBoxActions } from "../use-box-actions";
 
+import { DoneStrip } from "./action-popup";
 import { CARD, CardUnavailable, FeedList, Value } from "./public-cards";
 import { ACTIVE, JobLine } from "./rewards-card";
 import { RewardsProblem } from "./rewards-states";
@@ -40,16 +44,6 @@ import { RewardsProblem } from "./rewards-states";
 
 const SUBTABS = ["backpack", "history", "draw", "feed"] as const;
 type SubTab = (typeof SUBTABS)[number];
-
-/** `mintedAt` (ISO trong dữ liệu thật; số thì giây hoặc ms) → ms; đọc không được thì null. */
-export function mintedMs(v: LotteryBox["mintedAt"]): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
-  const n = Number(v);
-  if (Number.isFinite(n)) return n < 1e12 ? n * 1000 : n;
-  const ms = Date.parse(v);
-  return Number.isNaN(ms) ? null : ms;
-}
 
 /** Box mới nhất trước (`mintedAt` giảm dần; thiếu thì cuối, rồi theo `tokenId` giảm dần). */
 export function newestFirst(boxes: readonly LotteryBox[]): LotteryBox[] {
@@ -137,58 +131,218 @@ function PanelError({ error }: { error: Error | null }) {
 /** "3 boxes ready to claim": chỉ số; nút Claim vào ở #551. */
 function ReadyStrip({ session }: { session: RewardsSession }) {
   const t = useTranslations("rewards.boxes");
-  const total = useRewardsTreasures(session).data?.total;
-  if (total === undefined || total <= 0) return null;
+  const ta = useTranslations("rewards.action.claim");
+  const treasures = useRewardsTreasures(session).data;
+  const backpack = useRewardsBoxes(session).data?.total ?? null;
+  const actions = useBoxActions(session);
+  if (treasures === undefined || treasures.total <= 0) return null;
+  const all = Math.min(treasures.total, treasures.maxPerOpen);
+  const claim = (count: number) => {
+    actions.start({ kind: "claim", count, level: null, tokenIds: [], before: backpack });
+  };
   return (
-    <div className="flex flex-col gap-1 rounded-card border border-accent-tint bg-hero px-5 py-4">
-      <b className="text-lg">{t("ready", { count: total })}</b>
-      <span className="text-sm text-ink-2">{t("readyBody")}</span>
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-accent-tint bg-hero px-5 py-4">
+      <div className="flex min-w-0 flex-[1_1_280px] flex-col gap-1">
+        <b className="text-lg">{t("ready", { count: treasures.total })}</b>
+        <span className="text-sm text-ink-2">{t("readyBody")}</span>
+      </div>
+      <div className="flex flex-wrap gap-2.5">
+        <Button
+          onClick={() => {
+            claim(all);
+          }}
+        >
+          {ta("all", { n: all })}
+        </Button>
+        {all > 1 ? (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              claim(1);
+            }}
+          >
+            {ta("n", { n: 1 })}
+          </Button>
+        ) : null}
+      </div>
     </div>
+  );
+}
+
+/**
+ * Open (bước chọn số) và Merge của một level (bản phác 10, 11). Chọn box cũ nhất trước, bỏ box đang trong job; Merge đúng
+ * `mergeSize` box cùng level. Nút chỉ mở popup xác nhận; chưa gửi gì.
+ */
+function LevelActions({
+  session,
+  level,
+  mergeSize,
+  canMerge,
+  boxes,
+  busy,
+  maxPerOpen,
+}: {
+  session: RewardsSession;
+  level: string;
+  mergeSize: number;
+  canMerge: boolean;
+  boxes: readonly LotteryBox[];
+  busy: ReadonlySet<number>;
+  maxPerOpen: number;
+}) {
+  const t = useTranslations("rewards.action");
+  const actions = useBoxActions(session);
+  const free = boxes.filter((b) => b.level === level && !busy.has(b.tokenId)).length;
+  const inJob = boxes.filter((b) => b.level === level && busy.has(b.tokenId)).length;
+  const max = Math.max(0, Math.min(free, maxPerOpen));
+  const [n, setN] = useState(1);
+  const count = Math.min(Math.max(1, n), Math.max(1, max));
+  const mergeIds = canMerge && mergeSize > 0 ? pickOldest(boxes, level, mergeSize, busy) : [];
+  const mergeReady = mergeIds.length === mergeSize && mergeSize > 0;
+  const step =
+    "flex size-9 items-center justify-center text-base font-bold disabled:text-muted disabled:cursor-not-allowed";
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        {max === 0 ? (
+          // Mọi box của level đang trong job: "Opening…" (bản phác 11). Danh sách không có box nào của level thì không
+          // có gì để mở.
+          inJob > 0 ? (
+            <Button disabled className="h-9 min-h-9 px-3 text-sm">
+              {t("open.opening")}
+            </Button>
+          ) : null
+        ) : (
+          <>
+            <span className="inline-flex items-center rounded-control border border-border-input">
+              <button
+                type="button"
+                aria-label={t("open.fewer")}
+                disabled={count <= 1}
+                onClick={() => {
+                  setN(count - 1);
+                }}
+                className={step}
+              >
+                −
+              </button>
+              <span
+                className="min-w-8 text-center text-sm font-bold tabular-nums"
+                aria-live="polite"
+              >
+                {count}
+              </span>
+              <button
+                type="button"
+                aria-label={t("open.more")}
+                disabled={count >= max}
+                onClick={() => {
+                  setN(count + 1);
+                }}
+                className={step}
+              >
+                +
+              </button>
+            </span>
+            <Button
+              className="h-9 min-h-9 px-3 text-sm"
+              onClick={() => {
+                actions.start({
+                  kind: "open",
+                  count,
+                  level,
+                  tokenIds: pickOldest(boxes, level, count, busy),
+                  before: null,
+                });
+              }}
+            >
+              {t("open.n", { n: count })}
+            </Button>
+          </>
+        )}
+        {mergeSize > 0 ? (
+          <Button
+            variant="tonal"
+            disabled={!mergeReady}
+            className="h-9 min-h-9 px-3 text-sm"
+            onClick={() => {
+              actions.start({
+                kind: "merge",
+                count: mergeIds.length,
+                level,
+                tokenIds: mergeIds,
+                before: null,
+              });
+            }}
+          >
+            {t("merge.n", { n: mergeSize })}
+          </Button>
+        ) : null}
+      </div>
+      <span className="text-xs text-ink-2">
+        {inJob > 0 ? t("open.inRunning", { n: inJob }) : t("open.oldestGoFirst")}
+      </span>
+    </>
   );
 }
 
 export function BoxesTab({ session, tz }: { session: RewardsSession; tz: string }) {
   const t = useTranslations("rewards.boxes");
+  const ta = useTranslations("rewards.action");
   const [sub, setSub] = useState<SubTab>("backpack");
   const boxes = useRewardsBoxes(session);
   const jobs = useRewardsActiveJobs(session);
   const treasures = useRewardsTreasures(session);
   const retry = useRewardsRetry();
   const id = useId();
+  const actions = useBoxActions(session);
   const problem = firstRewardsError(treasures.error, boxes.error, jobs.error);
   return (
     <div className="flex flex-col gap-4">
       {problem === null ? null : <RewardsProblem error={problem} onRetry={retry} />}
-      <JobLine jobs={jobs.data?.jobs ?? []} view={false} />
+      <DoneStrip auth={session} />
+      <JobLine
+        jobs={jobs.data?.jobs ?? []}
+        onView={(job) => {
+          actions.view(job.jobId, pickOfJob(job), "recovered");
+        }}
+      />
       <ReadyStrip session={session} />
-      <div
-        role="tablist"
-        aria-label={t("sections")}
-        className="flex flex-wrap gap-1 self-start rounded-[14px] border border-border bg-surface p-1"
-      >
-        {SUBTABS.map((key) => (
-          <button
-            key={key}
-            id={`${id}-tab-${key}`}
-            type="button"
-            role="tab"
-            aria-selected={sub === key}
-            aria-controls={`${id}-panel`}
-            onClick={() => {
-              setSub(key);
-            }}
-            className={`flex min-h-10 items-center gap-1.5 rounded-[10px] px-3.5 text-sm font-bold ${sub === key ? "bg-surface-2 text-ink shadow-sm" : "text-ink-2"}`}
-          >
-            {t(`sub.${key}`)}
-            {key === "backpack" && boxes.data !== undefined ? (
-              <span
-                className={`rounded-full px-[7px] py-px text-[11px] tabular-nums ${sub === key ? "bg-accent text-white" : "bg-border text-ink-2"}`}
-              >
-                {formatCount(boxes.data.total)}
-              </span>
-            ) : null}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div
+          role="tablist"
+          aria-label={t("sections")}
+          className="flex flex-wrap gap-1 self-start rounded-[14px] border border-border bg-surface p-1"
+        >
+          {SUBTABS.map((key) => (
+            <button
+              key={key}
+              id={`${id}-tab-${key}`}
+              type="button"
+              role="tab"
+              aria-selected={sub === key}
+              aria-controls={`${id}-panel`}
+              onClick={() => {
+                setSub(key);
+              }}
+              className={`flex min-h-10 items-center gap-1.5 rounded-[10px] px-3.5 text-sm font-bold ${sub === key ? "bg-surface-2 text-ink shadow-sm" : "text-ink-2"}`}
+            >
+              {t(`sub.${key}`)}
+              {key === "backpack" && boxes.data !== undefined ? (
+                <span
+                  className={`rounded-full px-[7px] py-px text-[11px] tabular-nums ${sub === key ? "bg-accent text-white" : "bg-border text-ink-2"}`}
+                >
+                  {formatCount(boxes.data.total)}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+        {boxes.data === undefined ? null : (
+          <span className="text-xs text-ink-2">
+            {ta("open.upTo", { n: boxes.data.maxPerOpen })}
+          </span>
+        )}
       </div>
       <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-tab-${sub}`}>
         {sub === "backpack" ? (
@@ -288,7 +442,19 @@ function Backpack({ session, tz }: { session: RewardsSession; tz: string }) {
                     </div>
                   </>
                 )}
-                {l.count === 0 ? <span className="text-xs text-ink-2">{tl("none")}</span> : null}
+                {l.count === 0 ? (
+                  <span className="text-xs text-ink-2">{tl("none")}</span>
+                ) : (
+                  <LevelActions
+                    session={session}
+                    level={l.level}
+                    mergeSize={l.mergeSize}
+                    canMerge={l.mergesAvailable > 0}
+                    boxes={data.boxes}
+                    busy={busy}
+                    maxPerOpen={data.maxPerOpen}
+                  />
+                )}
               </li>
             );
           })}

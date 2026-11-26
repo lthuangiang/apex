@@ -287,15 +287,22 @@ export function defaultRoutes(): Record<Route, Reply> {
 }
 
 /** `fetch` giả: trả theo `routes`, ghi lại URL + header Authorization của mỗi lần gọi. */
-export function fakeGateway(routes: Partial<Record<Route, Reply>> = {}) {
-  const table = { ...defaultRoutes(), ...routes };
-  const calls: { path: string; url: string; auth: string | null }[] = [];
+export function fakeGateway(routes: Partial<Record<Route | (string & {}), Reply>> = {}) {
+  const table: Partial<Record<string, Reply>> = { ...defaultRoutes(), ...routes };
+  const calls: { path: string; url: string; auth: string | null; method: string; body: string }[] =
+    [];
   const fn = vi.fn<typeof fetch>((input, init) => {
     const url = new URL(urlOf(input));
     const path = url.pathname.replace(/^\/api\/v1\//, "");
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    calls.push({ path, url: url.href, auth: headers.Authorization ?? null });
-    const reply = table[path as Route] as Reply | undefined;
+    calls.push({
+      path,
+      url: url.href,
+      auth: headers.Authorization ?? null,
+      method: init?.method ?? "GET",
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    const reply = table[path];
     if (reply === undefined) return Promise.resolve(new Response("{}", { status: 404 }));
     if (reply === "network") return Promise.reject(new TypeError("Failed to fetch"));
     if (reply === "pending") return new Promise<Response>(() => undefined);

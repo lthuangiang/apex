@@ -141,6 +141,16 @@ export async function signalResearchOn(db: Db, userId: string): Promise<boolean>
   return u?.role === UserRole.team || u?.on === true;
 }
 
+/** Role team (DEC-397 bổ sung, #551): thấy SoDEX rewards khi công tắc `REWARDS_ENABLED` còn tắt, để thử trên prod. */
+export async function isTeamUser(db: Db, userId: string): Promise<boolean> {
+  const [u] = await db
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return u?.role === UserRole.team;
+}
+
 /** AI Adaptive DCA (thử nghiệm, DEC-107): cờ riêng, không còn đi theo AI Desk (DEC-192). */
 export async function adaptiveDcaOn(db: Db, userId: string): Promise<boolean> {
   const [u] = await db

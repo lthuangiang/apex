@@ -131,3 +131,28 @@ for (const narrow of [false, true]) {
     });
   }
 }
+
+// #551: popup Claim (dialog ở desktop, bottom sheet ở 390) nằm trong màn hình, trang không cuộn ngang.
+for (const narrow of [false, true]) {
+  test(`Rewards Claim popup${narrow ? " at 390" : ""}: inside the viewport`, async ({
+    page,
+    baseURL,
+  }, info) => {
+    if (narrow) await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, baseURL, true);
+    await page.getByRole("tab", { name: /^Blind Boxes/ }).click();
+    await page.getByRole("button", { name: "Claim all 3" }).click();
+    const dialog = page.getByRole("dialog", { name: "Claim 3 boxes" });
+    await dialog.waitFor();
+    const box = await dialog.boundingBox();
+    const vp = page.viewportSize();
+    if (box === null || vp === null) throw new Error("no layout");
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(vp.width + 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(vp.height + 1);
+    expect.soft(await sideScroll(page), "page does not scroll sideways").toBeLessThanOrEqual(0);
+    const dir = process.env.REWARDS_SHOTS;
+    if (dir !== undefined && dir !== "")
+      await page.screenshot({ path: `${dir}/15-${narrow ? "390" : info.project.name}.png` });
+  });
+}

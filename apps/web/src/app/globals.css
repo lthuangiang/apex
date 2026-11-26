@@ -455,3 +455,73 @@
     transform: translateX(-50%);
   }
 }
+
+/*
+ * SoDEX rewards › popup Claim / Open / Merge (#551, docs/mockups/rewards/rewards-motion-demo.html). Hiệu ứng chạy qua
+ * `motion-safe:animate-[…]`; `motion-reduce` chỉ mờ dần ≤ 150 ms (`rw-fade`), không lật / bay / lắc. Hiệu ứng hé lộ chỉ
+ * chạy khi SoDEX đã trả kết quả (revealed).
+ */
+@keyframes rw-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes rw-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rw-breathe {
+  50% {
+    transform: scale(1.06);
+  }
+}
+@keyframes rw-flip {
+  from {
+    transform: perspective(600px) rotateY(90deg);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes rw-drop {
+  from {
+    transform: translateY(-40px);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes rw-pop {
+  0% {
+    transform: scale(0.6);
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes rw-gather {
+  to {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+}
+@keyframes rw-shake {
+  25% {
+    transform: translateX(-4px);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+  75% {
+    transform: translateX(-4px);
+  }
+}

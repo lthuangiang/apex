@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
+import { resetActions } from "../action-store";
 import { resetRewardsRateLimit } from "../client";
 import { BoxesTab } from "../components/boxes-tab";
 import { saveRewardsToken } from "../token-store";
@@ -53,7 +54,10 @@ vi.mock("wagmi", () => ({
   useConnect: () => ({ mutateAsync: connect }),
   useDisconnect: () => ({ mutateAsync: () => Promise.resolve() }),
   useConnectors: () => [],
+  useSwitchChain: () => ({ mutateAsync: () => Promise.resolve() }),
+  useSignTypedData: () => ({ mutateAsync: () => Promise.reject(new Error("not in this test")) }),
 }));
+vi.mock("@/lib/wagmi", () => ({ valueChain: { id: 286623 } }));
 vi.mock("wagmi/actions", () => ({ getConnection: () => ({ address: state.wallet }) }));
 
 let gw: ReturnType<typeof fakeGateway>;
@@ -92,12 +96,13 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  resetActions();
   vi.unstubAllGlobals();
   resetRewardsRateLimit();
 });
 
 describe("Blind Boxes › ready to claim", () => {
-  it("shows the count only, never a Claim button (#551)", async () => {
+  it("shows the count with Claim all / Claim 1", async () => {
     show();
     expect(await screen.findByText("3 boxes ready to claim")).toBeInTheDocument();
     expect(
@@ -105,7 +110,8 @@ describe("Blind Boxes › ready to claim", () => {
         "Claiming adds them to your backpack and shows their level. No wallet signature needed.",
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Claim|Open|Merge/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Claim all 3" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Claim 1" })).toBeInTheDocument();
   });
 
   it("singular for one box; nothing when none", async () => {
@@ -194,7 +200,7 @@ describe("Blind Boxes › Backpack (mockup 10)", () => {
     expect(screen.getAllByRole("link", { name: "Open on SoDEX ↗" })).toHaveLength(2);
   });
 
-  it("boxes in a running job are tagged In an open; the job line has no View here", async () => {
+  it("boxes in a running job are tagged In an open; the job line has View", async () => {
     gateway({
       "lottery/jobs": {
         body: {
@@ -208,7 +214,7 @@ describe("Blind Boxes › Backpack (mockup 10)", () => {
     show();
     expect(await screen.findByText("Opening 1 box…")).toBeInTheDocument();
     expect(await screen.findByText("In an open")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "View" })).toBeNull();
+    expect(screen.getByRole("button", { name: "View" })).toBeInTheDocument();
   });
 
   it("loading: skeleton, no numbers", () => {
