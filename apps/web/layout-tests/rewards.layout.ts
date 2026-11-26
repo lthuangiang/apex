@@ -156,3 +156,32 @@ for (const narrow of [false, true]) {
       await page.screenshot({ path: `${dir}/15-${narrow ? "390" : info.project.name}.png` });
   });
 }
+
+// #556: popup vé trúng / box thưởng (mốc "đã xem" cũ hơn dữ liệu) trong màn hình ở Overview và /rewards, 1440 và 390.
+for (const narrow of [false, true]) {
+  test(`Rewards weekly draw popup${narrow ? " at 390" : ""}: inside the viewport`, async ({
+    page,
+    baseURL,
+  }, info) => {
+    if (narrow) await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(
+      ([k]) => {
+        localStorage.setItem(k, JSON.stringify({ ledgerTsMs: 0, drawRounds: [] }));
+      },
+      [`desklabs.rewards.seen.${MASTER.toLowerCase()}`] as const,
+    );
+    await open(page, baseURL, true);
+    const dialog = page.getByRole("dialog", { name: "1 of your 3 tickets won" });
+    await dialog.waitFor();
+    const box = await dialog.boundingBox();
+    const vp = page.viewportSize();
+    if (box === null || vp === null) throw new Error("no layout");
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(vp.width + 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(vp.height + 1);
+    expect.soft(await sideScroll(page), "page does not scroll sideways").toBeLessThanOrEqual(0);
+    const dir = process.env.REWARDS_SHOTS;
+    if (dir !== undefined && dir !== "")
+      await page.screenshot({ path: `${dir}/rcv-${narrow ? "390" : info.project.name}.png` });
+  });
+}

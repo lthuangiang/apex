@@ -26,6 +26,7 @@ import { useRewardsAuth } from "../use-rewards-auth";
 import { ActionHost } from "./action-popup";
 import { BoxesTab } from "./boxes-tab";
 import { FeedCard, MultipliersCard, WeekCard } from "./public-cards";
+import { ReceivedPopup } from "./received-popup";
 import { NotConnectedBanner, RewardsProblem } from "./rewards-states";
 import { LockedRow, SignInHero } from "./sign-in-hero";
 import { SoPointsTab } from "./sopoints-tab";
@@ -164,6 +165,8 @@ function RewardsContent() {
           </div>
           {/* Popup Claim / Open / Merge và theo dõi job khi popup đóng (#551). */}
           <ActionHost auth={auth} />
+          {/* Box mới nhận / vé trúng (#556), xếp hàng sau popup thao tác. */}
+          <ReceivedPopup session={auth} />
           <div id="rewards-panel" role="tabpanel" aria-labelledby={`rewards-tab-${tab}`}>
             {tab === "sopoints" ? (
               <SoPointsTab session={auth} tz={tz} />

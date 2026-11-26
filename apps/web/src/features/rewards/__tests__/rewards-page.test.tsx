@@ -327,7 +327,10 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(screen.getByText("Signed in as 0x3f2a…9c4e")).toBeInTheDocument();
     // JWT chỉ đi tới gateway SoDEX trong header Authorization, không bao giờ trong URL.
     const authed = gw.calls.filter((c) => c.auth !== null);
-    expect(authed.map((c) => c.path).sort()).toEqual([
+    // + ledger / draw entries cho popup box mới nhận (#556).
+    expect([...new Set(authed.map((c) => c.path))].sort()).toEqual([
+      "lottery/draw/entries",
+      "lottery/ledger",
       "lottery/treasures",
       "sopoints/summary",
       "sopoints/week/list",
