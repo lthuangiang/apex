@@ -26,4 +26,6 @@ export VAULT_TOKEN="$ROOT"
 vault token lookup "$DEV_TOKEN" >/dev/null 2>&1 || vault token create -id="$DEV_TOKEN" -policy=root -orphan >/dev/null
 vault secrets list | grep -q '^transit/' || vault secrets enable transit
 vault read transit/keys/drift-api-keys >/dev/null 2>&1 || vault write -f transit/keys/drift-api-keys type=aes256-gcm96 >/dev/null
+# #558 / DEC-398: khoá riêng cho phiên SoDEX rewards (tách khỏi khoá API key để xoay / huỷ riêng).
+vault read transit/keys/drift-rewards >/dev/null 2>&1 || vault write -f transit/keys/drift-rewards type=aes256-gcm96 >/dev/null
 echo "vault: ready"

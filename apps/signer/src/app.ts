@@ -1,5 +1,6 @@
 import type { TLSSocket } from "node:tls";
 
+import { rewardsJwtSchema } from "@drift/shared";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type pg from "pg";
 import { v7 as uuidv7 } from "uuid";
@@ -19,6 +20,7 @@ export const REDACT_PATHS = [
   "*.signature",
   "*.plaintext",
   "*.ciphertext",
+  "*.token",
   "req.headers.authorization",
 ];
 
@@ -33,6 +35,11 @@ const signBodySchema = z.object({
   epoch: z.number().int().positive(),
 });
 
+/** #558 (DEC-398): JWT rewards cần mã hoá. Chỉ dạng JWT, tối đa 4 KB. */
+const rewardsEncryptBodySchema = z.object({ token: rewardsJwtSchema }).strict();
+/** Giải mã theo user: signer tự đọc ciphertext của dòng `active`, không nhận ciphertext từ người gọi. */
+const rewardsDecryptBodySchema = z.object({ userId: z.uuid() }).strict();
+
 const createKeyBodySchema = z.object({
   sodexAccountId: z.uuid(),
   name: z.string().regex(/^[0-9a-zA-Z_-]{1,36}$/),
@@ -42,6 +49,11 @@ const createKeyBodySchema = z.object({
 export interface SignerDeps {
   pool: pg.Pool;
   vault: VaultTransit;
+  /**
+   * #558 (DEC-398): Vault transit riêng cho phiên rewards (`drift-rewards`). Thiếu thì hai endpoint `rewards-tokens`
+   * trả 503. Signer không gọi ra ngoài Vault: chỉ mã hoá / giải mã, không gọi gateway SoDEX.
+   */
+  rewardsVault?: VaultTransit;
   logLevel: string;
   /** Thay stream log trong test. */
   logStream?: NodeJS.WritableStream;
@@ -54,6 +66,17 @@ export const SIGNER_CALLERS = {
   createKey: ["api"],
   sign: ["engine"],
   verifyKey: ["api", "engine"],
+  /** #558: api mã hoá phiên rewards lúc người dùng bật báo box mới. */
+  rewardsEncrypt: ["api"],
+  /**
+   * #558: scheduler giải mã phiên rewards để đọc định kỳ (chỉ dòng `active`, theo `userId`). DEC-398: prod chưa có
+   * cert `scheduler` (volume cert không có ca.key nên không cấp lẻ được) nên scheduler dùng chung cert client của api;
+   * vì vậy CN `api` cũng được giải mã. Chấp nhận được: CN `api` vốn đã thấy plaintext lúc người dùng bật (nhận token
+   * để mã hoá) và không có quyền `sign` (chỉ engine). Phần quyền scheduler có thêm khi dùng cert api: createKey (key
+   * `pending`, SoDEX chưa xác nhận), verifyKey, encrypt rewards. Giữ CN `scheduler` cho môi trường có cert riêng và
+   * lần tạo lại toàn bộ cert sau (docs/DEPLOY.md 2.4.1).
+   */
+  rewardsDecrypt: ["scheduler", "api"],
 } as const;
 
 export function buildSignerApp(deps: SignerDeps): FastifyInstance {
@@ -202,6 +225,68 @@ export function buildSignerApp(deps: SignerDeps): FastifyInstance {
     const ok = raw.length === 32;
     raw.fill(0);
     return ok ? reply.status(204).send() : reply.status(422).send({ error: "key_unusable" });
+  });
+
+  /**
+   * #558 (DEC-398): mã hoá JWT rewards bằng transit `drift-rewards`, trả ciphertext cho api lưu vào `rewards_watch`.
+   * Không ghi DB, không log token. 503 khi chưa cấu hình khoá rewards hoặc Vault lỗi.
+   */
+  app.post("/v1/rewards-tokens/encrypt", async (request, reply) => {
+    if (!callerAllowed(request, SIGNER_CALLERS.rewardsEncrypt))
+      return reply.status(403).send({ error: "caller not allowed" });
+    const rewardsVault = deps.rewardsVault;
+    if (rewardsVault === undefined) return reply.status(503).send({ error: "rewards_disabled" });
+    const parsed = rewardsEncryptBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: "invalid_body" });
+    const raw = Buffer.from(parsed.data.token, "utf8");
+    try {
+      const ciphertext = await rewardsVault.encrypt(raw);
+      return await reply.send({ ciphertext, keyRef: rewardsVault.keyRef });
+    } catch (error) {
+      request.log.error({ err: error }, "vault encrypt failed (rewards)");
+      return await reply.status(503).send({ error: "vault_unavailable" });
+    } finally {
+      raw.fill(0);
+    }
+  });
+
+  /**
+   * #558 (DEC-398): giải mã phiên rewards của MỘT user cho scheduler. Signer tự đọc `token_ciphertext` của dòng
+   * `rewards_watch` đang `active`; không nhận ciphertext tuỳ ý (nên CN `scheduler` không giải mã được thứ khác, ví dụ
+   * API key). 404 không có dòng `active` · 422 ciphertext không giải mã được (cần người dùng ký lại) · 503 Vault lỗi.
+   */
+  app.post("/v1/rewards-tokens/decrypt", async (request, reply) => {
+    if (!callerAllowed(request, SIGNER_CALLERS.rewardsDecrypt))
+      return reply.status(403).send({ error: "caller not allowed" });
+    const rewardsVault = deps.rewardsVault;
+    if (rewardsVault === undefined) return reply.status(503).send({ error: "rewards_disabled" });
+    const parsed = rewardsDecryptBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: "invalid_body" });
+    const { rows } = await deps.pool.query<{ token_ciphertext: string | null; status: string }>(
+      "select token_ciphertext, status from rewards_watch where user_id = $1",
+      [parsed.data.userId],
+    );
+    const row = rows[0];
+    if (row?.status !== "active" || row.token_ciphertext === null)
+      return reply.status(404).send({ error: "not_active" });
+    let raw: Buffer;
+    try {
+      raw = await rewardsVault.decrypt(row.token_ciphertext);
+    } catch (error) {
+      if (error instanceof KeyUnusableError)
+        return reply.status(422).send({ error: "token_unusable" });
+      request.log.error({ err: error }, "vault decrypt failed (rewards)");
+      return reply.status(503).send({ error: "vault_unavailable" });
+    }
+    try {
+      const token = raw.toString("utf8");
+      if (!rewardsJwtSchema.safeParse(token).success)
+        return await reply.status(422).send({ error: "token_unusable" });
+      request.log.info({ userId: parsed.data.userId }, "rewards token decrypted");
+      return await reply.send({ token });
+    } finally {
+      raw.fill(0);
+    }
   });
 
   return app;

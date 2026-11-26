@@ -17,8 +17,9 @@ fail() { printf '\n\033[1;31m✕ %s\033[0m\n' "$*" >&2; exit 1; }
 docker info >/dev/null 2>&1 || fail "Docker chưa chạy. Mở Docker Desktop rồi chạy lại."
 [ -f .env ] || fail "Thiếu .env. Chạy: cp .env.example .env rồi điền giá trị."
 
-if [ ! -f infra/certs/dev/ca.crt ]; then
-  step "Tạo cert mTLS cho signer (lần đầu)"
+# Cộng dồn (#558): thiếu cert nào (kể cả scheduler.crt) thì script cấp thêm bằng CA dev đang có, cert cũ giữ nguyên.
+if [ ! -f infra/certs/dev/ca.crt ] || [ ! -f infra/certs/dev/scheduler.crt ]; then
+  step "Tạo cert mTLS cho signer (cấp cert còn thiếu)"
   infra/certs/gen-dev-certs.sh infra/certs/dev
 fi
 

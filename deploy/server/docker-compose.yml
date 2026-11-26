@@ -118,6 +118,8 @@ services:
       SIGNAL_NEWS_BOTS_ENABLED: ${SIGNAL_NEWS_BOTS_ENABLED:-false}
       # #546 / DEC-397: SoDEX rewards cho mọi user (qua /api/v1/features); tắt tới #551, rồi là nút tắt khẩn (DEPLOY 2.22).
       REWARDS_ENABLED: ${REWARDS_ENABLED:-false}
+      # #558 / DEC-398: báo box mới SoDEX rewards; cùng giá trị cho api và scheduler. Mặc định tắt (DEPLOY 2.23).
+      REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}
     depends_on:
       <<: *app-deps
       signer: { condition: service_healthy }
@@ -224,6 +226,20 @@ services:
       # #419: tín hiệu mainnet dùng chung (news_signals + NATS sr.signal.new). Mặc định tắt; chỉ scheduler đọc.
       SIGNAL_NEWS_PUBLISH_ENABLED: ${SIGNAL_NEWS_PUBLISH_ENABLED:-false}
       SIGNAL_NEWS_EVENT_SPLIT_ENABLED: ${SIGNAL_NEWS_EVENT_SPLIT_ENABLED:-false}
+      # #558 / DEC-398: báo box mới SoDEX rewards; cùng giá trị với api. Mặc định tắt (DEPLOY 2.23).
+      REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}
+      # #558: mTLS tới signer để giải mã phiên rewards. Dùng chung cert của api (DEC-398): volume cert prod không có
+      # ca.key nên không cấp lẻ scheduler.crt được; khi tạo lại toàn bộ cert (DEPLOY 2.4.1) thì chuyển sang scheduler.crt.
+      SIGNER_URL: https://signer:8090
+      SIGNER_CLIENT_CERT: /certs/api.crt
+      SIGNER_CLIENT_KEY: /certs/api.key
+      SIGNER_CLIENT_CA: /certs/ca.crt
+    # Không chờ signer healthy: signer lỗi thì chỉ job rewards dừng (rủi ro, builder revenue… vẫn chạy).
+    depends_on:
+      <<: *app-deps
+      certs: { condition: service_completed_successfully }
+    volumes: ["certs:/certs:ro"]
+    networks: [core, secure]
 
   jobs:
     <<: *app
@@ -383,6 +399,8 @@ configs:
       # Production 1 host (DEC-70). Chạy liên tục trong container `vault-init`:
       #   - lần đầu: init (1 unseal key), bật transit, tạo khoá `drift-api-keys`, policy `signer` chỉ encrypt/decrypt
       #     khoá đó, và token của signer (id = SIGNER_TOKEN = VAULT_TOKEN trong .env) sống 10 năm, không có quyền khác;
+      #   - mỗi lần container khởi động: tạo khoá còn thiếu và ghi lại policy `signer` (idempotent). #558 / DEC-398 thêm
+      #     khoá `drift-rewards` (phiên SoDEX rewards) và quyền encrypt/decrypt khoá đó; Vault và signer không cần restart;
       #   - mỗi 15 s: nếu Vault đang sealed (vừa restart / VPS reboot) thì unseal.
       # Đánh đổi: unseal key nằm trong volume `vaultinit` trên cùng máy để bot tự chạy lại sau reboot. Ai có root trên
       # VPS thì đọc được. Chép /vault/init/init.txt ra chỗ an toàn ngoài VPS (trình quản lý mật khẩu) ngay sau lần đầu.
@@ -419,9 +437,15 @@ configs:
         || vault write -f transit/keys/drift-api-keys type=aes256-gcm96 >/dev/null
       # Không cho xoá khoá transit (mất khoá = mất mọi API key đã mã hoá).
       vault write transit/keys/drift-api-keys/config deletion_allowed=false >/dev/null
+      # #558 / DEC-398: khoá riêng cho phiên SoDEX rewards. Tách khỏi khoá API key để xoay / huỷ riêng; mất khoá này thì
+      # người dùng chỉ phải ký rewards lại (token sống 15 ngày), nên không khoá việc xoá.
+      vault read transit/keys/drift-rewards >/dev/null 2>&1 \
+        || vault write -f transit/keys/drift-rewards type=aes256-gcm96 >/dev/null
       printf '%s\n' \
         'path "transit/encrypt/drift-api-keys" { capabilities = ["update"] }' \
         'path "transit/decrypt/drift-api-keys" { capabilities = ["update"] }' \
+        'path "transit/encrypt/drift-rewards" { capabilities = ["update"] }' \
+        'path "transit/decrypt/drift-rewards" { capabilities = ["update"] }' \
         | vault policy write signer - >/dev/null
       # Signer chỉ đăng nhập một lần lúc khởi động và không renew token, nên token phải sống lâu.
       vault auth tune -max-lease-ttl=87600h token/ >/dev/null
@@ -438,10 +462,17 @@ configs:
   certs-init:
     content: |
       #!/bin/sh
-      # Tạo CA nội bộ + cert mTLS cho api/engine ↔ signer một lần (giữ trong volume `certs`, hạn 3 năm).
+      # Tạo CA nội bộ + cert mTLS cho api / engine / scheduler ↔ signer một lần (giữ trong volume `certs`, hạn 3 năm).
+      # ca.key bị xoá sau khi tạo, nên KHÔNG cấp thêm cert lẻ được. Volume đã có cert cũ nhưng thiếu scheduler.crt
+      # (#558 / DEC-398) thì script không đổi gì: scheduler dùng chung cert client của api; lần tạo lại toàn bộ cert sau
+      # (docs/DEPLOY.md mục 2.4.1) thì chuyển scheduler sang scheduler.crt.
       set -eu
       cd /certs
-      if [ -s ca.crt ] && [ -s signer.crt ] && [ -s api.crt ] && [ -s engine.crt ]; then echo "certs: present"; exit 0; fi
+      if [ -s ca.crt ] && [ -s signer.crt ] && [ -s api.crt ] && [ -s engine.crt ]; then
+        if [ -s scheduler.crt ] && [ -s scheduler.key ]; then echo "certs: present"; exit 0; fi
+        echo "certs: present (no scheduler cert; scheduler uses the api client cert, DEC-398)"
+        exit 0
+      fi
       apk add --no-cache openssl >/dev/null
       DAYS=1095
       openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -subj "/CN=drift-internal-ca" -days $$DAYS -out ca.crt 2>/dev/null
@@ -455,6 +486,7 @@ configs:
       issue signer signer "subjectAltName=DNS:signer,DNS:localhost,IP:127.0.0.1"
       issue api api ""
       issue engine engine ""
+      issue scheduler scheduler ""
       chmod 644 ./*.crt ./*.key
       rm -f ca.key
       echo "certs: created (valid $$DAYS days)"

@@ -58,7 +58,7 @@ function issue(name: string, cn: string, ca: { key: string; crt: string }, serve
 let app: FastifyInstance;
 let url: string;
 let caPem: string;
-let client: Record<"api" | "engine" | "rogue", { cert: string; key: string }>;
+let client: Record<"api" | "engine" | "scheduler" | "rogue", { cert: string; key: string }>;
 
 beforeAll(async () => {
   run([
@@ -97,11 +97,13 @@ beforeAll(async () => {
   client = {
     api: issue("api", "api", ca),
     engine: issue("engine", "engine", ca),
+    scheduler: issue("scheduler", "scheduler", ca),
     rogue: issue("rogue", "engine", { key: "rogue-ca.key", crt: "rogue-ca.crt" }),
   };
   app = buildSignerApp({
     pool: {} as pg.Pool,
     vault: {} as VaultTransit,
+    rewardsVault: {} as VaultTransit,
     logLevel: "silent",
     tls: { ...server, ca: caPem },
   });
@@ -113,7 +115,7 @@ afterAll(async () => {
   await app.close();
 });
 
-const call = (path: string, who: "api" | "engine" | "rogue" | null) =>
+const call = (path: string, who: "api" | "engine" | "scheduler" | "rogue" | null) =>
   postJson(
     `${url}${path}`,
     {},
@@ -130,6 +132,23 @@ describe("signer mTLS", () => {
     // Qua được kiểm tra caller, rồi bị từ chối vì body rỗng.
     expect((await call("/v1/sign", "engine")).status).toBe(400);
     expect((await call("/v1/api-keys", "api")).status).toBe(400);
+  });
+
+  it("lets only the api encrypt and the scheduler or api decrypt rewards tokens (#558)", async () => {
+    expect((await call("/v1/rewards-tokens/encrypt", "scheduler")).status).toBe(403);
+    expect((await call("/v1/rewards-tokens/encrypt", "engine")).status).toBe(403);
+    expect((await call("/v1/rewards-tokens/decrypt", "engine")).status).toBe(403);
+    // Qua được kiểm tra caller, rồi bị từ chối vì body rỗng.
+    expect((await call("/v1/rewards-tokens/encrypt", "api")).status).toBe(400);
+    expect((await call("/v1/rewards-tokens/decrypt", "scheduler")).status).toBe(400);
+    // DEC-398: prod dùng chung cert api cho scheduler, nên CN api cũng giải mã được (vẫn không ký được).
+    expect((await call("/v1/rewards-tokens/decrypt", "api")).status).toBe(400);
+    // CN scheduler không được ký lệnh hay tạo key.
+    expect((await call("/v1/sign", "scheduler")).status).toBe(403);
+    expect((await call("/v1/api-keys", "scheduler")).status).toBe(403);
+    expect(
+      (await call("/v1/keys/00000000-0000-7000-8000-000000000000/verify", "scheduler")).status,
+    ).toBe(403);
   });
 
   it("refuses clients without a certificate signed by the internal CA", async () => {

@@ -35,6 +35,12 @@ export const ErrorCode = {
   telegramLinkExpired: "TELEGRAM_LINK_EXPIRED",
   /** Tính năng có code nhưng chưa bật (cờ env tắt), ví dụ bot `news_signal` mainnet (#420, `SIGNAL_NEWS_BOTS_ENABLED`). */
   featureNotReady: "FEATURE_NOT_READY",
+  /** SoDEX rewards watch (#558, DEC-398): token rewards thuộc ví khác master wallet của tài khoản; không lưu gì. */
+  rewardsWalletMismatch: "REWARDS_WALLET_MISMATCH",
+  /** Token rewards sai dạng, đã / sắp hết hạn, hạn dài bất thường hoặc `aud` / `iss` ngoài danh sách cho phép. */
+  rewardsTokenInvalid: "REWARDS_TOKEN_INVALID",
+  /** Không bật được báo box mới (signer / Vault / gateway lỗi); chưa lưu gì, token vẫn chỉ ở trình duyệt. */
+  rewardsWatchUnavailable: "REWARDS_WATCH_UNAVAILABLE",
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
@@ -68,6 +74,9 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   TELEGRAM_NOT_CONNECTED: 409,
   TELEGRAM_LINK_EXPIRED: 410,
   FEATURE_NOT_READY: 409,
+  REWARDS_WALLET_MISMATCH: 422,
+  REWARDS_TOKEN_INVALID: 422,
+  REWARDS_WATCH_UNAVAILABLE: 503,
 };
 
 export type ErrorDetails = Record<string, unknown>;

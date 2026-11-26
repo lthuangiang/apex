@@ -13,6 +13,12 @@ const vault = await connectVault(
   { token: config.VAULT_TOKEN, roleId: config.VAULT_ROLE_ID, secretId: config.VAULT_SECRET_ID },
   config.VAULT_TRANSIT_KEY,
 );
+// #558 (DEC-398): khoá transit riêng cho phiên rewards (cùng cách đăng nhập Vault).
+const rewardsVault = await connectVault(
+  config.VAULT_ADDR,
+  { token: config.VAULT_TOKEN, roleId: config.VAULT_ROLE_ID, secretId: config.VAULT_SECRET_ID },
+  config.VAULT_REWARDS_TRANSIT_KEY,
+);
 const tls =
   config.SIGNER_TLS_CERT === undefined ||
   config.SIGNER_TLS_KEY === undefined ||
@@ -26,6 +32,7 @@ const tls =
 const app = buildSignerApp({
   pool,
   vault,
+  rewardsVault,
   logLevel: config.LOG_LEVEL,
   ...(tls === undefined ? {} : { tls }),
 });
