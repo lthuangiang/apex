@@ -213,4 +213,93 @@ describe("SoDEX rewards switch off (#547, DEC-397)", () => {
     }
     flags.sodexRewards = false;
   });
+
+  it("switch off: Portfolio keeps position 2 and the bottom bar is unchanged", () => {
+    flags.aiDesk = true;
+    flags.sodexRewards = false;
+    renderShell(false);
+    const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    if (nav === undefined) throw new Error("sidebar nav missing");
+    expect(linkNames(nav).slice(0, 3)).toEqual(["Overview", "Portfolio", "Trading Agent"]);
+    expect(screen.queryByText("New")).toBeNull();
+  });
+});
+
+describe("SoDEX rewards switch on (#548, DEC-397)", () => {
+  afterEach(() => {
+    flags.sodexRewards = false;
+    flags.aiDesk = true;
+  });
+
+  it("Rewards at position 2 with a New chip, Trading Agent stays 3rd, Portfolio right above Settings", () => {
+    flags.aiDesk = true;
+    flags.sodexRewards = true;
+    renderShell(false);
+    const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    if (nav === undefined) throw new Error("sidebar nav missing");
+    expect(linkNames(nav)).toEqual([
+      "Overview",
+      "RewardsNew",
+      "Trading Agent",
+      "AI Desk",
+      "Strategy Lab",
+      "Execution & Orders",
+      "Risk Center",
+      "Find traders",
+      "Following",
+      "Portfolio",
+      "Settings",
+    ]);
+    const link = within(nav).getByRole("link", { name: /Rewards/ });
+    expect(link).toHaveAttribute("href", "/rewards");
+    expect(within(link).getByText("New")).toBeInTheDocument();
+  });
+
+  it("team: Portfolio still sits right above Settings, after TEAM", () => {
+    flags.aiDesk = true;
+    flags.sodexRewards = true;
+    renderShell(true);
+    const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    if (nav === undefined) throw new Error("sidebar nav missing");
+    expect(linkNames(nav).slice(-3)).toEqual(["Signal Analysis", "Portfolio", "Settings"]);
+  });
+
+  it("mobile: Rewards first in More, Portfolio right above Settings, bottom bar unchanged", async () => {
+    flags.aiDesk = true;
+    flags.sodexRewards = true;
+    const user = userEvent.setup({ delay: null });
+    renderShell(false);
+    const bottom = screen
+      .getAllByRole("navigation")
+      .find((n) => within(n).queryByRole("button", { name: "More" }) !== null);
+    if (bottom === undefined) throw new Error("bottom bar missing");
+    expect(linkNames(bottom)).toEqual(["Home", "AI Desk", "Agent", "Strategy"]);
+    await user.click(screen.getByRole("button", { name: "More" }));
+    const sheet = await screen.findByRole("dialog", { name: "More" });
+    expect(linkNames(sheet)).toEqual([
+      "RewardsNew",
+      "Execution & Orders",
+      "Risk Center",
+      "Find traders",
+      "Following",
+      "Portfolio",
+      "Settings",
+    ]);
+  }, 15_000);
+
+  it("without AI Desk: Portfolio stays in the bottom bar and is not repeated in More", async () => {
+    flags.aiDesk = false;
+    flags.sodexRewards = true;
+    const user = userEvent.setup({ delay: null });
+    renderShell(false);
+    await user.click(screen.getByRole("button", { name: "More" }));
+    const sheet = await screen.findByRole("dialog", { name: "More" });
+    expect(linkNames(sheet)).toEqual([
+      "RewardsNew",
+      "Execution & Orders",
+      "Risk Center",
+      "AI Analyst",
+      "Settings",
+    ]);
+  }, 15_000);
 });

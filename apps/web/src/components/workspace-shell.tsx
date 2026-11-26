@@ -17,6 +17,7 @@ import {
   Clock,
   Coins,
   FlaskConical,
+  Gift,
   LayoutDashboard,
   Network,
   ListOrdered,
@@ -60,6 +61,9 @@ import { SignOutButton } from "./sign-out";
 
 const ITEMS = [
   ["overview", "/", LayoutDashboard, "main"],
+  // SoDEX rewards (DEC-397, #548): vị trí 2 khi công tắc `sodexRewards` bật; khi đó Portfolio xuống nhóm dưới, ngay trên
+  // Settings. Tắt thì mục này không có và Portfolio giữ vị trí 2 như cũ.
+  ["rewards", "/rewards", Gift, "main"],
   ["portfolio", "/portfolio", Wallet, "main"],
   // Trading Agent luôn ở vị trí thứ 3 (DEC-108), dù AI Desk có bật hay không.
   ["agent", "/agent", Bot, "main"],
@@ -127,6 +131,8 @@ export function WorkspaceShell({
   const desk = features?.aiDesk === true;
   // #423: Signal Research (BETA): API trả true cho role team và tài khoản có cờ.
   const research = features?.signalResearch === true;
+  // DEC-397: công tắc toàn hệ thống, giống nhau cho mọi user.
+  const rewards = features?.sodexRewards === true;
   const navItems: NavItem[] = ITEMS.filter(
     ([key]) =>
       (!TEAM_ONLY.has(key) || isTeam) &&
@@ -136,7 +142,9 @@ export function WorkspaceShell({
           ? !desk
           : key === "signalResearch"
             ? research
-            : true),
+            : key === "rewards"
+              ? rewards
+              : true),
   )
     .filter(([key]) => desk || !COPY_ITEMS.has(key))
     .map(([key, href, Icon, group]) => ({
@@ -145,10 +153,12 @@ export function WorkspaceShell({
       href,
       icon: <Icon aria-hidden="true" size={20} />,
       current: key === current,
-      group,
+      // Portfolio nằm trước Settings trong ITEMS nên nhóm dưới giữ đúng thứ tự Portfolio · Settings.
+      group: rewards && key === "portfolio" ? ("secondary" as const) : group,
       ...(COPY_ITEMS.has(key) ? { section: t("sections.copy") } : {}),
       // #423: chip Beta dùng chung của app (PM review #428).
       ...(key === "signalResearch" ? { badge: <BetaChip bare /> } : {}),
+      ...(key === "rewards" ? { badge: <NewChip /> } : {}),
     }));
   const byKey = (key: WorkspaceKey) => navItems.find((i) => i.key === key);
   const pick = (keys: readonly WorkspaceKey[]) =>
@@ -173,14 +183,16 @@ export function WorkspaceShell({
       label: t("mobile.more"),
       icon: <Ellipsis aria-hidden="true" size={22} />,
       // Cùng thứ tự với sidebar (DEC-181); Settings và các mục TEAM giữ nguyên vị trí.
+      // Rewards bật (DEC-397): Rewards đứng đầu, Portfolio xuống ngay trên Settings như sidebar; thanh dưới giữ nguyên.
       items: pick([
-        desk ? "portfolio" : "desk",
+        ...(rewards ? ["rewards" as const] : [desk ? ("portfolio" as const) : ("desk" as const)]),
         "signalResearch",
         "orders",
         "risk",
         "traders",
         "following",
         "analyst",
+        ...(rewards && desk ? ["portfolio" as const] : []),
         "settings",
         "revenue",
         "users",
@@ -220,6 +232,16 @@ export function WorkspaceShell({
       {children}
       <NotificationToasts />
     </AppShell>
+  );
+}
+
+/** Chip "New" của mục Rewards (DEC-397), cùng kiểu chip `BetaChip`. */
+function NewChip() {
+  const t = useTranslations("rewards");
+  return (
+    <span className="inline-flex flex-none items-center rounded-full bg-accent-tint px-2 py-0.5 text-[11px] font-extrabold whitespace-nowrap text-accent-ink">
+      {t("newChip")}
+    </span>
   );
 }
 
