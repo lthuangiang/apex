@@ -81,7 +81,8 @@ interface Fill {
 
 /**
  * Một bot Market Making thật với order size và các fill (lệnh tạo cùng lúc với fill) ngày `day`. `quoteLevel` của
- * version đang chạy: mặc định 0 (bot dùng cho hiệu chỉnh); undefined = config cũ chỉ có distanceBp.
+ * version đang chạy: mặc định 0 (bot dùng cho hiệu chỉnh); null = config cũ chỉ có distanceBp (không có quoteLevel).
+ * Dùng null chứ không dùng undefined: truyền undefined thì JS lấy giá trị mặc định 0.
  */
 async function seedBot(
   userId: string,
@@ -89,7 +90,7 @@ async function seedBot(
   orderSize: string,
   fills: readonly Fill[],
   day = "2026-11-02",
-  quoteLevel: number | undefined = 0,
+  quoteLevel: number | null = 0,
 ) {
   const { rows: acc } = await env.pool.query<{ id: string }>(
     "insert into sodex_accounts (id, user_id, address, sodex_account_id, network, status) values (gen_random_uuid(), $1, $2, $3, 'mainnet', 'connected') returning id",
@@ -102,7 +103,16 @@ async function seedBot(
   const botId = bot[0]?.id ?? "";
   const { rows: ver } = await env.pool.query<{ id: string }>(
     "insert into bot_versions (id, bot_id, version, config, param_source, status) values (gen_random_uuid(), $1, 1, $2, 'manual', 'active') returning id",
-    [botId, JSON.stringify({ market, orderSize, maxOrders: 1, distanceBp: "1", quoteLevel })],
+    [
+      botId,
+      JSON.stringify({
+        market,
+        orderSize,
+        maxOrders: 1,
+        distanceBp: "1",
+        ...(quoteLevel === null ? {} : { quoteLevel }),
+      }),
+    ],
   );
   await env.pool.query("update bots set active_version_id = $1 where id = $2", [ver[0]?.id, botId]);
   for (const [i, f] of fills.entries()) {
@@ -276,7 +286,7 @@ describe("Est. CPM · calibrated", () => {
     // Mức 2 và config cũ (chỉ distanceBp) trên LEVEL2, vị thế rất lớn: không vào R, F hay C, kể cả của market đó.
     for (let i = 0; i < 3; i++)
       await seedBot(userId, LEVEL2, "20", pattern("50", "1", "100.5"), undefined, 2);
-    await seedBot(userId, LEVEL2, "20", pattern("50", "1", "100.5"), undefined, undefined);
+    await seedBot(userId, LEVEL2, "20", pattern("50", "1", "100.5"), undefined, null);
     const v = await get(client, LEVEL2);
     expect(v.estimate.cutScope).toMatchObject({ source: "pooled", marketBotHours: 0 });
     expect(v.estimate.cutScope.markets).not.toContain(LEVEL2);
