@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { NOTIFICATION_TYPES } from "../api/notifications";
+import { groupOf, NOTIFICATION_DEFAULTS, NOTIFICATION_TYPES } from "../api/notifications";
 import {
   REWARDS_JWT_MAX_LENGTH,
   REWARDS_NOTIFICATION_DEFAULTS,
@@ -77,14 +77,16 @@ describe("rewardsWatchStateSchema", () => {
 });
 
 describe("rewards notification constants", () => {
-  it("are not wired into NOTIFICATION_TYPES yet (no producer until PR4 / PR5)", () => {
+  it("are notification types of the rewards group (#558 PR4)", () => {
     for (const t of REWARDS_NOTIFICATION_TYPES) {
-      expect((NOTIFICATION_TYPES as readonly string[]).includes(t)).toBe(false);
+      expect((NOTIFICATION_TYPES as readonly string[]).includes(t)).toBe(true);
+      expect(groupOf(t)).toBe("rewards");
     }
+    expect(NOTIFICATION_DEFAULTS.rewards).toEqual(REWARDS_NOTIFICATION_DEFAULTS);
   });
 
   it("default to in-app only and toast only received boxes and draw wins", () => {
-    expect(REWARDS_NOTIFICATION_DEFAULTS).toEqual({ in_app: true, email: false, telegram: false });
+    expect(REWARDS_NOTIFICATION_DEFAULTS).toEqual({ in_app: true, email: false, telegram: true });
     expect(REWARDS_TOAST_TYPES).toEqual(["rewards_box_received", "rewards_draw_won"]);
   });
 });

@@ -41,6 +41,12 @@ export const NOTIFICATION_TYPES = [
   "team_incident_digest",
   // Signal research (#311): SoDEX mở market chưa có trong asset map (DEC-330); scheduler phát, mỗi market một lần.
   "team_sr_new_market",
+  // SoDEX rewards (#558, DEC-398): scheduler đọc rewards của người dùng đã bật "Tell me about new boxes" và báo box mới.
+  // `rewards_watch_paused`: phiên rewards hết hạn / SoDEX trả 401 / đổi ví. Dữ liệu: `api/rewards-watch.ts`.
+  "rewards_claimable",
+  "rewards_box_received",
+  "rewards_draw_won",
+  "rewards_watch_paused",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -63,6 +69,12 @@ export const NOTIFICATION_GROUPS = {
     "team_incident",
     "team_incident_digest",
     "team_sr_new_market",
+  ],
+  rewards: [
+    "rewards_claimable",
+    "rewards_box_received",
+    "rewards_draw_won",
+    "rewards_watch_paused",
   ],
 } as const satisfies Record<string, readonly NotificationType[]>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;
@@ -100,6 +112,8 @@ export const NOTIFICATION_DEFAULTS: Record<
   copyTrading: { in_app: true, email: false, telegram: false },
   telegram: { in_app: true, email: false, telegram: false },
   teamOps: { in_app: false, email: false, telegram: true },
+  // DEC-398 (chủ sản phẩm chốt 2026-11-26): in-app bật; Telegram bật (chỉ gửi khi đã kết nối); email tắt.
+  rewards: { in_app: true, email: false, telegram: true },
 };
 
 export function groupOf(type: NotificationType): NotificationGroup {

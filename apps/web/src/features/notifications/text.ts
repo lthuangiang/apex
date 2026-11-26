@@ -1,6 +1,12 @@
 "use client";
 
-import { botListSchema, feeTierChangeText } from "@drift/shared";
+import {
+  botListSchema,
+  feeTierChangeText,
+  rewardsBoxReceivedDataSchema,
+  rewardsClaimableDataSchema,
+  rewardsDrawWonDataSchema,
+} from "@drift/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
@@ -170,6 +176,51 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
               : t("panel.copyBot.filled", { size, coin, price }),
         };
       }
+      // SoDEX rewards (#558, câu đã duyệt plan-558 NEW COPY 19–22). Dữ liệu sai dạng thì câu không có số.
+      case "rewards_claimable": {
+        const d = rewardsClaimableDataSchema.safeParse(n.data);
+        return {
+          title: d.success
+            ? t("panel.rewards.claimable", { n: d.data.count })
+            : t("types.rewards_claimable"),
+          body: t("panel.rewards.claimableBody"),
+        };
+      }
+      case "rewards_box_received": {
+        const d = rewardsBoxReceivedDataSchema.safeParse(n.data);
+        if (!d.success) return { title: t("types.rewards_box_received"), body: null };
+        const only = d.data.count === 1 ? (d.data.levels[0]?.level ?? null) : null;
+        const levels = d.data.levels
+          .filter((l) => l.level !== null)
+          .map((l) => t("panel.rewards.levelCount", { count: l.count, level: l.level ?? "" }));
+        return {
+          title:
+            only === null
+              ? t("panel.rewards.received", { n: d.data.count })
+              : t("panel.rewards.receivedLevel", { level: only }),
+          body: [
+            ...(levels.length === 0 ? [] : [levels.join(", ")]),
+            t("panel.rewards.source"),
+          ].join(" · "),
+        };
+      }
+      case "rewards_draw_won": {
+        const d = rewardsDrawWonDataSchema.safeParse(n.data);
+        if (!d.success) return { title: t("types.rewards_draw_won"), body: null };
+        const { wins, tickets, round } = d.data;
+        return {
+          title:
+            wins === null || tickets === null
+              ? t("types.rewards_draw_won")
+              : t("panel.rewards.drawWon", { wins, tickets }),
+          body: [
+            ...(round === null ? [] : [t("panel.rewards.drawRound", { round })]),
+            t("panel.rewards.source"),
+          ].join(" · "),
+        };
+      }
+      case "rewards_watch_paused":
+        return { title: t("types.rewards_watch_paused"), body: t("panel.rewards.pausedBody") };
       case "copy_bot_skipped": {
         const market = str(n.data.market);
         const name = bot ?? t("panel.copyBot.aBot");

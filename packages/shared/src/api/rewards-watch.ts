@@ -45,10 +45,7 @@ export const rewardsWatchStateSchema = z.object({
 });
 export type RewardsWatchState = z.infer<typeof rewardsWatchStateSchema>;
 
-/**
- * Loại thông báo của nhóm `rewards` (DEC-398). Chưa nằm trong `NOTIFICATION_TYPES` / `NOTIFICATION_GROUPS`: thêm vào đó
- * cùng PR web (PR5), vì panel chuông và câu chữ in-app của web phải có đủ mọi type. Tới lúc đó không có nơi phát.
- */
+/** Loại thông báo của nhóm `rewards` (DEC-398), cũng nằm trong `NOTIFICATION_TYPES` / `NOTIFICATION_GROUPS.rewards`. */
 export const REWARDS_NOTIFICATION_TYPES = [
   "rewards_claimable",
   "rewards_box_received",
@@ -57,11 +54,14 @@ export const REWARDS_NOTIFICATION_TYPES = [
 ] as const;
 export type RewardsNotificationType = (typeof REWARDS_NOTIFICATION_TYPES)[number];
 
-/** Mặc định kênh của nhóm `rewards` (DEC-398): in-app bật; email và Telegram cho phép, mặc định tắt. */
+/**
+ * Mặc định kênh của nhóm `rewards` (DEC-398, chủ sản phẩm chốt 2026-11-26): in-app bật; Telegram bật (chỉ gửi khi người
+ * dùng đã kết nối Telegram); email tắt (cho phép bật).
+ */
 export const REWARDS_NOTIFICATION_DEFAULTS = {
   in_app: true,
   email: false,
-  telegram: false,
+  telegram: true,
 } as const;
 
 /** Toast (DEC-398, đổi DEC-170 mục 6): box nhận được và vé trúng; không toast cho box chờ claim. */
@@ -69,3 +69,41 @@ export const REWARDS_TOAST_TYPES: readonly RewardsNotificationType[] = [
   "rewards_box_received",
   "rewards_draw_won",
 ];
+
+// Dữ liệu `notifications.payload` của nhóm `rewards` (scheduler ghi, web / jobs đọc). Không bao giờ có địa chỉ ví,
+// token hay txHash: tin chỉ báo có box mới; chi tiết xem trên trang Rewards.
+
+/** Số box theo cấp, đúng chuỗi cấp SoDEX trả (không có thì `level` null). */
+export const rewardsLevelCountSchema = z.object({
+  level: z.string().nullable(),
+  count: z.number().int().positive(),
+});
+
+/** `rewards_claimable`: `lottery/treasures.lifetime.granted` tăng `count`. */
+export const rewardsClaimableDataSchema = z.object({ count: z.number().int().positive() });
+export type RewardsClaimableData = z.infer<typeof rewardsClaimableDataSchema>;
+
+/** `rewards_box_received`: transfer `direction: in` (không phải `lottery_prize`) mới trong ledger, gộp một lượt. */
+export const rewardsBoxReceivedDataSchema = z.object({
+  count: z.number().int().positive(),
+  levels: z.array(rewardsLevelCountSchema),
+});
+export type RewardsBoxReceivedData = z.infer<typeof rewardsBoxReceivedDataSchema>;
+
+/**
+ * `rewards_draw_won`: transfer `reason: lottery_prize` mới, gộp theo `round`. `boxes` đếm từ ledger; `wins` /
+ * `tickets` từ `lottery/draw/entries?round=` (null khi không đọc được hoặc round đã báo). Hai số có thể khác nhau.
+ */
+export const rewardsDrawWonDataSchema = z.object({
+  round: z.number().int().nullable(),
+  boxes: z.number().int().positive(),
+  wins: z.number().int().nonnegative().nullable(),
+  tickets: z.number().int().nonnegative().nullable(),
+});
+export type RewardsDrawWonData = z.infer<typeof rewardsDrawWonDataSchema>;
+
+/** `rewards_watch_paused`: báo đã tạm dừng (một lần mỗi phiên rewards). */
+export const rewardsWatchPausedDataSchema = z.object({
+  reason: z.enum(REWARDS_WATCH_PAUSE_REASONS),
+});
+export type RewardsWatchPausedData = z.infer<typeof rewardsWatchPausedDataSchema>;

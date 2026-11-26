@@ -2902,7 +2902,10 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch"
+    "signalAnalysis.research.live.batch",
+    "notifications.panel.rewards.levelCount",
+    "notifications.panel.rewards.source",
+    "notifications.types.rewards_claimable"
   ],
   "beta": {
     "label": "Beta",
@@ -4363,7 +4366,11 @@
       "team_invariant": "Money invariant check",
       "team_incident": "Real-money incident",
       "team_incident_digest": "Daily incidents",
-      "team_sr_new_market": "New SoDEX market"
+      "team_sr_new_market": "New SoDEX market",
+      "rewards_claimable": "New boxes to claim",
+      "rewards_box_received": "You received a box",
+      "rewards_draw_won": "Weekly draw prize received",
+      "rewards_watch_paused": "New box alerts paused"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
@@ -4443,7 +4450,18 @@
         "low_liquidity": "Not enough SoDEX liquidity near the price.",
         "other": "Open the bot to see why."
       },
-      "usdc": "{amount} USDC"
+      "usdc": "{amount} USDC",
+      "rewards": {
+        "claimable": "{n, plural, one {# new box to claim} other {# new boxes to claim}}",
+        "claimableBody": "Claim them on Rewards",
+        "received": "{n, plural, one {You received a box} other {You received # boxes}}",
+        "receivedLevel": "You received a {level} box",
+        "drawWon": "{wins} of your {tickets, plural, one {# ticket} other {# tickets}} won",
+        "drawRound": "Weekly draw · Round {round}",
+        "pausedBody": "Your rewards sign-in expired. Sign in again to turn them back on.",
+        "levelCount": "{count} {level}",
+        "source": "SoDEX rewards"
+      }
     },
     "reasonText": {
       "BUILDER_FEE_REVOKED": "Builder fee approval is 0",
