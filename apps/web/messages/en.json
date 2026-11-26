@@ -2902,15 +2902,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "rewards.tabs.label",
-    "rewards.boxes.sections",
-    "rewards.boxes.pfps.opening",
-    "rewards.boxes.history.filter",
-    "rewards.boxes.history.box",
-    "rewards.boxes.history.toAddress",
-    "rewards.boxes.history.loadMore",
-    "rewards.boxes.history.empty"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",

@@ -257,6 +257,7 @@ describe("Blind Boxes › History (mockup 12)", () => {
     expect(screen.getByText("Claimed")).toBeInTheDocument();
     expect(screen.getByText(/^Trading · /)).toBeInTheDocument();
     expect(screen.getByText("Transfer in")).toBeInTheDocument();
+    expect(screen.getAllByText("#201640 · Common").length).toBeGreaterThan(0);
     expect(
       screen.getByText(/^Weekly draw prize · Round 10 · from 0x71b0…22d1 · /),
     ).toBeInTheDocument();
@@ -398,6 +399,14 @@ describe("Blind Boxes › Live feed (mockup 14)", () => {
     ).toBeInTheDocument();
     expect(await screen.findByText("0x67fc…c7a0")).toBeInTheDocument();
     expect(screen.getByText("0x05d8…389e")).toBeInTheDocument();
+  });
+
+  it("empty history: says so", async () => {
+    gateway({ "lottery/ledger": { body: { code: 0, data: { total: 0, items: [] } } } });
+    show();
+    await screen.findByRole("table");
+    await openSub("History");
+    expect(await screen.findByText("No box history yet.")).toBeInTheDocument();
   });
 
   it("empty feed", async () => {
