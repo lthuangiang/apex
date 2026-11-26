@@ -1,6 +1,8 @@
 // Trang chẩn đoán rewards (team, #547): mô tả hình dạng một response SoDEX thành bảng tên trường · kiểu · giá trị mẫu,
 // để chủ sản phẩm chốt các điểm [confirm] (README bản phác). Giá trị của trường nhạy cảm (địa chỉ ví, chữ ký, nonce,
-// token…) không bao giờ hiện, chỉ kiểu.
+// token, tx hash…) không bao giờ hiện, chỉ kiểu. Ẩn theo tên key (chứa "address" / "wallet" / "hash", hoặc thuộc danh
+// sách) VÀ theo giá trị (mọi chuỗi chứa địa chỉ 0x + 40 hex, hay địa chỉ SoDEX đã rút gọn), trừ nhóm công khai:
+// `….asset.address` (asset thưởng) và `contracts.*` (hợp đồng của chương trình, lottery/meta).
 
 export interface FieldRow {
   path: string;
@@ -23,14 +25,32 @@ const HIDDEN_KEYS = new Set([
   "wallet",
   "owner",
   "account",
+  "sender",
+  "recipient",
+  "receiver",
+  "user",
 ]);
 
-/** Địa chỉ nằm ngoài `asset` (ví người dùng, người gửi / nhận) cũng ẩn; địa chỉ hợp đồng của asset thì hiện. */
-function isHidden(path: string, key: string): boolean {
-  const k = key.toLowerCase();
-  if (HIDDEN_KEYS.has(k)) return true;
-  return k === "address" && !path.endsWith("asset.address");
+/** Địa chỉ công khai của chương trình: được hiện giá trị. */
+export function isPublicPath(path: string): boolean {
+  return path.endsWith("asset.address") || path.startsWith("contracts.");
 }
+
+function isHiddenKey(path: string, key: string): boolean {
+  if (isPublicPath(path)) return false;
+  const k = key.toLowerCase();
+  return HIDDEN_KEYS.has(k) || k.includes("address") || k.includes("wallet") || k.includes("hash");
+}
+
+/** Địa chỉ đầy đủ (0x + 40 hex) ở bất kỳ đâu trong chuỗi, hoặc dạng SoDEX rút gọn `0x05d8....389e`. */
+const ADDRESS_IN_TEXT = /0x[0-9a-fA-F]{40}|0x[0-9a-fA-F]{2,}\.{2,}[0-9a-fA-F]{2,}/;
+
+function looksLikeAddress(v: string): boolean {
+  return ADDRESS_IN_TEXT.test(v);
+}
+
+/** Key của object là địa chỉ (map theo ví…): thay trong đường dẫn để tên trường không lộ địa chỉ. */
+const pathKey = (k: string) => (looksLikeAddress(k) ? "<address>" : k);
 
 const MAX_ITEMS = 200;
 const MAX_SAMPLE = 48;
@@ -59,7 +79,11 @@ export function describeShape(value: unknown, opts: { groupBy?: string } = {}): 
   const add = (path: string, type: string, sample: string | null, hidden: boolean) => {
     const row = rows.get(path) ?? { types: new Set<string>(), sample: null, hidden };
     row.types.add(type);
-    if (!hidden && row.sample === null && sample !== null) row.sample = clip(sample);
+    // Một lần ẩn là ẩn cả dòng (phần tử khác của mảng có thể chứa địa chỉ).
+    if (hidden) {
+      row.hidden = true;
+      row.sample = null;
+    } else if (!row.hidden && row.sample === null && sample !== null) row.sample = clip(sample);
     rows.set(path, row);
   };
   const walk = (v: unknown, path: string, hidden: boolean): void => {
@@ -73,7 +97,8 @@ export function describeShape(value: unknown, opts: { groupBy?: string } = {}): 
         let child = `${path}[]`;
         if (opts.groupBy !== undefined && typeof item === "object" && item !== null) {
           const g = (item as Record<string, unknown>)[opts.groupBy];
-          if (typeof g === "string") child = `${path}[${opts.groupBy}=${clip(g)}]`;
+          if (typeof g === "string" && !looksLikeAddress(g))
+            child = `${path}[${opts.groupBy}=${clip(g)}]`;
         }
         walk(item, child, hidden);
       }
@@ -82,11 +107,12 @@ export function describeShape(value: unknown, opts: { groupBy?: string } = {}): 
     if (typeof v === "object") {
       add(path, "object", null, hidden);
       for (const [k, child] of Object.entries(v as Record<string, unknown>)) {
-        const p = path === "" ? k : `${path}.${k}`;
-        walk(child, p, hidden || isHidden(p, k));
+        const p = path === "" ? pathKey(k) : `${path}.${pathKey(k)}`;
+        walk(child, p, hidden || isHiddenKey(p, k));
       }
     } else if (typeof v === "number") add(path, numberType(v), String(v), hidden);
-    else if (typeof v === "string") add(path, stringType(v), v, hidden);
+    else if (typeof v === "string")
+      add(path, stringType(v), v, hidden || (!isPublicPath(path) && looksLikeAddress(v)));
     else if (typeof v === "boolean") add(path, "boolean", String(v), hidden);
     else add(path, typeof v, null, hidden);
   };
@@ -133,6 +159,6 @@ export function jwtClaimRows(token: string | null): FieldRow[] | null {
           : typeof v === "number"
             ? numberType(v)
             : typeof v;
-    return { path: k, types: [type], sample, hidden: !show };
+    return { path: pathKey(k), types: [type], sample, hidden: !show };
   });
 }

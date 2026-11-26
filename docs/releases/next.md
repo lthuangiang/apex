@@ -10,6 +10,7 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
+- Trang chẩn đoán rewards `/admin/rewards-debug` không còn hiện địa chỉ ví (**chưa merge**, Refs #546): ẩn giá trị mọi key chứa "address" / "wallet" / "hash" (`walletAddress`, `wallet`, `from` / `to`, `txHash`…) và mọi chuỗi chứa địa chỉ 0x + 40 hex hay địa chỉ đã rút gọn, bất kể tên key; key là địa chỉ được thay bằng `<address>`; chỉ `….asset.address` và `contracts.*` còn hiện. Chỉ web, không migration.
 - SoDEX rewards: trang `/rewards` và tab SoPoints (#548, **chưa merge**, DEC-397): mục Rewards ở vị trí 2 có chip New (Portfolio xuống ngay trên Settings; mobile: Rewards đầu More, thanh dưới giữ nguyên), khối mời ký + bảng "This sign-in", dữ liệu công khai (tuần, cặp có hệ số nhân, live feed), tab SoPoints (tổng điểm, tier, hạng, weekly pool, weekly performance) và các trạng thái hết hạn / tải / rỗng / lỗi mạng / 429 / lỗi nghiệp vụ / sai ví; hook dữ liệu dùng chung `features/rewards/queries.ts`. Tab Blind Boxes ẩn tới #550. Vẫn sau `REWARDS_ENABLED` (mặc định **tắt**): tắt thì sidebar, Overview và route như cũ. Không migration, không biến môi trường mới.
 
 **Migration (chạy khi deploy):** không có.
