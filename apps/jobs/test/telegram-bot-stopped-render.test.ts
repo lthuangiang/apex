@@ -2,7 +2,7 @@ import { costPerMillion, type VolumeMakerState } from "@drift/strategies";
 import { describe, expect, it } from "vitest";
 
 import { runFacts, type RunInput, type StoppedRun } from "../src/stopped-run";
-import { compactUsd, cpmText, durationText } from "../src/stopped-run-render";
+import { compactUsd, durationText } from "../src/stopped-run-render";
 import { renderTelegram, type RenderRow } from "../src/telegram-render";
 
 // Tin `bot_stopped` dừng đúng kế hoạch có khối số liệu phiên (#566, mẫu duyệt 2026-11-26). Không cần Postgres.
@@ -80,7 +80,7 @@ describe("planned stop: the approved message", () => {
     const run = runFacts(input({ state: st }));
     expect(run.costPerMillion).toBe(costPerMillion(st as unknown as VolumeMakerState));
     expect(run.costPerMillion).toBe("201.61");
-    expect(render({ reasonCode: "BUDGET_DONE" }, run).text).toContain("CPM      202 per $1M");
+    expect(render({ reasonCode: "BUDGET_DONE" }, run).text).toContain("CPM      201.61 per $1M");
   });
 
   it.each([
@@ -251,10 +251,30 @@ describe("formatting helpers", () => {
     expect(compactUsd("850.567")).toBe("$850.56");
     expect(compactUsd("2500000000")).toBe("$2.5B");
   });
-  it("CPM: whole number from 100, 2 decimals below", () => {
-    expect(cpmText("201.37")).toBe("201");
-    expect(cpmText("1234.5")).toBe("1,235");
-    expect(cpmText("0")).toBe("0.00");
+  // Cùng bộ ví dụ với packages/shared và web (Trading Agent): chuỗi CPM trong tin = chuỗi trên Trading Agent.
+  it.each([
+    ["201.61", "201.61"],
+    ["201.6", "201.6"],
+    ["50", "50"],
+    ["20.16", "20.16"],
+    ["0", "0"],
+    ["1234.5", "1,234.5"],
+    ["21778.85", "21,778.85"],
+    ["3.456", "3.46"],
+  ])("CPM %s → '%s per $1M' (Trading Agent format)", (v, text) => {
+    const run: StoppedRun = {
+      strategy: "volume_maker",
+      volume: null,
+      volumeTarget: null,
+      cost: null,
+      pnl: null,
+      costPerMillion: v,
+      ranMs: null,
+      stopDetail: null,
+    };
+    expect(render({ reasonCode: "BUDGET_DONE" }, run).text).toContain(
+      `<pre>CPM      ${text} per $1M</pre>`,
+    );
   });
   it("duration like the Trading Agent runtime", () => {
     expect(durationText(6 * H + 12 * 60_000)).toBe("6h 12m");

@@ -7,6 +7,7 @@ import {
   botListSchema,
   botSummarySchema,
   BotState,
+  formatCostPerMillion,
   Strategy,
   UserRole,
   type BotDetail,
@@ -1053,7 +1054,11 @@ function VolumeMakerCard({
         </div>
         <div>
           <dt className="text-xs text-muted">{t("vm.perMillion")}</dt>
-          <dd className="m-0 font-bold">{vm.costPerMillion ?? tm("notAvailable")}</dd>
+          <dd className="m-0 font-bold">
+            {vm.costPerMillion === null
+              ? tm("notAvailable")
+              : formatCostPerMillion(vm.costPerMillion)}
+          </dd>
         </div>
         <div>
           <dt className="text-xs text-muted">{t("vm.makerShare")}</dt>

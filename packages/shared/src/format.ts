@@ -87,3 +87,17 @@ export function formatDateTime(
     timeZone: options.timeZone,
   }).format(date);
 }
+
+/**
+ * Chi phí / $1M khối lượng như Trading Agent (thẻ Market Making, KPI "Net cost / $1M" của Volume Builder) và tin Telegram
+ * khi bot dừng (#566): tối đa 2 chữ số lẻ, bỏ số 0 thừa, nhóm hàng nghìn en-US. "201.61", "50", "1,234.5". Không thêm "$".
+ */
+export function formatCostPerMillion(value: DecimalInput): string {
+  return (
+    formatDecimal(dec(value).toFixed(2), {
+      locale: "en-US",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })?.replace("-", "−") ?? String(value)
+  );
+}

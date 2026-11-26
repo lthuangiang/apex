@@ -1,10 +1,4 @@
 {
-  "_pendingReview": [
-    "plannedStop.reasons.MAX_CYCLES_VOLUME",
-    "plannedStop.reasons.MAX_CYCLES_END_TIME",
-    "plannedStop.reasons.MAX_CYCLES_MM",
-    "plannedStop.labels.pnl"
-  ],
   "telegram": {
     "aBot": "A bot",
     "goalLimit": "your goal’s loss limit",

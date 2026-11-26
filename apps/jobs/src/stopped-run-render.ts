@@ -1,4 +1,11 @@
-import { dec, Decimal, escapeTelegramHtml, ReasonCode, Strategy } from "@drift/shared";
+import {
+  dec,
+  Decimal,
+  escapeTelegramHtml,
+  formatCostPerMillion,
+  ReasonCode,
+  Strategy,
+} from "@drift/shared";
 
 import messages from "./messages/en.json" with { type: "json" };
 import type { StoppedRun } from "./stopped-run";
@@ -8,7 +15,7 @@ import type { StoppedRun } from "./stopped-run";
 //
 //   Volume   $1.24M
 //   Cost     −25.00 USDC ▼ (limit 25.00)
-//   CPM      201 per $1M
+//   CPM      201.61 per $1M (cùng định dạng Trading Agent: `formatCostPerMillion`)
 //   Ran      6h 12m
 // Bảng nằm trong <pre> để thẳng cột. Thiếu số nào thì bỏ dòng đó, không bao giờ ghi 0 thay số thiếu (quy tắc 1.8).
 // Hàm thuần, không I/O.
@@ -81,12 +88,6 @@ export function signedMoney(v: Decimal, unit: string): string {
     : `−${grouped(r.abs().toFixed(2))} ${u} ▼`;
 }
 
-/** Chi phí / $1M: từ 100 trở lên ghi số nguyên như mẫu ("201"), nhỏ hơn giữ 2 chữ số. */
-export function cpmText(v: string): string {
-  const d = dec(v);
-  return grouped(d.abs().gte(100) ? d.toFixed(0) : d.toFixed(2));
-}
-
 /** "6h 12m"; từ 1 ngày: "2d 3h" (cùng cách ghi Runtime của Trading Agent). */
 export function durationText(ms: number): string {
   const minutes = Math.round(Math.max(0, ms) / 60_000);
@@ -111,7 +112,7 @@ export function plannedStopBody(run: StoppedRun | null): string | null {
   if (run.pnl !== null)
     lines.push([L.pnl, withLimit(signedMoney(dec(run.pnl.value), run.pnl.unit), run.pnl.limit)]);
   if (run.costPerMillion !== null)
-    lines.push([L.cpm, PS.perMillion.replace("{value}", cpmText(run.costPerMillion))]);
+    lines.push([L.cpm, PS.perMillion.replace("{value}", formatCostPerMillion(run.costPerMillion))]);
   if (run.ranMs !== null) lines.push([L.ran, durationText(run.ranMs)]);
   if (lines.length === 0) return null;
   // Cột giá trị cố định theo nhãn dài nhất ("Volume" + 3 dấu cách như mẫu), kể cả khi dòng đó bị bỏ.
