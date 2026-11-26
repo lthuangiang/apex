@@ -228,6 +228,18 @@ services:
       SIGNAL_NEWS_EVENT_SPLIT_ENABLED: ${SIGNAL_NEWS_EVENT_SPLIT_ENABLED:-false}
       # #558 / DEC-398: báo box mới SoDEX rewards; cùng giá trị với api. Mặc định tắt (DEPLOY 2.23).
       REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}
+      # #558: mTLS tới signer, CN `scheduler` chỉ gọi được endpoint giải mã phiên rewards. Volume cert cũ chưa có
+      # scheduler.crt (trước khi tạo lại cert, DEPLOY 2.4) thì job rewards tắt, scheduler vẫn chạy mọi việc khác.
+      SIGNER_URL: https://signer:8090
+      SIGNER_CLIENT_CERT: /certs/scheduler.crt
+      SIGNER_CLIENT_KEY: /certs/scheduler.key
+      SIGNER_CLIENT_CA: /certs/ca.crt
+    # Không chờ signer healthy: signer lỗi thì chỉ job rewards dừng (rủi ro, builder revenue… vẫn chạy).
+    depends_on:
+      <<: *app-deps
+      certs: { condition: service_completed_successfully }
+    volumes: ["certs:/certs:ro"]
+    networks: [core, secure]
 
   jobs:
     <<: *app

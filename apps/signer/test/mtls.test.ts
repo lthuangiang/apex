@@ -145,6 +145,9 @@ describe("signer mTLS", () => {
     // CN scheduler không được ký lệnh hay tạo key.
     expect((await call("/v1/sign", "scheduler")).status).toBe(403);
     expect((await call("/v1/api-keys", "scheduler")).status).toBe(403);
+    expect(
+      (await call("/v1/keys/00000000-0000-7000-8000-000000000000/verify", "scheduler")).status,
+    ).toBe(403);
   });
 
   it("refuses clients without a certificate signed by the internal CA", async () => {

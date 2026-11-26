@@ -41,6 +41,7 @@ import { computeDailyStats, utcDate } from "./market-stats";
 import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
 import { purgeMcp } from "./mcp-purge";
 import { fitMmModelDaily } from "./mm-model";
+import { loadRewardsSignerState } from "./rewards-watch/signer-tls";
 import { snapshotAndCheck } from "./risk";
 import {
   createSignalResearch,
@@ -100,6 +101,11 @@ const env = z
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "scheduler" } });
+// #558 (DEC-398): cert mTLS của scheduler cho signer (giải mã phiên rewards). Thiếu cert (prod chưa tạo lại cert) thì
+// job rewards tắt, log một lần, scheduler vẫn chạy mọi việc khác. Job dùng `rewardsSigner` ở PR4.
+const rewardsSigner = loadRewardsSignerState(process.env, env.REWARDS_WATCH_ENABLED);
+if (env.REWARDS_WATCH_ENABLED && rewardsSigner.kind === "off")
+  log.warn({ reason: rewardsSigner.reason }, "rewards watch off: signer client cert unavailable");
 // SoDEX Debugger (DEC-309): ghi mọi lời gọi SoDEX (hàng đợi trong bộ nhớ, pool DB riêng, không chặn).
 const sodexCalls = createSodexCallRecorder({
   service: "scheduler",
