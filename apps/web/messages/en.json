@@ -2902,7 +2902,15 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch"
+    "signalAnalysis.research.live.batch",
+    "rewards.tabs.label",
+    "rewards.boxes.sections",
+    "rewards.boxes.pfps.opening",
+    "rewards.boxes.history.filter",
+    "rewards.boxes.history.box",
+    "rewards.boxes.history.toAddress",
+    "rewards.boxes.history.loadMore",
+    "rewards.boxes.history.empty"
   ],
   "beta": {
     "label": "Beta",
@@ -10173,6 +10181,94 @@
         "submitting": "Job #{id} · sent to SoDEX",
         "more": "+{count} more",
         "view": "View"
+      }
+    },
+    "tabs": {
+      "label": "Rewards sections",
+      "sopoints": "SoPoints",
+      "boxes": "Blind Boxes"
+    },
+    "boxes": {
+      "ready": "{count, plural, one {# box ready to claim} other {# boxes ready to claim}}",
+      "readyBody": "Claiming adds them to your backpack and shows their level. No wallet signature needed.",
+      "sections": "Blind Boxes sections",
+      "sub": {
+        "backpack": "Backpack",
+        "history": "History",
+        "draw": "Weekly draw",
+        "feed": "Live feed"
+      },
+      "level": {
+        "merge": "Merge {size} → 1",
+        "ready": "{n, plural, one {# merge ready} other {# merges ready}}",
+        "toMerge": "{n} more to merge",
+        "cantMerge": "Can't be merged",
+        "none": "No boxes at this level."
+      },
+      "list": {
+        "title": "Boxes in your backpack",
+        "count": "{count} · newest first",
+        "box": "Box",
+        "level": "Level",
+        "from": "From",
+        "received": "Received",
+        "inOpen": "In an open"
+      },
+      "empty": {
+        "title": "No Blind Boxes yet",
+        "body": "Boxes SoDEX gives this wallet show up here."
+      },
+      "voucher": "Vouchers and other items that aren't Blind Boxes show only on SoDEX.",
+      "openOnSodex": "Open on SoDEX ↗",
+      "pfps": {
+        "title": "PFPs",
+        "name": "Cybereator #{id}",
+        "revealed": "Revealed",
+        "unopened": "Unopened",
+        "opening": "Opening",
+        "note": "Opening a PFP is an on-chain transaction paid in SOSO. Do it on SoDEX."
+      },
+      "from": {
+        "trade": "Trading",
+        "invitee": "Invite",
+        "campaign": "Campaign",
+        "prize": "Weekly draw prize",
+        "round": "Round {round}",
+        "received": "Received",
+        "sent": "Sent"
+      },
+      "history": {
+        "rewardsTitle": "Rewards from opened boxes",
+        "total": "Total at open time {usd}",
+        "filter": "History filter",
+        "all": "All",
+        "claims": "Claims",
+        "opens": "Opens",
+        "merges": "Merges",
+        "transfers": "Transfers",
+        "opened": "Opened",
+        "merged": "Merged",
+        "claimed": "Claimed",
+        "transferIn": "Transfer in",
+        "transferOut": "Transfer out",
+        "box": "#{id} · {level}",
+        "mergeDetail": "{count} {level} → #{id}",
+        "fromAddress": "from {address}",
+        "toAddress": "to {address}",
+        "loadMore": "Load more",
+        "empty": "No box history yet."
+      },
+      "draw": {
+        "round": "Round {round}",
+        "snapshot": "Snapshot",
+        "tickets": "Your tickets",
+        "boxes": "Boxes counted",
+        "note": "Each unopened box you hold at the snapshot counts as one ticket.",
+        "results": "Round {round} results:",
+        "won": "{wins} of your {tickets, plural, one {# ticket} other {# tickets}} won",
+        "prize": "Prize: {level} box",
+        "received": "Prize boxes received in round {round}",
+        "source": "Results from SoDEX's weekly draw."
       }
     }
   },

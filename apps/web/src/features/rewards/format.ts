@@ -50,6 +50,12 @@ export function formatTokenAmount(value: string | null | undefined): string | nu
   return d === null ? null : formatDecimal(d, { locale: LOCALE, maximumFractionDigits: 4 });
 }
 
+/** Tổng theo tài sản (`history.totalRewardByAsset`): giữ tối đa 8 chữ số thập phân. */
+export function formatAssetTotal(value: string | null | undefined): string | null {
+  const d = decimalOf(value);
+  return d === null ? null : formatDecimal(d, { locale: LOCALE, maximumFractionDigits: 8 });
+}
+
 /** Hệ số nhân khối lượng: "1.20" → "×1.2". */
 export function formatCoefficient(value: string): string | null {
   const d = decimalOf(value);

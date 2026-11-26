@@ -200,26 +200,54 @@ export const lotteryJobSchema = z.object({
 export type LotteryJob = z.infer<typeof lotteryJobSchema>;
 export const lotteryJobsSchema = z.object({ jobs: z.array(lotteryJobSchema) });
 
-/** Hình dạng item theo `kind` còn [confirm]; chỉ chắc `kind` và `tsMs`. */
+/**
+ * Một dòng `lottery/ledger` (dữ liệu thật 2026-11-26), trường theo `kind`: treasure {level, tokenId, txHash, source,
+ * mintId}; open {level, tokenId, requestId, status, rewardUsd, reward}; merge {level, requestId, status,
+ * consumedTokenIds, resultTokenId, resultLevel}; transfer {level, tokenId, txHash, direction, from, to, blockNumber,
+ * reason, round}. Mọi trường ngoài `kind` / `tsMs` tuỳ chọn (kind lạ vẫn đọc được).
+ */
+export const lotteryLedgerItemSchema = z.object({
+  kind: z.string(),
+  tsMs: z.number().int(),
+  level: z.string().nullish(),
+  tokenId: z.number().int().nullish(),
+  txHash: z.string().nullish(),
+  source: z.string().nullish(),
+  requestId: z.number().int().nullish(),
+  status: z.string().nullish(),
+  consumedTokenIds: z.array(z.number().int()).nullish(),
+  resultTokenId: z.number().int().nullish(),
+  resultLevel: z.string().nullish(),
+  /** transfer: "in" / "out". */
+  direction: z.string().nullish(),
+  from: z.string().nullish(),
+  to: z.string().nullish(),
+  /** transfer: ví dụ "lottery_prize". */
+  reason: z.string().nullish(),
+  round: z.number().int().nullish(),
+  rewardUsd: decimalStringSchema.nullish(),
+  reward: rewardAmountSchema.nullish(),
+});
+export type LotteryLedgerItem = z.infer<typeof lotteryLedgerItemSchema>;
+
+/** Phân trang `limit` / `offset` (100 dòng / trang). */
 export const lotteryLedgerSchema = z.object({
   total: z.number().int(),
   type: z.string().optional(),
-  items: z.array(
-    z.object({
-      kind: z.string(),
-      tsMs: z.number().int(),
-      from: z.string().nullish(),
-      to: z.string().nullish(),
-      rewardUsd: decimalStringSchema.nullish(),
-      reward: rewardAmountSchema.nullish(),
-    }),
-  ),
+  items: z.array(lotteryLedgerItemSchema),
+});
+
+/** Phần tử `history.totalRewardByAsset[]` (dữ liệu thật): tổng theo tài sản, không có giá USD riêng. */
+export const lotteryRewardByAssetSchema = z.object({
+  asset: rewardAssetSchema,
+  amount: decimalStringSchema,
+  amountRaw: z.string().optional(),
 });
 
 export const lotteryHistorySchema = z.object({
   total: z.number().int(),
   totalRewardUsd: decimalStringSchema.nullish(),
-  /** [confirm] hình dạng phần tử. */
+  /** Phần tử đọc bằng `lotteryRewardByAssetSchema`; phần tử lệch thì bỏ qua (không bịa). */
   totalRewardByAsset: z.array(z.unknown()).nullish(),
   items: z.array(
     z.object({
@@ -236,14 +264,14 @@ export const lotteryHistorySchema = z.object({
 
 export const lotteryDrawEntriesSchema = z.object({
   round: z.number().int(),
-  /** [confirm] giá trị. */
+  /** "snapshot", "distributed"…: hiện nguyên chuỗi. */
   status: z.string(),
   deadlineMs: z.number().int().nullish(),
   tickets: z.number().int().nullish(),
   boxes: z.number().int().nullish(),
   byLevel: z.array(z.unknown()).nullish(),
   total: z.number().int().nullish(),
-  /** Chỉ có khi đã có kết quả; [confirm] hình dạng. */
+  /** Dữ liệu thật (round 10): SỐ vé trúng. Giữ khoan dung; UI chỉ dùng khi là số. */
   wins: z.unknown().optional(),
   entries: z
     .array(
