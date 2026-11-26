@@ -75,11 +75,11 @@ docker compose run --rm --entrypoint sh certs -c 'rm -f /certs/*'
 docker compose run --rm certs
 docker compose up -d --force-recreate signer api engine scheduler
 ```
-Từ #558, cert gồm cả `scheduler` (CN `scheduler`, chỉ gọi được endpoint giải mã phiên rewards), nên tạo lại cert thì tạo lại cả `scheduler`.
+Từ #558, scheduler cũng gọi signer (giải mã phiên rewards) và đang dùng chung cert client của api (DEC-398), nên tạo lại cert thì tạo lại cả `scheduler`. Service `certs` cấp cả `scheduler.crt` khi tạo lại; lúc đó chuyển scheduler sang `scheduler.crt` (quy trình đầy đủ: 2.4.1).
 
-#### 2.4.1 Tạo lại cert prod để thêm cert scheduler (cửa sổ bảo trì, #558)
+#### 2.4.1 Tạo lại toàn bộ cert prod (cert hết hạn, hoặc chuyển scheduler sang cert riêng)
 
-**Chỉ cần ở bản release bật được #558** (sau PR4 scheduler / PR5 web). Các bản trước không cần: service `certs` thấy volume cũ thiếu `scheduler.crt` thì in "scheduler.crt is missing" và **không đổi gì**; scheduler vẫn chạy, chỉ job rewards tắt (log `rewards watch off: signer client cert unavailable` một lần khi `REWARDS_WATCH_ENABLED=true`). Prod xoá `ca.key` sau khi tạo cert, nên không cấp lẻ được cert scheduler: phải tạo lại toàn bộ, và signer, api, engine, scheduler phải được tạo lại cùng lúc.
+Dùng khi cert sắp hết hạn (hạn 1095 ngày), hoặc khi muốn scheduler có cert riêng (CN `scheduler`) thay cho cert dùng chung của api (DEC-398). Prod xoá `ca.key` sau khi tạo cert, nên không cấp lẻ được: phải tạo lại toàn bộ, và signer, api, engine, scheduler phải được tạo lại cùng lúc. Việc bật #558 **không** cần quy trình này (scheduler dùng chung cert api).
 
 Làm đúng thứ tự:
 
@@ -106,7 +106,7 @@ a. **Trước cửa sổ:**
      docker run --rm -v drift_certs:/c -v /opt/drift/backups:/b alpine tar czf /b/certs-before.tgz -C /c .
      ```
 
-b. **Deploy bản mới:** cập nhật `/opt/drift/docker-compose.yml` theo ghi chú release (configs `vault-init`, `certs-init`; khối `scheduler`: biến `SIGNER_*`, `depends_on` `certs`, volume `certs:/certs:ro`, network `secure`), rồi deploy như mục 3. `up -d` tạo lại `vault-init` (tạo khoá `drift-rewards`, ghi lại policy `signer`); service `certs` in "scheduler.crt is missing" và không đổi gì.
+b. **Chuyển scheduler sang cert riêng** (nên làm luôn ở lần tạo lại này): trong khối `scheduler` của `/opt/drift/docker-compose.yml`, đổi `SIGNER_CLIENT_CERT: /certs/scheduler.crt` và `SIGNER_CLIENT_KEY: /certs/scheduler.key` (`SIGNER_CLIENT_CA` giữ `/certs/ca.crt`). Không chuyển thì scheduler tiếp tục dùng `api.crt` / `api.key` mới, vẫn chạy.
 
 c. Dừng các service dùng cert client:
    ```bash
@@ -133,9 +133,9 @@ f. **Kiểm** (không đặt lệnh):
      docker compose exec -T api node -e "const fs=require('fs');const r=require('https').request({host:'signer',port:8090,method:'POST',path:'/v1/keys/00000000-0000-7000-8000-000000000000/verify',servername:'signer',ca:fs.readFileSync('/certs/ca.crt'),cert:fs.readFileSync('/certs/api.crt'),key:fs.readFileSync('/certs/api.key')},s=>{console.log(s.statusCode);process.exit(s.statusCode===404?0:1)});r.on('error',e=>{console.error(e.message);process.exit(1)});r.end()"
      ```
    - engine (CN `engine`): healthcheck của signer dùng cert engine, nên `signer` healthy là đủ; thêm `docker compose logs --since 5m engine | grep -i -E 'signer_unavailable|certificate'` không có dòng nào.
-   - scheduler (CN `scheduler`): giải mã cho một user không có dòng; **404** = TLS + CN + quyền DB (migration 0064) đúng:
+   - scheduler (cert theo `SIGNER_CLIENT_CERT` của nó: `scheduler.crt` nếu đã chuyển ở bước b, không thì `api.crt`): giải mã cho một user không có dòng; **404** = TLS + CN + quyền DB (migration 0064) đúng:
      ```bash
-     docker compose exec -T scheduler node -e "const fs=require('fs');const b=JSON.stringify({userId:'00000000-0000-7000-8000-000000000000'});const r=require('https').request({host:'signer',port:8090,method:'POST',path:'/v1/rewards-tokens/decrypt',servername:'signer',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(b)},ca:fs.readFileSync('/certs/ca.crt'),cert:fs.readFileSync('/certs/scheduler.crt'),key:fs.readFileSync('/certs/scheduler.key')},s=>{console.log(s.statusCode);process.exit(s.statusCode===404?0:1)});r.on('error',e=>{console.error(e.message);process.exit(1)});r.end(b)"
+     docker compose exec -T scheduler node -e "const fs=require('fs');const b=JSON.stringify({userId:'00000000-0000-7000-8000-000000000000'});const r=require('https').request({host:'signer',port:8090,method:'POST',path:'/v1/rewards-tokens/decrypt',servername:'signer',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(b)},ca:fs.readFileSync('/certs/ca.crt'),cert:fs.readFileSync(process.env.SIGNER_CLIENT_CERT),key:fs.readFileSync(process.env.SIGNER_CLIENT_KEY)},s=>{console.log(s.statusCode);process.exit(s.statusCode===404?0:1)});r.on('error',e=>{console.error(e.message);process.exit(1)});r.end(b)"
      ```
      và `docker compose logs --since 5m scheduler | grep -i 'rewards watch off'` không có dòng nào.
 
@@ -147,7 +147,7 @@ g. **Rollback** (bất kỳ bước kiểm nào hỏng):
    docker run --rm -v drift_certs:/c -v /opt/drift/backups:/b alpine tar xzf /b/certs-before.tgz -C /c
    docker compose up -d --force-recreate signer api engine scheduler
    ```
-   Cert cũ không có `scheduler.crt`: scheduler chạy, job rewards tắt (như trước cửa sổ). Kiểm lại như bước f (bỏ phần scheduler).
+   Nếu đã chuyển scheduler sang `scheduler.crt` ở bước b mà volume cũ không có file đó: đổi khối `scheduler` về `/certs/api.crt` / `/certs/api.key` trước lệnh `up -d` trên (thiếu file thì scheduler vẫn chạy, chỉ job rewards tắt). Kiểm lại như bước f.
 
 h. **Sau cửa sổ:** báo người dùng Resume bot. Bot đã Pause / Stop **không tự chạy lại**.
 
@@ -586,15 +586,15 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 - Mẫu `deploy/server/docker-compose.yml` có dòng `REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}` trong khối `environment` của `api` và của `scheduler`. Compose trên VPS thiếu thì thêm vào (như mẫu).
 - **Migration `0063_rewards_watch`:** chỉ thêm bảng `rewards_watch` (một dòng mỗi user đã bật; JWT chỉ ở dạng ciphertext Vault transit). Bản trước không đọc bảng này, nên rollback image không cần làm gì với bảng.
 - **PR2 (signer + client chỉ đọc + nối scheduler):**
-  - Signer có hai endpoint mới: `POST /v1/rewards-tokens/encrypt` (chỉ CN `api`) và `POST /v1/rewards-tokens/decrypt` (chỉ CN `scheduler`, theo `userId`, chỉ dòng `active`). Signer **không** gọi ra ngoài Vault.
+  - Signer có hai endpoint mới: `POST /v1/rewards-tokens/encrypt` (chỉ CN `api`) và `POST /v1/rewards-tokens/decrypt` (CN `scheduler` hoặc `api`, theo `userId`, chỉ dòng `active`). Signer **không** gọi ra ngoài Vault.
   - Biến mới (tuỳ chọn) `VAULT_REWARDS_TRANSIT_KEY` (signer, mặc định `drift-rewards`).
   - Migration `0064_rewards_watch_signer_grant`: `GRANT SELECT (user_id, status, token_ciphertext) ON rewards_watch TO drift_signer` (chỉ khi role có). Rollback không cần làm gì.
   - Signer khởi động bình thường khi Vault chưa có khoá `drift-rewards`: lúc đó hai endpoint trả 503, không ảnh hưởng ký lệnh.
   - Vault (`vault-init`, idempotent mỗi lần khởi động): tạo khoá `drift-rewards` và cho policy `signer` encrypt / decrypt khoá đó. Vault và signer không cần restart.
-  - Cert: service `certs` cấp cả `scheduler.crt` khi volume trống; volume cũ thiếu `scheduler.crt` thì không đổi gì (in thông báo). Dev: `scripts/dev-up.sh` tự cấp cert còn thiếu (cộng dồn, cert cũ giữ nguyên).
-  - Khối `scheduler` của compose: `SIGNER_URL`, `SIGNER_CLIENT_CERT=/certs/scheduler.crt`, `SIGNER_CLIENT_KEY`, `SIGNER_CLIENT_CA`, volume `certs:/certs:ro`, network `secure`, `depends_on` `certs`. **Không** chờ signer healthy: signer lỗi thì chỉ job rewards dừng.
-  - Scheduler khởi động được khi chưa có `scheduler.crt`: job rewards tắt, log một lần `rewards watch off: signer client cert unavailable` (chỉ khi `REWARDS_WATCH_ENABLED=true`), mọi việc khác chạy.
-- **Bản release bật #558** (sau PR4 / PR5) cần cửa sổ bảo trì tạo lại cert: mục 2.4.1. Hành vi bot khi signer / engine bị tạo lại: mục 2.4.2.
+  - **Cert (DEC-398): scheduler dùng chung cert client của api** (`/certs/api.crt`, `/certs/api.key`, `/certs/ca.crt`). Volume cert prod không có `ca.key` nên không cấp lẻ `scheduler.crt` được, và người dùng chọn không tạo lại cert / không dừng bot. Service `certs` với volume cũ in `certs: present (no scheduler cert; scheduler uses the api client cert, DEC-398)` và không đổi gì; volume trống thì cấp cả `scheduler.crt`. Lần tạo lại toàn bộ cert sau (2.4.1) thì chuyển scheduler sang `scheduler.crt`. Dev: `scripts/dev-up.sh` cấp cert còn thiếu (cộng dồn), compose dev cũng dùng cert api như prod.
+  - Khối `scheduler` của compose: `SIGNER_URL`, `SIGNER_CLIENT_CERT=/certs/api.crt`, `SIGNER_CLIENT_KEY=/certs/api.key`, `SIGNER_CLIENT_CA=/certs/ca.crt`, volume `certs:/certs:ro`, network `secure`, `depends_on` `certs`. **Không** chờ signer healthy: signer lỗi thì chỉ job rewards dừng.
+  - Thiếu / lỗi file cert thì job rewards tắt, log một lần `rewards watch off: signer client cert unavailable` (chỉ khi `REWARDS_WATCH_ENABLED=true`); scheduler vẫn chạy mọi việc khác.
+- **Việc prod cho #558:** chỉ cập nhật `/opt/drift/docker-compose.yml` theo mẫu (configs `vault-init`, `certs-init`; khối `scheduler`) rồi deploy như mục 3. Không tạo lại cert, không cửa sổ bảo trì, không dừng bot. Hành vi bot khi signer / engine bị tạo lại (ghi chú vận hành chung): mục 2.4.2.
 
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.

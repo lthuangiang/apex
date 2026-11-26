@@ -217,18 +217,19 @@ services:
   scheduler:         # timer, chỉ bản leader: market stats, builder revenue, risk + invariant, fee tier, leaderboard, mô hình MM, cảnh báo MCP (Recurring Buy chạy ở engine, DEC-61)
     <<: *app
     build: { context: ., dockerfile: apps/scheduler/Dockerfile }
-    # #558 / DEC-398: mTLS tới signer, CN `scheduler` chỉ gọi được endpoint giải mã phiên rewards. Không phụ thuộc
-    # signer healthy: signer lỗi thì chỉ job rewards dừng, các việc khác của scheduler vẫn chạy.
+    # #558 / DEC-398: mTLS tới signer để giải mã phiên rewards. Dùng chung cert của api (DEC-398), giống prod; khi tạo
+    # lại toàn bộ cert thì chuyển sang scheduler.crt. Không phụ thuộc signer healthy: signer lỗi thì chỉ job rewards
+    # dừng, các việc khác của scheduler vẫn chạy.
     environment:
       <<: *app-env
       SIGNER_URL: https://signer:8090
-      SIGNER_CLIENT_CERT: /certs/scheduler.crt
-      SIGNER_CLIENT_KEY: /certs/scheduler.key
+      SIGNER_CLIENT_CERT: /certs/api.crt
+      SIGNER_CLIENT_KEY: /certs/api.key
       SIGNER_CLIENT_CA: /certs/ca.crt
     volumes:
       - ${SIGNER_CERTS_DIR:-./infra/certs/dev}/ca.crt:/certs/ca.crt:ro
-      - ${SIGNER_CERTS_DIR:-./infra/certs/dev}/scheduler.crt:/certs/scheduler.crt:ro
-      - ${SIGNER_CERTS_DIR:-./infra/certs/dev}/scheduler.key:/certs/scheduler.key:ro
+      - ${SIGNER_CERTS_DIR:-./infra/certs/dev}/api.crt:/certs/api.crt:ro
+      - ${SIGNER_CERTS_DIR:-./infra/certs/dev}/api.key:/certs/api.key:ro
     networks: [core, secure]
     deploy: { replicas: 2 }
 

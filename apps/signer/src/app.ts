@@ -68,8 +68,15 @@ export const SIGNER_CALLERS = {
   verifyKey: ["api", "engine"],
   /** #558: api mã hoá phiên rewards lúc người dùng bật báo box mới. */
   rewardsEncrypt: ["api"],
-  /** #558: scheduler giải mã phiên rewards để đọc định kỳ (chỉ dòng `active`, theo `userId`). */
-  rewardsDecrypt: ["scheduler"],
+  /**
+   * #558: scheduler giải mã phiên rewards để đọc định kỳ (chỉ dòng `active`, theo `userId`). DEC-398: prod chưa có
+   * cert `scheduler` (volume cert không có ca.key nên không cấp lẻ được) nên scheduler dùng chung cert client của api;
+   * vì vậy CN `api` cũng được giải mã. Chấp nhận được: CN `api` vốn đã thấy plaintext lúc người dùng bật (nhận token
+   * để mã hoá) và không có quyền `sign` (chỉ engine). Phần quyền scheduler có thêm khi dùng cert api: createKey (key
+   * `pending`, SoDEX chưa xác nhận), verifyKey, encrypt rewards. Giữ CN `scheduler` cho môi trường có cert riêng và
+   * lần tạo lại toàn bộ cert sau (docs/DEPLOY.md 2.4.1).
+   */
+  rewardsDecrypt: ["scheduler", "api"],
 } as const;
 
 export function buildSignerApp(deps: SignerDeps): FastifyInstance {

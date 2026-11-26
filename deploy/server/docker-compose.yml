@@ -228,11 +228,11 @@ services:
       SIGNAL_NEWS_EVENT_SPLIT_ENABLED: ${SIGNAL_NEWS_EVENT_SPLIT_ENABLED:-false}
       # #558 / DEC-398: báo box mới SoDEX rewards; cùng giá trị với api. Mặc định tắt (DEPLOY 2.23).
       REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}
-      # #558: mTLS tới signer, CN `scheduler` chỉ gọi được endpoint giải mã phiên rewards. Volume cert cũ chưa có
-      # scheduler.crt (trước khi tạo lại cert, DEPLOY 2.4) thì job rewards tắt, scheduler vẫn chạy mọi việc khác.
+      # #558: mTLS tới signer để giải mã phiên rewards. Dùng chung cert của api (DEC-398): volume cert prod không có
+      # ca.key nên không cấp lẻ scheduler.crt được; khi tạo lại toàn bộ cert (DEPLOY 2.4.1) thì chuyển sang scheduler.crt.
       SIGNER_URL: https://signer:8090
-      SIGNER_CLIENT_CERT: /certs/scheduler.crt
-      SIGNER_CLIENT_KEY: /certs/scheduler.key
+      SIGNER_CLIENT_CERT: /certs/api.crt
+      SIGNER_CLIENT_KEY: /certs/api.key
       SIGNER_CLIENT_CA: /certs/ca.crt
     # Không chờ signer healthy: signer lỗi thì chỉ job rewards dừng (rủi ro, builder revenue… vẫn chạy).
     depends_on:
@@ -464,13 +464,13 @@ configs:
       #!/bin/sh
       # Tạo CA nội bộ + cert mTLS cho api / engine / scheduler ↔ signer một lần (giữ trong volume `certs`, hạn 3 năm).
       # ca.key bị xoá sau khi tạo, nên KHÔNG cấp thêm cert lẻ được. Volume đã có cert cũ nhưng thiếu scheduler.crt
-      # (#558 / DEC-398) thì script không đổi gì: tạo lại toàn bộ là thao tác tay trong cửa sổ bảo trì (docs/DEPLOY.md
-      # mục 2.4), vì signer, api, engine và scheduler phải được tạo lại cùng lúc.
+      # (#558 / DEC-398) thì script không đổi gì: scheduler dùng chung cert client của api; lần tạo lại toàn bộ cert sau
+      # (docs/DEPLOY.md mục 2.4.1) thì chuyển scheduler sang scheduler.crt.
       set -eu
       cd /certs
       if [ -s ca.crt ] && [ -s signer.crt ] && [ -s api.crt ] && [ -s engine.crt ]; then
         if [ -s scheduler.crt ] && [ -s scheduler.key ]; then echo "certs: present"; exit 0; fi
-        echo "certs: present, but scheduler.crt is missing. Rewards alerts stay off until all certs are recreated (docs/DEPLOY.md 2.4). Nothing was changed."
+        echo "certs: present (no scheduler cert; scheduler uses the api client cert, DEC-398)"
         exit 0
       fi
       apk add --no-cache openssl >/dev/null

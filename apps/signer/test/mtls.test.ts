@@ -134,14 +134,15 @@ describe("signer mTLS", () => {
     expect((await call("/v1/api-keys", "api")).status).toBe(400);
   });
 
-  it("lets only the api encrypt and only the scheduler decrypt rewards tokens (#558)", async () => {
+  it("lets only the api encrypt and the scheduler or api decrypt rewards tokens (#558)", async () => {
     expect((await call("/v1/rewards-tokens/encrypt", "scheduler")).status).toBe(403);
     expect((await call("/v1/rewards-tokens/encrypt", "engine")).status).toBe(403);
-    expect((await call("/v1/rewards-tokens/decrypt", "api")).status).toBe(403);
     expect((await call("/v1/rewards-tokens/decrypt", "engine")).status).toBe(403);
     // Qua được kiểm tra caller, rồi bị từ chối vì body rỗng.
     expect((await call("/v1/rewards-tokens/encrypt", "api")).status).toBe(400);
     expect((await call("/v1/rewards-tokens/decrypt", "scheduler")).status).toBe(400);
+    // DEC-398: prod dùng chung cert api cho scheduler, nên CN api cũng giải mã được (vẫn không ký được).
+    expect((await call("/v1/rewards-tokens/decrypt", "api")).status).toBe(400);
     // CN scheduler không được ký lệnh hay tạo key.
     expect((await call("/v1/sign", "scheduler")).status).toBe(403);
     expect((await call("/v1/api-keys", "scheduler")).status).toBe(403);

@@ -2,9 +2,10 @@ import { readFileSync } from "node:fs";
 
 import type { ClientTls } from "@drift/runtime";
 
-// #558 (DEC-398): scheduler gọi signer (mTLS, CN `scheduler`) để giải mã phiên rewards. Prod cũ chưa có cert
-// `scheduler.crt` cho tới khi tạo lại toàn bộ cert trong cửa sổ bảo trì (docs/DEPLOY.md 2.4), nên thiếu cert thì job
-// rewards tắt, scheduler vẫn chạy mọi việc khác. Hàm này không bao giờ ném lỗi và không đọc nội dung khoá ra log.
+// #558 (DEC-398): scheduler gọi signer (mTLS) để giải mã phiên rewards. Compose cho scheduler dùng chung cert client
+// của api (CN `api`; prod chưa có cert `scheduler`), lần tạo lại toàn bộ cert sau thì chuyển sang `scheduler.crt`
+// (docs/DEPLOY.md 2.4.1). Thiếu / lỗi file cert thì job rewards tắt, scheduler vẫn chạy mọi việc khác. Hàm này không bao
+// giờ ném lỗi và không đọc nội dung khoá ra log.
 
 export type RewardsSignerState =
   | { kind: "ready"; url: string; tls: ClientTls }
