@@ -153,10 +153,101 @@ export const fixtures = {
       { level: "SuperRare", count: 0, mergeSize: 0, canMergeNow: false, mergesAvailable: 0 },
     ],
     boxes: [
-      { tokenId: 188540, level: "Common", source: "invitee", mintedAt: "2026-11-20T10:00:00Z" },
+      { tokenId: 188540, level: "Common", source: "invitee", mintedAt: "2026-11-02T06:55:00Z" },
+      { tokenId: 201640, level: "Common", source: "trade", mintedAt: "2026-11-26T02:14:00Z" },
+      { tokenId: 200913, level: "Rare", source: "milestone", mintedAt: "2026-11-25T14:40:00Z" },
     ],
   }),
   jobs: ok({ jobs: [] }),
+  // Ledger theo `kind` (dữ liệu thật 2026-11-26); địa chỉ from / to là ví giả.
+  ledger: ok({
+    total: 4,
+    items: [
+      {
+        kind: "open",
+        tsMs: 1764155100000,
+        level: "Common",
+        tokenId: 200510,
+        requestId: 77,
+        status: "revealed",
+        rewardUsd: "5.07",
+        reward: {
+          asset: { address: "0x1", symbol: "vANT", decimals: 18 },
+          amount: "0.0612",
+          amountRaw: "61200000000000000",
+        },
+      },
+      {
+        kind: "merge",
+        tsMs: 1764154920000,
+        level: "Common",
+        requestId: 76,
+        status: "done",
+        consumedTokenIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        resultTokenId: 201877,
+        resultLevel: "Uncommon",
+      },
+      {
+        kind: "treasure",
+        tsMs: 1764123240000,
+        level: "Common",
+        tokenId: 201640,
+        txHash: "0xabc",
+        source: "trade",
+        mintId: 5,
+      },
+      {
+        kind: "transfer",
+        tsMs: 1764049320000,
+        level: "Common",
+        tokenId: 190044,
+        txHash: "0xdef",
+        direction: "in",
+        from: OTHER,
+        to: MASTER,
+        blockNumber: 123,
+        reason: "lottery_prize",
+        round: 10,
+      },
+    ],
+  }),
+  history: ok({
+    total: 2,
+    totalRewardUsd: "412.36",
+    totalRewardByAsset: [
+      {
+        asset: { address: "0x1", symbol: "vANT", decimals: 18 },
+        amount: "3.88412",
+        amountRaw: "1",
+      },
+      {
+        asset: { address: "0x2", symbol: "vsoUSDC", decimals: 6 },
+        amount: "90.59",
+        amountRaw: "2",
+      },
+    ],
+    items: [],
+  }),
+  // Round 10 sau khi có kết quả (dữ liệu thật): `wins` là số, entries có won / prizeLevel.
+  draw: ok({
+    round: 10,
+    status: "distributed",
+    deadlineMs: 1764586800000,
+    tickets: 3,
+    boxes: 3,
+    byLevel: [
+      { level: "Common", count: 2 },
+      { level: "Rare", count: 1 },
+    ],
+    total: 3,
+    wins: 1,
+    entries: [
+      { tokenId: 188201, level: "Rare", won: true, prizeLevel: "Common" },
+      { tokenId: 188202, level: "Common", won: false, prizeLevel: null },
+      { tokenId: 188203, level: "Common", won: false, prizeLevel: null },
+    ],
+  }),
+  pfps: ok({ total: 0, pfps: [], won: [] }),
   nonce: ok({ message: "Sign in to SoDEX rewards: nonce 1" }),
 };
 
@@ -169,6 +260,11 @@ export type Route =
   | "lottery/treasures"
   | "lottery/boxes"
   | "lottery/jobs"
+  | "lottery/ledger"
+  | "lottery/history"
+  | "lottery/draw/entries"
+  | "lottery/pfps"
+  | "cybereator/profile/2051"
   | "auth/nonce";
 
 export function defaultRoutes(): Record<Route, Reply> {
@@ -181,6 +277,11 @@ export function defaultRoutes(): Record<Route, Reply> {
     "lottery/treasures": fixtures.treasures,
     "lottery/boxes": fixtures.boxes,
     "lottery/jobs": fixtures.jobs,
+    "lottery/ledger": fixtures.ledger,
+    "lottery/history": fixtures.history,
+    "lottery/draw/entries": fixtures.draw,
+    "lottery/pfps": fixtures.pfps,
+    "cybereator/profile/2051": { body: { id: 2051, stage: "unopened" } },
     "auth/nonce": fixtures.nonce,
   };
 }

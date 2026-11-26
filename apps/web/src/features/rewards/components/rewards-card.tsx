@@ -48,7 +48,7 @@ const TONAL =
 const TONAL_BUTTON = `${TONAL} w-full cursor-pointer disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-ink-2`;
 const LINK_SM = "self-center text-[13px] font-bold text-accent-ink no-underline";
 
-const ACTIVE: readonly LotteryJob["status"][] = ["submitting", "pending"];
+export const ACTIVE: readonly LotteryJob["status"][] = ["submitting", "pending"];
 
 function useZone(): string {
   const [tz, setTz] = useState("UTC");
@@ -194,7 +194,14 @@ function jobTitle(job: LotteryJob, t: ReturnType<typeof useTranslations<"rewards
 }
 
 /** Dòng job (bản phác 04): job mới nhất + "+N more"; View → `/rewards?tab=boxes` (popup ở #551). */
-function JobLine({ jobs }: { jobs: readonly LotteryJob[] }) {
+export function JobLine({
+  jobs,
+  view = true,
+}: {
+  jobs: readonly LotteryJob[];
+  /** Tab Blind Boxes: không có "View" (đang ở đúng chỗ đó; popup ở #551). */
+  view?: boolean;
+}) {
   const t = useTranslations("rewards.card.job");
   const active = jobs.filter((j) => ACTIVE.includes(j.status));
   const latest = active.reduce<LotteryJob | undefined>(
@@ -221,9 +228,11 @@ function JobLine({ jobs }: { jobs: readonly LotteryJob[] }) {
           {t("more", { count: active.length - 1 })}
         </span>
       ) : null}
-      <Link href="/rewards?tab=boxes" className="flex-none text-[13px] font-bold text-accent-ink">
-        {t("view")}
-      </Link>
+      {view ? (
+        <Link href="/rewards?tab=boxes" className="flex-none text-[13px] font-bold text-accent-ink">
+          {t("view")}
+        </Link>
+      ) : null}
     </div>
   );
 }

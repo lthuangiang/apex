@@ -216,15 +216,26 @@ const FEED_SHOWN = 3;
 /** "Live feed": các lần mở lớn gần đây trên SoDEX (công khai, ví đã được SoDEX rút gọn). */
 export function FeedCard({ tz }: { tz: string }) {
   const t = useTranslations("rewards.feed");
-  const q = useRewardsFeed();
   const id = useId();
-  const items = (q.data?.items ?? []).slice(0, FEED_SHOWN);
   return (
     <section aria-labelledby={id} className={CARD}>
       <H id={id}>{t("title")}</H>
+      <FeedList tz={tz} limit={FEED_SHOWN} />
+    </section>
+  );
+}
+
+/** Câu nguồn + danh sách feed; `limit` bỏ trống = mọi dòng SoDEX trả (tab Blind Boxes › Live feed). */
+export function FeedList({ tz, limit }: { tz: string; limit?: number }) {
+  const t = useTranslations("rewards.feed");
+  const q = useRewardsFeed();
+  const all = q.data?.items ?? [];
+  const items = limit === undefined ? all : all.slice(0, limit);
+  return (
+    <>
       <p className="m-0 text-sm text-ink-2">{t("body")}</p>
       {q.isPending && q.fetchStatus !== "idle" ? (
-        <ListSkeleton rows={FEED_SHOWN} />
+        <ListSkeleton rows={limit ?? FEED_SHOWN} />
       ) : q.data === undefined ? (
         <CardUnavailable />
       ) : items.length === 0 ? (
@@ -277,6 +288,6 @@ export function FeedCard({ tz }: { tz: string }) {
           })}
         </ul>
       )}
-    </section>
+    </>
   );
 }
