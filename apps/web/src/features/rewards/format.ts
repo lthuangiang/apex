@@ -27,17 +27,16 @@ export function formatCount(value: NumLike | null | undefined): string | null {
 }
 
 /**
- * Một cách hiện USD cho mọi chỗ trong Rewards (khối lượng tuần, giá trị phần thưởng, tổng kết, history): số có phần lẻ
- * luôn 2 chữ số thập phân ("$296,474.70", "$6.48"), số nguyên không có phần lẻ ("$84,300", "$0").
+ * Một cách hiện USD cho mọi chỗ trong Rewards (khối lượng tuần, giá trị phần thưởng, tổng kết, history): luôn 2 chữ số
+ * thập phân, kể cả số nguyên và 0 ("$84,300.00", "$0.00"), khớp trang SoDEX và bản phác (PM review #574).
  */
 export function formatUsdAmount(value: NumLike | null | undefined): string | null {
   const d = decimalOf(value);
   if (d === null) return null;
-  const whole = dec(d).isInteger();
   const text = formatDecimal(d, {
     locale: LOCALE,
-    minimumFractionDigits: whole ? 0 : 2,
-    maximumFractionDigits: whole ? 0 : 2,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
   return text === null ? null : `$${text}`;
 }

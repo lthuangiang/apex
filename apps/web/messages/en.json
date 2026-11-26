@@ -2906,8 +2906,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "rewardsDebug.valuesSeen"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
@@ -10149,7 +10148,7 @@
       "of": "of {total}",
       "thisWeek": "This week",
       "pool": "Weekly pool",
-      "poolHint": "Weekly pool · from SoDEX",
+      "poolHint": "from SoDEX",
       "nextDistribution": "Next distribution",
       "weekEnds": "Week ends {time}"
     },

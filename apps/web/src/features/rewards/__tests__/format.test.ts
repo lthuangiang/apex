@@ -36,7 +36,7 @@ describe("rewards format", () => {
     expect(formatCount(48210)).toBe("48,210");
     expect(formatCount("1000000")).toBe("1,000,000");
     expect(formatCount(null)).toBeNull();
-    expect(formatVolume(84300)).toBe("$84,300");
+    expect(formatVolume(84300)).toBe("$84,300.00");
     expect(formatVolume(undefined)).toBeNull();
     expect(formatUsd("110.891")).toBe("$110.89");
     expect(formatCoefficient("1.20")).toBe("×1.2");
@@ -80,12 +80,12 @@ describe("rewards format", () => {
     expect(t("r.summary.toNext", { points: 11790, tier: "EPIC" })).toBe("11,790 points to EPIC");
   });
 
-  it("USD: 2 decimals when there is a fraction, whole numbers without, real 0 as $0", () => {
+  it("USD: always 2 decimals, whole numbers and 0 included", () => {
     expect(formatUsdAmount(296474.7)).toBe("$296,474.70");
     expect(formatUsdAmount("459.96")).toBe("$459.96");
     expect(formatUsdAmount(6.48)).toBe("$6.48");
-    expect(formatUsdAmount(84300)).toBe("$84,300");
-    expect(formatUsdAmount(0)).toBe("$0");
+    expect(formatUsdAmount(84300)).toBe("$84,300.00");
+    expect(formatUsdAmount(0)).toBe("$0.00");
     expect(formatUsdAmount("12.40")).toBe("$12.40");
     expect(formatUsdAmount(null)).toBeNull();
   });

@@ -311,7 +311,11 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "80");
     expect(screen.getByText("1,284")).toBeInTheDocument();
     expect(screen.getByText("of 38,902")).toBeInTheDocument();
-    expect(await screen.findByText("Weekly pool · from SoDEX")).toBeInTheDocument();
+    // Ô "Weekly pool": dòng phụ không lặp lại tên ô.
+    const poolTile = (await screen.findByText("from SoDEX")).parentElement;
+    if (poolTile === null) throw new Error("no pool tile");
+    expect(within(poolTile).getByText("Weekly pool")).toBeInTheDocument();
+    expect(screen.queryByText("Weekly pool · from SoDEX")).toBeNull();
     expect(screen.queryByText("SoPoints shared this week")).toBeNull();
     // Weekly performance: tuần mới nhất trước; isLive → In progress (không số), CONFIRMED → Confirmed + số.
     const table = await screen.findByRole("table");
@@ -323,7 +327,7 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(within(at(rows, 0)).queryByText("2,140")).toBeNull();
     expect(within(at(rows, 1)).getByText("Confirmed")).toBeInTheDocument();
     expect(within(at(rows, 1)).getByText("3,420")).toBeInTheDocument();
-    expect(within(at(rows, 0)).getByText("$84,300")).toBeInTheDocument();
+    expect(within(at(rows, 0)).getByText("$84,300.00")).toBeInTheDocument();
     // Tuần đang chạy theo isLive; không hiện số squad (team*, totalBonusPct).
     expect(within(at(rows, 0)).getByText("LIVE")).toBeInTheDocument();
     expect(within(at(rows, 1)).queryByText("LIVE")).toBeNull();
@@ -415,7 +419,7 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(screen.queryByText("0")).toBeNull();
   });
 
-  it("unconfirmed weeks hide SoDEX's 0 points / 0 rank; a CONFIRMED 0 is a real 0; volume has 2 decimals", async () => {
+  it("unconfirmed weeks hide SoDEX's 0 points / 0 rank; a CONFIRMED 0 is a real 0; volume always has 2 decimals", async () => {
     const week = (n: number, extra: Record<string, unknown>) => ({
       weekNo: n,
       weekName: `Week ${String(n)}`,
@@ -468,7 +472,7 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     // Week 12 (đã chụp, chưa chốt): chỉ chip Snapshot done.
     expect(cells(1)[1]).toHaveTextContent(/^Snapshot done$/);
     expect(cells(1)[2]).toHaveTextContent(/^–$/);
-    expect(cells(1)[3]).toHaveTextContent(/^\$0$/);
+    expect(cells(1)[3]).toHaveTextContent(/^\$0\.00$/);
     expect(cells(1)[4]).toHaveTextContent("$296,474.70");
     // Week 11 CONFIRMED: 0 thật vẫn hiện.
     expect(cells(2)[1]).toHaveTextContent(/^0\s*Confirmed$/);
