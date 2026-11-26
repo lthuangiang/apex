@@ -81,7 +81,7 @@ const app = await buildApp({
   // #558 / DEC-398: báo box mới SoDEX rewards (mặc định tắt). Gateway chỉ đọc qua client chỉ đọc dùng chung.
   rewardsWatch: {
     enabled: () => config.REWARDS_WATCH_ENABLED,
-    audAllow: config.REWARDS_JWT_AUD_ALLOW,
+    audAllow: () => config.REWARDS_JWT_AUD_ALLOW,
     reader: new RewardsReadClient({
       gateway: config.SODEX_REWARDS_GATEWAY,
       rateLimit,

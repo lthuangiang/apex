@@ -26,8 +26,11 @@ export interface RewardsTokenSigner {
 export interface RewardsWatchDeps {
   db: Db;
   now: () => Date;
-  /** `REWARDS_JWT_AUD_ALLOW`; trống = từ chối mọi token. */
-  audAllow: readonly string[];
+  /**
+   * `REWARDS_JWT_AUD_ALLOW`; trống = từ chối mọi token. Hàm (như `enabled`) để đọc giá trị hiện tại mỗi request, không
+   * chụp một lần lúc dựng app.
+   */
+  audAllow: () => readonly string[];
   reader: Pick<RewardsReadClient, "getSopointsSummary">;
   signer: RewardsTokenSigner;
 }
@@ -98,7 +101,7 @@ export async function enableRewardsWatch(
     throw new AppError(ErrorCode.rewardsTokenInvalid, "This rewards sign-in can't be used.", {
       reason: claims.problem,
     });
-  const audProblem = checkRewardsAud(claims.aud, deps.audAllow);
+  const audProblem = checkRewardsAud(claims.aud, deps.audAllow());
   if (audProblem !== null)
     throw new AppError(ErrorCode.rewardsTokenInvalid, "This rewards sign-in can't be used.", {
       reason: audProblem,

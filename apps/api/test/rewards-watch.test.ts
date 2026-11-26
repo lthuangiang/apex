@@ -46,9 +46,7 @@ beforeAll(async () => {
   env = await startTestEnv({
     rewardsWatch: {
       enabled: () => state.enabled,
-      get audAllow() {
-        return state.audAllow;
-      },
+      audAllow: () => state.audAllow,
       reader,
       signer,
     },

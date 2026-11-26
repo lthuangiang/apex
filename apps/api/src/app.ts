@@ -297,7 +297,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     deps: {
       db: deps.db,
       now,
-      audAllow: rw?.audAllow ?? [],
+      audAllow: rw?.audAllow ?? (() => []),
       reader: rw?.reader ?? {
         getSopointsSummary: () => Promise.resolve({ kind: "error", code: "network" }),
       },
