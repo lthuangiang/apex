@@ -78,3 +78,73 @@ describe("jwtClaimRows", () => {
     expect(jwtClaimRows(null)).toBeNull();
   });
 });
+
+describe("describeShape never shows wallet addresses (rewards-debug fix)", () => {
+  // Địa chỉ giả, không phải ví của ai.
+  const A1 = "0x0000000000000000000000000000000000000001";
+  const A2 = "0x0000000000000000000000000000000000000002";
+  const A3 = "0x0000000000000000000000000000000000000003";
+  const CONTRACT = "0x00000000000000000000000000000000000000c1";
+  const ASSET = "0x00000000000000000000000000000000000000a1";
+  const TX = `0x${"ab".repeat(32)}`;
+
+  it("hides walletAddress in sopoints/summary", () => {
+    const rows = describeShape({ walletAddress: A1, totalPoints: 10 });
+    const by = Object.fromEntries(rows.map((r) => [r.path, r]));
+    expect(by.walletAddress).toMatchObject({ hidden: true, sample: null });
+    expect(by.walletAddress?.types).toEqual(["string (address)"]);
+    expect(by.totalPoints?.sample).toBe("10");
+    expect(JSON.stringify(rows)).not.toContain(A1);
+  });
+
+  it("hides from / to of ledger transfers, feed wallets, txHash and addresses under unknown keys", () => {
+    const ledger = describeShape(
+      {
+        items: [
+          { kind: "transfer", from: A1, to: A2, txHash: TX },
+          { kind: "open", note: `sent by ${A3}`, mystery: A3 },
+        ],
+      },
+      { groupBy: "kind" },
+    );
+    const feed = describeShape({ items: [{ wallet: "0x05d8....389e", level: "Rare" }] });
+    const bySource = describeShape({ bySource: { [A2]: 3 } });
+    const all = JSON.stringify([ledger, feed, bySource]);
+    for (const v of [A1, A2, A3, TX, "0x05d8"]) expect(all).not.toContain(v);
+    const by = Object.fromEntries(ledger.map((r) => [r.path, r]));
+    expect(by["items[kind=transfer].from"]?.hidden).toBe(true);
+    expect(by["items[kind=transfer].to"]?.hidden).toBe(true);
+    expect(by["items[kind=transfer].txHash"]).toMatchObject({ hidden: true, sample: null });
+    expect(by["items[kind=open].mystery"]?.hidden).toBe(true);
+    expect(by["items[kind=open].note"]?.hidden).toBe(true);
+    expect(feed.find((r) => r.path === "items[].wallet")?.hidden).toBe(true);
+    expect(feed.find((r) => r.path === "items[].level")?.sample).toBe("Rare");
+    expect(bySource.map((r) => r.path)).toContain("bySource.<address>");
+  });
+
+  it("hides the row when any array item holds an address", () => {
+    const rows = describeShape({ items: [{ ref: "abc" }, { ref: A1 }] });
+    expect(rows.find((r) => r.path === "items[].ref")).toMatchObject({
+      hidden: true,
+      sample: null,
+    });
+  });
+
+  it("still shows public asset and contract addresses", () => {
+    const meta = describeShape({
+      contracts: { treasureBox: CONTRACT },
+      rewardTokens: [{ asset: { address: ASSET, symbol: "vANT" } }],
+    });
+    const by = Object.fromEntries(meta.map((r) => [r.path, r]));
+    expect(by["contracts.treasureBox"]).toMatchObject({ hidden: false, sample: CONTRACT });
+    expect(by["rewardTokens[].asset.address"]).toMatchObject({ hidden: false, sample: ASSET });
+  });
+
+  it("JWT claims: sub holding an address is hidden", () => {
+    const enc = (o: unknown) =>
+      btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const rows = jwtClaimRows(`${enc({ alg: "none" })}.${enc({ sub: A1, exp: 1796000000 })}.x`);
+    expect(rows?.find((r) => r.path === "sub")).toMatchObject({ hidden: true, sample: null });
+    expect(JSON.stringify(rows)).not.toContain(A1);
+  });
+});
