@@ -27,3 +27,15 @@ describe("REWARDS_ENABLED", () => {
     expect(loadApiConfig({ ...env, REWARDS_ENABLED: "false" }).REWARDS_ENABLED).toBe(false);
   });
 });
+
+describe("REWARDS_WATCH_ENABLED (#558, DEC-398)", () => {
+  it("is off by default and parses true / false", () => {
+    expect(loadApiConfig(env).REWARDS_WATCH_ENABLED).toBe(false);
+    expect(loadApiConfig({ ...env, REWARDS_WATCH_ENABLED: "true" }).REWARDS_WATCH_ENABLED).toBe(
+      true,
+    );
+    expect(loadApiConfig({ ...env, REWARDS_WATCH_ENABLED: "false" }).REWARDS_WATCH_ENABLED).toBe(
+      false,
+    );
+  });
+});

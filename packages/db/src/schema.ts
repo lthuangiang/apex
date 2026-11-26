@@ -1024,6 +1024,62 @@ export const telegramLinks = pgTable(
   (t) => [uniqueIndex("telegram_links_chat_id_key").on(t.chatId)],
 );
 
+/**
+ * Báo box mới của SoDEX rewards (#558, DEC-398): phiên đăng nhập rewards (JWT) của người dùng đã bật "Tell me about
+ * new boxes". Mỗi user một dòng. `token_ciphertext` là JWT đã mã hoá bằng Vault transit `drift-rewards` (chỉ signer giải
+ * mã); null khi đã tạm dừng (hết hạn / 401 / đổi ví). Các cột còn lại không bí mật: `exp` / `iat` / `aud` / `iss` để
+ * biết hạn và phạm vi token, mốc "đã thấy" để không báo trùng. Server chỉ đọc (allowlist GET), không bao giờ claim /
+ * open / merge. Tắt, "Sign out of rewards", đăng xuất chủ động, đổi ví, xoá tài khoản: xoá dòng.
+ */
+export const rewardsWatch = pgTable(
+  "rewards_watch",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id),
+    sodexAccountId: uuid("sodex_account_id")
+      .notNull()
+      .references(() => sodexAccounts.id),
+    status: text("status", { enum: ["active", "paused"] }).notNull(),
+    /** Lý do tạm dừng; null khi `active`. */
+    pauseReason: text("pause_reason", { enum: ["expired", "unauthorized", "wallet_changed"] }),
+    /** JWT đã mã hoá (`vault:vN:…`). Bắt buộc khi `active`. */
+    tokenCiphertext: text("token_ciphertext"),
+    kmsKeyRef: text("kms_key_ref"),
+    tokenExp: tstz("token_exp").notNull(),
+    tokenIat: tstz("token_iat"),
+    /** Claim `aud` (chuỗi hoặc mảng), `iss` và 8 ký tự đầu của `jti`: không bí mật, chỉ để chẩn đoán phạm vi token. */
+    tokenAud: jsonb("token_aud"),
+    tokenIss: text("token_iss"),
+    jti8: text("jti8"),
+    /** Mốc ledger đã xử lý (tsMs lớn nhất) và khoá các dòng có đúng tsMs đó (`kind:tokenId:tsMs`). */
+    ledgerMarkTsMs: bigint("ledger_mark_ts_ms", { mode: "number" }),
+    ledgerMarkIds: jsonb("ledger_mark_ids").$type<string[]>().notNull().default([]),
+    /** `lottery/treasures.lifetime.granted` đã thấy. */
+    grantedMark: integer("granted_mark"),
+    /** Các vòng Weekly draw đã báo (giữ 20 vòng gần nhất). */
+    drawRoundsSeen: integer("draw_rounds_seen")
+      .array()
+      .notNull()
+      .default(sql`'{}'::integer[]`),
+    /** Lượt đầu của scheduler đặt mốc = hiện tại, không báo lịch sử cũ. */
+    baselinePending: boolean("baseline_pending").notNull().default(true),
+    nextCheckAt: tstz("next_check_at").notNull().defaultNow(),
+    lastCheckedAt: tstz("last_checked_at"),
+    consecutiveErrors: integer("consecutive_errors").notNull().default(0),
+    /** Chỉ mã lỗi (không body, không token). */
+    lastErrorCode: text("last_error_code"),
+    ...timestamps,
+  },
+  (t) => [
+    index("rewards_watch_status_next_check_idx").on(t.status, t.nextCheckAt),
+    check(
+      "rewards_watch_active_has_token",
+      sql`${t.status} <> 'active' or (${t.tokenCiphertext} is not null and ${t.pauseReason} is null)`,
+    ),
+  ],
+);
+
 /** Số dư tài khoản builder của DRIFT theo ngày và engine (đối soát builder revenue). */
 export const builderBalanceSnapshots = pgTable(
   "builder_balance_snapshots",

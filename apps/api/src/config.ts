@@ -53,6 +53,11 @@ const envSchema = z.object({
    * gateway SoDEX có sự cố. Trang chẩn đoán `/admin/rewards-debug` (team) không phụ thuộc công tắc này.
    */
   REWARDS_ENABLED: z.stringbool().default(false),
+  /**
+   * #558 / DEC-398: báo box mới SoDEX rewards (nhận phiên rewards để scheduler đọc định kỳ). Mặc định tắt; PR1 chỉ khai
+   * báo cờ, route `rewards/watch` (PR3) đọc cờ này. Cùng giá trị với scheduler.
+   */
+  REWARDS_WATCH_ENABLED: z.stringbool().default(false),
   /** Notifications v2: kênh Telegram (DEC-170). Tắt thì mọi route `/api/v1/telegram/*` trả 404. */
   TELEGRAM_ENABLED: z.stringbool().default(false),
   /** Morning brief qua Telegram (N4): chỉ chạy khi TELEGRAM_ENABLED cũng bật. */
