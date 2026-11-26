@@ -69,6 +69,8 @@ vi.mock("@/lib/queries", () => ({
       connection: state.master === null ? null : { address: state.master, status: "connected" },
     },
   }),
+  // #558: thông báo server (nguồn popup khi watch active); api giả trả null = tính năng tắt.
+  useNotifications: () => ({ data: undefined }),
 }));
 vi.mock("@/lib/api", () => ({
   ApiError: class extends Error {},

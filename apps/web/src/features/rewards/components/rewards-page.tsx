@@ -22,6 +22,7 @@ import {
   useRewardsWeekList,
 } from "../queries";
 import { useRewardsAuth } from "../use-rewards-auth";
+import { useDisableRewardsWatch, useRewardsWatch } from "../watch";
 
 import { ActionHost } from "./action-popup";
 import { BoxesTab } from "./boxes-tab";
@@ -30,6 +31,7 @@ import { ReceivedPopup } from "./received-popup";
 import { NotConnectedBanner, RewardsProblem } from "./rewards-states";
 import { LockedRow, SignInHero } from "./sign-in-hero";
 import { SoPointsTab } from "./sopoints-tab";
+import { RewardsWatchStrip } from "./watch-ui";
 
 // Trang /rewards (bản phác 08–14, DEC-397, #548, #550). Sau công tắc toàn hệ thống `sodexRewards` (`/api/v1/features`): tắt thì
 // route Not found như chưa có. Trình duyệt đọc thẳng gateway SoDEX; token chỉ ở sessionStorage của tab.
@@ -77,6 +79,13 @@ function RewardsContent() {
   }, [param]);
   const treasures = useRewardsTreasures(auth);
   const signedIn = auth.signedIn && auth.master !== null;
+  // #558 (DEC-398): "Sign out of rewards" xoá luôn phiên lưu ở server (nếu có).
+  const watch = useRewardsWatch();
+  const disableWatch = useDisableRewardsWatch();
+  const signOut = () => {
+    auth.signOut();
+    if (watch.data != null && watch.data.status !== "off") disableWatch.mutate();
+  };
 
   // Một dải lỗi chung cho cả trang (429 chỉ đếm ngược ở một chỗ); thẻ thiếu dữ liệu ghi "Not available".
   const weekInfo = useRewardsWeekInfo();
@@ -103,7 +112,7 @@ function RewardsContent() {
         subtitle={t("page.subtitle")}
         action={
           signedIn && auth.master !== null ? (
-            <SignedChips master={auth.master} onSignOut={auth.signOut} />
+            <SignedChips master={auth.master} onSignOut={signOut} />
           ) : undefined
         }
       />
@@ -128,12 +137,14 @@ function RewardsContent() {
         </>
       ) : !signedIn ? (
         <>
+          <RewardsWatchStrip master={auth.master} signedIn={false} />
           <SignInHero auth={auth} />
           <LockedRow />
           <PublicGrid tz={tz} />
         </>
       ) : (
         <>
+          <RewardsWatchStrip master={auth.master} signedIn />
           <div
             role="tablist"
             aria-label={t("tabs.label")}

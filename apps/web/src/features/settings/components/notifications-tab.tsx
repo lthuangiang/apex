@@ -23,7 +23,9 @@ import {
 import { useNotificationText } from "@/features/notifications/text";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import { useFeatures, useMe, useNotifications } from "@/lib/queries";
+import { RewardsAlertsCard } from "@/features/rewards/components/watch-ui";
+import { useRewardsWatch } from "@/features/rewards/watch";
+import { useFeatures, useMe, useNotifications, useSodexConnection } from "@/lib/queries";
 
 // Settings › Notifications (SCREENS.md mục 8.5, artboard NT-Settings, DEC-170): "Where we reach you" (In-app,
 // Email, Telegram) và "What we tell you" (nhóm × kênh). Nhóm Bot problems luôn bật (switch khoá).
@@ -66,7 +68,16 @@ export function NotificationsTab() {
   });
 
   const groups = settings.data?.groups ?? [];
-  const rows = SETTINGS_GROUP_ORDER.flatMap((g) => {
+  // #558 (DEC-398): nhóm SoDEX rewards chỉ hiện khi tính năng báo box mới có ở server (GET /rewards/watch không 404).
+  const rewardsWatch = useRewardsWatch();
+  const order: readonly NotificationGroup[] =
+    rewardsWatch.data == null
+      ? SETTINGS_GROUP_ORDER
+      : SETTINGS_GROUP_ORDER.flatMap((g): NotificationGroup[] =>
+          g === "copyTrading" ? [g, "rewards"] : [g],
+        );
+  const master = useSodexConnection().data?.connection?.address ?? null;
+  const rows = order.flatMap((g) => {
     const row = groups.find((x) => x.group === g);
     return row === undefined || (g === "copyTrading" && !aiDesk) ? [] : [row];
   });
@@ -189,6 +200,8 @@ export function NotificationsTab() {
           <p className="m-0 mt-1.5 text-[12.5px] text-muted">{t("what.note")}</p>
         ) : null}
       </section>
+
+      <RewardsAlertsCard master={master} />
 
       {/* Đích của "See all" trong panel chuông. */}
       <section id="all-notifications" className="flex flex-col gap-3 rounded-card bg-surface p-5">

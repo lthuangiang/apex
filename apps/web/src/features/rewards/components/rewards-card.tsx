@@ -39,6 +39,7 @@ import { ReceivedPopup } from "./received-popup";
 import { Banner, MismatchBanner } from "./rewards-states";
 import { Spinner, useRewardsSignIn } from "./sign-in-hero";
 import { PointsStatus, useTierText } from "./sopoints-tab";
+import { WatchPausedNote } from "./watch-ui";
 
 // Thẻ SoDEX rewards trên Overview (phương án B, bản phác 02–06; DEC-397, #549): thay thẻ Trading Agent khi công tắc
 // `sodexRewards` bật, cùng vị trí và cùng vỏ (`flex-[1_1_320px]`). Chưa ký: dữ liệu công khai + mời ký. Đã ký: điểm ·
@@ -348,6 +349,7 @@ function UnsignedCard({ auth, data }: { auth: Auth; data: CardData }) {
           />
         )}
         <Banner tone="warn" title={tr("expired.title")} body={tr("expired.body")} />
+        <WatchPausedNote expired />
         {wrong}
         <Rows stale>
           {staleBoxes === undefined ? null : (
@@ -397,6 +399,7 @@ function UnsignedCard({ auth, data }: { auth: Auth; data: CardData }) {
         }
       />
       {error?.kind === "rate_limited" ? <Busy onRetry={retry} /> : null}
+      <WatchPausedNote expired={false} />
       <Rows>
         <Row label={tr("week.next")}>
           <Value text={next} />

@@ -1,13 +1,13 @@
 "use client";
 
-import { Pause, ShieldAlert, X } from "lucide-react";
+import { Gift, Pause, ShieldAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
 import { useFeatures, useNotifications } from "@/lib/queries";
 
-import { mergeToast, newAlerts, targetOf, type NotificationItem } from "../model";
+import { isRewardsToast, mergeToast, newAlerts, targetOf, type NotificationItem } from "../model";
 import { useNotificationText } from "../text";
 
 // Toast cho Bot problems và Risk (docs/NOTIFICATIONS.md mục 7, artboard NT-InApp): aria-live assertive,
@@ -99,7 +99,9 @@ export function NotificationToasts() {
 
   const merged = shown.length > 1;
   const body = first === undefined ? null : text(first);
-  const Icon = first?.type === "risk_alert" && !merged ? ShieldAlert : Pause;
+  // #558: tin SoDEX rewards (box nhận được, vé trúng) có icon quà, nền accent, nút "View boxes".
+  const rewards = first !== undefined && !merged && isRewardsToast(first);
+  const Icon = rewards ? Gift : first?.type === "risk_alert" && !merged ? ShieldAlert : Pause;
 
   return (
     // Vùng live luôn có trong DOM để trình đọc màn hình đọc được nội dung khi nó xuất hiện.
@@ -116,7 +118,7 @@ export function NotificationToasts() {
         >
           <span
             aria-hidden="true"
-            className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-neg"
+            className={`flex size-8 shrink-0 items-center justify-center rounded-[10px] ${rewards ? "bg-accent" : "bg-neg"}`}
           >
             <Icon size={16} />
           </span>
@@ -134,7 +136,7 @@ export function NotificationToasts() {
               className="mt-0.5 self-start text-[13px] font-extrabold text-on-ink-accent no-underline"
               onClick={dismiss}
             >
-              {merged ? t("toast.seeAll") : t("toast.review")}
+              {merged ? t("toast.seeAll") : rewards ? t("toast.viewBoxes") : t("toast.review")}
             </Link>
           </div>
           <button
