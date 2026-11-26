@@ -456,6 +456,13 @@
       "when": 1795679647774,
       "tag": "0064_rewards_watch_signer_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1795701227524,
+      "tag": "0065_rewards_watch_weekly",
+      "breakpoints": true
     }
   ]
 }

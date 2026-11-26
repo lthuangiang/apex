@@ -51,6 +51,8 @@ export const REWARDS_NOTIFICATION_TYPES = [
   "rewards_box_received",
   "rewards_draw_won",
   "rewards_watch_paused",
+  "rewards_week_snapshot",
+  "rewards_week_points",
 ] as const;
 export type RewardsNotificationType = (typeof REWARDS_NOTIFICATION_TYPES)[number];
 
@@ -107,3 +109,46 @@ export const rewardsWatchPausedDataSchema = z.object({
   reason: z.enum(REWARDS_WATCH_PAUSE_REASONS),
 });
 export type RewardsWatchPausedData = z.infer<typeof rewardsWatchPausedDataSchema>;
+
+// #567: tin tuần. Số giữ dạng chuỗi đúng như SoDEX trả (không cộng trừ bằng float); null = API không trả → bỏ dòng.
+// `timeZone`: múi giờ hồ sơ người dùng lúc tạo tin, để Telegram / email ghi giờ theo người nhận.
+const amount = z.string().nullable();
+
+/** `rewards_week_snapshot`: tổng kết tuần sau snapshot (tuần đã COMPLETED). */
+export const rewardsWeekSnapshotDataSchema = z.object({
+  weekNo: z.number().int(),
+  weekName: z.string().nullable(),
+  /** Unix giây. */
+  weekStartTime: z.number().int().nullable(),
+  weekEndTime: z.number().int().nullable(),
+  futuresVolume: amount,
+  spotVolume: amount,
+  oi: amount,
+  accountValue: amount,
+  vaultHolding: amount,
+  wealthTvl: amount,
+  /** Cặp có hệ số nhân cao nhất (> 1) của tuần và số cặp còn lại; null khi không có. */
+  boosted: z
+    .object({ symbol: z.string(), coefficient: z.string(), more: z.number().int().nonnegative() })
+    .nullable(),
+  /** Unix giây: lúc SoDEX chia điểm của tuần. */
+  distributionTime: z.number().int().nullable(),
+  timeZone: z.string(),
+});
+export type RewardsWeekSnapshotData = z.infer<typeof rewardsWeekSnapshotDataSchema>;
+
+/** `rewards_week_points`: điểm tuần đã chốt (`pointsStatus` CONFIRMED) + tổng điểm / tier từ `sopoints/summary`. */
+export const rewardsWeekPointsDataSchema = z.object({
+  weekNo: z.number().int(),
+  weekName: z.string().nullable(),
+  points: amount,
+  rank: amount,
+  totalUser: amount,
+  rankPercentile: z.string().nullable(),
+  totalPoints: amount,
+  currentTier: z.string().nullable(),
+  nextTier: z.string().nullable(),
+  nextTierPoints: amount,
+  timeZone: z.string(),
+});
+export type RewardsWeekPointsData = z.infer<typeof rewardsWeekPointsDataSchema>;

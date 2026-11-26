@@ -608,6 +608,9 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
   - Dọn dẹp mỗi 10 phút: dòng `paused` quá 30 ngày bị xoá.
   - Biến mới của scheduler: `REWARDS_WATCH_INTERVAL_MIN` (mặc định `15`, 5–60), `REWARDS_WATCH_MAX_WEIGHT_PER_MIN` (mặc định `120`), `SODEX_REWARDS_GATEWAY` (trống = mainnet). Mẫu compose có hai dòng đầu trong khối `scheduler`.
   - Nhóm thông báo mới `rewards`: in-app bật, **Telegram bật khi user đã kết nối Telegram**, email tắt (DEC-398). Hiện trong chuông. Bảng Settings › Notifications và toast ở PR5.
+- **#567 (tin tuần SoDEX: tổng kết tuần sau snapshot, điểm tuần SoPoints):**
+  - Migration `0065_rewards_watch_weekly`: chỉ thêm ba cột nullable vào `rewards_watch` (`snapshot_week_sent`, `points_week_sent`, `weekly_check_at`). Bản trước không đọc các cột này, nên migrate trước hoặc rollback image không cần làm gì.
+  - Cùng job ở trên (cùng `REWARDS_WATCH_ENABLED`, cùng ngân sách weight / 401 / 429), không biến môi trường mới. Mỗi user thêm `sopoints/week/list` (5) theo mốc SoDEX trả (khi tuần kết thúc, mỗi 10 phút lúc chờ tuần COMPLETED / điểm CONFIRMED, còn lại 6 giờ một lần) và `sopoints/summary` (5) một lần mỗi tuần khi điểm đã CONFIRMED.
 - **Việc prod cho #558:** chỉ cập nhật `/opt/drift/docker-compose.yml` theo mẫu (configs `vault-init`, `certs-init`; khối `scheduler`) rồi deploy như mục 3. Không tạo lại cert, không cửa sổ bảo trì, không dừng bot. Hành vi bot khi signer / engine bị tạo lại (ghi chú vận hành chung): mục 2.4.2.
 
 ## 3. Deploy hằng ngày

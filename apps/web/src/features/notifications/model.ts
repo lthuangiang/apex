@@ -135,6 +135,8 @@ export function targetOf(n: Pick<NotificationItem, "type" | "data">, aiDesk: boo
     case "rewards_draw_won":
       return "/rewards?tab=boxes";
     case "rewards_watch_paused":
+    case "rewards_week_snapshot":
+    case "rewards_week_points":
       return "/rewards";
   }
 }

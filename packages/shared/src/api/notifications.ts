@@ -47,6 +47,9 @@ export const NOTIFICATION_TYPES = [
   "rewards_box_received",
   "rewards_draw_won",
   "rewards_watch_paused",
+  // #567: tổng kết tuần SoDEX sau snapshot và điểm tuần (SoPoints), mỗi loại một tin mỗi tuần.
+  "rewards_week_snapshot",
+  "rewards_week_points",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -75,6 +78,8 @@ export const NOTIFICATION_GROUPS = {
     "rewards_box_received",
     "rewards_draw_won",
     "rewards_watch_paused",
+    "rewards_week_snapshot",
+    "rewards_week_points",
   ],
 } as const satisfies Record<string, readonly NotificationType[]>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;

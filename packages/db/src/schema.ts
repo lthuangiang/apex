@@ -1064,6 +1064,13 @@ export const rewardsWatch = pgTable(
       .default(sql`'{}'::integer[]`),
     /** Lượt đầu của scheduler đặt mốc = hiện tại, không báo lịch sử cũ. */
     baselinePending: boolean("baseline_pending").notNull().default(true),
+    /**
+     * #567: tuần (`weekNo`) đã gửi (hoặc đã bỏ vì quá hạn) tin tổng kết tuần / tin điểm tuần; null = chưa tuần nào.
+     * `weekly_check_at`: lần đọc `sopoints/week/list` kế tiếp (bám mốc SoDEX trả; null = đọc ở lượt tới).
+     */
+    snapshotWeekSent: integer("snapshot_week_sent"),
+    pointsWeekSent: integer("points_week_sent"),
+    weeklyCheckAt: tstz("weekly_check_at"),
     nextCheckAt: tstz("next_check_at").notNull().defaultNow(),
     lastCheckedAt: tstz("last_checked_at"),
     consecutiveErrors: integer("consecutive_errors").notNull().default(0),

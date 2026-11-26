@@ -6,6 +6,8 @@ import {
   rewardsBoxReceivedDataSchema,
   rewardsClaimableDataSchema,
   rewardsDrawWonDataSchema,
+  rewardsWeekPointsDataSchema,
+  rewardsWeekSnapshotDataSchema,
 } from "@drift/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -221,6 +223,41 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
       }
       case "rewards_watch_paused":
         return { title: t("types.rewards_watch_paused"), body: t("panel.rewards.pausedBody") };
+      // #567: tin tuần (tiêu đề theo mẫu đã duyệt; chi tiết đầy đủ trên Telegram và trang Rewards).
+      case "rewards_week_snapshot": {
+        const d = rewardsWeekSnapshotDataSchema.safeParse(n.data);
+        if (!d.success) return { title: t("types.rewards_week_snapshot"), body: null };
+        const week = d.data.weekName ?? t("panel.rewards.weekFallback", { n: d.data.weekNo });
+        return {
+          title: t("panel.rewards.weekSnapshot", { week }),
+          body: t("panel.rewards.source"),
+        };
+      }
+      case "rewards_week_points": {
+        const d = rewardsWeekPointsDataSchema.safeParse(n.data);
+        if (!d.success) return { title: t("types.rewards_week_points"), body: null };
+        const week = d.data.weekName ?? t("panel.rewards.weekFallback", { n: d.data.weekNo });
+        // Số SoDEX trả dạng chuỗi: hiện có dấu phẩy nếu là số, không thì nguyên chuỗi.
+        const fmt = (v: string | null) =>
+          v === null || !Number.isFinite(Number(v)) ? v : Number(v).toLocaleString("en-US");
+        // Thứ hạng 0 = SoDEX chưa xếp hạng: coi như thiếu, không hiện "Rank 0".
+        const ranked = (v: string | null) => (v !== null && Number(v) > 0 ? fmt(v) : null);
+        const points = fmt(d.data.points);
+        const rank = ranked(d.data.rank);
+        const total = ranked(d.data.totalUser);
+        return {
+          title:
+            points === null
+              ? t("panel.rewards.weekPointsNoNumber", { week })
+              : t("panel.rewards.weekPoints", { week, points }),
+          body:
+            rank === null
+              ? t("panel.rewards.source")
+              : total === null
+                ? t("panel.rewards.rank", { rank })
+                : t("panel.rewards.rankOf", { rank, total }),
+        };
+      }
       case "copy_bot_skipped": {
         const market = str(n.data.market);
         const name = bot ?? t("panel.copyBot.aBot");
