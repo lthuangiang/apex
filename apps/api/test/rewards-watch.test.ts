@@ -32,7 +32,7 @@ const reader: Pick<RewardsReadClient, "getSopointsSummary"> = {
 };
 const signer: RewardsTokenSigner = {
   encrypt: (token) => {
-    if (state.signerDown) return Promise.resolve(null);
+    if (state.signerDown) return Promise.resolve({ failure: "http_503" as const });
     state.encrypted.push(token);
     return Promise.resolve({
       ciphertext: `vault:v1:${String(state.encrypted.length)}`,
@@ -273,7 +273,10 @@ describe("/api/v1/rewards/watch", () => {
       idempotencyKey: key,
     });
     expect(down.statusCode).toBe(503);
-    expect(code(down.body).code).toBe("REWARDS_WATCH_UNAVAILABLE");
+    expect(code(down.body)).toMatchObject({
+      code: "REWARDS_WATCH_UNAVAILABLE",
+      details: { reason: "signer", cause: "http_503" },
+    });
     expect(down.body).not.toContain(token);
     expect(await rowCount(t.userId)).toBe(0);
     // Chưa ghi gì: key được giải phóng, gửi lại cùng key khi signer đã lên thì chạy.
@@ -283,6 +286,40 @@ describe("/api/v1/rewards/watch", () => {
       idempotencyKey: key,
     });
     expect(retry.statusCode).toBe(200);
+  });
+
+  it("keeps the gateway sub-code and logs every failed enable without the token or wallet (#582)", async () => {
+    const t = await trader();
+    state.summary = { kind: "error", code: "http_status", status: 403 };
+    const token = fakeToken();
+    const logsBefore = env.logs.length;
+    const res = await t.client.request("POST", "/api/v1/rewards/watch", {
+      body: { token, address: t.address },
+    });
+    expect(res.statusCode).toBe(503);
+    const body = code(res.body);
+    expect(body).toMatchObject({
+      code: "REWARDS_WATCH_UNAVAILABLE",
+      details: { reason: "gateway", cause: "http_status", status: 403 },
+    });
+
+    // 4xx cũng có dòng log (error handler chỉ log 5xx).
+    state.summary = { kind: "unauthorized" };
+    await t.client.request("POST", "/api/v1/rewards/watch", {
+      body: { token, address: t.address },
+    });
+
+    const lines = env.logs
+      .slice(logsBefore)
+      .filter((l) => l.includes("rewards watch: enable failed"));
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('"cause":"http_status"');
+    expect(lines[1]).toContain('"code":"REWARDS_TOKEN_INVALID"');
+    // reqId của dòng log = traceId trả cho web.
+    expect(lines[0]).toContain(`"reqId":"${body.traceId}"`);
+    const all = env.logs.slice(logsBefore).join("\n");
+    expect(all).not.toContain(token);
+    expect(all.toLowerCase()).not.toContain(t.address.toLowerCase());
   });
 
   it("reports paused when the token expired or the wallet changed", async () => {

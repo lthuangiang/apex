@@ -149,10 +149,33 @@ PREV="${2:-}"
 cd /opt/drift
 if grep -q '^DRIFT_TAG=' .env; then sed -i "s/^DRIFT_TAG=.*/DRIFT_TAG=$TAG/" .env; else echo "DRIFT_TAG=$TAG" >> .env; fi
 echo "DRIFT_TAG=$(sed -n 's/^DRIFT_TAG=//p' .env)"
+# #582: khoảng trắng sau `\` nối dòng (thường do chép tay compose) làm script trong `configs` (vault-init…) lỗi cú
+# pháp mà compose không báo. Chỉ in số dòng, không in nội dung.
+BAD_CONT="$(grep -nE '\\[[:space:]]+$' docker-compose.yml | cut -d: -f1 | paste -sd, - || true)"
+if [ -n "$BAD_CONT" ]; then
+  echo "ERROR: docker-compose.yml has whitespace after a line-continuation backslash on line(s) $BAD_CONT; fix before deploying" >&2
+  exit 1
+fi
 docker compose pull
 docker compose run --rm migrate
 docker compose up -d
 docker compose ps
+# #582: vault-init chết (lỗi script) thì không ghi policy và không tự unseal Vault, mà mọi app vẫn "Up". Chờ nó
+# healthy (file /tmp/ready) tối đa ~2 phút; không được thì báo lỗi to và thoát khác 0 (app mới vẫn chạy, chưa dọn
+# image). Log in ra đã bỏ mọi dòng có token / unseal / root.
+VI_STATE=""
+for _ in $(seq 1 24); do
+  VI_ID="$(docker compose ps -q vault-init)"
+  VI_STATE="$( [ -n "$VI_ID" ] && docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$VI_ID" || echo missing)"
+  [ "$VI_STATE" = healthy ] && break
+  sleep 5
+done
+if [ "$VI_STATE" != healthy ]; then
+  echo "ERROR: vault-init is '$VI_STATE', not healthy: Vault policy / auto-unseal may be broken (docs/DEPLOY.md 2.23)" >&2
+  docker compose logs --no-color --tail 40 vault-init 2>&1 | grep -viE 'token|unseal key|root' | tail -15 >&2
+  exit 1
+fi
+echo "vault-init: healthy"
 # Dọn (DEC-214): chỉ xoá image DRIFT không thuộc tag hiện tại hay tag liền trước (rollback một bản không
 # phải tải lại), rồi layer treo. Không đụng image hạ tầng (postgres, redis, nats, vault, traefik…), không prune toàn bộ.
 IMAGE="$(sed -n 's/^DRIFT_IMAGE=//p' .env | tail -n 1)"
