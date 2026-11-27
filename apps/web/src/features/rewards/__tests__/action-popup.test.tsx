@@ -121,7 +121,7 @@ function jobRoute(base: Record<string, unknown>, statuses: string[]): Reply {
 }
 
 beforeEach(() => {
-  sessionStorage.clear();
+  localStorage.clear();
   state.master = MASTER;
   state.wallet = MASTER;
   state.signer = undefined;

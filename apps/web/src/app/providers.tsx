@@ -9,7 +9,7 @@ import { ApiError } from "@/lib/api";
 import { wagmiConfig } from "@/lib/wagmi";
 
 /**
- * Phiên hết hạn hoặc bị thu hồi (api trả UNAUTHENTICATED): xoá token rewards của tab (DEC-397) rồi về trang đăng ký /
+ * Phiên hết hạn hoặc bị thu hồi (api trả UNAUTHENTICATED): xoá token rewards của trình duyệt (DEC-401) rồi về trang đăng ký /
  * đăng nhập.
  */
 function onApiError(error: unknown) {

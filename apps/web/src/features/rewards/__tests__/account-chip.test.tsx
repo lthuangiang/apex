@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { NextIntlClientProvider } from "next-intl";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
 import { AccountChip } from "../components/rewards-page";
@@ -20,9 +20,14 @@ import { MASTER } from "./gateway-fixtures";
 const WITH_EXP = "h.eyJleHAiOiAxNzk2OTcyNTIwLCAic3ViIjogIngifQ.s";
 const NO_EXP = "h.eyJzdWIiOiAieCJ9.s";
 
+// Token quá `exp` bị xoá lúc đọc (DEC-401): ghim "bây giờ" trước hạn của WITH_EXP để test không hỏng theo lịch.
+beforeEach(() => {
+  vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 10, 27));
+});
 afterEach(() => {
   cleanup();
   clearAllRewardsTokens();
+  vi.restoreAllMocks();
 });
 
 function show(onSignOut = vi.fn()) {

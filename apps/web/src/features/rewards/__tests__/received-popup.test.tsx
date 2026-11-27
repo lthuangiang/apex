@@ -146,7 +146,7 @@ beforeEach(() => {
   srv.watch = null;
   srv.notes = undefined;
   srv.reads = [];
-  sessionStorage.clear();
+  localStorage.clear();
   localStorage.clear();
   state.master = MASTER;
   state.wallet = MASTER;

@@ -64,7 +64,7 @@ function renderPage() {
 }
 
 beforeEach(() => {
-  sessionStorage.clear();
+  localStorage.clear();
   state.role = "team";
   state.rewards = false;
   state.wallet = undefined;

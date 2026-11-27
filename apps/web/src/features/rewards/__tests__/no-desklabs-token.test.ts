@@ -44,7 +44,7 @@ function fakeGateway() {
 afterEach(() => {
   vi.unstubAllGlobals();
   resetRewardsRateLimit();
-  sessionStorage.clear();
+  localStorage.clear();
 });
 
 describe("rewards token never reaches DeskLabs", () => {

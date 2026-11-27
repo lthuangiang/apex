@@ -8,7 +8,7 @@ import {
 
 // #548: trang /rewards (bản phác 08–09) không bao giờ cuộn ngang ở 1024 / 1280 / 1440 (project) và 390, cả khi chưa ký
 // (khối mời ký + dữ liệu công khai) lẫn khi đã ký (tab SoPoints, bảng tuần cuộn trong khung riêng). API DeskLabs và
-// gateway SoDEX rewards đều giả; token là chuỗi giả trong sessionStorage. `REWARDS_SHOTS=dir` thì lưu ảnh để đối chiếu.
+// gateway SoDEX rewards đều giả; token là chuỗi giả trong localStorage. `REWARDS_SHOTS=dir` thì lưu ảnh để đối chiếu.
 
 async function open(page: Page, baseURL: string | undefined, signedIn: boolean) {
   await page
@@ -67,7 +67,7 @@ async function open(page: Page, baseURL: string | undefined, signedIn: boolean) 
   if (signedIn)
     await page.addInitScript(
       ([k, v]) => {
-        sessionStorage.setItem(k, v);
+        localStorage.setItem(k, v);
       },
       [`desklabs.rewards.jwt.${MASTER.toLowerCase()}`, FAKE_TOKEN] as const,
     );

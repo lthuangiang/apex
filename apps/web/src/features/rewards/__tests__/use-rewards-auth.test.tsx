@@ -40,7 +40,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 beforeEach(() => {
-  sessionStorage.clear();
+  localStorage.clear();
   wallet.address = undefined;
 });
 afterEach(() => {
