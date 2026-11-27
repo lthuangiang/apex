@@ -577,7 +577,7 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 - **Mở cho mọi user (2026-11-27, DEC-397 bổ sung):** mặc định đổi sang `true`. Từ đó biến chỉ còn là **nút tắt khẩn** khi gateway SoDEX có sự cố: `false` thì user thường không thấy Rewards (sidebar, Overview, `/rewards` như trước), team vẫn thấy.
 - Mẫu `deploy/server/docker-compose.yml` có dòng `REWARDS_ENABLED: ${REWARDS_ENABLED:-true}` trong khối `environment` của `api`. **Compose trên VPS đang có `${REWARDS_ENABLED:-false}`** (theo mẫu cũ): khi deploy bản mở Rewards phải đặt `REWARDS_ENABLED=true` trong `/opt/drift/.env` hoặc sửa dòng compose thành `:-true`, rồi `cd /opt/drift && docker compose up -d api`; nếu không, Rewards vẫn tắt với user thường.
 - Bật / tắt: đặt `REWARDS_ENABLED=true` / `false` trong `/opt/drift/.env`, rồi `docker compose up -d api`. Web nhận giá trị mới khi trình duyệt tải lại `/features` (tối đa ~1 phút).
-- **Trang chẩn đoán `/admin/rewards-debug`** (chỉ role team, không có mục sidebar) chạy **cả khi công tắc tắt**: chủ sản phẩm thử bằng ví thật trên prod trước khi mở. Token ký ví chỉ nằm trong trình duyệt (sessionStorage); server DeskLabs không nhận, không log.
+- **Trang chẩn đoán `/admin/rewards-debug`** (chỉ role team, không có mục sidebar) chạy **cả khi công tắc tắt**: chủ sản phẩm thử bằng ví thật trên prod trước khi mở. Token ký ví chỉ nằm trong trình duyệt (localStorage tới khi `exp` hết hạn, DEC-401; trước đó là sessionStorage); server DeskLabs không nhận (trừ luồng báo box mới của DEC-398), không log.
 - Không migration. Không đổi gì ở engine / scheduler.
 
 ### 2.23 Báo box mới SoDEX rewards: cờ `REWARDS_WATCH_ENABLED` và migration `0063_rewards_watch` (#558, DEC-398)
