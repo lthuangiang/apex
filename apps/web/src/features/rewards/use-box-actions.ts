@@ -41,7 +41,7 @@ import {
   type PostOutcome,
 } from "./actions";
 import { RewardsError, rewardsRequest } from "./client";
-import { REWARDS_KEY, type RewardsSession } from "./queries";
+import { REWARDS_KEY, rewardsKeys, type RewardsSession } from "./queries";
 
 // Điều khiển popup Claim / Open / Merge (#551). Claim chỉ cần JWT; open / merge: sign-params mới → ví ký EIP-712 (chuyển
 // ví sang ValueChain, chỉ đổi mạng, không gas) → POST một lần. Không bao giờ gửi lại POST không rõ kết quả (quy tắc 7).
@@ -203,7 +203,7 @@ export function useBoxActions(auth: Auth) {
     let treasureBox: string | null | undefined = null;
     try {
       const meta = await qc.query({
-        queryKey: [...REWARDS_KEY, "public", "meta"],
+        queryKey: rewardsKeys.meta,
         queryFn: ({ signal }) =>
           rewardsRequest({ path: "lottery/meta", schema: lotteryMetaSchema, signal }),
         staleTime: 5 * 60_000,

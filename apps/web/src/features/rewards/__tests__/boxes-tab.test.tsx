@@ -128,17 +128,21 @@ describe("Blind Boxes › ready to claim", () => {
 
 describe("Blind Boxes › Backpack (mockup 10)", () => {
   it("shows levels with merge progress, boxes newest first with From labels, and the voucher note", async () => {
+    const user = userEvent.setup();
     show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     const common = screen.getAllByText(/Merge 10 → 1/)[0]?.closest("li");
     expect(common).toHaveTextContent("20");
     expect(within(common as HTMLElement).getByText("2 merges ready")).toBeInTheDocument();
     expect(screen.getByText(/5 more to merge/)).toBeInTheDocument();
     expect(screen.getByText(/Merge 4 → 1/)).toBeInTheDocument();
+    // Cấp rỗng: hình mờ + "No boxes at this level.", không có số 0 lớn.
     const superRare = screen.getByText("SuperRare").closest("li") as HTMLElement;
-    expect(within(superRare).getByText("Can't be merged")).toBeInTheDocument();
     expect(within(superRare).getByText("No boxes at this level.")).toBeInTheDocument();
-    // Danh sách: mới nhất trước; nhãn From PM duyệt, giá trị lạ hiện nguyên.
+    expect(within(superRare).queryByText("0")).toBeNull();
+    // Danh sách: lưới mặc định; chuyển sang bảng: mới nhất trước; nhãn From PM duyệt, giá trị lạ hiện nguyên.
+    expect(screen.getByRole("button", { name: "Grid" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Table" }));
     const table = screen.getByRole("table");
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows.map((r) => r.querySelector("td")?.textContent)).toEqual([
@@ -164,7 +168,7 @@ describe("Blind Boxes › Backpack (mockup 10)", () => {
 
   it("reads further pages with limit / offset and stops when no new boxes come back", async () => {
     show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     const calls = gw.calls.filter((c) => c.path === "lottery/boxes");
     expect(calls[0]?.url).toContain("limit=200");
     expect(calls[0]?.url).toContain("offset=0");
@@ -242,7 +246,86 @@ describe("Blind Boxes › Backpack (mockup 10)", () => {
 
   it("passes axe", async () => {
     const { container } = show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
+    expect((await axe.run(container)).violations).toEqual([]);
+  });
+});
+
+describe("Blind Boxes › polish (#575, DEC-400)", () => {
+  const META = {
+    body: {
+      code: 0,
+      data: {
+        rules: {
+          mergeSize: { Common: 10, Uncommon: 10, Rare: 4, SuperRare: 0 },
+          limits: { maxTreasureOpen: 100, maxBoxOpen: 30 },
+          rewardBands: [
+            { level: "Common", minUsd: 1, maxUsd: 8 },
+            { level: "Uncommon", minUsd: 10.2, maxUsd: 215 },
+            { level: "Rare", minUsd: 103, maxUsd: 1325 },
+          ],
+          tradeBoxLevels: ["Common", "Uncommon"],
+        },
+      },
+    },
+  };
+
+  it("level cards: box art per level, Reward range where SoDEX sets a band, From trading by tradeBoxLevels", async () => {
+    gateway({ "lottery/meta": META });
+    const { container } = show();
+    await screen.findByRole("button", { name: "Grid" });
+    const card = (level: string) =>
+      screen
+        .getAllByText(level)
+        .map((e) => e.closest("li"))
+        .find((li) => li?.querySelector(".bx")) as HTMLElement;
+    await within(card("Common")).findByText("$1.00 – $8.00");
+    expect(within(card("Common")).getByText("Reward range · set by SoDEX")).toBeInTheDocument();
+    expect(within(card("Common")).getByText("From trading")).toBeInTheDocument();
+    expect(within(card("Common")).getByText("boxes")).toBeInTheDocument();
+    expect(within(card("Rare")).getByText("$103.00 – $1,325.00")).toBeInTheDocument();
+    expect(within(card("Rare")).queryByText("From trading")).toBeNull();
+    // SuperRare: không có band → không có dòng; cấp rỗng → hình mờ.
+    expect(within(card("SuperRare")).queryByText("Reward range · set by SoDEX")).toBeNull();
+    expect(card("SuperRare").querySelector(".bx")?.getAttribute("style")).toContain("opacity");
+    expect(card("Common").querySelector(".bx")?.getAttribute("data-kind")).toBe("common");
+    // Không có xác suất.
+    expect(container.textContent).not.toMatch(/%|chance|probability/i);
+  });
+
+  it("no rewardBands in meta: no Reward range anywhere", async () => {
+    show();
+    await screen.findByRole("button", { name: "Grid" });
+    expect(screen.queryByText("Reward range · set by SoDEX")).toBeNull();
+  });
+
+  it("box list is a grid by default with box art per level, and switches to a table", async () => {
+    const user = userEvent.setup();
+    show();
+    await screen.findByRole("button", { name: "Grid" });
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByRole("img", { name: "Rare" })).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: "Common" })).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "Table" }));
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Table" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("ready block shows unclaimed (Mystery) boxes; nothing at all when total is 0", async () => {
+    show();
+    await screen.findByText("3 boxes ready to claim");
+    expect(screen.getByRole("img", { name: "Unclaimed" })).toHaveAttribute("data-kind", "mystery");
+    cleanup();
+    gateway({ "lottery/treasures": { body: { code: 0, data: { total: 0, maxPerOpen: 100 } } } });
+    show();
+    await screen.findByRole("button", { name: "Grid" });
+    expect(screen.queryByRole("img", { name: "Unclaimed" })).toBeNull();
+  });
+
+  it("passes axe with box art and ranges", async () => {
+    gateway({ "lottery/meta": META });
+    const { container } = show();
+    await screen.findByText("$1.00 – $8.00");
     expect((await axe.run(container)).violations).toEqual([]);
   });
 });
@@ -250,7 +333,7 @@ describe("Blind Boxes › Backpack (mockup 10)", () => {
 describe("Blind Boxes › History (mockup 12)", () => {
   it("lists every kind read-only, with reward totals per asset and no hard-coded assets", async () => {
     show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     await openSub("History");
     expect(await screen.findByText("Rewards from opened boxes")).toBeInTheDocument();
     expect(await screen.findByText("vsoUSDC")).toBeInTheDocument();
@@ -276,7 +359,7 @@ describe("Blind Boxes › History (mockup 12)", () => {
   it("filters by kind", async () => {
     const user = userEvent.setup();
     show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     await openSub("History");
     await screen.findByText("Opened");
     await user.click(screen.getByRole("radio", { name: "Transfers" }));
@@ -304,7 +387,7 @@ describe("Blind Boxes › History (mockup 12)", () => {
     });
     const user = userEvent.setup();
     show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     await openSub("History");
     expect(await screen.findByText("#300000 · Common")).toBeInTheDocument();
     expect(screen.queryByText("#300118 · Common")).toBeNull();
@@ -320,7 +403,7 @@ describe("Blind Boxes › History (mockup 12)", () => {
 
   it("passes axe", async () => {
     const { container } = show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     await openSub("History");
     await screen.findByText("Opened");
     expect((await axe.run(container)).violations).toEqual([]);
@@ -330,7 +413,7 @@ describe("Blind Boxes › History (mockup 12)", () => {
 describe("Blind Boxes › Weekly draw (mockup 13, round 10 shape)", () => {
   it("shows the round, raw status, counts, winning tickets and prize boxes from the ledger separately", async () => {
     show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     await openSub("Weekly draw");
     expect(await screen.findByRole("heading", { name: "Round 10" })).toBeInTheDocument();
     expect(screen.getByText("distributed")).toBeInTheDocument();
@@ -358,7 +441,7 @@ describe("Blind Boxes › Weekly draw (mockup 13, round 10 shape)", () => {
       },
     });
     show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     await openSub("Weekly draw");
     expect(await screen.findByText("snapshot")).toBeInTheDocument();
     expect(screen.queryByText(/results:/)).toBeNull();
@@ -380,14 +463,14 @@ describe("Blind Boxes › Weekly draw (mockup 13, round 10 shape)", () => {
       },
     });
     show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     await openSub("Weekly draw");
     expect(await screen.findByText("1 of your 1 ticket won")).toBeInTheDocument();
   });
 
   it("passes axe", async () => {
     const { container } = show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     await openSub("Weekly draw");
     await screen.findByText("1 of your 3 tickets won");
     expect((await axe.run(container)).violations).toEqual([]);
@@ -397,7 +480,7 @@ describe("Blind Boxes › Weekly draw (mockup 13, round 10 shape)", () => {
 describe("Blind Boxes › Live feed (mockup 14)", () => {
   it("lists SoDEX's feed with wallets as SoDEX shortened them", async () => {
     show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     await openSub("Live feed");
     expect(
       await screen.findByText(
@@ -411,7 +494,7 @@ describe("Blind Boxes › Live feed (mockup 14)", () => {
   it("empty history: says so", async () => {
     gateway({ "lottery/ledger": { body: { code: 0, data: { total: 0, items: [] } } } });
     show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     await openSub("History");
     expect(await screen.findByText("No box history yet.")).toBeInTheDocument();
   });
@@ -419,7 +502,7 @@ describe("Blind Boxes › Live feed (mockup 14)", () => {
   it("empty feed", async () => {
     gateway({ "lottery/feed": { body: { code: 0, data: { items: [] } } } });
     show();
-    await screen.findByRole("table");
+    await screen.findByRole("button", { name: "Grid" });
     await openSub("Live feed");
     expect(await screen.findByText("No big opens to show right now.")).toBeInTheDocument();
   });

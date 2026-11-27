@@ -2,6 +2,7 @@
 
 import { lotteryRewardByAssetSchema, type LotteryBox, type LotteryLedgerItem } from "@drift/shared";
 import { Button, Skeleton } from "@drift/ui";
+import { LayoutGrid, List } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useId, useState, type ReactNode } from "react";
 
@@ -15,8 +16,10 @@ import {
   formatDayTime,
   formatTokenAmount,
   formatUsd,
+  fromTrading,
   levelDotClass,
   mintedMs,
+  rewardRange,
 } from "../format";
 import { REWARDS_RULES_URL, SODEX_BLIND_BOX_URL } from "../links";
 import {
@@ -27,6 +30,7 @@ import {
   useRewardsDrawEntries,
   useRewardsHistory,
   useRewardsLedger,
+  useRewardsMeta,
   useRewardsPfps,
   useRewardsRetry,
   useRewardsTreasures,
@@ -35,6 +39,7 @@ import {
 import { pickOfJob, useBoxActions } from "../use-box-actions";
 
 import { DoneStrip } from "./action-popup";
+import { BoxArt, boxKindOf } from "./box-art";
 import { CARD, CardUnavailable, FeedList, Value } from "./public-cards";
 import { ACTIVE, JobLine } from "./rewards-card";
 import { RewardsProblem } from "./rewards-states";
@@ -145,6 +150,15 @@ function ReadyStrip({ session }: { session: RewardsSession }) {
   };
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-accent-tint bg-hero px-5 py-4">
+      {/* Box chờ claim chưa có cấp: hình Mystery (dấu "?"). */}
+      <div className="relative h-[72px] w-[100px] flex-none">
+        <span className="absolute top-2 left-0">
+          <BoxArt level={null} size={64} label={t("unclaimed")} />
+        </span>
+        <span className="absolute top-0 left-7">
+          <BoxArt level={null} size={64} float />
+        </span>
+      </div>
       <div className="flex min-w-0 flex-[1_1_280px] flex-col gap-1">
         <b className="text-lg">{t("ready", { count: treasures.total })}</b>
         <span className="text-sm text-ink-2">{t("readyBody")}</span>
@@ -169,6 +183,114 @@ function ReadyStrip({ session }: { session: RewardsSession }) {
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Thẻ một cấp box (bản phác polish 01, 02): hình box theo cấp trên nền ánh màu cấp, số box, tiến độ merge theo màu cấp,
+ * "Reward range · set by SoDEX" (từ `rules.rewardBands`, không có band thì không hiện), nhãn "From trading" theo
+ * `rules.tradeBoxLevels`, Open / Merge. Cấp không có box: hình mờ + "No boxes at this level." (không số 0 lớn).
+ */
+function LevelCard({
+  level: l,
+  session,
+  boxes,
+  busy,
+  maxPerOpen,
+  range,
+  trading,
+}: {
+  level: { level: string; count: number; mergeSize: number; mergesAvailable: number };
+  session: RewardsSession;
+  boxes: readonly LotteryBox[];
+  busy: ReadonlySet<number>;
+  maxPerOpen: number;
+  range: string | null;
+  trading: boolean;
+}) {
+  const t = useTranslations("rewards.boxes");
+  const tl = useTranslations("rewards.boxes.level");
+  const kind = boxKindOf(l.level);
+  const has = l.count > 0;
+  const left = l.mergeSize > 0 ? Math.max(0, l.mergeSize - l.count) : 0;
+  const pct =
+    l.mergeSize <= 0
+      ? 0
+      : l.mergesAvailable > 0
+        ? 100
+        : Math.min(100, (l.count / l.mergeSize) * 100);
+  return (
+    <li
+      className="flex flex-col gap-2.5 overflow-hidden rounded-card border border-border px-[18px] pt-4 pb-[18px]"
+      style={
+        has
+          ? {
+              background: `radial-gradient(120% 70% at 50% 0%, var(--lvl-${kind}-tint), var(--surface) 70%)`,
+              borderColor: `color-mix(in srgb, var(--lvl-${kind}) 35%, var(--border))`,
+              boxShadow: `0 10px 30px color-mix(in srgb, var(--lvl-${kind}) 14%, transparent)`,
+            }
+          : { background: "var(--surface-2)" }
+      }
+    >
+      <div className="bx-tilt flex justify-center pt-0.5 pb-1">
+        <BoxArt level={l.level} size={110} faded={!has} float={has} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Level level={l.level} />
+        {trading ? (
+          <span className="ml-auto rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] font-bold text-ink-2">
+            {t("fromTrading")}
+          </span>
+        ) : null}
+      </div>
+      {has ? (
+        <>
+          <span className="flex items-baseline gap-1.5 tabular-nums">
+            <b className="text-[28px] leading-none font-extrabold">{formatCount(l.count)}</b>
+            <span className="text-sm text-ink-2">{tl("unit", { n: l.count })}</span>
+          </span>
+          {l.mergeSize <= 0 ? (
+            <span className="text-sm text-ink-2">{tl("cantMerge")}</span>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-ink-2 tabular-nums">
+                {tl("merge", { size: l.mergeSize })} ·{" "}
+                {l.mergesAvailable > 0 ? (
+                  <b className="text-ink">{tl("ready", { n: l.mergesAvailable })}</b>
+                ) : (
+                  tl("toMerge", { n: left })
+                )}
+              </span>
+              <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-ink/[0.07]">
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${String(pct)}%`, background: `var(--lvl-${kind})` }}
+                />
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <span className="text-sm text-ink-2">{tl("none")}</span>
+      )}
+      {range === null ? null : (
+        <div className="flex flex-col gap-0.5 border-t border-dashed border-border-input pt-2">
+          <span className="text-xs text-ink-2">{t("rewardRange")}</span>
+          <b className="text-[13px] tabular-nums">{range}</b>
+        </div>
+      )}
+      {has ? (
+        <LevelActions
+          session={session}
+          level={l.level}
+          mergeSize={l.mergeSize}
+          canMerge={l.mergesAvailable > 0}
+          boxes={boxes}
+          busy={busy}
+          maxPerOpen={maxPerOpen}
+        />
+      ) : null}
+    </li>
   );
 }
 
@@ -368,12 +490,14 @@ export function BoxesTab({ session, tz }: { session: RewardsSession; tz: string 
 
 function Backpack({ session, tz }: { session: RewardsSession; tz: string }) {
   const t = useTranslations("rewards.boxes");
-  const tl = useTranslations("rewards.boxes.level");
   const tr = useTranslations("rewards.page");
   const from = useFromLabel();
   const boxes = useRewardsBoxes(session);
   const jobs = useRewardsActiveJobs(session);
+  const meta = useRewardsMeta();
   const listId = useId();
+  // Danh sách box: lưới thẻ mặc định, chuyển được sang bảng (bản phác polish 01).
+  const [view, setView] = useState<"grid" | "table">("grid");
   // Box nằm trong job chưa xong (open: boxes[], merge: result.consumedTokenIds).
   const busy = new Set<number>();
   for (const j of jobs.data?.jobs ?? []) {
@@ -403,76 +527,59 @@ function Backpack({ session, tz }: { session: RewardsSession; tz: string }) {
     <div className="flex flex-col gap-5">
       {data.byLevel.length === 0 ? null : (
         <ul className="m-0 grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 xl:grid-cols-4">
-          {data.byLevel.map((l) => {
-            const left = l.mergeSize > 0 ? Math.max(0, l.mergeSize - l.count) : 0;
-            const pct =
-              l.mergeSize <= 0
-                ? 0
-                : l.mergesAvailable > 0
-                  ? 100
-                  : Math.min(100, (l.count / l.mergeSize) * 100);
-            return (
-              <li
-                key={l.level}
-                className={`flex flex-col gap-2.5 rounded-tile border border-border p-4 ${l.count === 0 ? "bg-surface-2" : "bg-surface"}`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <Level level={l.level} />
-                  <span className="text-3xl leading-none font-extrabold tabular-nums">
-                    {formatCount(l.count)}
-                  </span>
-                </div>
-                {l.mergeSize <= 0 ? (
-                  <span className="text-sm text-ink-2">{tl("cantMerge")}</span>
-                ) : (
-                  <>
-                    <span className="text-sm text-ink-2 tabular-nums">
-                      {tl("merge", { size: l.mergeSize })} ·{" "}
-                      {l.mergesAvailable > 0 ? (
-                        <b className="text-ink">{tl("ready", { n: l.mergesAvailable })}</b>
-                      ) : (
-                        tl("toMerge", { n: left })
-                      )}
-                    </span>
-                    <div
-                      aria-hidden="true"
-                      className="h-1.5 overflow-hidden rounded-full bg-surface-2"
-                    >
-                      <div
-                        className="h-full rounded-full bg-accent"
-                        style={{ width: `${String(pct)}%` }}
-                      />
-                    </div>
-                  </>
-                )}
-                {l.count === 0 ? (
-                  <span className="text-xs text-ink-2">{tl("none")}</span>
-                ) : (
-                  <LevelActions
-                    session={session}
-                    level={l.level}
-                    mergeSize={l.mergeSize}
-                    canMerge={l.mergesAvailable > 0}
-                    boxes={data.boxes}
-                    busy={busy}
-                    maxPerOpen={data.maxPerOpen}
-                  />
-                )}
-              </li>
-            );
-          })}
+          {data.byLevel.map((l) => (
+            <LevelCard
+              key={l.level}
+              level={l}
+              session={session}
+              boxes={data.boxes}
+              busy={busy}
+              maxPerOpen={data.maxPerOpen}
+              range={rewardRange(meta.data?.rules.rewardBands, l.level)}
+              trading={fromTrading(meta.data?.rules.tradeBoxLevels, l.level)}
+            />
+          ))}
         </ul>
       )}
       <div className="flex flex-wrap items-start gap-5">
         <section aria-labelledby={listId} className={`${CARD} flex-[2_1_520px]`}>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 id={listId} className="m-0 text-lg font-extrabold">
-              {t("list.title")}
-            </h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <h2 id={listId} className="m-0 text-lg font-extrabold">
+                {t("list.title")}
+              </h2>
+              {sorted.length === 0 ? null : (
+                <span className="text-xs font-semibold text-ink-2 tabular-nums">
+                  {t("list.count", { count: formatCount(data.total) ?? "" })}
+                </span>
+              )}
+            </div>
             {sorted.length === 0 ? null : (
-              <span className="text-xs text-ink-2 tabular-nums">
-                {t("list.count", { count: formatCount(data.total) ?? "" })}
-              </span>
+              <div
+                role="group"
+                aria-label={t("view")}
+                className="inline-flex gap-0.5 rounded-[10px] bg-surface-2 p-[3px]"
+              >
+                {(["grid", "table"] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    aria-pressed={view === k}
+                    aria-label={t(k)}
+                    title={t(k)}
+                    onClick={() => {
+                      setView(k);
+                    }}
+                    className={`flex h-9 w-10 items-center justify-center rounded-[8px] ${view === k ? "bg-surface text-ink shadow-sm" : "text-muted"}`}
+                  >
+                    {k === "grid" ? (
+                      <LayoutGrid aria-hidden="true" size={16} />
+                    ) : (
+                      <List aria-hidden="true" size={16} />
+                    )}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
           {sorted.length === 0 ? (
@@ -481,6 +588,35 @@ function Backpack({ session, tz }: { session: RewardsSession; tz: string }) {
               <span className="text-ink-2">{t("empty.body")}</span>
               <ExternalLink href={REWARDS_RULES_URL}>{tr("rules")}</ExternalLink>
             </div>
+          ) : view === "grid" ? (
+            <ul className="m-0 grid max-h-[560px] list-none grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3 overflow-auto p-0">
+              {sorted.map((b) => {
+                const ms = mintedMs(b.mintedAt);
+                return (
+                  <li
+                    key={b.tokenId}
+                    className="flex flex-col items-center gap-1.5 rounded-tile border border-border px-3 py-3.5 text-center tabular-nums"
+                    style={{
+                      background: `linear-gradient(180deg, var(--lvl-${boxKindOf(b.level)}-tint), var(--surface) 60%)`,
+                    }}
+                  >
+                    <BoxArt level={b.level} size={64} label={b.level} />
+                    <b className="text-[15px]">#{b.tokenId}</b>
+                    <span className="text-xs text-ink-2">
+                      <Value text={from.source(b.source)} />
+                    </span>
+                    <span className="text-xs text-ink-2">
+                      <Value text={ms === null ? null : formatDayTime(ms, tz)} />
+                    </span>
+                    {busy.has(b.tokenId) ? (
+                      <span className="rounded-full bg-accent-tint px-2 py-0.5 text-[11px] font-extrabold text-accent-ink">
+                        {t("list.inOpen")}
+                      </span>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
           ) : (
             <div className="max-h-[520px] overflow-auto">
               <table className="w-full border-collapse text-sm whitespace-nowrap tabular-nums">

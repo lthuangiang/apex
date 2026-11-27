@@ -171,13 +171,13 @@ export function browserZone(): string {
 export function levelDotClass(level: string): string {
   switch (level.toLowerCase().replace(/[\s_-]/g, "")) {
     case "common":
-      return "bg-muted";
+      return "bg-lvl-common";
     case "uncommon":
-      return "bg-pos-dot";
+      return "bg-lvl-uncommon";
     case "rare":
-      return "bg-accent";
+      return "bg-lvl-rare";
     case "superrare":
-      return "bg-unknown";
+      return "bg-lvl-superrare";
     default:
       return "bg-border-input";
   }
@@ -191,4 +191,36 @@ export function mintedMs(v: NumLike | null | undefined): number | null {
   if (Number.isFinite(n)) return n < 1e12 ? n * 1000 : n;
   const ms = Date.parse(v);
   return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * "Reward range · set by SoDEX" của một cấp (#575, DEC-400) từ `rules.rewardBands`: "$1.00 – $8.00". Không có band cho cấp
+ * đó, hoặc band thiếu / lệch số → null (không hiện dòng). Không bao giờ hiện xác suất.
+ */
+export function rewardRange(
+  bands:
+    | readonly {
+        level: string;
+        minUsd?: NumLike | null | undefined;
+        maxUsd?: NumLike | null | undefined;
+      }[]
+    | null
+    | undefined,
+  level: string | null | undefined,
+): string | null {
+  if (level == null || bands == null) return null;
+  const key = level.toLowerCase();
+  const b = bands.find((x) => x.level.toLowerCase() === key);
+  if (b === undefined) return null;
+  const min = formatUsdAmount(b.minUsd);
+  const max = formatUsdAmount(b.maxUsd);
+  return min === null || max === null ? null : `${min} – ${max}`;
+}
+
+/** Cấp có trong `rules.tradeBoxLevels` → nhãn "From trading". */
+export function fromTrading(
+  levels: readonly string[] | null | undefined,
+  level: string | null | undefined,
+): boolean {
+  return level != null && (levels ?? []).some((l) => l.toLowerCase() === level.toLowerCase());
 }

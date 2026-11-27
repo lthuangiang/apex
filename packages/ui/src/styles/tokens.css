@@ -132,4 +132,60 @@
   --shadow-card: 0 8px 24px rgb(20 26 51 / 0.07);
 
   --font-sans: var(--font-jakarta, "Plus Jakarta Sans"), ui-sans-serif, system-ui, sans-serif;
+
+  /* SoDEX rewards (#575, DEC-400, docs/mockups/rewards/polish): màu cấp box (chấm, thanh merge, ánh nền thẻ) và các mặt
+     của hình box tự vẽ theo cấp; Mystery = box chưa claim (chưa có cấp). Common là kem (khớp hình box), không còn xám. */
+  --lvl-common: #d9b86a;
+  --lvl-uncommon: #16a05a;
+  --lvl-rare: #2e62e8;
+  --lvl-superrare: #7a4cc8;
+  --lvl-mystery: #a9b5e0;
+  --lvl-common-tint: #fff8e6;
+  --lvl-uncommon-tint: #e6f8ee;
+  --lvl-rare-tint: #e8efff;
+  --lvl-superrare-tint: #f3ebff;
+  --lvl-mystery-tint: #eef1fa;
+  --box-gold: #f4c84a;
+  --box-shadow: rgb(20 26 51 / 0.1);
+  --box-shine: #ffffff;
+  --box-common-top: #fbf3dc;
+  --box-common-ll: #f1e3b9;
+  --box-common-lr: #e6d29c;
+  --box-common-l: #efe0b3;
+  --box-common-r: #e2cb8f;
+  --box-common-edge: #c9ab64;
+  --box-common-mark: #a7873f;
+  --box-common-glow: #f3d98c;
+  --box-uncommon-top: #d9f6e4;
+  --box-uncommon-ll: #8fe0b1;
+  --box-uncommon-lr: #4fc583;
+  --box-uncommon-l: #7dd9a4;
+  --box-uncommon-r: #35ad6c;
+  --box-uncommon-edge: #1e8a50;
+  --box-uncommon-mark: #ffffff;
+  --box-uncommon-glow: #5fdc98;
+  --box-rare-top: #dfe9ff;
+  --box-rare-ll: #8fb0ff;
+  --box-rare-lr: #4d7ff0;
+  --box-rare-l: #7aa1ff;
+  --box-rare-r: #2e62e8;
+  --box-rare-edge: #1d47b8;
+  --box-rare-mark: #ffffff;
+  --box-rare-glow: #7fa6ff;
+  --box-superrare-top: #efe4ff;
+  --box-superrare-ll: #b18af0;
+  --box-superrare-lr: #8452d8;
+  --box-superrare-l: #a179ea;
+  --box-superrare-r: #6a35c4;
+  --box-superrare-edge: #4b1f96;
+  --box-superrare-mark: #f6d36b;
+  --box-superrare-glow: #c9a0ff;
+  --box-mystery-top: #eef1fa;
+  --box-mystery-ll: #d5dcf2;
+  --box-mystery-lr: #b9c3e6;
+  --box-mystery-l: #cdd5ef;
+  --box-mystery-r: #a9b5e0;
+  --box-mystery-edge: #7f8bb8;
+  --box-mystery-mark: #ffffff;
+  --box-mystery-glow: #b9c3e6;
 }

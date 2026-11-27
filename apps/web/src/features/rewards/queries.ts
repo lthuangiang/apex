@@ -9,6 +9,7 @@ import {
   lotteryJobSchema,
   lotteryJobsSchema,
   lotteryLedgerSchema,
+  lotteryMetaSchema,
   lotteryPfpsSchema,
   lotteryTreasuresSchema,
   sopointsSummarySchema,
@@ -39,6 +40,7 @@ export const rewardsKeys = {
   weekInfo: [...REWARDS_KEY, "public", "week-info"] as const,
   volumeWeights: [...REWARDS_KEY, "public", "volume-weights"] as const,
   feed: [...REWARDS_KEY, "public", "feed"] as const,
+  meta: [...REWARDS_KEY, "public", "meta"] as const,
   /** Dữ liệu theo ví: khoá theo master wallet để đổi tài khoản không lẫn cache. */
   wallet: (address: string) => [...REWARDS_KEY, "wallet", address.toLowerCase()] as const,
   summary: (address: string) => [...rewardsKeys.wallet(address), "summary"] as const,
@@ -122,6 +124,18 @@ export function useRewardsFeed(enabled = true) {
     queryFn: ({ signal }) =>
       rewardsRequest({ path: "lottery/feed", schema: lotteryFeedSchema, signal }),
     refetchInterval: every(REWARDS_REFRESH_MS),
+    enabled,
+  });
+}
+
+/** Luật của chương trình (`lottery/meta`): khoảng thưởng theo cấp, cấp từ giao dịch, contract. Ít đổi: cache 5 phút. */
+export function useRewardsMeta(enabled = true) {
+  return useQuery({
+    ...COMMON,
+    staleTime: 5 * 60_000,
+    queryKey: rewardsKeys.meta,
+    queryFn: ({ signal }) =>
+      rewardsRequest({ path: "lottery/meta", schema: lotteryMetaSchema, signal }),
     enabled,
   });
 }
