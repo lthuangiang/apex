@@ -73,6 +73,16 @@ export function useDisableRewardsWatch() {
 }
 
 /** Lỗi bật: sai ví (token của ví khác) hay lỗi chung (chưa lưu gì). */
+/**
+ * #582: 8 ký tự đầu của `traceId` (UUID ngẫu nhiên của request, không lộ gì) để người dùng gửi team đối chiếu với log api.
+ * null khi lỗi không đến từ api (mạng, chưa ký).
+ */
+export function enableErrorRef(e: unknown): string | null {
+  if (!(e instanceof ApiError)) return null;
+  const id: unknown = e.traceId;
+  return typeof id === "string" && id !== "" ? id.slice(0, 8) : null;
+}
+
 export function enableErrorKind(e: unknown): "wallet" | "no_token" | "failed" {
   if (e instanceof ApiError) {
     if (e.code === "REWARDS_WALLET_MISMATCH") return "wallet";
