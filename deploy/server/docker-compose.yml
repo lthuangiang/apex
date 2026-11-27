@@ -117,7 +117,7 @@ services:
       # #420: chốt chặn bot news_signal mainnet; tắt = tạo / Start / Resume trả 409 (docs/DEPLOY.md mục 2.19).
       SIGNAL_NEWS_BOTS_ENABLED: ${SIGNAL_NEWS_BOTS_ENABLED:-false}
       # #546 / DEC-397: SoDEX rewards cho mọi user (qua /api/v1/features); tắt tới #551, rồi là nút tắt khẩn (DEPLOY 2.22).
-      REWARDS_ENABLED: ${REWARDS_ENABLED:-false}
+      REWARDS_ENABLED: ${REWARDS_ENABLED:-true}
       # #558 / DEC-398: báo box mới SoDEX rewards; cùng giá trị cho api và scheduler. Mặc định tắt (DEPLOY 2.23).
       REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}
       # #558 / DEC-398: aud được phép của JWT rewards (chỉ api); trống = từ chối mọi token (DEPLOY 2.23).
