@@ -309,7 +309,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       reader: rw?.reader ?? {
         getSopointsSummary: () => Promise.resolve({ kind: "error", code: "network" }),
       },
-      signer: rw?.signer ?? { encrypt: () => Promise.resolve(null) },
+      signer: rw?.signer ?? { encrypt: () => Promise.resolve({ failure: "network" as const }) },
     },
   });
   const tg = deps.telegram;

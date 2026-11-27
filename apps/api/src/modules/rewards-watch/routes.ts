@@ -41,10 +41,23 @@ export function registerRewardsWatchRoutes(
       reply,
       auth.userId,
       deps.now(),
-      async () => ({
-        status: 200,
-        body: await enableRewardsWatch(deps, auth.userId, body, request.ip),
-      }),
+      async () => {
+        try {
+          return {
+            status: 200,
+            body: await enableRewardsWatch(deps, auth.userId, body, request.ip),
+          };
+        } catch (error) {
+          // #582: mọi lần bật hỏng đều có một dòng log (kể cả 4xx, error handler chỉ log 5xx). `details` không chứa
+          // token hay địa chỉ ví; `reqId` của dòng log = `traceId` trả cho web.
+          if (error instanceof AppError)
+            request.log.warn(
+              { code: error.code, details: error.details },
+              "rewards watch: enable failed",
+            );
+          throw error;
+        }
+      },
       { fingerprintBody: rewardsTokenFingerprint(body.token, body.address) },
     );
   });

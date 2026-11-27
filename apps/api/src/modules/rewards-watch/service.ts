@@ -18,9 +18,17 @@ import { checkRewardsAud, readRewardsJwtClaims } from "./claims";
 // token, nhờ signer mã hoá (Vault transit `drift-rewards`), lưu ciphertext + hạn vào `rewards_watch`. Không bao giờ log,
 // trả lại hay audit token. Server chỉ đọc gateway qua client chỉ đọc (`@drift/sodex` `RewardsReadClient`).
 
-/** Mã hoá JWT ở signer (CN `api`). null = signer / Vault không làm được (chưa lưu gì). */
+/**
+ * Vì sao signer không mã hoá được (#582): `http_<status>` khi signer trả khác 200 (503 = Vault lỗi / khoá rewards chưa
+ * cấu hình, 403 = CN không được phép), `timeout` / `network` (gồm mTLS), `bad_response` khi body lạ. Không chứa token.
+ */
+export type RewardsSignerFailure = `http_${number}` | "timeout" | "network" | "bad_response";
+
+/** Mã hoá JWT ở signer (CN `api`). `failure` = signer / Vault không làm được (chưa lưu gì). */
 export interface RewardsTokenSigner {
-  encrypt(token: string): Promise<{ ciphertext: string; keyRef: string } | null>;
+  encrypt(
+    token: string,
+  ): Promise<{ ciphertext: string; keyRef: string } | { failure: RewardsSignerFailure }>;
 }
 
 export interface RewardsWatchDeps {
@@ -136,15 +144,20 @@ export async function enableRewardsWatch(
         ...(summary.retryAfterMs === null ? {} : { retryAfterMs: summary.retryAfterMs }),
       });
     case "error":
+      // #582: giữ mã con (network / timeout / http_status / schema / business…) để đọc log là biết nhánh.
       throw new AppError(ErrorCode.rewardsWatchUnavailable, "Couldn't turn on alerts.", {
         reason: "gateway",
+        cause: summary.code,
+        ...(summary.status === undefined ? {} : { status: summary.status }),
+        ...(summary.businessCode === undefined ? {} : { businessCode: summary.businessCode }),
       });
   }
 
   const encrypted = await deps.signer.encrypt(body.token);
-  if (encrypted === null)
+  if ("failure" in encrypted)
     throw new AppError(ErrorCode.rewardsWatchUnavailable, "Couldn't turn on alerts.", {
       reason: "signer",
+      cause: encrypted.failure,
     });
 
   markSideEffect();

@@ -15,6 +15,8 @@ export class ApiError extends Error {
     readonly code: ErrorCode | "NETWORK",
     readonly status: number,
     readonly details: Record<string, unknown> = {},
+    /** `traceId` của response lỗi (= `reqId` trong log api); null khi không có. */
+    readonly traceId: string | null = null,
   ) {
     super(code);
     this.name = "ApiError";
@@ -71,7 +73,12 @@ export async function api<T extends z.ZodType>(
   if (!response.ok) {
     const parsed = errorResponseSchema.safeParse(json);
     if (parsed.success)
-      throw new ApiError(parsed.data.error.code, response.status, parsed.data.error.details);
+      throw new ApiError(
+        parsed.data.error.code,
+        response.status,
+        parsed.data.error.details,
+        parsed.data.error.traceId,
+      );
     throw new ApiError("INTERNAL_ERROR", response.status);
   }
   return schema.parse(json);

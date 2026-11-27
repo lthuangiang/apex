@@ -1,7 +1,7 @@
 import { postJson, type ClientTls } from "@drift/runtime";
 import { z } from "zod";
 
-import type { RewardsTokenSigner } from "../modules/rewards-watch/service";
+import type { RewardsSignerFailure, RewardsTokenSigner } from "../modules/rewards-watch/service";
 import type { SignerClient } from "../modules/sodex/service";
 
 // Gọi signer trong network `secure`, qua mTLS khi có cert (DEC-42; CN `api` chỉ được tạo key). Timeout 5 s (C5).
@@ -47,23 +47,27 @@ const rewardsEncryptSchema = z.object({
 
 /**
  * #558 (DEC-398): mã hoá JWT rewards ở signer (`/v1/rewards-tokens/encrypt`, chỉ CN `api`). Lỗi mạng / signer / Vault
- * hay response lạ → null (người gọi trả `REWARDS_WATCH_UNAVAILABLE`, chưa lưu gì). Không log, không đưa token vào lỗi.
+ * hay response lạ → `failure` (người gọi trả `REWARDS_WATCH_UNAVAILABLE`, chưa lưu gì; #582: kèm lý do để đọc log).
+ * Không log, không đưa token vào lỗi.
  */
 export function httpRewardsSigner(baseUrl: string, tls?: ClientTls): RewardsTokenSigner {
   const base = baseUrl.replace(/\/+$/, "");
   return {
-    async encrypt(token) {
+    async encrypt(token): ReturnType<RewardsTokenSigner["encrypt"]> {
+      const fail = (failure: RewardsSignerFailure) => ({ failure });
       try {
         const res = await postJson(
           `${base}/v1/rewards-tokens/encrypt`,
           { token },
           { tls, timeoutMs: 5000 },
         );
-        if (res.status !== 200) return null;
+        if (res.status !== 200) return fail(`http_${res.status}`);
         const parsed = rewardsEncryptSchema.safeParse(res.json);
-        return parsed.success ? parsed.data : null;
-      } catch {
-        return null;
+        return parsed.success ? parsed.data : fail("bad_response");
+      } catch (error) {
+        const timeout =
+          error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+        return fail(timeout ? "timeout" : "network");
       }
     },
   };
