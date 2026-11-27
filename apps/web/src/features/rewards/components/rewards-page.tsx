@@ -180,7 +180,14 @@ function RewardsContent() {
           <ReceivedPopup session={auth} />
           <div id="rewards-panel" role="tabpanel" aria-labelledby={`rewards-tab-${tab}`}>
             {tab === "sopoints" ? (
-              <SoPointsTab session={auth} tz={tz} />
+              <SoPointsTab
+                session={auth}
+                tz={tz}
+                onOpenBoxes={() => {
+                  setTab("boxes");
+                  window.history.replaceState(null, "", "?tab=boxes");
+                }}
+              />
             ) : (
               <BoxesTab session={auth} tz={tz} />
             )}
