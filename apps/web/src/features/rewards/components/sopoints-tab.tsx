@@ -3,7 +3,7 @@
 import { dec } from "@drift/shared";
 import { Skeleton } from "@drift/ui";
 import { useTranslations } from "next-intl";
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import {
   decimalOf,
@@ -14,16 +14,21 @@ import {
   formatVolume,
   secToMs,
   weekPoints,
+  weekState,
   type NumLike,
   type WeekState,
 } from "../format";
 import {
+  useRewardsBoxes,
+  useRewardsDrawEntries,
   useRewardsSummary,
+  useRewardsTreasures,
   useRewardsWeekInfo,
   useRewardsWeekList,
   type RewardsSession,
 } from "../queries";
 
+import { BoxArt } from "./box-art";
 import {
   CARD,
   CardUnavailable,
@@ -74,14 +79,44 @@ function Tile({ label, value, hint }: { label: string; value: ReactNode; hint?: 
   );
 }
 
+const CHIP = "inline-flex items-center gap-1 rounded-full bg-surface/80 px-2.5 py-1";
+
+/** Giờ hiện tại, làm mới mỗi phút (đếm ngược "Next snapshot"); render đầu là null để server và client khớp nhau. */
+function useMinuteClock(): number | null {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => {
+      setNow(Date.now());
+    }, 60_000);
+    return () => {
+      clearInterval(id);
+    };
+  }, []);
+  return now;
+}
+
 function SummaryHero({ session, tz }: { session: RewardsSession; tz: string }) {
   const t = useTranslations("rewards.summary");
   const tierText = useTierText();
   const summary = useRewardsSummary(session);
   const week = useRewardsWeekInfo();
+  const weeks = useRewardsWeekList(session);
+  const now = useMinuteClock();
   const s = summary.data;
   const w = week.data;
   const weekLoading = week.isPending && week.fetchStatus !== "idle";
+  // "Last week +{points}": điểm của tuần CONFIRMED mới nhất (như trang SoDEX); không có thì không hiện.
+  const lastConfirmed = [...(weeks.data ?? [])]
+    .sort((a, b) => b.weekNo - a.weekNo)
+    .find((r) => weekState(r) === "confirmed");
+  const lastWeek = lastConfirmed === undefined ? null : formatCount(lastConfirmed.points);
+  // "Next snapshot in {d}d {h}h": tới `nextWeekStartTime` của week/info; đã qua hoặc thiếu thì không hiện.
+  const untilMs = w === undefined || now === null ? null : secToMs(w.nextWeekStartTime) - now;
+  const snap =
+    untilMs === null || untilMs <= 0
+      ? null
+      : { d: Math.floor(untilMs / 86_400_000), h: Math.floor((untilMs % 86_400_000) / 3_600_000) };
 
   if (summary.isPending && summary.fetchStatus !== "idle")
     return (
@@ -116,15 +151,36 @@ function SummaryHero({ session, tz }: { session: RewardsSession; tz: string }) {
             <Value text={total} />
           </span>
           {/* SoDEX không trả basePoints / boostPoints (dữ liệu thật): chỉ hiện Referral khi có. */}
-          {referral === null ? null : (
-            <span className="text-sm text-ink-2 tabular-nums">
-              {t("referral")} <b className="text-ink">{referral}</b>
-            </span>
-          )}
+          <span className="mt-1 flex flex-wrap gap-2 text-xs text-ink-2 tabular-nums">
+            {referral === null ? null : (
+              <span className={CHIP}>
+                {t("referral")} <b className="text-ink">{referral}</b>
+              </span>
+            )}
+            {lastWeek === null ? null : (
+              <span className={CHIP}>{t("lastWeek", { points: lastWeek })}</span>
+            )}
+            {snap === null ? null : (
+              <span className={CHIP}>{t("nextSnapshot", { d: snap.d, h: snap.h })}</span>
+            )}
+          </span>
         </div>
         <div className="flex min-w-0 flex-[0_1_360px] flex-col gap-2 text-sm">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <b>{t("currentTier", { tier: current ?? "" })}</b>
+            {current === null ? (
+              <b>{t("currentTier", { tier: "" })}</b>
+            ) : (
+              <span className="inline-flex items-center">
+                <span className="sr-only">{t("currentTier", { tier: current })}</span>
+                {/* Tên tier dạng pill (bản phác polish 05). */}
+                <span
+                  aria-hidden="true"
+                  className="rounded-full bg-accent px-3 py-0.5 text-xs font-extrabold tracking-wide text-white"
+                >
+                  {current}
+                </span>
+              </span>
+            )}
             {next === null ? null : (
               <span className="text-ink-2 tabular-nums">
                 {progress !== null
@@ -146,7 +202,7 @@ function SummaryHero({ session, tz }: { session: RewardsSession; tz: string }) {
                 aria-valuemax={100}
                 aria-valuenow={Math.round(progress.pct)}
                 aria-label={t("currentTier", { tier: current ?? "" })}
-                className="h-2 overflow-hidden rounded-full bg-surface"
+                className="h-1.5 overflow-hidden rounded-full bg-surface"
               >
                 <div
                   className="h-full rounded-full bg-accent"
@@ -251,15 +307,62 @@ export function NoRank() {
   return <span className="text-ink-2">{t("noRank")}</span>;
 }
 
+/** Số tuần hiện trước khi bấm "Show all weeks" (bản phác polish 05). */
+export const WEEKS_SHOWN = 6;
+
+type WeekRow = NonNullable<ReturnType<typeof useRewardsWeekList>["data"]>[number];
+
+/** Số USD của một cột tuần; null (SoDEX chưa có) → "–" mờ (#575). */
+function Money({ v }: { v: NumLike | null | undefined }) {
+  const text = formatVolume(v);
+  return text === null ? <NoRank /> : <>{text}</>;
+}
+
+function useWeekColumns() {
+  const t = useTranslations("rewards.performance");
+  return [
+    { key: "spot", label: t("spotVol"), get: (r: WeekRow) => r.spotVolume },
+    { key: "perps", label: t("perpsVol"), get: (r: WeekRow) => r.futuresVolume },
+    { key: "tvl", label: t("wealthTvl"), get: (r: WeekRow) => r.wealthTvl },
+    { key: "vault", label: t("vault"), get: (r: WeekRow) => r.vaultHolding },
+    { key: "oi", label: t("oi"), get: (r: WeekRow) => r.oi },
+    { key: "acct", label: t("accountValue"), get: (r: WeekRow) => r.accountValue },
+  ] as const;
+}
+
+function WeekPoints({ row, bold }: { row: WeekRow; bold?: boolean }) {
+  const pts = weekPoints(row);
+  return (
+    <span className="inline-flex items-center justify-end gap-2">
+      {pts.hide ? null : (
+        <span className={bold === true && pts.state === "confirmed" ? "font-bold" : undefined}>
+          {pts.text ?? <NoRank />}
+        </span>
+      )}
+      <WeekChip state={pts.state} />
+    </span>
+  );
+}
+
 function WeeklyPerformance({ session, tz }: { session: RewardsSession; tz: string }) {
   const t = useTranslations("rewards.performance");
+  const tm = useTranslations("rewards.multipliers");
   const q = useRewardsWeekList(session);
+  const cols = useWeekColumns();
   const id = useId();
+  const listId = useId();
+  const [all, setAll] = useState(false);
   const rows = [...(q.data ?? [])].sort((a, b) => b.weekNo - a.weekNo);
+  const shown = all ? rows : rows.slice(0, WEEKS_SHOWN);
   const th = "px-2.5 py-2.5 text-xs font-semibold text-ink-2";
+  const range = (r: WeekRow) =>
+    t("range", {
+      start: formatDay(secToMs(r.weekStartTime), tz) ?? "",
+      end: formatDay(secToMs(r.weekEndTime), tz) ?? "",
+    });
   return (
     // Tên vùng nằm ở khung cuộn của bảng (một landmark duy nhất cho tiêu đề này, axe landmark-unique).
-    <section className={`${CARD} flex-[2_1_520px]`}>
+    <section className={CARD}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 id={id} className="m-0 text-[22px] leading-tight font-extrabold">
           {t("title")}
@@ -280,93 +383,218 @@ function WeeklyPerformance({ session, tz }: { session: RewardsSession; tz: strin
           <span className="text-sm text-ink-2">{t("emptyBody")}</span>
         </div>
       ) : (
-        // Bảng cuộn trong khung riêng ở 390, không làm cả trang cuộn ngang (DESIGN Responsive).
-        <div
-          role="region"
-          aria-labelledby={id}
-          // Vùng cuộn phải focus được bằng bàn phím (axe: scrollable-region-focusable), như DataTable.
-          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-          tabIndex={0}
-          className="overflow-x-auto"
-        >
-          <table className="w-full border-collapse text-sm whitespace-nowrap tabular-nums">
-            <thead>
-              <tr className="border-b border-border text-left">
-                <th scope="col" className={th}>
-                  {t("week")}
-                </th>
-                <th scope="col" className={`${th} text-right`}>
-                  {t("points")}
-                </th>
-                <th scope="col" className={`${th} text-right`}>
-                  {t("rank")}
-                </th>
-                <th scope="col" className={`${th} text-right`}>
-                  {t("spot")}
-                </th>
-                <th scope="col" className={`${th} text-right`}>
-                  {t("perps")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const confirmed = r.pointsStatus?.toUpperCase() === "CONFIRMED";
-                const pts = weekPoints(r);
-                return (
+        <>
+          {/* ≥ 768 px: bảng đủ cột, cuộn trong khung riêng nếu thiếu chỗ (DESIGN Responsive). */}
+          <div
+            role="region"
+            aria-labelledby={id}
+            // Vùng cuộn phải focus được bằng bàn phím (axe: scrollable-region-focusable), như DataTable.
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+            tabIndex={0}
+            className="hidden overflow-x-auto md:block"
+          >
+            <table className="w-full border-collapse text-sm whitespace-nowrap tabular-nums">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th scope="col" className={th}>
+                    {t("week")}
+                  </th>
+                  <th scope="col" className={`${th} text-right`}>
+                    {t("points")}
+                  </th>
+                  <th scope="col" className={`${th} text-right`}>
+                    {t("rank")}
+                  </th>
+                  {cols.map((c) => (
+                    <th key={c.key} scope="col" className={`${th} text-right`}>
+                      {c.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((r) => (
                   <tr key={r.weekNo} className="border-b border-border">
                     <td className="px-2.5 py-3">
-                      {/* Tuần đang chạy theo `isLive` của SoDEX (dữ liệu thật). */}
                       <span className="flex items-center gap-2">
                         <b>{r.weekName}</b>
                         {r.isLive === true ? <LivePill /> : null}
                       </span>
-                      <span className="text-xs text-ink-2">
-                        {t("range", {
-                          start: formatDay(secToMs(r.weekStartTime), tz) ?? "",
-                          end: formatDay(secToMs(r.weekEndTime), tz) ?? "",
-                        })}
-                      </span>
+                      <span className="text-xs text-ink-2">{range(r)}</span>
                     </td>
                     <td className="px-2.5 py-3 text-right">
-                      <span className="inline-flex items-center justify-end gap-2">
-                        {pts.hide ? null : (
-                          <span className={confirmed ? "font-bold" : undefined}>
-                            <Value text={pts.text} />
-                          </span>
-                        )}
-                        <WeekChip state={pts.state} />
-                      </span>
+                      <WeekPoints row={r} bold />
                     </td>
                     <td className="px-2.5 py-3 text-right">
                       {formatRank(r.rank) === null ? <NoRank /> : formatRank(r.rank)}
                     </td>
-                    <td className="px-2.5 py-3 text-right">
-                      <Value text={formatVolume(r.spotVolume)} />
-                    </td>
-                    <td className="px-2.5 py-3 text-right">
-                      <Value text={formatVolume(r.futuresVolume)} />
-                    </td>
+                    {cols.map((c) => (
+                      <td key={c.key} className="px-2.5 py-3 text-right">
+                        <Money v={c.get(r)} />
+                      </td>
+                    ))}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* < 768 px: một thẻ mỗi tuần, đủ mọi trường trong lưới 2 cột (không cuộn ngang). */}
+          <ul
+            id={listId}
+            aria-labelledby={id}
+            className="m-0 flex list-none flex-col gap-3 p-0 md:hidden"
+          >
+            {shown.map((r) => (
+              <li
+                key={r.weekNo}
+                className="flex flex-col gap-2.5 rounded-tile border border-border px-4 py-3 tabular-nums"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <span className="flex flex-col">
+                    <span className="flex items-center gap-2">
+                      <b>{r.weekName}</b>
+                      {r.isLive === true ? <LivePill /> : null}
+                    </span>
+                    <span className="text-xs text-ink-2">{range(r)}</span>
+                  </span>
+                  <WeekPoints row={r} bold />
+                </div>
+                <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                  <div className="flex flex-col">
+                    <dt className="text-xs text-ink-2">{t("rank")}</dt>
+                    <dd className="m-0 font-semibold">
+                      {formatRank(r.rank) === null ? <NoRank /> : formatRank(r.rank)}
+                    </dd>
+                  </div>
+                  {cols.map((c) => (
+                    <div key={c.key} className="flex flex-col">
+                      <dt className="text-xs text-ink-2">{c.label}</dt>
+                      <dd className="m-0 font-semibold">
+                        <Money v={c.get(r)} />
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </li>
+            ))}
+          </ul>
+          {rows.length > WEEKS_SHOWN ? (
+            <button
+              type="button"
+              aria-expanded={all}
+              onClick={() => {
+                setAll(!all);
+              }}
+              className="min-h-tap self-start text-sm font-bold text-accent-ink"
+            >
+              {all ? tm("showLess") : t("showAllWeeks")}
+            </button>
+          ) : null}
+        </>
       )}
     </section>
   );
 }
 
-export function SoPointsTab({ session, tz }: { session: RewardsSession; tz: string }) {
+/** "Blind Boxes at a glance" (bản phác polish 05): box trong backpack, box chờ claim, Weekly draw. */
+function BoxesGlance({
+  session,
+  onOpenBoxes,
+}: {
+  session: RewardsSession;
+  onOpenBoxes: () => void;
+}) {
+  const t = useTranslations("rewards.performance");
+  const tc = useTranslations("rewards.card");
+  const tb = useTranslations("rewards.boxes");
+  const boxes = useRewardsBoxes(session);
+  const treasures = useRewardsTreasures(session);
+  const draw = useRewardsDrawEntries(session);
+  const id = useId();
+  // Hình box của cấp cao nhất đang có (thứ tự byLevel của SoDEX: Common → SuperRare).
+  const top = [...(boxes.data?.byLevel ?? [])].reverse().find((l) => l.count > 0)?.level ?? null;
+  const d = draw.data;
+  const wins = typeof d?.wins === "number" ? d.wins : null;
+  return (
+    <section aria-labelledby={id} className={`${CARD} h-full`}>
+      <h2 id={id} className="m-0 text-lg font-extrabold">
+        {t("glance")}
+      </h2>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <div className="flex items-center gap-3 rounded-tile bg-surface-2 px-3 py-2.5">
+          <BoxArt level={top ?? "Common"} size={40} />
+          <span className="flex flex-col tabular-nums">
+            <b>
+              {boxes.isPending && boxes.fetchStatus !== "idle" ? (
+                <Skeleton className="h-5 w-8" />
+              ) : (
+                <Value text={formatCount(boxes.data?.total)} />
+              )}
+            </b>
+            <span className="text-xs text-ink-2">{tc("backpack")}</span>
+          </span>
+        </div>
+        <div className="flex items-center gap-3 rounded-tile bg-surface-2 px-3 py-2.5">
+          <BoxArt level={null} size={40} />
+          <span className="flex flex-col tabular-nums">
+            <b>
+              {treasures.isPending && treasures.fetchStatus !== "idle" ? (
+                <Skeleton className="h-5 w-8" />
+              ) : (
+                <Value text={formatCount(treasures.data?.total)} />
+              )}
+            </b>
+            <span className="text-xs text-ink-2">{tc("toClaim")}</span>
+          </span>
+        </div>
+      </div>
+      {d === undefined ? null : (
+        <dl className="m-0 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm tabular-nums">
+          <dt className="text-ink-2">{tb("sub.draw")}</dt>
+          <dd className="m-0 text-right font-bold">
+            {tb("draw.round", { round: d.round })} · {d.status}
+          </dd>
+          <dt className="text-ink-2">{tb("draw.tickets")}</dt>
+          <dd className="m-0 text-right font-bold">
+            <Value text={formatCount(d.tickets)} />
+          </dd>
+          {wins === null ? null : (
+            <>
+              <dt className="text-ink-2">{t("won")}</dt>
+              <dd className="m-0 text-right font-bold">{formatCount(wins)}</dd>
+            </>
+          )}
+        </dl>
+      )}
+      <button
+        type="button"
+        onClick={onOpenBoxes}
+        className="mt-auto flex min-h-tap items-center justify-center rounded-control bg-accent-tint text-sm font-bold text-accent-ink"
+      >
+        {t("openBoxes")}
+      </button>
+    </section>
+  );
+}
+
+export function SoPointsTab({
+  session,
+  tz,
+  onOpenBoxes,
+}: {
+  session: RewardsSession;
+  tz: string;
+  /** Chuyển sang tab Blind Boxes ("Open Blind Boxes"). */
+  onOpenBoxes: () => void;
+}) {
   return (
     <div className="flex flex-col gap-5">
       <SummaryHero session={session} tz={tz} />
-      <div className="flex flex-wrap items-start gap-5">
-        <WeeklyPerformance session={session} tz={tz} />
-        <div className="flex min-w-0 flex-[1_1_320px] flex-col">
-          <MultipliersCard tz={tz} shown={5} big />
-        </div>
+      {/* Bảng tuần đủ 9 cột cần cả chiều ngang; multiplier và Blind Boxes at a glance thành hàng dưới (bản phác 05). */}
+      <WeeklyPerformance session={session} tz={tz} />
+      <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2">
+        <MultipliersCard tz={tz} shown={4} />
+        <BoxesGlance session={session} onOpenBoxes={onOpenBoxes} />
       </div>
     </div>
   );

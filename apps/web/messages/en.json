@@ -10158,7 +10158,9 @@
       "pool": "Weekly pool",
       "poolHint": "from SoDEX",
       "nextDistribution": "Next distribution",
-      "weekEnds": "Week ends {time}"
+      "weekEnds": "Week ends {time}",
+      "lastWeek": "Last week +{points}",
+      "nextSnapshot": "Next snapshot in {d}d {h}h"
     },
     "performance": {
       "title": "Weekly performance",
@@ -10166,15 +10168,23 @@
       "week": "Week",
       "points": "Points",
       "rank": "Rank",
-      "spot": "Spot volume",
-      "perps": "Perps volume",
       "confirmed": "Confirmed",
       "range": "{start} – {end}",
       "emptyTitle": "No weekly points yet",
       "emptyBody": "Weeks appear after SoDEX takes its weekly snapshot.",
       "inProgress": "In progress",
       "snapshotDone": "Snapshot done",
-      "noRank": "–"
+      "noRank": "–",
+      "spotVol": "Spot vol",
+      "perpsVol": "Perps vol",
+      "wealthTvl": "Wealth TVL",
+      "vault": "Vault",
+      "oi": "OI",
+      "accountValue": "Account value",
+      "showAllWeeks": "Show all weeks",
+      "glance": "Blind Boxes at a glance",
+      "won": "Won",
+      "openBoxes": "Open Blind Boxes"
     },
     "card": {
       "title": "SoDEX rewards",

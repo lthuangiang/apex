@@ -338,7 +338,9 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     // JWT chỉ đi tới gateway SoDEX trong header Authorization, không bao giờ trong URL.
     const authed = gw.calls.filter((c) => c.auth !== null);
     // + ledger / draw entries cho popup box mới nhận (#556).
+    // + boxes cho "Blind Boxes at a glance" (#575).
     expect([...new Set(authed.map((c) => c.path))].sort()).toEqual([
+      "lottery/boxes",
       "lottery/draw/entries",
       "lottery/ledger",
       "lottery/treasures",
@@ -411,11 +413,8 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(await screen.findByText("1,200")).toBeInTheDocument();
     const table = await screen.findByRole("table");
     const cells = within(at(within(table).getAllByRole("row"), 1)).getAllByRole("cell");
-    // Points / volume thiếu → "Not available"; rank thiếu → "–" mờ.
-    expect(cells[1]).toHaveTextContent("Not available");
-    expect(cells[2]).toHaveTextContent("–");
-    expect(cells[3]).toHaveTextContent("Not available");
-    expect(cells[4]).toHaveTextContent("Not available");
+    // Mọi cột số của bảng tuần thiếu → "–" mờ (#575), không bao giờ 0.
+    for (const c of cells.slice(1)) expect(c).toHaveTextContent(/^–$/);
     expect(screen.queryByText("0")).toBeNull();
   });
 
@@ -488,6 +487,114 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     expect(
       screen.getByText("Weeks appear after SoDEX takes its weekly snapshot."),
     ).toBeInTheDocument();
+  });
+
+  it("polish (#575): 8 number columns, null as –, 6 weeks + Show all weeks, week cards for phones", async () => {
+    const wk = (n: number, extra: Record<string, unknown> = {}) => ({
+      weekNo: n,
+      weekName: `Week ${String(n)}`,
+      weekStartTime: 1763942400 - (13 - n) * 604800,
+      weekEndTime: 1764547200 - (13 - n) * 604800,
+      isLive: false,
+      pointsStatus: "CONFIRMED",
+      points: 100 + n,
+      rank: 1000 + n,
+      spotVolume: 1,
+      futuresVolume: 2,
+      wealthTvl: 0,
+      vaultHolding: 0,
+      oi: 1204.18,
+      accountValue: 12302.55,
+      ...extra,
+    });
+    gateway({
+      "sopoints/week/list": {
+        body: {
+          code: 0,
+          data: [
+            wk(13, {
+              isLive: true,
+              pointsStatus: "PENDING",
+              points: 0,
+              rank: 0,
+              vaultHolding: null,
+              oi: null,
+              accountValue: null,
+            }),
+            ...[12, 11, 10, 9, 8, 7].map((n) => wk(n)),
+          ],
+        },
+      },
+    });
+    const user = userEvent.setup();
+    show();
+    const table = await screen.findByRole("table");
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((h) => h.textContent),
+    ).toEqual([
+      "Week",
+      "Points",
+      "Rank",
+      "Spot vol",
+      "Perps vol",
+      "Wealth TVL",
+      "Vault",
+      "OI",
+      "Account value",
+    ]);
+    const rows = () => within(table).getAllByRole("row").slice(1);
+    expect(rows()).toHaveLength(6);
+    const live = within(at(rows(), 0)).getAllByRole("cell");
+    expect(live[6]).toHaveTextContent(/^–$/);
+    expect(live[7]).toHaveTextContent(/^–$/);
+    expect(live[8]).toHaveTextContent(/^–$/);
+    expect(within(at(rows(), 1)).getAllByRole("cell")[7]).toHaveTextContent("$1,204.18");
+    // Thẻ theo tuần cho điện thoại: cùng dữ liệu, lưới nhãn / giá trị.
+    const cards = screen.getByRole("list", { name: "Weekly performance" });
+    expect(within(cards).getAllByRole("listitem")).toHaveLength(6);
+    expect(
+      within(at(within(cards).getAllByRole("listitem"), 1)).getByText("Account value"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show all weeks" }));
+    expect(rows()).toHaveLength(7);
+    expect(screen.getByRole("button", { name: "Show less" })).toBeInTheDocument();
+  });
+
+  it("polish (#575): hero chips Last week (latest CONFIRMED) and Next snapshot countdown", async () => {
+    const next = Math.floor((Date.now() + (4 * 24 + 23) * 3_600_000 + 1_800_000) / 1000);
+    gateway({
+      "sopoints/week/info": {
+        body: {
+          code: 0,
+          data: {
+            weekNo: 13,
+            weekName: "Week 13",
+            weekStatus: "LIVE",
+            weekPoolPoints: 1000000,
+            nextWeekStartTime: next,
+            distributionTime: next + 3 * 86400,
+          },
+        },
+      },
+    });
+    show();
+    expect(await screen.findByText("Last week +3,420")).toBeInTheDocument();
+    expect(await screen.findByText("Next snapshot in 4d 23h")).toBeInTheDocument();
+  });
+
+  it("polish (#575): Blind Boxes at a glance + Open Blind Boxes switches tab", async () => {
+    const user = userEvent.setup();
+    show();
+    const glance = await screen.findByRole("region", { name: "Blind Boxes at a glance" });
+    expect(await within(glance).findByText("27")).toBeInTheDocument();
+    expect(within(glance).getByText("Boxes in backpack")).toBeInTheDocument();
+    expect(within(glance).getByText("Blind Boxes to claim")).toBeInTheDocument();
+    expect(await within(glance).findByText("Round 10 · distributed")).toBeInTheDocument();
+    expect(within(glance).getByText("Won")).toBeInTheDocument();
+    await user.click(within(glance).getByRole("button", { name: "Open Blind Boxes" }));
+    expect(screen.getByRole("tab", { name: /Blind Boxes/, selected: true })).toBeInTheDocument();
   });
 
   it("loading: skeleton, no numbers and no Not available", () => {

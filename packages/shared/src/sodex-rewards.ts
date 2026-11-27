@@ -104,6 +104,11 @@ export const sopointsWeekRowSchema = z.object({
   referralPoints: numOrString.nullish(),
   /** `CONFIRMED` = điểm đã chốt; giá trị khác coi là chưa chốt. */
   pointsStatus: z.string().nullish(),
+  /** USD; null khi SoDEX chưa có (tuần đang chạy): UI hiện "–" (#575). */
+  wealthTvl: numOrString.nullish(),
+  vaultHolding: numOrString.nullish(),
+  oi: numOrString.nullish(),
+  accountValue: numOrString.nullish(),
 });
 export const sopointsWeekListSchema = z.array(sopointsWeekRowSchema);
 
