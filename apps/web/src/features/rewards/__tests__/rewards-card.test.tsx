@@ -186,6 +186,15 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
     await waitFor(() => {
       expect(row("Boxes in backpack")).toHaveTextContent("27");
     });
+    // Hình box 26 px cạnh nhãn (#575 PR 3/3, bản phác polish 08): box chờ claim = Mystery; backpack = cấp cao nhất đang có.
+    const claimArt = row("Blind Boxes to claim").querySelector("svg.bx");
+    expect(claimArt?.getAttribute("data-kind")).toBe("mystery");
+    expect(claimArt).toHaveAttribute("width", "26");
+    const bagArt = row("Boxes in backpack").querySelector("svg.bx");
+    expect(bagArt).toHaveAttribute("width", "26");
+    expect(bagArt?.getAttribute("data-kind")).toBe("rare");
+    expect(bagArt).toHaveAttribute("aria-hidden", "true");
+    expect(row("This week").querySelector("svg.bx")).toBeNull();
     // Tuần đang chạy: chỉ chip In progress, không số (quy tắc 8).
     await waitFor(() => {
       expect(within(row("This week")).getByText("In progress")).toBeInTheDocument();

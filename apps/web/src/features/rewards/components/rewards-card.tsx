@@ -35,6 +35,7 @@ import { pickOfJob, useBoxActions } from "../use-box-actions";
 import { useRewardsAuth } from "../use-rewards-auth";
 
 import { ActionHost, DoneStrip } from "./action-popup";
+import { BoxArt } from "./box-art";
 import { Value, WeekStatusPill } from "./public-cards";
 import { ReceivedPopup } from "./received-popup";
 import { Banner, MismatchBanner } from "./rewards-states";
@@ -112,10 +113,29 @@ function Rows({ children, stale }: { children: ReactNode; stale?: boolean }) {
   );
 }
 
-function Row({ label, children }: { label: ReactNode; children: ReactNode }) {
+/** Box cấp cao nhất đang có trong backpack (byLevel của SoDEX: Common → SuperRare); chưa có thì Common. */
+export function topBoxLevel(
+  byLevel: readonly { level: string; count: number }[] | undefined,
+): string {
+  return [...(byLevel ?? [])].reverse().find((l) => l.count > 0)?.level ?? "Common";
+}
+
+function Row({
+  label,
+  box,
+  children,
+}: {
+  label: ReactNode;
+  /** Hình box 26 px trước nhãn (bản phác polish 08): `null` = Mystery (box chờ claim). */
+  box?: string | null;
+  children: ReactNode;
+}) {
   return (
     <li className="flex min-h-10 items-center justify-between gap-3 border-b border-border py-2 last:border-b-0">
-      <span className="text-ink-2">{label}</span>
+      <span className="flex items-center gap-2.5 text-ink-2">
+        {box === undefined ? null : <BoxArt level={box} size={26} />}
+        {label}
+      </span>
       <span className="flex items-center gap-2 font-bold tabular-nums">{children}</span>
     </li>
   );
@@ -354,7 +374,7 @@ function UnsignedCard({ auth, data }: { auth: Auth; data: CardData }) {
         {wrong}
         <Rows stale>
           {staleBoxes === undefined ? null : (
-            <Row label={t("backpack")}>
+            <Row label={t("backpack")} box={topBoxLevel(staleBoxes.byLevel)}>
               <Value text={formatCount(staleBoxes.total)} />
             </Row>
           )}
@@ -530,7 +550,7 @@ function SignedCard({ auth, data }: { auth: Auth; data: CardData }) {
             }}
           />
           <Rows>
-            <Row label={t("toClaim")}>
+            <Row label={t("toClaim")} box={null}>
               <Value text={formatCount(treasures.data?.total)} />
               {/* Claim mở popup tại chỗ (bản phác 07, PM chốt). */}
               {treasures.data !== undefined && treasures.data.total > 0 ? (
@@ -552,7 +572,7 @@ function SignedCard({ auth, data }: { auth: Auth; data: CardData }) {
                 </button>
               ) : null}
             </Row>
-            <Row label={t("backpack")}>
+            <Row label={t("backpack")} box={topBoxLevel(boxes.data?.byLevel)}>
               <Value text={formatCount(boxes.data?.total)} />
             </Row>
             <Row label={t("thisWeek")}>

@@ -433,11 +433,12 @@ export function BoxesTab({ session, tz }: { session: RewardsSession; tz: string 
         }}
       />
       <ReadyStrip session={session} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Tab con kiểu gạch chân 2 px màu accent (bản phác polish 01); mobile cuộn ngang. */}
+      <div className="flex flex-col gap-2">
         <div
           role="tablist"
           aria-label={t("sections")}
-          className="flex flex-wrap gap-1 self-start rounded-[14px] border border-border bg-surface p-1"
+          className="flex gap-5 overflow-x-auto border-b border-border [scrollbar-width:none]"
         >
           {SUBTABS.map((key) => (
             <button
@@ -450,12 +451,12 @@ export function BoxesTab({ session, tz }: { session: RewardsSession; tz: string 
               onClick={() => {
                 setSub(key);
               }}
-              className={`flex min-h-10 items-center gap-1.5 rounded-[10px] px-3.5 text-sm font-bold ${sub === key ? "bg-surface-2 text-ink shadow-sm" : "text-ink-2"}`}
+              className={`-mb-px flex min-h-tap flex-none items-center gap-1.5 border-b-2 text-[15px] font-bold whitespace-nowrap ${sub === key ? "border-accent text-ink" : "border-transparent text-ink-2 hover:text-ink"}`}
             >
               {t(`sub.${key}`)}
               {key === "backpack" && boxes.data !== undefined ? (
                 <span
-                  className={`rounded-full px-[7px] py-px text-[11px] tabular-nums ${sub === key ? "bg-accent text-white" : "bg-border text-ink-2"}`}
+                  className={`rounded-full px-[7px] py-px text-[11px] tabular-nums ${sub === key ? "bg-accent-tint text-accent-ink" : "bg-surface-2 text-ink-2"}`}
                 >
                   {formatCount(boxes.data.total)}
                 </span>

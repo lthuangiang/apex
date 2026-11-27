@@ -2,6 +2,7 @@ import {
   groupOf,
   ReasonCode,
   REWARDS_TOAST_TYPES,
+  rewardsBoxReceivedDataSchema,
   type NotificationGroup,
   type NotificationType,
 } from "@drift/shared";
@@ -187,4 +188,21 @@ export function mergeToast(
 export function badgeText(unread: number): string | null {
   if (unread <= 0) return null;
   return unread > 9 ? "9+" : String(unread);
+}
+
+/**
+ * Hình box cho tin rewards trong chuông (#575 PR 3/3, bản phác polish 08). `undefined` = tin không phải về box (giữ icon).
+ * Box nhận được: cấp duy nhất trong tin; nhiều cấp, thiếu cấp hoặc dữ liệu sai dạng → `null` (box chưa rõ cấp). Box chờ
+ * claim và quà vé trúng không ghi cấp → `null`.
+ */
+export function rewardsBoxLevel(
+  n: Pick<NotificationItem, "type" | "data">,
+): string | null | undefined {
+  if (n.type === "rewards_claimable" || n.type === "rewards_draw_won") return null;
+  if (n.type !== "rewards_box_received") return undefined;
+  const d = rewardsBoxReceivedDataSchema.safeParse(n.data);
+  if (!d.success) return null;
+  const levels = new Set(d.data.levels.map((l) => l.level));
+  const [only] = [...levels];
+  return levels.size === 1 && only !== undefined ? only : null;
 }

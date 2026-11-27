@@ -316,6 +316,8 @@ describe("status strip (mockups 03 / 04 / 05)", () => {
     };
     show();
     await screen.findByText(/DeskLabs checks SoDEX/);
+    // Sign out nằm trong menu của chip tài khoản (#575 PR 3/3).
+    await user.click(screen.getByRole("button", { name: /Rewards sign-in/ }));
     await user.click(screen.getByRole("button", { name: "Sign out of rewards" }));
     await waitFor(() => {
       expect(watchCalls().filter((c) => c.method === "DELETE")).toHaveLength(1);

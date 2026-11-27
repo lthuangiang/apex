@@ -359,6 +359,45 @@ describe("NotificationPanel", () => {
     expect(within(screen.getByRole("tabpanel")).queryByText(/SoPoints|snapshot/)).toBeNull();
   });
 
+  it("box messages show box art by level (#575 PR 3/3); wording and week messages keep their icon", async () => {
+    state.list = {
+      unread: 3,
+      items: [
+        {
+          id: "b1111111-1111-4111-8111-111111111111",
+          type: "rewards_box_received",
+          data: { count: 1, levels: [{ level: "Uncommon", count: 1 }] },
+          createdAt: minutesAgo(1),
+          readAt: null,
+        },
+        {
+          id: "b2222222-2222-4222-8222-222222222222",
+          type: "rewards_claimable",
+          data: { count: 2 },
+          createdAt: minutesAgo(2),
+          readAt: null,
+        },
+        {
+          id: "b3333333-3333-4333-8333-333333333333",
+          type: "rewards_week_points",
+          data: { weekNo: 12, weekName: null, timeZone: "UTC", points: null, rank: null },
+          createdAt: minutesAgo(3),
+          readAt: null,
+        },
+      ],
+    };
+    wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);
+    const received = await screen.findByRole("link", { name: /Uncommon/ });
+    const art = received.querySelector("svg.bx");
+    expect(art?.getAttribute("data-kind")).toBe("uncommon");
+    expect(art?.closest("[aria-hidden='true']")).not.toBeNull();
+    const [, claimable, week] = screen.getAllByRole("link");
+    expect(claimable?.querySelector("svg.bx")?.getAttribute("data-kind")).toBe("mystery");
+    expect(week?.querySelector("svg")).not.toBeNull();
+    expect(week?.querySelector("svg.bx")).toBeNull();
+    await expectNoAxeViolations();
+  });
+
   it("Needs you shows only unread real incidents, not a planned finish", async () => {
     const user = userEvent.setup({ delay: null });
     wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);

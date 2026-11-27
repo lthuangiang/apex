@@ -8,6 +8,7 @@ import {
   mergeToast,
   needsYou,
   newAlerts,
+  rewardsBoxLevel,
   splitByDay,
   targetOf,
   type NotificationItem,
@@ -190,5 +191,41 @@ describe("badgeText", () => {
     expect(badgeText(0)).toBeNull();
     expect(badgeText(3)).toBe("3");
     expect(badgeText(12)).toBe("9+");
+  });
+});
+
+describe("rewardsBoxLevel (#575 PR 3/3)", () => {
+  const n = (
+    type: Parameters<typeof rewardsBoxLevel>[0]["type"],
+    data: Record<string, unknown>,
+  ) => ({
+    type,
+    data,
+  });
+  it("one level → that level; several, missing or malformed → null (Mystery); other types → undefined", () => {
+    expect(
+      rewardsBoxLevel(
+        n("rewards_box_received", { count: 2, levels: [{ level: "Rare", count: 2 }] }),
+      ),
+    ).toBe("Rare");
+    expect(
+      rewardsBoxLevel(
+        n("rewards_box_received", {
+          count: 2,
+          levels: [
+            { level: "Common", count: 1 },
+            { level: "Rare", count: 1 },
+          ],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      rewardsBoxLevel(n("rewards_box_received", { count: 1, levels: [{ level: null, count: 1 }] })),
+    ).toBeNull();
+    expect(rewardsBoxLevel(n("rewards_box_received", { count: "x" }))).toBeNull();
+    expect(rewardsBoxLevel(n("rewards_claimable", { count: 1 }))).toBeNull();
+    expect(rewardsBoxLevel(n("rewards_draw_won", {}))).toBeNull();
+    expect(rewardsBoxLevel(n("rewards_week_points", {}))).toBeUndefined();
+    expect(rewardsBoxLevel(n("bot_paused", {}))).toBeUndefined();
   });
 });

@@ -264,7 +264,14 @@ describe("Open (mockup 16)", () => {
     expect(posts("lottery/box/open").map((c) => JSON.parse(c.body) as unknown)).toEqual([
       { tokenIds: [188540, 201640], nonce: "7", deadline: 1764600000, signature: "0xsig" },
     ]);
-    expect(screen.getByText("0.0612 vANT")).toBeInTheDocument();
+    // Sau revealed: rung mạnh → nắp bật → quầng màu cấp, rồi mới lật thẻ (#575 PR 3/3).
+    const stage = document.querySelector('[data-motion="reveal"]');
+    expect(stage?.querySelector("svg.rw-lid-pop[data-kind='common']")).not.toBeNull();
+    expect(screen.queryByText("0.0612 vANT")).toBeNull();
+    expect(
+      await screen.findByText("0.0612 vANT", undefined, { timeout: 3000 }),
+    ).toBeInTheDocument();
+    expect(document.querySelector('[data-motion="reveal"]')).toBeNull();
     expect(
       await screen.findByText(
         "USD values are at open time, from SoDEX. Rewards were paid to your SoDEX account.",
@@ -547,7 +554,11 @@ describe("Merge (mockup 17)", () => {
     expect(
       await screen.findByRole("dialog", { name: "Merge done" }, { timeout: 4000 }),
     ).toBeInTheDocument();
-    expect(screen.getByText("#201877")).toBeInTheDocument();
+    // Box bay vào giữa (450 ms) rồi box mới nở theo cấp (#575 PR 3/3).
+    expect(document.querySelector('[data-motion="gather"]')).not.toBeNull();
+    expect(await screen.findByText("#201877", undefined, { timeout: 2000 })).toBeInTheDocument();
+    expect(document.querySelector('[data-motion="gather"]')).toBeNull();
+    expect(document.querySelector('[data-motion="pop"] svg[data-kind="superrare"]')).not.toBeNull();
     expect(screen.getByText("Used 4 Rare boxes")).toBeInTheDocument();
     expect(
       posts("lottery/box/merge").map(
@@ -589,5 +600,102 @@ describe("Merge (mockup 17)", () => {
     await user.click(within(dialog).getByRole("button", { name: "Show all" }));
     expect(within(dialog).getAllByText(/^#\d+$/)).toHaveLength(10);
     expect(within(dialog).getByRole("button", { name: "Show less" })).toBeInTheDocument();
+  });
+});
+
+describe("Box motion (#575 PR 3/3, polish 06 / 07)", () => {
+  const OPEN_JOB = (statuses: string[]) =>
+    jobRoute(
+      {
+        jobId: 501,
+        kind: "open",
+        boxes: [
+          {
+            tokenId: 188540,
+            rewardUsd: "5.07",
+            reward: { asset: { address: "0x1", symbol: "vANT", decimals: 18 }, amount: "0.0612" },
+          },
+        ],
+      },
+      statuses,
+    );
+
+  it("while the job runs: gentle wobble on the level box only; no shake / lid / glow until revealed", async () => {
+    gateway({
+      "lottery/box/sign-params": SIGN,
+      "lottery/box/open": ok({ jobId: 501, kind: "open", status: "submitting" }),
+      "lottery/job/501": OPEN_JOB(["pending"]),
+    });
+    const user = userEvent.setup();
+    show();
+    await openCommon(user, 1);
+    const confirm = await screen.findByRole("dialog", { name: "Open 1 Common box" });
+    expect(confirm.querySelector("svg[data-kind='common']")).not.toBeNull();
+    await user.click(within(confirm).getByRole("button", { name: "Sign and open" }));
+    await screen.findByText("Job #501");
+    const wobble = document.querySelector('[data-motion="wobble"]');
+    expect(wobble?.className).toContain("motion-safe:animate-[rw-wobble");
+    expect(wobble?.querySelector("svg[data-kind='common']")).not.toBeNull();
+    expect(document.querySelector('[data-motion="reveal"]')).toBeNull();
+    expect(document.querySelector(".rw-lid-pop")).toBeNull();
+  });
+
+  it("prefers-reduced-motion: no reveal stage, the reward shows at once and only fades", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("prefers-reduced-motion: reduce"),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    gateway({
+      "lottery/box/sign-params": SIGN,
+      "lottery/box/open": ok({ jobId: 501, kind: "open", status: "submitting" }),
+      "lottery/job/501": OPEN_JOB(["revealed"]),
+    });
+    const user = userEvent.setup();
+    show();
+    await openCommon(user, 1);
+    await user.click(await screen.findByRole("button", { name: "Sign and open" }));
+    await screen.findByRole("dialog", { name: "1 box opened" }, { timeout: 4000 });
+    expect(document.querySelector('[data-motion="reveal"]')).toBeNull();
+    const card = screen.getByText("0.0612 vANT").closest("li");
+    expect(card?.className).toContain("motion-reduce:animate-[rw-fade");
+    // Không chờ lật thẻ: tổng kết hiện ngay.
+    expect(
+      screen.getByText(
+        "USD values are at open time, from SoDEX. Rewards were paid to your SoDEX account.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("claim: each minted box drops in with its level art", async () => {
+    gateway({
+      "lottery/treasure/open": ok({ jobId: 902, kind: "treasure", status: "submitting" }),
+      "lottery/job/902": jobRoute(
+        {
+          jobId: 902,
+          kind: "treasure",
+          minted: [
+            { tokenId: 201640, level: "Common" },
+            { tokenId: 201642, level: "Uncommon" },
+          ],
+        },
+        ["revealed"],
+      ),
+    });
+    const user = userEvent.setup();
+    show();
+    await user.click(await screen.findByRole("button", { name: "Claim all 3" }));
+    const dialog = await screen.findByRole("dialog", { name: "Claim 3 boxes" });
+    // Box chờ claim chưa có cấp: hình Mystery.
+    expect(dialog.querySelector("svg[data-kind='mystery']")).not.toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Claim 3" }));
+    const done = await screen.findByRole("dialog", { name: "2 boxes claimed" }, { timeout: 4000 });
+    const items = within(done).getAllByRole("listitem");
+    expect(items.map((li) => li.querySelector("svg")?.getAttribute("data-kind"))).toEqual([
+      "common",
+      "uncommon",
+    ]);
+    expect(items[0]?.className).toContain("motion-safe:animate-[rw-drop_420ms");
   });
 });

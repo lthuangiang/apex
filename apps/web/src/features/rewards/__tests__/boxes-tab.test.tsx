@@ -293,6 +293,31 @@ describe("Blind Boxes › polish (#575, DEC-400)", () => {
     expect(container.textContent).not.toMatch(/%|chance|probability/i);
   });
 
+  it("sub-tabs are underlined (2 px accent on the selected one) and scroll sideways on mobile", async () => {
+    const user = userEvent.setup();
+    show();
+    const list = await screen.findByRole("tablist", { name: "Blind Boxes sections" });
+    expect(list.className).toContain("overflow-x-auto");
+    expect(list.className).toContain("border-b");
+    const tabs = within(list).getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent.replace(/\d+$/, ""))).toEqual([
+      "Backpack",
+      "History",
+      "Weekly draw",
+      "Live feed",
+    ]);
+    const [backpack, history] = tabs;
+    if (backpack === undefined || history === undefined) throw new Error("tabs missing");
+    expect(backpack).toHaveAttribute("aria-selected", "true");
+    expect(backpack.className).toContain("border-b-2");
+    expect(backpack.className).toContain("border-accent");
+    expect(history.className).toContain("border-transparent");
+    await user.click(history);
+    expect(history).toHaveAttribute("aria-selected", "true");
+    expect(history.className).toContain("border-accent");
+    expect(backpack.className).toContain("border-transparent");
+  });
+
   it("no rewardBands in meta: no Reward range anywhere", async () => {
     show();
     await screen.findByRole("button", { name: "Grid" });
