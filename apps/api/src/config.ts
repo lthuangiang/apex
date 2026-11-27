@@ -48,11 +48,12 @@ const envSchema = z.object({
   SIGNAL_NEWS_BOTS_ENABLED: z.stringbool().default(false),
   /**
    * #546 / DEC-397: công tắc toàn hệ thống của SoDEX rewards (mục sidebar Rewards, thẻ Overview, route `/rewards`), trả
-   * về web qua `GET /api/v1/features` (`sodexRewards`) để đổi lúc chạy mà không build lại image web. Mặc định tắt trong
-   * lúc xây (#547–#550); PR cuối (#551) đổi mặc định sang bật cho mọi user, sau đó biến chỉ còn là nút tắt khẩn khi
-   * gateway SoDEX có sự cố. Trang chẩn đoán `/admin/rewards-debug` (team) không phụ thuộc công tắc này.
+   * về web qua `GET /api/v1/features` (`sodexRewards`) để đổi lúc chạy mà không build lại image web. Mặc định BẬT cho mọi
+   * user từ bản sau #575 (quyết định của chủ sản phẩm 2026-11-27, DEC-397 bổ sung); biến chỉ còn là nút tắt khẩn khi
+   * gateway SoDEX có sự cố (`REWARDS_ENABLED=false`: user thường không thấy, team vẫn thấy). Trang chẩn đoán
+   * `/admin/rewards-debug` (team) không phụ thuộc công tắc này.
    */
-  REWARDS_ENABLED: z.stringbool().default(false),
+  REWARDS_ENABLED: z.stringbool().default(true),
   /**
    * #558 / DEC-398: báo box mới SoDEX rewards (nhận phiên rewards để scheduler đọc định kỳ). Mặc định tắt; PR1 chỉ khai
    * báo cờ, route `rewards/watch` (PR3) đọc cờ này. Cùng giá trị với scheduler.

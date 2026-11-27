@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { loadApiConfig } from "../src/config";
 
-// #547 / DEC-397: `REWARDS_ENABLED` là công tắc toàn hệ thống của SoDEX rewards, mặc định tắt trong lúc xây.
+// #547 / DEC-397: `REWARDS_ENABLED` là công tắc toàn hệ thống của SoDEX rewards. Mặc định BẬT cho mọi user từ bản sau
+// #575 (DEC-397 bổ sung); `false` là nút tắt khẩn.
 
 const env = {
   DATABASE_URL: "postgres://x",
@@ -21,8 +22,8 @@ const env = {
 };
 
 describe("REWARDS_ENABLED", () => {
-  it("is off by default and parses true / false", () => {
-    expect(loadApiConfig(env).REWARDS_ENABLED).toBe(false);
+  it("is on by default and parses true / false", () => {
+    expect(loadApiConfig(env).REWARDS_ENABLED).toBe(true);
     expect(loadApiConfig({ ...env, REWARDS_ENABLED: "true" }).REWARDS_ENABLED).toBe(true);
     expect(loadApiConfig({ ...env, REWARDS_ENABLED: "false" }).REWARDS_ENABLED).toBe(false);
   });

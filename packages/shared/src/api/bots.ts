@@ -59,7 +59,7 @@ export const featuresSchema = z.object({
   signalResearch: z.boolean().default(false),
   /**
    * #547 / DEC-397: SoDEX rewards (Rewards trên sidebar, thẻ Overview, `/rewards`). Công tắc toàn hệ thống
-   * `REWARDS_ENABLED` của api, giống nhau cho mọi user; mặc định tắt tới #551.
+   * `REWARDS_ENABLED` của api (mặc định bật, DEC-397 bổ sung), hoặc role team. Thiếu trường = false (an toàn).
    */
   sodexRewards: z.boolean().default(false),
   /** Builder fee hiệu lực theo chiến lược của user (DEC-159), phần mười bp; thiếu key = mặc định. */
