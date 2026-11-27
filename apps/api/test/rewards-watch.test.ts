@@ -316,7 +316,7 @@ describe("/api/v1/rewards/watch", () => {
     expect(lines[0]).toContain('"cause":"http_status"');
     expect(lines[1]).toContain('"code":"REWARDS_TOKEN_INVALID"');
     // reqId của dòng log = traceId trả cho web.
-    expect(lines[0]).toContain(`"reqId":"${String(body.traceId)}"`);
+    expect(lines[0]).toContain(`"reqId":"${body.traceId}"`);
     const all = env.logs.slice(logsBefore).join("\n");
     expect(all).not.toContain(token);
     expect(all.toLowerCase()).not.toContain(t.address.toLowerCase());

@@ -61,7 +61,7 @@ export function httpRewardsSigner(baseUrl: string, tls?: ClientTls): RewardsToke
           { token },
           { tls, timeoutMs: 5000 },
         );
-        if (res.status !== 200) return fail(`http_${res.status}`);
+        if (res.status !== 200) return fail(`http_${String(res.status)}`);
         const parsed = rewardsEncryptSchema.safeParse(res.json);
         return parsed.success ? parsed.data : fail("bad_response");
       } catch (error) {

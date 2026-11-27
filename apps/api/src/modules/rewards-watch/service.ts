@@ -22,7 +22,7 @@ import { checkRewardsAud, readRewardsJwtClaims } from "./claims";
  * Vì sao signer không mã hoá được (#582): `http_<status>` khi signer trả khác 200 (503 = Vault lỗi / khoá rewards chưa
  * cấu hình, 403 = CN không được phép), `timeout` / `network` (gồm mTLS), `bad_response` khi body lạ. Không chứa token.
  */
-export type RewardsSignerFailure = `http_${number}` | "timeout" | "network" | "bad_response";
+export type RewardsSignerFailure = `http_${string}` | "timeout" | "network" | "bad_response";
 
 /** Mã hoá JWT ở signer (CN `api`). `failure` = signer / Vault không làm được (chưa lưu gì). */
 export interface RewardsTokenSigner {
