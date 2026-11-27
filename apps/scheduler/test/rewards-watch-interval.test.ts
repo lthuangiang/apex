@@ -41,15 +41,18 @@ describe("short intervals (1 and 2 minutes)", () => {
     }
   });
 
-  it.each([1, 2])("backoff is never shorter than the %i-minute cycle and still caps at 6 h", (min) => {
-    const interval = min * 60_000;
-    expect(backoffMs(interval, 1)).toBe(2 * interval);
-    for (let e = 1; e <= 30; e += 1) {
-      expect(backoffMs(interval, e)).toBeGreaterThan(interval);
-      expect(backoffMs(interval, e)).toBeLessThanOrEqual(MAX_BACKOFF_MS);
-    }
-    expect(backoffMs(interval, 30)).toBe(MAX_BACKOFF_MS);
-  });
+  it.each([1, 2])(
+    "backoff is never shorter than the %i-minute cycle and still caps at 6 h",
+    (min) => {
+      const interval = min * 60_000;
+      expect(backoffMs(interval, 1)).toBe(2 * interval);
+      for (let e = 1; e <= 30; e += 1) {
+        expect(backoffMs(interval, e)).toBeGreaterThan(interval);
+        expect(backoffMs(interval, e)).toBeLessThanOrEqual(MAX_BACKOFF_MS);
+      }
+      expect(backoffMs(interval, 30)).toBe(MAX_BACKOFF_MS);
+    },
+  );
 
   it("weekly schedule does not depend on the box interval (idle 6 h, 10 min while waiting)", () => {
     const nowMs = now.getTime();

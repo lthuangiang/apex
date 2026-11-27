@@ -43,12 +43,12 @@ import { computeDailyStats, utcDate } from "./market-stats";
 import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
 import { purgeMcp } from "./mcp-purge";
 import { fitMmModelDaily } from "./mm-model";
+import { parseRewardsWatchInterval } from "./rewards-watch/interval";
 import {
   purgeRewardsWatch,
   runRewardsWatchTick,
   type RewardsWatchJobDeps,
 } from "./rewards-watch/job";
-import { parseRewardsWatchInterval } from "./rewards-watch/interval";
 import { httpRewardsDecrypt } from "./rewards-watch/signer-decrypt";
 import { loadRewardsSignerState } from "./rewards-watch/signer-tls";
 import { snapshotAndCheck } from "./risk";
