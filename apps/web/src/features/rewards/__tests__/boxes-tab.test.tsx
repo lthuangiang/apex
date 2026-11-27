@@ -300,7 +300,7 @@ describe("Blind Boxes › polish (#575, DEC-400)", () => {
     expect(list.className).toContain("overflow-x-auto");
     expect(list.className).toContain("border-b");
     const tabs = within(list).getAllByRole("tab");
-    expect(tabs.map((t) => (t.textContent ?? "").replace(/\d+$/, ""))).toEqual([
+    expect(tabs.map((t) => t.textContent.replace(/\d+$/, ""))).toEqual([
       "Backpack",
       "History",
       "Weekly draw",
