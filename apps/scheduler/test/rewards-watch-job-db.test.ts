@@ -520,3 +520,54 @@ describe("weekly SoDEX messages (#567)", () => {
     expect(await rowOf(w.userId)).toMatchObject({ status: "paused", pauseReason: "unauthorized" });
   });
 });
+
+describe("short intervals (#558: 1–2 minutes)", () => {
+  it.each([1, 2])(
+    "re-reads boxes every %i minute(s) while the weekly read keeps its own 10-minute retry",
+    async (min) => {
+      const interval = min * 60_000;
+      const start = state.now;
+      const d = { ...deps(), intervalMs: interval };
+      try {
+        const w = await watcher();
+        await runRewardsWatchTick(d);
+        const first = await rowOf(w.userId);
+        const next = (first?.nextCheckAt.getTime() ?? 0) - start.getTime();
+        expect(next).toBeGreaterThanOrEqual(interval * 0.9);
+        expect(next).toBeLessThanOrEqual(interval * 1.1);
+        // Tin tuần lỗi mạng (mặc định của reader giả): hẹn 10 phút, không theo chu kỳ box.
+        expect(first?.weeklyCheckAt?.getTime()).toBe(start.getTime() + 10 * 60_000);
+        expect(state.calls.filter((c) => c === "weeks")).toHaveLength(1);
+
+        // Chưa tới hạn: không đọc gì.
+        state.calls = [];
+        state.now = new Date(start.getTime() + interval * 0.5);
+        await runRewardsWatchTick(d);
+        expect(state.calls).toEqual([]);
+
+        // Tới hạn sau một chu kỳ: đọc box lại, chưa đọc tuần.
+        state.now = new Date(start.getTime() + interval * 1.1 + 1);
+        await runRewardsWatchTick(d);
+        expect(state.calls).toContain("treasures:token");
+        expect(state.calls).not.toContain("weeks");
+        const second = await rowOf(w.userId);
+        const after = (second?.nextCheckAt.getTime() ?? 0) - state.now.getTime();
+        expect(after).toBeGreaterThanOrEqual(interval * 0.9);
+        expect(after).toBeLessThanOrEqual(interval * 1.1);
+        expect(second?.weeklyCheckAt?.getTime()).toBe(start.getTime() + 10 * 60_000);
+      } finally {
+        state.now = start;
+      }
+    },
+  );
+
+  it("backs off at least two short cycles after a network error", async () => {
+    const d = { ...deps(), intervalMs: 60_000 };
+    const w = await watcher({ baseline: false });
+    state.treasures = { kind: "error", code: "network" };
+    await runRewardsWatchTick(d);
+    const row = await rowOf(w.userId);
+    expect(row?.consecutiveErrors).toBe(1);
+    expect(row?.nextCheckAt.getTime()).toBe(state.now.getTime() + 2 * 60_000);
+  });
+});
