@@ -2804,7 +2804,6 @@
     }
   },
   "_pendingReview": [
-    "rewards.watch.reference",
     "signalAnalysis.filters.botKeys",
     "signalAnalysis.research.trace",
     "signalAnalysis.research.sources.names.claude",
