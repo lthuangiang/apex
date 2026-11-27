@@ -29,7 +29,6 @@ import {
 } from "../queries";
 
 import { BoxArt } from "./box-art";
-
 import {
   CARD,
   CardUnavailable,
@@ -337,7 +336,7 @@ function WeekPoints({ row, bold }: { row: WeekRow; bold?: boolean }) {
     <span className="inline-flex items-center justify-end gap-2">
       {pts.hide ? null : (
         <span className={bold === true && pts.state === "confirmed" ? "font-bold" : undefined}>
-          {pts.text === null ? <NoRank /> : pts.text}
+          {pts.text ?? <NoRank />}
         </span>
       )}
       <WeekChip state={pts.state} />
