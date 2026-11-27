@@ -95,6 +95,11 @@ describe("rewards token never reaches DeskLabs", () => {
     // Token chỉ nằm trong body của POST /api/v1/rewards/watch.
     expect(watch.match(/readRewardsToken\(/g)).toHaveLength(1);
     expect(watch).toContain('api("POST", "/api/v1/rewards/watch"');
+    // token-exp.ts (#575 PR 3/3): đọc token để lấy `exp`, không gọi api, không fetch, không log.
+    const exp = readFileSync(join(dir, "token-exp.ts"), "utf8");
+    expect(exp).toContain("readRewardsToken(");
+    expect(exp).not.toContain('"@/lib/api"');
+    expect(exp).not.toMatch(/fetch\(|console\./);
   });
 
   it("refuses to build a rewards URL on the DeskLabs origin", () => {
