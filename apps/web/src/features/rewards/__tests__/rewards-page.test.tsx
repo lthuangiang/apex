@@ -660,6 +660,8 @@ describe("Rewards page, signed in: SoPoints (mockup 09)", () => {
     const user = userEvent.setup();
     show();
     await screen.findByText("48,210");
+    // Sign out nằm trong menu của chip tài khoản (#575 PR 3/3).
+    await user.click(screen.getByRole("button", { name: /Rewards sign-in/ }));
     await user.click(screen.getByRole("button", { name: "Sign out of rewards" }));
     expect(readRewardsToken(MASTER)).toBeNull();
     expect(

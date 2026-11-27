@@ -22,6 +22,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { z } from "zod";
 
+import { BoxArt } from "@/features/rewards/components/box-art";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { NOTIFICATIONS_KEY, useFeatures, useMe, useNotifications } from "@/lib/queries";
@@ -31,6 +32,7 @@ import {
   badgeText,
   isQuiet,
   needsYou,
+  rewardsBoxLevel,
   splitByDay,
   targetOf,
   type NotificationItem,
@@ -299,6 +301,7 @@ export function NotificationPanel({
     const tone = isQuiet(n) ? QUIET_TONE : incidentTone;
     const { title, body } = text(n);
     const unreadRow = n.readAt === null;
+    const box = rewardsBoxLevel(n);
     return (
       <li key={n.id}>
         <Link
@@ -317,12 +320,21 @@ export function NotificationPanel({
               className="absolute top-[22px] left-[7px] size-[7px] rounded-full bg-accent"
             />
           ) : null}
-          <span
-            aria-hidden="true"
-            className={`flex size-[34px] shrink-0 items-center justify-center rounded-[11px] ${tone}`}
-          >
-            <Icon size={16} />
-          </span>
+          {box === undefined ? (
+            <span
+              aria-hidden="true"
+              className={`flex size-[34px] shrink-0 items-center justify-center rounded-[11px] ${tone}`}
+            >
+              <Icon size={16} />
+            </span>
+          ) : (
+            <span
+              aria-hidden="true"
+              className="flex size-[34px] shrink-0 items-center justify-center"
+            >
+              <BoxArt level={box} size={30} />
+            </span>
+          )}
           <span className="flex min-w-0 flex-col gap-0.5 text-[13px] leading-[1.45]">
             <b className="text-sm">
               {unreadRow ? <span className="sr-only">{t("panel.unreadPrefix")} </span> : null}

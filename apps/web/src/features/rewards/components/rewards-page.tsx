@@ -1,15 +1,16 @@
 "use client";
 
 import { Skeleton } from "@drift/ui";
+import { ChevronDown } from "lucide-react";
 import { notFound, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { PageHead, Workspace } from "@/components/workspace";
 import { shortAddress } from "@/lib/format";
 import { useFeatures } from "@/lib/queries";
 
-import { browserZone } from "../format";
+import { browserZone, formatDay } from "../format";
 import { REWARDS_RULES_URL } from "../links";
 import {
   firstRewardsError,
@@ -21,6 +22,7 @@ import {
   useRewardsWeekInfo,
   useRewardsWeekList,
 } from "../queries";
+import { rewardsExpiryMs } from "../token-exp";
 import { useRewardsAuth } from "../use-rewards-auth";
 import { useDisableRewardsWatch, useRewardsWatch } from "../watch";
 
@@ -112,7 +114,7 @@ function RewardsContent() {
         subtitle={t("page.subtitle")}
         action={
           signedIn && auth.master !== null ? (
-            <SignedChips master={auth.master} onSignOut={signOut} />
+            <AccountChip master={auth.master} tz={tz} onSignOut={signOut} />
           ) : undefined
         }
       />
@@ -208,25 +210,93 @@ function PublicGrid({ tz }: { tz: string }) {
   );
 }
 
-/** "Signed in as 0x3f2a…9c4e" + "Sign out of rewards" ở hàng tiêu đề (bản phác 09). */
-function SignedChips({ master, onSignOut }: { master: string; onSignOut: () => void }) {
+/**
+ * Chip tài khoản rewards ở hàng tiêu đề (bản phác polish 03, truyền vào `action` của PageHead): chấm xanh + ví rút gọn;
+ * bấm mở menu "Rewards sign-in" · "Signed in as …" · "Expires {date}" (claim `exp` của JWT, đọc tại trình duyệt, không gửi
+ * đi; không có thì bỏ dòng) · "Sign out of rewards". Mở thì đưa focus vào nút Sign out; Esc đóng và trả focus về chip;
+ * bấm ra ngoài thì đóng.
+ */
+export function AccountChip({
+  master,
+  tz,
+  onSignOut,
+}: {
+  master: string;
+  tz: string;
+  onSignOut: () => void;
+}) {
   const t = useTranslations("rewards");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const first = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+  const exp = open ? rewardsExpiryMs(master) : null;
+  const expText = exp === null ? null : formatDay(exp, tz);
+  useEffect(() => {
+    if (!open) return;
+    first.current?.focus();
+    const onDown = (e: PointerEvent) => {
+      if (ref.current !== null && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      trigger.current?.focus();
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
   return (
-    <div className="flex flex-wrap items-center gap-2.5">
-      <span className="inline-flex h-8 items-center gap-2 rounded-full border border-border bg-surface px-3 text-[13px] font-semibold text-ink-2 tabular-nums">
+    <div ref={ref} className="relative">
+      <button
+        ref={trigger}
+        type="button"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => {
+          setOpen((o) => !o);
+        }}
+        className="inline-flex min-h-tap items-center gap-2 rounded-full border border-border bg-surface px-3 text-[13px] font-bold text-ink tabular-nums hover:bg-surface-2 lg:min-h-8"
+      >
         <span
           aria-hidden="true"
           className="size-2 rounded-full bg-pos-dot ring-[3px] ring-pos-bg"
         />
-        {t("signedInAs", { address: shortAddress(master) })}
-      </span>
-      <button
-        type="button"
-        onClick={onSignOut}
-        className="inline-flex min-h-tap items-center rounded-full border border-border bg-surface px-3 text-[13px] font-semibold text-ink-2 hover:bg-surface-2 lg:min-h-8"
-      >
-        {t("signOut")}
+        <span className="sr-only">{t("account.title")}: </span>
+        {shortAddress(master)}
+        <ChevronDown aria-hidden="true" size={14} />
       </button>
+      <div
+        id={menuId}
+        hidden={!open}
+        className="absolute top-full left-0 z-50 mt-2 w-64 max-w-[calc(100vw-32px)] flex-col rounded-tile border border-border bg-surface p-1.5 text-sm shadow-lg lg:right-0 lg:left-auto [&:not([hidden])]:flex"
+      >
+        <div className="flex flex-col gap-0.5 border-b border-border px-3 pt-2 pb-2.5">
+          <span className="text-xs text-ink-2">{t("account.title")}</span>
+          <b className="tabular-nums">{t("signedInAs", { address: shortAddress(master) })}</b>
+          {expText === null ? null : (
+            <span className="text-xs text-ink-2 tabular-nums">
+              {t("account.expires", { date: expText })}
+            </span>
+          )}
+        </div>
+        <button
+          ref={first}
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            onSignOut();
+          }}
+          className="mt-1 flex min-h-tap items-center rounded-control px-3 text-left font-bold text-neg-ink hover:bg-surface-2"
+        >
+          {t("signOut")}
+        </button>
+      </div>
     </div>
   );
 }

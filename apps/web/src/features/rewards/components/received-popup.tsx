@@ -2,7 +2,6 @@
 
 import type { LotteryLedgerItem } from "@drift/shared";
 import { BottomSheet, Button } from "@drift/ui";
-import { Gift } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
@@ -15,6 +14,8 @@ import type { RewardsSession } from "../queries";
 import { emptyEvents, levelCounts, type DrawResult, type ReceivedEvents } from "../received";
 import { useActionState } from "../use-box-actions";
 import { useReceivedEvents } from "../use-received";
+
+import { BoxArt } from "./box-art";
 
 // Popup box mới nhận / vé trúng (#556; bản phác docs/mockups/rewards/received/, người dùng duyệt 2026-11-26). Chỉ ở
 // Overview và /rewards, khi đã ký. Chỉ là thông báo đọc: không có thao tác chuyển box (quy tắc sản phẩm 1). Xếp hàng sau
@@ -67,14 +68,9 @@ function BigBox({ row, delay = 0 }: { row: LotteryLedgerItem; delay?: number }) 
   return (
     <div
       style={{ animationDelay: `${String(delay)}ms` }}
-      className="flex flex-col items-center gap-1 rounded-[18px] bg-surface-2 px-6 py-4 motion-safe:animate-[rw-fall_420ms_cubic-bezier(.3,1.5,.5,1)_both] motion-reduce:animate-[rw-fade_120ms_linear]"
+      className="flex flex-col items-center gap-1 px-6 py-2 motion-safe:animate-[rw-fall_420ms_cubic-bezier(.3,1.5,.5,1)_both] motion-reduce:animate-[rw-fade_120ms_linear]"
     >
-      <span
-        aria-hidden="true"
-        className="flex size-12 items-center justify-center rounded-[14px] bg-accent text-white"
-      >
-        <Gift size={24} />
-      </span>
+      <BoxArt level={row.level} size={96} />
       <Level level={row.level} />
       {row.tokenId == null ? null : (
         <span className="text-xs text-ink-2 tabular-nums">#{row.tokenId}</span>
@@ -91,6 +87,7 @@ function PrizeBox({ row, i }: { row: LotteryLedgerItem; i: number }) {
       style={animated ? { animationDelay: `${String(200 + i * 120)}ms` } : undefined}
       className={`flex flex-col items-center gap-0.5 rounded-[14px] bg-surface-2 px-3 py-2.5 text-xs ${animated ? "motion-safe:animate-[rw-pop_320ms_cubic-bezier(.3,1.4,.5,1)_both]" : ""} motion-reduce:animate-[rw-fade_120ms_linear]`}
     >
+      <BoxArt level={row.level} size={40} />
       <Level level={row.level} />
       {row.tokenId == null ? null : url === null ? (
         <span className="text-ink-2 tabular-nums">#{row.tokenId}</span>

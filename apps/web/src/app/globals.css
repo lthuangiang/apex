@@ -547,6 +547,66 @@
 }
 
 /*
+ * #575 PR 3/3: popup với hình box theo cấp (docs/mockups/rewards/polish/rewards-motion-demo.html). Rung nhẹ khi job đang
+ * chạy; sau `revealed`: rung mạnh 360 ms → nắp bật 260 ms + quầng màu cấp 420 ms; Merge: box bay vào 450 ms. Chỉ chạy qua
+ * `motion-safe:` / @media no-preference; reduced motion chỉ mờ dần.
+ */
+@keyframes rw-wobble {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-3deg);
+  }
+  75% {
+    transform: rotate(3deg);
+  }
+}
+@keyframes rw-hard {
+  20% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+  80% {
+    transform: rotate(-4deg);
+  }
+}
+@keyframes rw-lid {
+  to {
+    transform: translate(-4px, -18px) rotate(-10deg);
+  }
+}
+@keyframes rw-glow {
+  0% {
+    opacity: 0.9;
+    transform: scale(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+@keyframes rw-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes rw-fly {
+  to {
+    transform: translate(0, 0) scale(0.3);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rw-lid-pop .bx-lid {
+    animation: rw-lid 260ms cubic-bezier(0.3, 1.5, 0.5, 1) 360ms both;
+  }
+}
+
+/*
  * Hình Blind Box (#575, box-art.tsx): vệt sáng Rare / SuperRare, sao lấp lánh SuperRare, lơ lửng ở thẻ cấp, nghiêng theo
  * chuột (`.bx-tilt`). prefers-reduced-motion: không chạy gì, ẩn vệt sáng.
  */

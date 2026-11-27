@@ -10078,6 +10078,10 @@
     },
     "signedInAs": "Signed in as {address}",
     "signOut": "Sign out of rewards",
+    "account": {
+      "title": "Rewards sign-in",
+      "expires": "Expires {date}"
+    },
     "mismatch": {
       "title": "This wallet isn't your SoDEX account",
       "connected": "Connected:",

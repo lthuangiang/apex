@@ -2,7 +2,7 @@
 
 import { add, type LotteryJob } from "@drift/shared";
 import { BottomSheet, Button } from "@drift/ui";
-import { Check, Gift, Wallet } from "lucide-react";
+import { Check, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -22,6 +22,7 @@ import {
 } from "../queries";
 import { useActionState, useBoxActions } from "../use-box-actions";
 
+import { BoxArt, boxKindOf } from "./box-art";
 import { Banner } from "./rewards-states";
 import { Spinner } from "./sign-in-hero";
 
@@ -37,6 +38,79 @@ const ACTIVE = (j: LotteryJob | undefined) =>
 const SLOW_MS = 30_000;
 /** Quá ngần này box thì phần còn lại hiện cùng lúc (demo). */
 const FLIP_MAX = 8;
+/**
+ * Hé lộ Open (#575 PR 3/3, rewards-motion-demo.html), chỉ chạy sau khi SoDEX trả `revealed`: rung mạnh 360 ms → nắp bật
+ * 260 ms + quầng màu cấp 420 ms → lật thẻ thưởng 520 ms lệch 140 ms. Thẻ hiện sau ngần này.
+ */
+export const REVEAL_INTRO_MS = 880;
+/** Merge xong: các box bay vào giữa 450 ms rồi box mới nở 320 ms. */
+export const MERGE_GATHER_MS = 450;
+/** Số box nhỏ tối đa trên vòng Merge. */
+const RING_MAX = 10;
+
+/** prefers-reduced-motion (jsdom không có matchMedia → false). Đọc một lần khi popup dựng. */
+export function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+/** Hình box lớn giữa popup (bản phác polish 06, 07). */
+function StageBox({
+  level,
+  size = 96,
+  motion,
+}: {
+  level: string | null | undefined;
+  size?: number;
+  /** `wobble`: rung nhẹ khi job đang chạy. */
+  motion?: "wobble";
+}) {
+  return (
+    <div className="flex justify-center py-1">
+      <div
+        data-motion={motion}
+        className={
+          motion === "wobble"
+            ? "motion-safe:animate-[rw-wobble_1.2s_ease-in-out_infinite]"
+            : undefined
+        }
+      >
+        <BoxArt level={level} size={size} />
+      </div>
+    </div>
+  );
+}
+
+/** Vòng box nhỏ khi Merge: đang chạy thì xoay chậm; `gather` thì bay vào giữa (450 ms). */
+function MergeRing({ level, n, gather }: { level: string | null; n: number; gather: boolean }) {
+  const count = Math.max(2, Math.min(RING_MAX, n));
+  return (
+    <div aria-hidden="true" className="flex justify-center py-1">
+      <div
+        data-motion={gather ? "gather" : "ring"}
+        className={`relative size-[150px] ${gather ? "" : "motion-safe:animate-[rw-rot_6s_linear_infinite]"}`}
+      >
+        {Array.from({ length: count }, (_, i) => {
+          const deg = (360 / count) * i;
+          return (
+            <span
+              key={i}
+              className={`absolute top-1/2 left-1/2 -mt-[18px] -ml-[18px] ${gather ? "motion-safe:animate-[rw-fly_450ms_ease-in_both] motion-reduce:opacity-0" : ""}`}
+              style={{
+                transform: `rotate(${String(deg)}deg) translateY(-52px) rotate(${String(-deg)}deg)`,
+              }}
+            >
+              <BoxArt level={level} size={36} />
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function Level({ level }: { level: string | null | undefined }) {
   if (level === null || level === undefined || level === "") return null;
@@ -233,6 +307,7 @@ function Body({
             </>
           ) : (
             <>
+              <StageBox level={flow.level} />
               <p className="m-0 text-sm text-ink-2">{t("oldest", { level })}</p>
               <IdList ids={flow.tokenIds} />
               {flow.kind === "open" ? (
@@ -403,12 +478,7 @@ function BoxStack({ n }: { n: number }) {
   return (
     <div aria-hidden="true" className="flex justify-center gap-2 py-2">
       {Array.from({ length: Math.max(1, n) }, (_, i) => (
-        <span
-          key={i}
-          className="flex size-12 items-center justify-center rounded-[14px] bg-accent text-white"
-        >
-          <Gift size={22} />
-        </span>
+        <BoxArt key={i} level={null} size={56} />
       ))}
     </div>
   );
@@ -478,14 +548,11 @@ function JobBody({
     <>
       {note}
       <p className="m-0 text-xs text-ink-2 tabular-nums">{t("job", { id: flow.jobId })}</p>
-      <div className="flex justify-center py-1">
-        <span
-          aria-hidden="true"
-          className="flex size-16 items-center justify-center rounded-[18px] bg-accent text-white motion-safe:animate-[rw-breathe_1.6s_ease-in-out_infinite]"
-        >
-          <Gift size={30} />
-        </span>
-      </div>
+      {flow.kind === "merge" ? (
+        <MergeRing level={flow.level} n={flow.count} gather={false} />
+      ) : (
+        <StageBox level={flow.kind === "claim" ? null : flow.level} motion="wobble" />
+      )}
       <Stepper steps={stepsOf(flow.kind, t)} at={at} />
       {now - since > SLOW_MS ? <p className="m-0 text-xs text-ink-2">{t("slow")}</p> : null}
       <p className="m-0 text-xs text-ink-2">{t("canClose")}</p>
@@ -526,6 +593,7 @@ function Result({
                 style={{ animationDelay: `${String(i * 120)}ms` }}
                 className="flex flex-col items-center gap-0.5 rounded-[12px] border border-border bg-surface px-3 py-2 text-xs font-extrabold motion-safe:animate-[rw-drop_420ms_cubic-bezier(.34,1.56,.64,1)_both] motion-reduce:animate-[rw-fade_150ms_linear]"
               >
+                <BoxArt level={m.level} size={44} />
                 <Level level={m.level} />
                 <span className="font-semibold text-ink-2 tabular-nums">#{m.tokenId}</span>
               </li>
@@ -556,47 +624,74 @@ function Result({
     );
   }
 
-  if (flow.kind === "merge") {
-    const r = job.result;
-    return (
-      <>
-        {r == null ? null : (
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex flex-col items-center gap-1 rounded-[18px] bg-pos-bg px-7 py-4 motion-safe:animate-[rw-pop_320ms_cubic-bezier(.34,1.56,.64,1)_both] motion-reduce:animate-[rw-fade_150ms_linear]">
-              <span className="text-xs">{t("merge.newBox")}</span>
-              <b className="tabular-nums">#{r.tokenId}</b>
-              <Level level={r.level} />
-            </div>
-            <p className="m-0 text-sm text-ink-2">
-              {t("merge.used", { n: r.consumedTokenIds.length, level: flow.level ?? "" })}
-            </p>
-          </div>
-        )}
-        <Buttons>
-          {r == null ? null : (
-            <Button
-              onClick={() => {
-                actions.start({
-                  kind: "open",
-                  count: 1,
-                  level: r.level,
-                  tokenIds: [r.tokenId],
-                  before: null,
-                });
-              }}
-            >
-              {t("merge.openIt")}
-            </Button>
-          )}
-          <Button variant="secondary" onClick={actions.close}>
-            {t("done")}
-          </Button>
-        </Buttons>
-      </>
-    );
-  }
+  if (flow.kind === "merge") return <MergeResult flow={flow} job={job} actions={actions} />;
 
   return <OpenResult flow={flow} job={job} done={done} />;
+}
+
+function MergeResult({
+  flow,
+  job,
+  actions,
+}: {
+  flow: Extract<Flow, { step: "job" }>;
+  job: LotteryJob;
+  actions: ReturnType<typeof useBoxActions>;
+}) {
+  const t = useTranslations("rewards.action");
+  const r = job.result;
+  // Box bay vào giữa trước rồi box mới nở; reduced motion bỏ bước bay, chỉ mờ dần.
+  const [gathering, setGathering] = useState(() => r != null && !prefersReducedMotion());
+  useEffect(() => {
+    if (!gathering) return;
+    const id = setTimeout(() => {
+      setGathering(false);
+    }, MERGE_GATHER_MS);
+    return () => {
+      clearTimeout(id);
+    };
+  }, [gathering]);
+  if (gathering) return <MergeRing level={flow.level} n={flow.count} gather />;
+  return (
+    <>
+      {r == null ? null : (
+        <div className="flex flex-col items-center gap-2">
+          <div
+            data-motion="pop"
+            className="flex flex-col items-center gap-1 px-7 py-1 motion-safe:animate-[rw-pop_320ms_cubic-bezier(.3,1.4,.5,1)_both] motion-reduce:animate-[rw-fade_150ms_linear]"
+          >
+            <BoxArt level={r.level} size={96} />
+            <span className="text-xs">{t("merge.newBox")}</span>
+            <b className="tabular-nums">#{r.tokenId}</b>
+            <Level level={r.level} />
+          </div>
+          <p className="m-0 text-sm text-ink-2">
+            {t("merge.used", { n: r.consumedTokenIds.length, level: flow.level ?? "" })}
+          </p>
+        </div>
+      )}
+      <Buttons>
+        {r == null ? null : (
+          <Button
+            onClick={() => {
+              actions.start({
+                kind: "open",
+                count: 1,
+                level: r.level,
+                tokenIds: [r.tokenId],
+                before: null,
+              });
+            }}
+          >
+            {t("merge.openIt")}
+          </Button>
+        )}
+        <Button variant="secondary" onClick={actions.close}>
+          {t("done")}
+        </Button>
+      </Buttons>
+    </>
+  );
 }
 
 function OpenResult({
@@ -611,19 +706,34 @@ function OpenResult({
   const t = useTranslations("rewards.action");
   const tf = useTranslations("rewards.feed");
   const items = job.boxes ?? [];
+  const [reduce] = useState(prefersReducedMotion);
   const [skip, setSkip] = useState(false);
-  const [revealed, setRevealed] = useState(false);
+  // Reduced motion: không rung / bật nắp / lật, thẻ hiện ngay và chỉ mờ dần.
+  const [revealed, setRevealed] = useState(reduce);
+  const [phase, setPhase] = useState<"intro" | "cards">(() =>
+    reduce || items.length === 0 ? "cards" : "intro",
+  );
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (phase !== "intro") return;
+    const id = setTimeout(() => {
+      setPhase("cards");
+    }, REVEAL_INTRO_MS);
+    return () => {
+      clearTimeout(id);
+    };
+  }, [phase]);
   // Lật lần lượt 520 ms, lệch 140 ms; quá 8 box thì phần còn lại hiện cùng lúc.
   const total = Math.min(items.length, FLIP_MAX) * 140 + 520;
   useEffect(() => {
+    if (phase !== "cards" || revealed) return;
     timer.current = setTimeout(() => {
       setRevealed(true);
     }, total);
     return () => {
       if (timer.current !== null) clearTimeout(timer.current);
     };
-  }, [total]);
+  }, [total, phase, revealed]);
   const finished = revealed || skip;
 
   // Tổng theo tài sản (cộng thập phân các phần thưởng SoDEX trả).
@@ -648,40 +758,58 @@ function OpenResult({
     b.pfpTokenId === null || b.pfpTokenId === undefined ? [] : [b.pfpTokenId],
   );
 
+  const kind = boxKindOf(flow.level);
   return (
     <>
-      <ul className="m-0 grid list-none grid-cols-3 gap-2 p-0 sm:grid-cols-5">
-        {items.map((b, i) => {
-          const amount = formatTokenAmount(b.reward?.amount);
-          const usd = formatUsd(b.rewardUsd);
-          const instant = skip || i >= FLIP_MAX;
-          return (
-            <li
-              key={b.tokenId}
-              style={instant ? undefined : { animationDelay: `${String(i * 140)}ms` }}
-              className={`flex flex-col items-center gap-0.5 rounded-[12px] border border-border bg-surface px-1.5 py-2 text-center text-xs tabular-nums ${instant ? "motion-reduce:animate-[rw-fade_150ms_linear]" : "motion-safe:animate-[rw-flip_520ms_ease-out_both] motion-reduce:animate-[rw-fade_150ms_linear]"}`}
-            >
-              <span className="text-ink-2">#{b.tokenId}</span>
-              {flow.level === null ? null : <b>{flow.level}</b>}
-              <b>
-                {amount === null || b.reward == null ? null : `${amount} ${b.reward.asset.symbol}`}
-              </b>
-              {usd === null ? null : <span className="text-ink-2">{usd}</span>}
-              {b.pfpTokenId === null || b.pfpTokenId === undefined ? null : (
-                <span className="rounded-full bg-unknown-bg px-1.5 text-[10px] font-extrabold text-unknown">
-                  {tf("pfp")}
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      {phase === "intro" ? (
+        <div data-motion="reveal" aria-hidden="true" className="relative flex justify-center py-2">
+          <span
+            className="absolute top-1/2 left-1/2 -mt-[80px] -ml-[80px] size-[160px] rounded-full opacity-0 motion-safe:animate-[rw-glow_420ms_ease-out_360ms_both]"
+            style={{
+              background: `radial-gradient(circle, var(--lvl-${kind}) 0%, transparent 70%)`,
+            }}
+          />
+          <div className="relative motion-safe:animate-[rw-hard_360ms_ease-in-out]">
+            <BoxArt level={flow.level} size={120} className="rw-lid-pop" />
+          </div>
+        </div>
+      ) : (
+        <ul className="m-0 grid list-none grid-cols-3 gap-2 p-0 sm:grid-cols-5">
+          {items.map((b, i) => {
+            const amount = formatTokenAmount(b.reward?.amount);
+            const usd = formatUsd(b.rewardUsd);
+            const instant = skip || i >= FLIP_MAX;
+            return (
+              <li
+                key={b.tokenId}
+                style={instant ? undefined : { animationDelay: `${String(i * 140)}ms` }}
+                className={`flex flex-col items-center gap-0.5 rounded-[12px] border border-border bg-surface px-1.5 py-2 text-center text-xs tabular-nums ${instant ? "motion-reduce:animate-[rw-fade_150ms_linear]" : "motion-safe:animate-[rw-flip_520ms_ease-out_both] motion-reduce:animate-[rw-fade_150ms_linear]"}`}
+              >
+                <span className="text-ink-2">#{b.tokenId}</span>
+                {flow.level === null ? null : <b>{flow.level}</b>}
+                <b>
+                  {amount === null || b.reward == null
+                    ? null
+                    : `${amount} ${b.reward.asset.symbol}`}
+                </b>
+                {usd === null ? null : <span className="text-ink-2">{usd}</span>}
+                {b.pfpTokenId === null || b.pfpTokenId === undefined ? null : (
+                  <span className="rounded-full bg-unknown-bg px-1.5 text-[10px] font-extrabold text-unknown">
+                    {tf("pfp")}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {!finished && items.length > 1 ? (
         <Buttons>
           <Button
             variant="secondary"
             onClick={() => {
               setSkip(true);
+              setPhase("cards");
             }}
           >
             {t("skip")}
