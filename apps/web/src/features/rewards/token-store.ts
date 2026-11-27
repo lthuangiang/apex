@@ -1,7 +1,10 @@
-// JWT đăng nhập rewards (DEC-397): chỉ ở sessionStorage của tab này, khoá theo địa chỉ ví (chữ thường). Không
-// localStorage, không cookie, không gửi về server DeskLabs, không log. Xoá khi SoDEX trả 401, khi đổi ví, khi bấm
-// "Sign out of rewards" và khi đăng xuất DeskLabs. sessionStorage có thể bị chặn (private window…): mọi thao tác
-// bọc try/catch, lỗi thì coi như chưa đăng nhập.
+import { jwtExpiryMs } from "./jwt-exp";
+
+// JWT đăng nhập rewards: ở localStorage của trình duyệt này tới khi `exp` hết hạn (DEC-401,
+// đổi nơi lưu của DEC-397), khoá theo địa chỉ ví (chữ thường). Không cookie, không gửi về server DeskLabs ngoài
+// `POST /api/v1/rewards/watch` (DEC-398), không log. Xoá khi SoDEX trả 401, khi đổi ví, khi bấm "Sign out of rewards",
+// khi đăng xuất DeskLabs và khi đọc thấy `exp` đã qua. Các tab cùng trình duyệt đồng bộ qua sự kiện `storage`.
+// Storage có thể bị chặn (private window…): mọi thao tác bọc try/catch, lỗi thì coi như chưa đăng nhập.
 
 export const REWARDS_TOKEN_PREFIX = "desklabs.rewards.jwt.";
 
@@ -12,17 +15,46 @@ function emit() {
   for (const l of listeners) l();
 }
 
+/** Tab khác ghi / xoá token rewards (hoặc xoá sạch localStorage) thì báo cho tab này. */
+function onStorage(e: StorageEvent) {
+  if (e.key === null || e.key.startsWith(REWARDS_TOKEN_PREFIX)) emit();
+}
+
 /** Cho `useSyncExternalStore`. */
 export function subscribeRewardsTokens(listener: () => void): () => void {
+  if (listeners.size === 0 && typeof window !== "undefined")
+    window.addEventListener("storage", onStorage);
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
+    if (listeners.size === 0 && typeof window !== "undefined")
+      window.removeEventListener("storage", onStorage);
   };
+}
+
+let legacyDropped = false;
+/** Bản trước lưu ở sessionStorage (DEC-397): xoá một lần, không chuyển sang localStorage. */
+function dropLegacySessionTokens() {
+  if (legacyDropped) return;
+  legacyDropped = true;
+  try {
+    const s = window.sessionStorage;
+    const keys: string[] = [];
+    for (let i = 0; i < s.length; i++) {
+      const k = s.key(i);
+      if (k?.startsWith(REWARDS_TOKEN_PREFIX) === true) keys.push(k);
+    }
+    for (const k of keys) s.removeItem(k);
+  } catch {
+    // Bỏ qua.
+  }
 }
 
 function storage(): Storage | null {
   try {
-    return typeof window === "undefined" ? null : window.sessionStorage;
+    if (typeof window === "undefined") return null;
+    dropLegacySessionTokens();
+    return window.localStorage;
   } catch {
     return null;
   }
@@ -31,8 +63,17 @@ function storage(): Storage | null {
 export function readRewardsToken(address: string | null | undefined): string | null {
   if (address == null || address === "") return null;
   try {
-    const v = storage()?.getItem(keyOf(address)) ?? null;
-    return v === "" ? null : v;
+    const s = storage();
+    const v = s?.getItem(keyOf(address)) ?? null;
+    if (v === null || v === "") return null;
+    const exp = jwtExpiryMs(v);
+    if (exp !== null && exp <= Date.now()) {
+      s?.removeItem(keyOf(address));
+      // Có thể đang trong getSnapshot của React: báo sau, không báo ngay trong lúc render.
+      queueMicrotask(emit);
+      return null;
+    }
+    return v;
   } catch {
     return null;
   }
@@ -57,7 +98,7 @@ export function clearRewardsToken(address: string | null | undefined): void {
   emit();
 }
 
-/** Xoá mọi token rewards của tab này, trừ ví `except` (nếu có). */
+/** Xoá mọi token rewards của trình duyệt này, trừ ví `except` (nếu có). */
 export function clearAllRewardsTokens(except?: string | null): void {
   const s = storage();
   if (s === null) return;

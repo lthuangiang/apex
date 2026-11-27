@@ -114,7 +114,7 @@ function show() {
 }
 
 beforeEach(() => {
-  sessionStorage.clear();
+  localStorage.clear();
   state.rewards = true;
   state.master = MASTER;
   state.wallet = undefined;

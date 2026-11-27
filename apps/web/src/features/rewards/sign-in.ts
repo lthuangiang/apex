@@ -5,7 +5,7 @@ import { rewardsRequest } from "./client";
 import { saveRewardsToken } from "./token-store";
 
 // Đăng nhập rewards (DEC-397, docs.sodex.com › Wallet sign-in): `auth/nonce` → `personal_sign` đúng `data.message`
-// → `auth/verify` (`autoSign: false`) → JWT vào sessionStorage theo ví. Ví ký phải là master wallet SoDEX của tài
+// → `auth/verify` (`autoSign: false`) → JWT vào localStorage theo ví (DEC-401). Ví ký phải là master wallet SoDEX của tài
 // khoản DeskLabs: so TRƯỚC khi xin nonce / ký; khác thì không ký gì. Không chuyển mạng (personal_sign không cần), không
 // tự bật ví, không giao dịch on-chain.
 

@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 /**
  * Thu hồi phiên ở server (`DELETE /api/v1/auth/session`, có audit), ngắt kết nối ví trong trình duyệt, rồi
  * về trang đăng nhập. Không ngắt ví thì tài khoản DRIFT kế tiếp trên cùng trình duyệt dùng lại ví cũ. Token rewards
- * của SoDEX (sessionStorage, DEC-397) bị xoá cùng lúc.
+ * của SoDEX (localStorage, DEC-401) bị xoá cùng lúc.
  */
 export function SignOutButton() {
   const t = useTranslations("common.nav");

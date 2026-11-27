@@ -82,7 +82,7 @@ async function open(page: Page, baseURL: string | undefined, signedIn: boolean) 
   if (signedIn)
     await page.addInitScript(
       ([k, v]) => {
-        sessionStorage.setItem(k, v);
+        localStorage.setItem(k, v);
       },
       [`desklabs.rewards.jwt.${MASTER.toLowerCase()}`, FAKE_TOKEN] as const,
     );

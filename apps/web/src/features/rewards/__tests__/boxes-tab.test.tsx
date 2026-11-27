@@ -88,7 +88,7 @@ async function openSub(name: string) {
 }
 
 beforeEach(() => {
-  sessionStorage.clear();
+  localStorage.clear();
   state.master = MASTER;
   state.wallet = undefined;
   saveRewardsToken(MASTER, FAKE_TOKEN);

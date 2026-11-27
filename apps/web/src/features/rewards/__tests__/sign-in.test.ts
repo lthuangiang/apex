@@ -34,7 +34,7 @@ function gateway() {
 }
 
 beforeEach(() => {
-  sessionStorage.clear();
+  localStorage.clear();
   vi.stubGlobal("fetch", gateway());
 });
 afterEach(() => {
@@ -91,8 +91,9 @@ describe("signInToRewards", () => {
       autoSign: false,
     });
     expect(readRewardsToken(MASTER)).toBe(FAKE_TOKEN);
-    expect(sessionStorage.getItem(`${REWARDS_TOKEN_PREFIX}${MASTER}`)).toBe(FAKE_TOKEN);
-    expect(localStorage.length).toBe(0);
+    expect(localStorage.getItem(`${REWARDS_TOKEN_PREFIX}${MASTER}`)).toBe(FAKE_TOKEN);
+    // DEC-401: chỉ localStorage, không còn bản trong sessionStorage.
+    expect(sessionStorage.length).toBe(0);
   });
 
   it("rejected in the wallet: no verify, no token", async () => {
@@ -111,7 +112,7 @@ describe("token store", () => {
   it("clears one wallet, or all except one", () => {
     saveRewardsToken(MASTER, "a");
     saveRewardsToken(OTHER, "b");
-    sessionStorage.setItem("unrelated", "keep");
+    localStorage.setItem("unrelated", "keep");
     clearAllRewardsTokens(MASTER);
     expect(readRewardsToken(MASTER)).toBe("a");
     expect(readRewardsToken(OTHER)).toBeNull();
@@ -120,7 +121,7 @@ describe("token store", () => {
     saveRewardsToken(OTHER, "b");
     clearAllRewardsTokens();
     expect(readRewardsToken(OTHER)).toBeNull();
-    expect(sessionStorage.getItem("unrelated")).toBe("keep");
+    expect(localStorage.getItem("unrelated")).toBe("keep");
   });
 
   it("treats blocked storage as signed out", () => {

@@ -36,7 +36,7 @@ import { SoPointsTab } from "./sopoints-tab";
 import { RewardsWatchStrip } from "./watch-ui";
 
 // Trang /rewards (bản phác 08–14, DEC-397, #548, #550). Sau công tắc toàn hệ thống `sodexRewards` (`/api/v1/features`): tắt thì
-// route Not found như chưa có. Trình duyệt đọc thẳng gateway SoDEX; token chỉ ở sessionStorage của tab.
+// route Not found như chưa có. Trình duyệt đọc thẳng gateway SoDEX; token ở localStorage của trình duyệt (DEC-401).
 
 /** Tab của trang: SoPoints và Blind Boxes (#550). `?tab=` lạ rơi về SoPoints. */
 export const REWARDS_TABS = ["sopoints", "boxes"] as const;

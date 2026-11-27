@@ -9,6 +9,7 @@ import type { z } from "zod";
 import { useSodexConnection } from "@/lib/queries";
 
 import { RewardsError, rewardsRequest, type RewardsRequest } from "./client";
+import { jwtExpiryMs } from "./jwt-exp";
 import { jwtClaimRows } from "./shape";
 import { signInToRewards, type SignInResult } from "./sign-in";
 import {
@@ -18,7 +19,7 @@ import {
   subscribeRewardsTokens,
 } from "./token-store";
 
-// Trạng thái đăng nhập rewards của tab này (DEC-397). Token chỉ đọc trong hook và gắn vào request tới gateway; không
+// Trạng thái đăng nhập rewards của trình duyệt này (token ở localStorage, đồng bộ giữa các tab). Token chỉ đọc trong hook và gắn vào request tới gateway; không
 // trả token ra component.
 
 export type RewardsPhase = "idle" | "signing";
@@ -46,7 +47,25 @@ export function useRewardsAuth() {
     [signedIn, master],
   );
 
-  // Token của ví khác master (account đổi, tài khoản DeskLabs khác trên cùng tab) bỏ ngay.
+  // Token hết hạn trong lúc trang đang mở: tới `exp` thì đọc lại (token-store xoá token quá hạn) và báo hết hạn.
+  useEffect(() => {
+    if (!signedIn) return;
+    const token = readRewardsToken(master);
+    const exp = token === null ? null : jwtExpiryMs(token);
+    if (exp === null) return;
+    const id = setTimeout(
+      () => {
+        if (readRewardsToken(master) === null) setExpired(true);
+      },
+      // setTimeout tràn số khi quá ~24,8 ngày; token SoDEX có hạn 15 ngày.
+      Math.min(Math.max(exp - Date.now(), 0) + 1000, 2_147_483_647),
+    );
+    return () => {
+      clearTimeout(id);
+    };
+  }, [signedIn, master]);
+
+  // Token của ví khác master (account đổi, tài khoản DeskLabs khác trên cùng trình duyệt) bỏ ngay.
   useEffect(() => {
     if (master !== null) clearAllRewardsTokens(master);
   }, [master]);

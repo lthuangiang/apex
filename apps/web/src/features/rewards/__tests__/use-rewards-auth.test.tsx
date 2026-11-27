@@ -40,7 +40,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 beforeEach(() => {
-  sessionStorage.clear();
+  localStorage.clear();
   wallet.address = undefined;
 });
 afterEach(() => {
@@ -80,7 +80,43 @@ describe("useRewardsAuth", () => {
     });
   });
 
-  it("drops tokens of any other wallet left in this tab", () => {
+  it("follows sign-in and sign-out from another tab via the storage event (DEC-401)", () => {
+    const { result } = renderHook(() => useRewardsAuth());
+    expect(result.current.signedIn).toBe(false);
+    const key = `desklabs.rewards.jwt.${MASTER.toLowerCase()}`;
+    // Tab khác ghi localStorage: tab này chỉ nhận sự kiện `storage`.
+    act(() => {
+      localStorage.setItem(key, "fake-test-value");
+      window.dispatchEvent(new StorageEvent("storage", { key, newValue: "fake-test-value" }));
+    });
+    expect(result.current.signedIn).toBe(true);
+    act(() => {
+      localStorage.removeItem(key);
+      window.dispatchEvent(new StorageEvent("storage", { key, oldValue: "fake-test-value" }));
+    });
+    expect(result.current.signedIn).toBe(false);
+  });
+
+  it("clears the token and shows expired when exp passes while the page is open", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const exp = Math.floor(Date.now() / 1000) + 5;
+      const payload = btoa(JSON.stringify({ exp })).replace(/=+$/, "");
+      saveRewardsToken(MASTER, `h.${payload}.s`);
+      const { result } = renderHook(() => useRewardsAuth());
+      expect(result.current.signedIn).toBe(true);
+      act(() => {
+        vi.advanceTimersByTime(7000);
+      });
+      expect(readRewardsToken(MASTER)).toBeNull();
+      expect(result.current.signedIn).toBe(false);
+      expect(result.current.expired).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops tokens of any other wallet left in this browser", () => {
     saveRewardsToken(OTHER, "fake-test-value");
     renderHook(() => useRewardsAuth());
     expect(readRewardsToken(OTHER)).toBeNull();
@@ -97,7 +133,7 @@ describe("useRewardsAuth", () => {
 });
 
 describe("DeskLabs sign out", () => {
-  it("clears every rewards token in the tab", async () => {
+  it("clears every rewards token in the browser", async () => {
     saveRewardsToken(MASTER, "fake-test-value");
     const assign = vi.fn();
     vi.stubGlobal("location", { pathname: "/", assign });

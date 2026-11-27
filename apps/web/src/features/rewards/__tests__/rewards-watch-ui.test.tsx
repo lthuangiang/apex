@@ -166,7 +166,7 @@ function thisSignIn(): HTMLElement {
 const watchCalls = () => server.calls.filter((c) => c.path === "/api/v1/rewards/watch");
 
 beforeEach(() => {
-  sessionStorage.clear();
+  localStorage.clear();
   localStorage.clear();
   server.watch = OFF;
   server.calls = [];

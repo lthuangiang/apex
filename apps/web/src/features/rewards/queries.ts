@@ -140,7 +140,7 @@ export function useRewardsMeta(enabled = true) {
   });
 }
 
-// Cần ví (JWT trong sessionStorage của tab, DEC-397).
+// Cần ví (JWT trong localStorage của trình duyệt, DEC-401).
 
 function walletQuery(s: RewardsSession) {
   return { address: s.master ?? "", enabled: s.signedIn && s.master !== null };

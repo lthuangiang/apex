@@ -81,7 +81,7 @@ function show() {
 const card = () => screen.getByRole("region", { name: "SoDEX rewards" });
 
 beforeEach(() => {
-  sessionStorage.clear();
+  localStorage.clear();
   state.master = MASTER;
   state.wallet = undefined;
   signMessage.mockClear();

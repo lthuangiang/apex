@@ -130,7 +130,7 @@ for (const narrow of [false, true]) {
     await routes(page, baseURL, { status: "active", reason: null });
     await page.addInitScript(
       ([k, v]) => {
-        sessionStorage.setItem(k, v);
+        localStorage.setItem(k, v);
       },
       [`desklabs.rewards.jwt.${MASTER.toLowerCase()}`, FAKE_TOKEN] as const,
     );
