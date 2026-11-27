@@ -235,7 +235,10 @@ export function buildSignerApp(deps: SignerDeps): FastifyInstance {
     if (!callerAllowed(request, SIGNER_CALLERS.rewardsEncrypt))
       return reply.status(403).send({ error: "caller not allowed" });
     const rewardsVault = deps.rewardsVault;
-    if (rewardsVault === undefined) return reply.status(503).send({ error: "rewards_disabled" });
+    if (rewardsVault === undefined) {
+      request.log.warn("rewards encrypt: rewards transit key not configured");
+      return reply.status(503).send({ error: "rewards_disabled" });
+    }
     const parsed = rewardsEncryptBodySchema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: "invalid_body" });
     const raw = Buffer.from(parsed.data.token, "utf8");

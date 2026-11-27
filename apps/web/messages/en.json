@@ -10445,6 +10445,7 @@
       "deletingOff": "Deleting the sign-in from DeskLabs…",
       "enableFailed": "Couldn’t turn on alerts.",
       "enableFailedBody": "Nothing was kept on DeskLabs. Rewards still works in this browser.",
+      "reference": "Reference: {ref}",
       "disableFailed": "Couldn’t turn off alerts.",
       "disableFailedBody": "The sign-in is still kept on DeskLabs. Try again.",
       "wrongWallet": "This sign-in is for another wallet.",

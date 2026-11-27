@@ -73,6 +73,7 @@ vi.mock("@/lib/api", () => {
       readonly code: string,
       readonly status: number,
       readonly details: Record<string, unknown> = {},
+      readonly traceId: string | null = null,
     ) {
       super(code);
     }
@@ -90,7 +91,16 @@ vi.mock("@/lib/api", () => {
       if (server.watch === "missing") return Promise.reject(new ApiError("NOT_FOUND", 404));
       if (method === "POST") {
         if (server.enableFails !== null)
-          return Promise.reject(new ApiError(server.enableFails, 422));
+          return Promise.reject(
+            server.enableFails === "REWARDS_WATCH_UNAVAILABLE"
+              ? new ApiError(
+                  server.enableFails,
+                  503,
+                  { reason: "signer" },
+                  "c0ffee12-0000-4000-8000-000000000000",
+                )
+              : new ApiError(server.enableFails, 422),
+          );
         server.watch = {
           status: "active",
           reason: null,
@@ -277,6 +287,30 @@ describe("status strip (mockups 03 / 04 / 05)", () => {
       await screen.findByText(/Off\. Nothing is kept on DeskLabs servers\. Turn on/),
     ).toBeInTheDocument();
     expect(watchCalls().filter((c) => c.method === "DELETE")).toHaveLength(1);
+  });
+
+  it("a server-side failure shows Couldn’t turn on alerts with a short reference from the traceId (#582)", async () => {
+    const user = userEvent.setup();
+    saveRewardsToken(MASTER, FAKE_TOKEN);
+    server.enableFails = "REWARDS_WATCH_UNAVAILABLE";
+    show();
+    await user.click(await screen.findByRole("switch", { name: "New box alerts" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn’t turn on alerts.");
+    expect(alert).toHaveTextContent("Reference: c0ffee12");
+    expect(alert).not.toHaveTextContent("c0ffee12-0000");
+    expect(screen.getByRole("switch", { name: "New box alerts" })).not.toBeChecked();
+  });
+
+  it("no reference line when the error has no traceId", async () => {
+    const user = userEvent.setup();
+    state.wallet = MASTER;
+    server.enableFails = "REWARDS_WALLET_MISMATCH";
+    show();
+    await screen.findByRole("switch", { name: "Tell me about new boxes" });
+    await user.click(screen.getByRole("button", { name: "Sign with wallet" }));
+    expect(await screen.findByText("This sign-in is for another wallet.")).toBeInTheDocument();
+    expect(screen.queryByText(/Reference:/)).toBeNull();
   });
 
   it("off while signed in: turning on posts the token from this tab", async () => {

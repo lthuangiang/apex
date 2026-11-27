@@ -11,6 +11,7 @@ import { shortAddress } from "@/lib/format";
 import { browserZone, formatDayTime } from "../format";
 import {
   enableErrorKind,
+  enableErrorRef,
   useDisableRewardsWatch,
   useEnableRewardsWatch,
   useRewardsWatch,
@@ -24,7 +25,16 @@ import { Banner } from "./rewards-states";
 
 /** Lỗi bật sau khi ký (khối ký đã unmount khi lỗi về): giữ trong cache để dải trạng thái hiện. */
 export const REWARDS_WATCH_ERROR_KEY = ["rewards", "watch", "enableError"] as const;
-type EnableError = ReturnType<typeof enableErrorKind>;
+type EnableErrorKind = ReturnType<typeof enableErrorKind>;
+/** Lỗi bật gần nhất: loại + mã tham chiếu (#582). */
+interface EnableError {
+  kind: EnableErrorKind;
+  ref: string | null;
+}
+const toEnableError = (e: unknown): EnableError => ({
+  kind: enableErrorKind(e),
+  ref: enableErrorRef(e),
+});
 
 function dateOf(iso: string | null): string {
   if (iso === null) return "";
@@ -71,21 +81,36 @@ export function useEnableAfterSignIn(master: string | null) {
       try {
         await enable.mutateAsync();
       } catch (e) {
-        qc.setQueryData<EnableError>(REWARDS_WATCH_ERROR_KEY, enableErrorKind(e));
+        qc.setQueryData<EnableError>(REWARDS_WATCH_ERROR_KEY, toEnableError(e));
       }
     },
   };
 }
 
-function EnableProblem({ kind, onRetry }: { kind: EnableError; onRetry?: () => void }) {
+function EnableProblem({
+  error: { kind, ref },
+  onRetry,
+}: {
+  error: EnableError;
+  onRetry?: () => void;
+}) {
   const t = useTranslations("rewards.watch");
   if (kind === "no_token") return <p className="m-0 text-[13px] text-ink-2">{t("needSignIn")}</p>;
+  const body = kind === "wallet" ? t("wrongWalletBody") : t("enableFailedBody");
   return (
     <Banner
       tone="err"
       alert
       title={kind === "wallet" ? t("wrongWallet") : t("enableFailed")}
-      body={kind === "wallet" ? t("wrongWalletBody") : t("enableFailedBody")}
+      body={
+        ref === null ? (
+          body
+        ) : (
+          <>
+            {body} <span className="whitespace-nowrap">{t("reference", { ref })}</span>
+          </>
+        )
+      }
       action={
         kind === "failed" && onRetry !== undefined ? (
           <Button variant="secondary" onClick={onRetry}>
@@ -123,7 +148,7 @@ export function RewardsWatchStrip({
     qc.setQueryData(REWARDS_WATCH_ERROR_KEY, null);
     enable.mutate(undefined, {
       onError: (e) => {
-        qc.setQueryData<EnableError>(REWARDS_WATCH_ERROR_KEY, enableErrorKind(e));
+        qc.setQueryData<EnableError>(REWARDS_WATCH_ERROR_KEY, toEnableError(e));
       },
     });
   };
@@ -198,7 +223,7 @@ export function RewardsWatchStrip({
       {disable.isError ? (
         <Banner tone="err" alert title={t("disableFailed")} body={t("disableFailedBody")} />
       ) : null}
-      {error === null ? null : <EnableProblem kind={error} onRetry={turnOn} />}
+      {error === null ? null : <EnableProblem error={error} onRetry={turnOn} />}
     </div>
   );
 }
