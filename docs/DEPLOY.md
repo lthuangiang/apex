@@ -569,11 +569,11 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 
 | Biến | Service | Ý nghĩa |
 |---|---|---|
-| `REWARDS_ENABLED` | api | **Mới (#547).** Công tắc toàn hệ thống của SoDEX rewards (mục Rewards, thẻ Overview, `/rewards`) cho **mọi** user; api trả `sodexRewards` trong `GET /api/v1/features`, web đọc lúc chạy (không build lại image web). Mặc định **`false`** |
+| `REWARDS_ENABLED` | api | **Mới (#547).** Công tắc toàn hệ thống của SoDEX rewards (mục Rewards, thẻ Overview, `/rewards`) cho **mọi** user; api trả `sodexRewards` trong `GET /api/v1/features`, web đọc lúc chạy (không build lại image web). Mặc định **`true`** từ bản sau #575 (DEC-397 bổ sung); trước đó `false` |
 | `SODEX_REWARDS_GATEWAY` → build arg `NEXT_PUBLIC_SODEX_REWARDS_GATEWAY` | web (lúc build) | **Mới (#547), tuỳ chọn.** Origin gateway Rewards API. Trống = `https://mainnet-gw.sodex.dev` (prod không cần đặt). Chỉ nhận https; CSP `connect-src` mở đúng origin này |
 
-- **Trong lúc xây (#547–#550): giữ `false`.** Tắt = sidebar, Overview và route `/rewards` như trước. #551 sẽ đổi mặc định sang `true`; từ đó biến chỉ còn là **nút tắt khẩn** khi gateway SoDEX có sự cố.
-- Mẫu `deploy/server/docker-compose.yml` có dòng `REWARDS_ENABLED: ${REWARDS_ENABLED:-false}` trong khối `environment` của `api`. Compose trên VPS thiếu dòng này thì thêm vào (như mẫu), rồi `cd /opt/drift && docker compose up -d api`.
+- **Mở cho mọi user (2026-11-27, DEC-397 bổ sung):** mặc định đổi sang `true`. Từ đó biến chỉ còn là **nút tắt khẩn** khi gateway SoDEX có sự cố: `false` thì user thường không thấy Rewards (sidebar, Overview, `/rewards` như trước), team vẫn thấy.
+- Mẫu `deploy/server/docker-compose.yml` có dòng `REWARDS_ENABLED: ${REWARDS_ENABLED:-true}` trong khối `environment` của `api`. **Compose trên VPS đang có `${REWARDS_ENABLED:-false}`** (theo mẫu cũ): khi deploy bản mở Rewards phải đặt `REWARDS_ENABLED=true` trong `/opt/drift/.env` hoặc sửa dòng compose thành `:-true`, rồi `cd /opt/drift && docker compose up -d api`; nếu không, Rewards vẫn tắt với user thường.
 - Bật / tắt: đặt `REWARDS_ENABLED=true` / `false` trong `/opt/drift/.env`, rồi `docker compose up -d api`. Web nhận giá trị mới khi trình duyệt tải lại `/features` (tối đa ~1 phút).
 - **Trang chẩn đoán `/admin/rewards-debug`** (chỉ role team, không có mục sidebar) chạy **cả khi công tắc tắt**: chủ sản phẩm thử bằng ví thật trên prod trước khi mở. Token ký ví chỉ nằm trong trình duyệt (sessionStorage); server DeskLabs không nhận, không log.
 - Không migration. Không đổi gì ở engine / scheduler.
