@@ -43,6 +43,7 @@ import { computeDailyStats, utcDate } from "./market-stats";
 import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
 import { purgeMcp } from "./mcp-purge";
 import { fitMmModelDaily } from "./mm-model";
+import { parseRewardsWatchInterval } from "./rewards-watch/interval";
 import {
   purgeRewardsWatch,
   runRewardsWatchTick,
@@ -106,8 +107,7 @@ const env = z
       .enum(["true", "false"])
       .default("false")
       .transform((v) => v === "true"),
-    /** #558: chu kỳ đọc mỗi user (phút, 5–60). Sai giá trị thì dùng mặc định, không làm scheduler dừng. */
-    REWARDS_WATCH_INTERVAL_MIN: z.coerce.number().int().min(5).max(60).default(15).catch(15),
+    // #558: `REWARDS_WATCH_INTERVAL_MIN` (phút, 1–60) đọc riêng qua `parseRewardsWatchInterval` để log warn khi sai.
     /** #558: trần riêng weight / phút của gateway rewards (bucket `rl:sodex:rewards:<egress>`). */
     REWARDS_WATCH_MAX_WEIGHT_PER_MIN: z.coerce.number().int().positive().default(120).catch(120),
     /** #558: origin gateway rewards (trống = mainnet; client chỉ nhận https). */
@@ -115,6 +115,13 @@ const env = z
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "scheduler" } });
+// #558: chu kỳ đọc mỗi user của job báo box mới (phút, 1–60, mặc định 15). Sai giá trị thì dùng mặc định và báo một lần.
+const rewardsInterval = parseRewardsWatchInterval(process.env.REWARDS_WATCH_INTERVAL_MIN);
+if (rewardsInterval.invalid !== null)
+  log.warn(
+    { received: rewardsInterval.invalid.received, using: rewardsInterval.minutes },
+    "REWARDS_WATCH_INTERVAL_MIN invalid (expected an integer 1-60), using default",
+  );
 // #558 (DEC-398): cert mTLS của scheduler cho signer (giải mã phiên rewards). Thiếu cert (prod chưa tạo lại cert) thì
 // job rewards tắt, log một lần, scheduler vẫn chạy mọi việc khác.
 const rewardsSigner = loadRewardsSignerState(process.env, env.REWARDS_WATCH_ENABLED);
@@ -459,7 +466,7 @@ const rewardsJob: RewardsWatchJobDeps | null =
             );
           },
         },
-        intervalMs: env.REWARDS_WATCH_INTERVAL_MIN * 60_000,
+        intervalMs: rewardsInterval.minutes * 60_000,
         batch: 20,
       }
     : null;
