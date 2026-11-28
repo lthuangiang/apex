@@ -15,7 +15,10 @@ import {
   formatCoefficient,
   formatCount,
   formatDayTime,
+  formatUsdAmount,
   weekPoints,
+  weekState,
+  weekVolumeTotal,
   secToMs,
   sortByCoefficient,
 } from "../format";
@@ -114,6 +117,16 @@ function Rows({ children, stale }: { children: ReactNode; stale?: boolean }) {
 }
 
 /** Box cấp cao nhất đang có trong backpack (byLevel của SoDEX: Common → SuperRare); chưa có thì Common. */
+/** #601: khối lượng tuần đang chạy; thiếu cả spot lẫn futures thì "Not provided" (SoDEX không trả), không bao giờ 0. */
+function WeekVolume({ text }: { text: string | null }) {
+  const tm = useTranslations("common.missing");
+  return text === null ? (
+    <span className="font-semibold text-ink-2">{tm("notProvided")}</span>
+  ) : (
+    <>{text}</>
+  );
+}
+
 export function topBoxLevel(
   byLevel: readonly { level: string; count: number }[] | undefined,
 ): string {
@@ -524,8 +537,10 @@ function SignedCard({ auth, data }: { auth: Auth; data: CardData }) {
       : weekList.data?.find((r) => r.weekNo === week.data.weekNo));
   const next =
     week.data === undefined ? null : formatDayTime(secToMs(week.data.distributionTime), tz);
-  // Tuần chưa chốt (In progress / Snapshot done): chỉ chip, không số (quy tắc 8).
-  const thisWeek = current === undefined ? null : weekPoints(current);
+  // Tuần chưa chốt (In progress / Snapshot done): chỉ chip, không số điểm (quy tắc 8). #601: tuần đang chạy hiện khối
+  // lượng tuần (spot + futures SoDEX trả) thay cho chip; tuần đã kết thúc chưa có điểm giữ chip "Snapshot done".
+  const live = current !== undefined && weekState(current) === "live";
+  const thisWeek = current === undefined || live ? null : weekPoints(current);
   return (
     <Shell>
       <BotBox
@@ -575,16 +590,22 @@ function SignedCard({ auth, data }: { auth: Auth; data: CardData }) {
             <Row label={t("backpack")} box={topBoxLevel(boxes.data?.byLevel)}>
               <Value text={formatCount(boxes.data?.total)} />
             </Row>
-            <Row label={t("thisWeek")}>
-              {thisWeek === null ? (
-                <Value text={null} />
-              ) : (
-                <>
-                  {thisWeek.hide ? null : <Value text={thisWeek.text} />}
-                  <WeekChip state={thisWeek.state} />
-                </>
-              )}
-            </Row>
+            {live ? (
+              <Row label={t("volumeThisWeek")}>
+                <WeekVolume text={formatUsdAmount(weekVolumeTotal(current))} />
+              </Row>
+            ) : (
+              <Row label={t("thisWeek")}>
+                {thisWeek === null ? (
+                  <Value text={null} />
+                ) : (
+                  <>
+                    {thisWeek.hide ? null : <Value text={thisWeek.text} />}
+                    <WeekChip state={thisWeek.state} />
+                  </>
+                )}
+              </Row>
+            )}
             <Row label={tr("week.next")}>
               <Value text={next} />
             </Row>

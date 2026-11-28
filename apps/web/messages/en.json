@@ -2807,6 +2807,7 @@
     }
   },
   "_pendingReview": [
+    "rewards.card.volumeThisWeek",
     "signalAnalysis.filters.botKeys",
     "signalAnalysis.research.trace",
     "signalAnalysis.research.sources.names.claude",
@@ -10306,6 +10307,7 @@
       "toClaim": "Blind Boxes to claim",
       "backpack": "Boxes in backpack",
       "thisWeek": "This week",
+      "volumeThisWeek": "Volume this week",
       "open": "Open Rewards",
       "job": {
         "opening": "{count, plural, one {Opening # box…} other {Opening # boxes…}}",

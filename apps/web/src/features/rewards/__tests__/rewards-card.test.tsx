@@ -194,12 +194,13 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
     expect(bagArt).toHaveAttribute("width", "26");
     expect(bagArt?.getAttribute("data-kind")).toBe("rare");
     expect(bagArt).toHaveAttribute("aria-hidden", "true");
-    expect(row("This week").querySelector("svg.bx")).toBeNull();
-    // Tuần đang chạy: chỉ chip In progress, không số (quy tắc 8).
+    // #601: tuần đang chạy hiện khối lượng tuần = spotVolume + futuresVolume (1,920 + 84,300), không điểm, không chip.
     await waitFor(() => {
-      expect(within(row("This week")).getByText("In progress")).toBeInTheDocument();
+      expect(row("Volume this week")).toHaveTextContent("$86,220.00");
     });
-    expect(row("This week")).not.toHaveTextContent("2,140");
+    expect(row("Volume this week").querySelector("svg.bx")).toBeNull();
+    expect(row("Volume this week")).not.toHaveTextContent("2,140");
+    expect(within(card()).queryByText("In progress")).toBeNull();
     expect(within(card()).getByRole("link", { name: "Open Rewards" })).toHaveAttribute(
       "href",
       "/rewards",
@@ -334,7 +335,7 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
   it("passes axe", async () => {
     const { container } = show();
     await within(card()).findByText("48,210");
-    await within(card()).findByText("In progress");
+    await within(card()).findByText("$86,220.00");
     expect((await axe.run(container)).violations).toEqual([]);
   });
 });
