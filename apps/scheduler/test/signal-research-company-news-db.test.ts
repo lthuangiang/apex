@@ -29,7 +29,7 @@ import {
 import type { RestBookResult } from "../src/signal-research/prices";
 import type { SosoClient, SosoNewsItem } from "../src/signal-research/soso";
 
-// #593 (news-v7, DEC-402 mục 6) trên Postgres thật: tin công ty Anthropic → ANT-USD (tag SoSoValue hoặc tên trong bài),
+// #593 (DEC-402 mục 6, DEC-403) trên Postgres thật: tin công ty Anthropic → ANT-USD (tag SoSoValue hoặc tên trong bài),
 // tin sản phẩm / không rõ bị bỏ trước Claude, market khác không đổi, độ sâu sổ lệnh lúc quyết định nằm trên snapshot
 // Context và feed (`market`, `book`). SoSoValue / Claude / marketdata là mock; không có SoDEX. Tiêu đề là câu mẫu tự viết.
 

@@ -1,7 +1,7 @@
 import { mentionsAsset, type AssetAlias, type Candidate } from "./logic";
 import { AssetKind, COMPANY_NEWS_MARKETS } from "./rules";
 
-// news-v7 (#593, DEC-402 mục 6): tin về một công ty trong `COMPANY_NEWS_MARKETS` (Anthropic → ANT-USD). Chỉ tin CÔNG TY
+// #593 (DEC-402 mục 6, DEC-403): tin về một công ty trong `COMPANY_NEWS_MARKETS` (Anthropic → ANT-USD). Chỉ tin CÔNG TY
 // (vốn, định giá, gọi vốn, pháp lý, doanh thu, đối tác lớn) được giao dịch; tin sản phẩm / model / công cụ được đọc nhưng
 // không giao dịch. Hàm thuần, tất định, chỉ đọc TIÊU ĐỀ: tên công ty xuất hiện trong rất nhiều bài sản phẩm, nên luật chặt:
 // không chắc là tin công ty thì không giao dịch.

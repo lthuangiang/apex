@@ -10,15 +10,15 @@ import {
   STOCK_MARKET_SET,
 } from "../signal-research/rules";
 
-// #593 (news-v7, DEC-402 mục 6): tin công ty Anthropic → ANT-USD; tin sản phẩm / công cụ đọc nhưng không giao dịch.
+// #593 (DEC-402 mục 6, DEC-403): tin công ty Anthropic → ANT-USD; tin sản phẩm / công cụ đọc nhưng không giao dịch.
 // Mọi tiêu đề dưới đây là câu mẫu tự viết, không chép từ bài báo nào.
 
 const ANT = "ANT-USD";
 
-describe("company news rules (news-v7, #593)", () => {
-  it("bumps Rules to news-v7, the asset map, and lists ANT-USD as the Anthropic company market", () => {
-    expect(NEWS_RULES.version).toBe("news-v7");
-    expect(NEWS_RULES.versionNumber).toBe(7);
+describe("company news rules (DEC-403, #593)", () => {
+  it("keeps Rules news-v6 (DEC-403), bumps only the asset map, lists ANT-USD as the Anthropic company market", () => {
+    expect(NEWS_RULES.version).toBe("news-v6");
+    expect(NEWS_RULES.versionNumber).toBe(6);
     expect(NEWS_ASSET_MAP_VERSION).toBe("assets-2026-11-28a");
     expect(COMPANY_NEWS_MARKETS).toEqual({ [ANT]: ["Anthropic"] });
     expect(STOCK_MARKET_SET.has(ANT)).toBe(true);

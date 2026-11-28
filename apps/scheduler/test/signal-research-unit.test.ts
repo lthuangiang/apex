@@ -1,7 +1,18 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { claudeCostUsd, Decimal, NEWS_CLASSIFIER, NEWS_RULES } from "@drift/shared";
+import {
+  assetInText,
+  catalystRule,
+  claudeCostUsd,
+  Decimal,
+  etfOnMajorAsset,
+  listingOnMajorAsset,
+  NEWS_CLASSIFIER,
+  NEWS_RULES,
+  SIGNAL_CATALYSTS,
+  treasuryOnMajorAsset,
+} from "@drift/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -19,7 +30,7 @@ import {
   parseSignalEnv,
   signalResearchEnvSchema,
 } from "../src/signal-research/index";
-import { collectFloor, companyGate } from "../src/signal-research/pipeline";
+import { coinCheck, collectFloor, companyGate } from "../src/signal-research/pipeline";
 import {
   combineQuote,
   LiveBooks,
@@ -491,9 +502,9 @@ describe("classifier answer", () => {
 });
 
 describe("classifier prompt news-classifier-v7 (#530)", () => {
-  it("ships with rules news-v7 (company news, #593) on the same reader", () => {
+  it("ships with rules news-v6 (event split)", () => {
     expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v7");
-    expect(NEWS_RULES.version).toBe("news-v7");
+    expect(NEWS_RULES.version).toBe("news-v6");
   });
   it("one event about several coins: market first, the others in other_markets; never for recaps", () => {
     expect(CLASSIFIER_SYSTEM).toContain(
@@ -1057,7 +1068,7 @@ describe("no SoDEX write path", () => {
   });
 });
 
-// #593 (news-v7): market công ty (ANT-USD) chỉ giao dịch tin công ty; tiêu đề là câu mẫu tự viết.
+// #593 (DEC-403): market công ty (ANT-USD) chỉ giao dịch tin công ty; tiêu đề là câu mẫu tự viết.
 describe("company gate before Claude (#593)", () => {
   const ant = { symbol: "ANT", market: "ANT-USD", kind: "stock" as const };
   const sol = { symbol: "SOL", market: "SOL-USD", kind: "crypto" as const };
@@ -1110,5 +1121,46 @@ describe("book depth for Book at the time (#593)", () => {
       await bookDepthVia(() => Promise.resolve({ ok: false, reason: "timeout" }))("ANT-USD"),
     ).toBeNull();
     expect(await bookDepthVia(() => Promise.reject(new Error("x")))("ANT-USD")).toBeNull();
+  });
+});
+
+// DEC-403: Rules giữ news-v6 vì luật mới chỉ áp cho `COMPANY_NEWS_MARKETS`. Với cùng đầu vào, quyết định của market khác giống
+// hệt bản trước #593 (kiểm tất định cũ: loại tài sản, có trong bài, luật BTC / ETH), kể cả tiêu đề đầy từ sản phẩm.
+describe("markets outside COMPANY_NEWS_MARKETS decide exactly as before #593 (DEC-403)", () => {
+  const before = (
+    catalyst: Parameters<typeof coinCheck>[0],
+    c: Parameters<typeof coinCheck>[1],
+    title: string,
+  ): string | null => {
+    if (!catalystRule(catalyst).kinds.includes(c.kind)) return "CATALYST_ASSET_MISMATCH";
+    if (!assetInText(title, null, c, [])) return "ASSET_NOT_IN_TEXT";
+    if (treasuryOnMajorAsset(catalyst, c.market)) return "TREASURY_MAJOR_ASSET";
+    if (etfOnMajorAsset(catalyst, c.market)) return "ETF_MAJOR_ASSET";
+    if (listingOnMajorAsset(catalyst, c.market)) return "LISTING_MAJOR_ASSET";
+    return null;
+  };
+  const markets = [
+    { symbol: "BTC", market: "BTC-USD", kind: "crypto" as const },
+    { symbol: "ETH", market: "ETH-USD", kind: "crypto" as const },
+    { symbol: "SOL", market: "SOL-USD", kind: "crypto" as const },
+    { symbol: "NVDA", market: "NVDA-USD", kind: "stock" as const },
+    { symbol: "MSFT", market: "MSFT-USD", kind: "stock" as const },
+  ];
+  const titles = [
+    "BTC ETF approved by regulator",
+    "ETH exploit drains a protocol; new model of attack",
+    "SOL listing on a major exchange, app and API released",
+    "NVDA beats estimates and launches a new AI model",
+    "MSFT unveils coding agent; regulator opens inquiry",
+    "Anthropic releases a new Claude model; SOL and BTC rally",
+  ];
+  it.each(SIGNAL_CATALYSTS)("catalyst %s: same reason for every market and title", (catalyst) => {
+    for (const c of markets)
+      for (const title of titles)
+        expect(coinCheck(catalyst, c, title, null, [])).toBe(before(catalyst, c, title));
+  });
+  it("the company gate never touches a list without a company market", () => {
+    for (const title of titles)
+      expect(companyGate(title, markets)).toEqual({ kinds: [], sendable: markets, blocked: null });
   });
 });

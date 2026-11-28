@@ -265,7 +265,7 @@ interface Signal {
 }
 
 /** #530: kiểm tất định của một coin sau Claude (loại tài sản, có trong bài, luật BTC / ETH); null = qua. */
-function coinCheck(
+export function coinCheck(
   catalyst: SignalCatalyst,
   c: Candidate,
   title: string | null,
@@ -280,7 +280,7 @@ function coinCheck(
   if (etfOnMajorAsset(catalyst, c.market)) return SignalReason.etfMajorAsset;
   // news-v5 (#506): tin listing trên BTC / ETH không giao dịch.
   if (listingOnMajorAsset(catalyst, c.market)) return SignalReason.listingMajorAsset;
-  // news-v7 (#593): market công ty (ANT-USD) chỉ giao dịch tin công ty. Bài sản phẩm / không rõ đã bị bỏ khỏi ứng viên
+  // #593 (DEC-403): market công ty (ANT-USD) chỉ giao dịch tin công ty. Bài sản phẩm / không rõ đã bị bỏ khỏi ứng viên
   // trước Claude (`companyGate`); kiểm lại ở đây để không bao giờ lọt.
   if (isCompanyNewsMarket(c.market)) {
     const kind = companyNewsKindOf(title, c.market);
@@ -294,7 +294,7 @@ function coinCheck(
 const BOOK_DEPTH_MARKETS: ReadonlySet<string> = new Set(NEWS_RULES.bookDepthMarkets);
 
 /**
- * news-v7 (#593, DEC-402 mục 6): loại tin (theo tiêu đề) của mỗi market công ty trong ứng viên; market không phải tin công
+ * #593 (DEC-402 mục 6, DEC-403): loại tin (theo tiêu đề) của mỗi market công ty trong ứng viên; market không phải tin công
  * ty bị bỏ khỏi danh sách gửi Claude (bài chỉ còn market đó thì bỏ trước Claude). Market khác không đổi.
  */
 export function companyGate(
@@ -616,7 +616,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
     }
     const parsed = candidateList.safeParse(a.candidates);
     const allCandidates: Candidate[] = parsed.success ? parsed.data : [];
-    // news-v7 (#593): tin sản phẩm / không rõ của market công ty (ANT-USD) không bao giờ giao dịch; bài chỉ có market đó
+    // #593 (DEC-403): tin sản phẩm / không rõ của market công ty (ANT-USD) không bao giờ giao dịch; bài chỉ có market đó
     // thì bỏ ngay, không gọi Claude ("read but not traded").
     const gate = companyGate(a.title, allCandidates);
     const companyInfo = gate.kinds.length === 0 ? {} : { companyNews: gate.kinds };

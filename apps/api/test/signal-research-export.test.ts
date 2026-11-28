@@ -126,7 +126,7 @@ beforeAll(async () => {
     `insert into news_signals (id, story_key, cycle_at, article_id, market, kind, catalyst, side, level, first_published_at,
        collected_at, decided_at, expires_at, typical_by_hold_hours, classifier_version, asset_map_version, rule_version)
      values (gen_random_uuid(), 'ETH-USD|x', $1, 'e1', 'ETH-USD', 'crypto', 'listing', 'long', 'high', $1, $1, $1,
-       $1::timestamptz + interval '2 minutes', '{"24":"3"}', 'c', 'a', 'news-v7') returning id`,
+       $1::timestamptz + interval '2 minutes', '{"24":"3"}', 'c', 'a', 'news-v6') returning id`,
     [ago(30)],
   );
   const signalId = sig[0]?.id ?? "";

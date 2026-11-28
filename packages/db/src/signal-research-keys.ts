@@ -72,7 +72,7 @@ export const DROP: ReadonlyMap<string, ResearchDropReason> = new Map<string, Res
   ["BELOW_MIN_ORDER_SIZE", "belowMinSize"],
   // #530: bài đăng lại của sự kiện nhiều coin đã xét, lẽ ra mở câu chuyện mới cho coin: bỏ ở Filter (không có story).
   ["SAME_EVENT", "sameEvent"],
-  // #593 (news-v7): tin sản phẩm / công cụ của công ty có market riêng (ANT-USD): đọc, không giao dịch.
+  // #593 (DEC-403): tin sản phẩm / công cụ của công ty có market riêng (ANT-USD): đọc, không giao dịch.
   ["PRODUCT_NEWS", "productNews"],
   // #593: tiêu đề không cho thấy tin công ty của market đó: như tin không thuộc danh sách.
   ["NOT_COMPANY_NEWS", "notCatalyst"],

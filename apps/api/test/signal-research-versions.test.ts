@@ -123,7 +123,7 @@ async function trade(o: TradeOpts): Promise<string> {
        opposite_at, opposite_exit_price, opposite_result_usdc, opposite_result_pct)
      values ($1, 'news', $2, $3, $4, $5, $6, 'ETH', 'etf_approved', 'long', 500, 0.15, 3400, 3400, 0.01, 0.05, 0.25, 1, 1.6, 0.8,
        3454, 3372, $7::timestamptz + interval '3 days', $7, $7, $7, 'medium', '[]', false, 'book', $8,
-       case when $8 = 'closed' then 3450 end, $9, $10, case when $8 = 'closed' then 0.25 end, $11, $12, 0, 'news-v7', $13, $14,
+       case when $8 = 'closed' then 3450 end, $9, $10, case when $8 = 'closed' then 0.25 end, $11, $12, 0, 'news-v6', $13, $14,
        $15, case when $15::timestamptz is not null then 3420 end, $16, $17)`,
     [
       id,
@@ -157,7 +157,7 @@ async function bulkTrades(versionId: string, n: number, from: string, pct: strin
        result_usdc, result_pct, random_pct, rule_version, classifier_version)
      select gen_random_uuid(), 'news', 'live', $1, 'ETH-USD', 'ETH', 'etf_approved', 'long', 500, 0.15, 3400, 3400, 0.01, 0.05, 0.25, 1,
        1.6, 0.8, 3454, 3372, t + interval '3 days', t, t, t, 'medium', '[]', false, 'book', 'closed', 3450, 'take_profit',
-       t + interval '30 minutes', 0.25, $3::numeric * 5, $3::numeric, 0, 'news-v7', $4
+       t + interval '30 minutes', 0.25, $3::numeric * 5, $3::numeric, 0, 'news-v6', $4
      from (select $2::timestamptz + (g * interval '3 hours') as t from generate_series(1, $5::int) g) s`,
     [versionId, from, pct, CURRENT, n],
   );
@@ -169,7 +169,7 @@ async function article(id: string) {
        status, classification, claude_prompt_version, rule_version)
      values ($1, 'Reuters', null, $2, 'Body', $3, $3, '[{"symbol":"ETH","name":"Ethereum"}]',
        '[{"symbol":"ETH","market":"ETH-USD","kind":"crypto"}]', $4, 'classified',
-       '{"catalyst":"etf_approved","market":"ETH-USD","relevance":"direct","promotional":false}', $5, 'news-v7')`,
+       '{"catalyst":"etf_approved","market":"ETH-USD","relevance":"direct","promotional":false}', $5, 'news-v6')`,
     [id, `Title ${id}`, ago(60), `hash-${id}`, CURRENT],
   );
 }
@@ -189,7 +189,7 @@ async function event(
 ) {
   await env.pool.query(
     `insert into signal_events (id, article_id, story_id, trade_id, stage, outcome, reason, detail, rule_version, version_id, at)
-     values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'news-v7', $8, $9)`,
+     values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'news-v6', $8, $9)`,
     [
       articleId,
       extra.storyId ?? null,
@@ -209,7 +209,7 @@ async function story(id: string, versionId: string | null, outcome: string) {
     `insert into signal_stories (id, story_key, market, catalyst, direction, first_article_id, first_seen_at, sources, level_at_entry,
        later_level, outcome, locked, rule_version, version_id)
      values ($1, 'ETH-USD|etf_approved', 'ETH-USD', 'etf_approved', 'long', 'va1', $2, '[{"name":"Reuters","tier":"top"}]',
-       'medium', 'medium', $3, true, 'news-v7', $4)`,
+       'medium', 'medium', $3, true, 'news-v6', $4)`,
     [id, ago(60), outcome, versionId],
   );
 }

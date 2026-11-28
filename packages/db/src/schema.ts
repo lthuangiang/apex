@@ -2298,7 +2298,7 @@ const contextColumns = () => ({
   marketVolPercentile: numeric("market_vol_percentile", { precision: 10, scale: 4 }),
   marketVolatility: text("market_volatility"),
   /**
-   * #593 (news-v7): độ sâu sổ lệnh lúc quyết định ("Book at the time"): tổng notional 10 mức giá phía mua / bán (quote ≈
+   * #593 (DEC-403): độ sâu sổ lệnh lúc quyết định ("Book at the time"): tổng notional 10 mức giá phía mua / bán (quote ≈
    * USD), chỉ cho market trong `NEWS_RULES.bookDepthMarkets`. null = không chụp / không đọc được sổ (web hiện "–").
    */
   bookBidsUsd: money("book_bids_usd"),

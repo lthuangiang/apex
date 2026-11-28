@@ -21,7 +21,7 @@ async function article(id: string, collectedMinAgo: number) {
     `insert into signal_articles (id, source, title, content, published_at, collected_at, matched_currencies, candidates, content_hash,
        status, classification, rule_version)
      values ($1, 'Reuters', $2, 'Body', $3, $3, '[{"symbol":"ETH","name":"Ethereum"}]',
-       '[{"symbol":"ETH","market":"ETH-USD","kind":"crypto"}]', $4, 'classified', null, 'news-v7')`,
+       '[{"symbol":"ETH","market":"ETH-USD","kind":"crypto"}]', $4, 'classified', null, 'news-v6')`,
     [id, `Title ${id}`, ago(collectedMinAgo), `hash-${id}`],
   );
 }
@@ -29,7 +29,7 @@ async function article(id: string, collectedMinAgo: number) {
 async function event(articleId: string, stage: string, outcome: string, reason: string | null) {
   await env.pool.query(
     `insert into signal_events (id, article_id, stage, outcome, reason, detail, rule_version, at)
-     values (gen_random_uuid(), $1, $2, $3, $4, null, 'news-v7', $5)`,
+     values (gen_random_uuid(), $1, $2, $3, $4, null, 'news-v6', $5)`,
     [articleId, stage, outcome, reason, ago(0)],
   );
 }

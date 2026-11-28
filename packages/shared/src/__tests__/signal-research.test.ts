@@ -65,8 +65,8 @@ describe("rules v3", () => {
     });
     expect(catalystRule("token_unlock")).toMatchObject({ direction: "short", maxHoldHours: 48 });
     expect(SIGNAL_CATALYSTS).toHaveLength(12);
-    expect(NEWS_RULES.version).toBe("news-v7");
-    expect(NEWS_RULES.versionNumber).toBe(7);
+    expect(NEWS_RULES.version).toBe("news-v6");
+    expect(NEWS_RULES.versionNumber).toBe(6);
     expect(SignalReason.assetNotInText).toBe("ASSET_NOT_IN_TEXT");
     expect(SignalReason.treasuryMajorAsset).toBe("TREASURY_MAJOR_ASSET");
     expect(SignalReason.etfMajorAsset).toBe("ETF_MAJOR_ASSET");

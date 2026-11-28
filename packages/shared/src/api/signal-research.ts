@@ -119,7 +119,7 @@ export const RESEARCH_DROP_REASONS = [
    */
   "sameEvent",
   /**
-   * #593 (news-v7, DEC-402 mục 6): tin sản phẩm / model / công cụ của công ty có market riêng (Anthropic → ANT-USD,
+   * #593 (DEC-402 mục 6, DEC-403): tin sản phẩm / model / công cụ của công ty có market riêng (Anthropic → ANT-USD,
    * `PRODUCT_NEWS`): đọc nhưng không giao dịch ("Product, not company value").
    */
   "productNews",
@@ -998,7 +998,7 @@ export const researchArticleSchema = z.object({
    */
   tradedAssets: z.array(z.string()).optional(),
   /**
-   * #593 (news-v7): độ sâu sổ lệnh lúc quyết định ("Book at the time"): tổng notional 10 mức giá mỗi phía của market bài
+   * #593 (DEC-403): độ sâu sổ lệnh lúc quyết định ("Book at the time"): tổng notional 10 mức giá mỗi phía của market bài
    * gắn (chỉ `NEWS_RULES.bookDepthMarkets`), từ snapshot Context. Thiếu / null = không chụp ("–").
    */
   book: researchBookDepthSchema.nullable().optional(),

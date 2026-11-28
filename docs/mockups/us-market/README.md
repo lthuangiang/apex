@@ -10,7 +10,7 @@ Chủ sản phẩm duyệt ngày 2026-11-28 (DEC-402). Dữ liệu trong ảnh l
 | 01 | Strategy Lab: hai tab giữ nguyên, thêm banner mở trang US Market và nhãn "Trades …" trên thẻ chiến lược | `01-strategy-lab-1440.png` |
 | 02 | US Market (trang riêng `/markets/us`, mở từ banner): dải "Your SoDEX Wealth", khối Anthropic (vANT, ANT-USD kèm độ sâu sổ lệnh), khối SoDEX Wealth funds (chỉ đọc, link ra SoDEX), khối US fund tokens ("Watching") | `02-us-market-1440.png` |
 | 03 | Tạo bot trên market có sổ mỏng: bảng độ sâu sổ lệnh và kiểm "Largest position" | `03-new-bot-depth-1440.png` |
-| 04 | Signal Research: tin công ty Anthropic gắn với ANT-USD; tin sản phẩm không giao dịch | `04-signal-research-1440.png` |
+| 04 | Signal Research: tin công ty Anthropic gắn với ANT-USD; tin sản phẩm không giao dịch. Dòng "funding round reported → Positive · Passed · traded" chỉ là minh hoạ: bộ đọc hiện chưa có catalyst cho tin gọi vốn / định giá nên tin này không mở lệnh (DEC-403) | `04-signal-research-1440.png` |
 | 05 | Portfolio › My Wealth (chỉ đọc) | `05-my-wealth-1440.png` |
 
 ## Quy tắc đi kèm bản phác (DEC-402)

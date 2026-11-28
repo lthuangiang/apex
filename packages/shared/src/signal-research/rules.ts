@@ -95,12 +95,12 @@ export const SignalReason = {
   /** news-v5 (#506): listing trên BTC hoặc ETH không bao giờ giao dịch. */
   listingMajorAsset: "LISTING_MAJOR_ASSET",
   /**
-   * news-v7 (#593, DEC-402 mục 6): tin sản phẩm / model / công cụ của một công ty trong `COMPANY_NEWS_MARKETS` (Anthropic →
+   * #593 (DEC-402 mục 6, DEC-403): tin sản phẩm / model / công cụ của một công ty trong `COMPANY_NEWS_MARKETS` (Anthropic →
    * ANT-USD): được đọc nhưng không giao dịch ("Product, not company value"). Bỏ trước Claude khi bài không còn ứng viên khác.
    */
   productNews: "PRODUCT_NEWS",
   /**
-   * news-v7 (#593): tiêu đề không cho thấy tin công ty (vốn, định giá, pháp lý, doanh thu, đối tác lớn) của market trong
+   * #593 (DEC-403): tiêu đề không cho thấy tin công ty (vốn, định giá, pháp lý, doanh thu, đối tác lớn) của market trong
    * `COMPANY_NEWS_MARKETS`, cũng không rõ là tin sản phẩm (hoặc tiêu đề không nêu tên công ty): không giao dịch market đó.
    */
   notCompanyNews: "NOT_COMPANY_NEWS",
@@ -216,15 +216,16 @@ export const SR_WATCH_REST = {
  * chia cỡ lệnh (`eventMaxCoins`, `sameEventWindowHours`, `SAME_EVENT`, `BELOW_MIN_ORDER_SIZE` cho lệnh giấy), cùng prompt
  * `news-classifier-v7` (reader trả thêm các coin khác của sự kiện).
  *
- * v7 so với v6 (#593, DEC-402 mục 6): tin về công ty Anthropic gắn với `ANT-USD` (`COMPANY_NEWS_MARKETS`); chỉ tin công
- * ty (vốn, định giá, gọi vốn, pháp lý, doanh thu, đối tác lớn) được giao dịch, tin sản phẩm / model / công cụ được đọc nhưng
- * không giao dịch (`PRODUCT_NEWS`), tin không rõ cũng không giao dịch (`NOT_COMPANY_NEWS`). Phân loại tất định theo tiêu đề
- * (`companyNewsKindOf`), không đổi prompt (reader vẫn `news-classifier-v7`). Market khác không đổi luật.
+ * #593 (DEC-402 mục 6, DEC-403) KHÔNG tăng version này: tin về công ty Anthropic gắn với `ANT-USD` (`COMPANY_NEWS_MARKETS`);
+ * chỉ tin công ty (vốn, định giá, gọi vốn, pháp lý, doanh thu, đối tác lớn) được giao dịch, tin sản phẩm / model / công cụ
+ * được đọc nhưng không giao dịch (`PRODUCT_NEWS`), tin không rõ cũng không (`NOT_COMPANY_NEWS`). Luật chỉ áp cho market trong
+ * `COMPANY_NEWS_MARKETS` (market mới, chưa có lịch sử được tính), quyết định của market khác không đổi, nên chỉ tăng
+ * `NEWS_ASSET_MAP_VERSION` (như DEC-381) và không reset cổng. Không đổi prompt (reader vẫn `news-classifier-v7`).
  */
 export const NEWS_RULES = {
-  version: "news-v7",
+  version: "news-v6",
   /** Số version (API hiện dạng số). */
-  versionNumber: 7,
+  versionNumber: 6,
   lane: "news",
   /** Bảng loại tin → chiều + giữ tối đa. Chiều do loại tin quyết định, Claude chỉ gọi tên loại tin và tài sản. */
   catalysts: {
@@ -289,7 +290,7 @@ export const NEWS_RULES = {
    */
   listingExcludedMarkets: ["BTC-USD", "ETH-USD"],
   /**
-   * news-v7 (#593): market mà lane chụp độ sâu sổ lệnh (10 mức mỗi phía, DEC-402 mục 4) lúc quyết định, lưu cùng snapshot
+   * #593 (DEC-403): market mà lane chụp độ sâu sổ lệnh (10 mức mỗi phía, DEC-402 mục 4) lúc quyết định, lưu cùng snapshot
    * Context ("Book at the time"). Chỉ ghi, không đổi quyết định.
    */
   bookDepthMarkets: ["ANT-USD"],
@@ -524,7 +525,8 @@ export const COIN_NAME_ALIASES: Readonly<Record<string, readonly string[]>> = {
 /**
  * #593 (DEC-402 mục 6): market của một công ty mà lane chỉ giao dịch tin CÔNG TY (`companyNewsKindOf`), và tên công ty để
  * nhận ra bài nêu công ty khi SoSoValue không gắn tag (ứng viên theo tên trong bài, `textCandidatesOf`). Tên khớp như tên
- * thương hiệu một từ (viết hoa chữ đầu). Thêm market = đổi `NEWS_ASSET_MAP_VERSION` và `NEWS_RULES.version`.
+ * thương hiệu một từ (viết hoa chữ đầu). Thêm market = đổi `NEWS_ASSET_MAP_VERSION` (DEC-403); market đã có lệnh được
+ * tính thì phải hỏi PM về `NEWS_RULES.version`.
  */
 export const COMPANY_NEWS_MARKETS: Readonly<Record<string, readonly string[]>> = {
   "ANT-USD": ["Anthropic"],
