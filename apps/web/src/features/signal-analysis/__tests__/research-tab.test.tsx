@@ -1647,6 +1647,8 @@ describe("Claude reader v4 + Rules v4 (#395)", { timeout: 30_000 }, () => {
       "ETF news on BTC or ETH. Both already have many ETFs, so one more rarely moves the price. Dropped at Score as “ETF on BTC or ETH”.",
       "Treasury buys and sells of BTC or ETH. Too small next to their market. Dropped at Score as “Treasury on BTC or ETH”.",
       "Listings of BTC or ETH. Both already trade on every major exchange, so one more listing does not move the price. Dropped at Score as “Listing on BTC or ETH”.",
+      // #593: câu còn chờ PM duyệt nên đọc từ en.json (bỏ thẻ <b>).
+      messages.signalAnalysis.research.rules.notCounted.product.replace(/<\/?b>/g, ""),
     ]);
     const reads = within(dlg).getByRole("region", {
       name: /^What Claude reader v4 reads differently/,

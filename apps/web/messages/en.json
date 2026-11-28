@@ -8401,7 +8401,8 @@
           "limitOpen": "open-trade limit",
           "limitDay": "daily limit",
           "noBalance": "no fake balance",
-          "oppositeNews": "opposite news"
+          "oppositeNews": "opposite news",
+          "productNews": "product, not company value"
         },
         "reasonLabels": {
           "notCatalyst": "Not a catalyst",
@@ -8429,7 +8430,8 @@
           "limitOpen": "Limit: open trades",
           "limitDay": "Limit: trades per day",
           "noBalance": "Not enough fake balance",
-          "oppositeNews": "Opposite news"
+          "oppositeNews": "Opposite news",
+          "productNews": "Product, not company value"
         },
         "reasonLabelsN": {
           "limitOpen": "Limit: {n} open",
@@ -8487,7 +8489,8 @@
           "oppositeNews": "opposite news on a trade already open on that asset",
           "sameStory": "joined a story already open",
           "storyTooOld": "story too old to trade again",
-          "traded": "{side} {market}, {size} USDC"
+          "traded": "{side} {market}, {size} USDC",
+          "productNews": "this is product or tooling news about the company, which is read but not traded"
         },
         "token": {
           "out": "Out · {assets}",
@@ -8673,7 +8676,8 @@
         "limitOpen": "Limit: open trades",
         "limitDay": "Limit: trades per day",
         "noBalance": "Not enough fake balance",
-        "oppositeNews": "Opposite news on an open trade"
+        "oppositeNews": "Opposite news on an open trade",
+        "productNews": "Product, not company value"
       },
       "reasonsN": {
         "limitOpen": "Limit: {n} open",
@@ -8705,7 +8709,8 @@
           "title": "Not counted",
           "etf": "<b>ETF news on BTC or ETH.</b> Both already have many ETFs, so one more rarely moves the price. Dropped at Score as “ETF on BTC or ETH”.",
           "treasury": "<b>Treasury buys and sells of BTC or ETH.</b> Too small next to their market. Dropped at Score as “Treasury on BTC or ETH”.",
-          "listing": "<b>Listings of BTC or ETH.</b> Both already trade on every major exchange, so one more listing does not move the price. Dropped at Score as “Listing on BTC or ETH”."
+          "listing": "<b>Listings of BTC or ETH.</b> Both already trade on every major exchange, so one more listing does not move the price. Dropped at Score as “Listing on BTC or ETH”.",
+          "product": "<b>Anthropic product and tooling news.</b> Company news about Anthropic maps to ANT-USD; product and tooling news is read but not traded. Dropped at Score as “Product, not company value”."
         },
         "reader": {
           "title": "What Claude reader {name} reads differently",
@@ -10151,6 +10156,45 @@
           "onOppositeNews": "Opposite news",
           "assets": "Assets"
         }
+      },
+      "marketNews": {
+        "title": "News by market",
+        "desc": "News the desk reads, the market it maps to, and what the rules decided.",
+        "tabsLabel": "Market",
+        "all": "All markets",
+        "new": "NEW",
+        "antNote": "Company news about Anthropic maps to ANT-USD",
+        "listLabel": "News by market",
+        "cols": {
+          "news": "News",
+          "time": "Time",
+          "market": "Market",
+          "readAs": "Read as",
+          "rules": "Rules",
+          "book": "Book at the time"
+        },
+        "readAs": {
+          "positive": "Positive",
+          "negative": "Negative",
+          "product": "Product, not company value"
+        },
+        "rules": {
+          "traded": "Passed · traded",
+          "skipped": "Skipped",
+          "waiting": "Waiting"
+        },
+        "kind": {
+          "company": "{source} · company news",
+          "product": "{source} · product news"
+        },
+        "book": "{bids} / {asks}",
+        "noTitle": "Untitled article",
+        "loading": "Loading news…",
+        "error": "Couldn’t load the news. Try again in a moment.",
+        "empty": "No news for this market in the last 7 days.",
+        "footnote": "Product and tooling news is read but not traded. An entry is capped at 25% of the side of the book it takes.",
+        "setUp": "Set up News Signal on ANT-USD",
+        "notForecast": "Results of past signals are not a forecast."
       }
     },
     "pricesMainnet": "Prices from mainnet"

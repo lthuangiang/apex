@@ -378,10 +378,18 @@ describe("candidatesOf", () => {
       ]);
     });
 
-    it("drops a company with no SoDEX market (ANTHROPIC): NO_SODEX_MARKET upstream", () => {
-      // ANT-USD tồn tại (đang HALT) nhưng không phải market cổ phiếu: tag công ty không map vào.
-      expect(candidatesOf([{ symbol: "ANT", name: '{"EN":"ANTHROPIC"}' }], LIVE)).toEqual([]);
+    it("maps the Anthropic company tag onto ANT-USD when SoDEX lists it (#593); no market → none", () => {
+      expect(candidatesOf([{ symbol: "ANT", name: '{"EN":"ANTHROPIC"}' }], LIVE)).toEqual([
+        { symbol: "ANT", market: "ANT-USD", kind: "stock" },
+      ]);
+      expect(candidatesOf([{ symbol: "ANTHROPIC", name: '{"EN":"ANTHROPIC"}' }], LIVE)).toEqual([
+        { symbol: "ANTHROPIC", market: "ANT-USD", kind: "stock" },
+      ]);
       expect(candidatesOf([{ symbol: "ANT", name: '{"EN":"ANTHROPIC"}' }], MARKETS)).toEqual([]);
+    });
+
+    it("never maps a coin tagged ANT onto ANT-USD (#593: ANT-USD is the Anthropic market)", () => {
+      expect(candidatesOf([{ symbol: "ANT", name: "Aragon" }], LIVE)).toEqual([]);
     });
 
     it("drops a company tag whose stock market is not listed on SoDEX right now", () => {

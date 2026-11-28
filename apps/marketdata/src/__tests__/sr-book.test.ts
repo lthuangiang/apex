@@ -29,7 +29,22 @@ describe("sr.book.request responder", () => {
       b: "100.1",
       a: "100.3",
       at: 1_000,
+      // #593: tổng notional 10 mức mỗi phía (100.1×2 + 100×5; 100.3×1 + 100.5×4).
+      bn: "700.2",
+      an: "502.3",
     });
+  });
+
+  it("depth counts only the top 10 levels of each side (#593)", async () => {
+    const levels = (p: number) =>
+      Array.from({ length: 12 }, (_, i) => [String(p + i), "1"] as const);
+    const r = srBookResponder({
+      orderbook: () => Promise.resolve({ bids: levels(1), asks: levels(100) }),
+      tradable: () => true,
+      now: () => 1,
+    });
+    // bids 1..10 = 55; asks 100..109 = 1045 (mức 11, 12 không tính).
+    expect(await r(req("ANT-USD"))).toMatchObject({ ok: true, bn: "55", an: "1045" });
   });
 
   it("never reads SoDEX for an unknown market or a bad request", async () => {

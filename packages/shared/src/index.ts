@@ -45,6 +45,7 @@ export * from "./api/signal-research-export";
 export * from "./api/news-signal-bots";
 export * from "./signal-research/rules";
 export * from "./signal-research/logic";
+export * from "./signal-research/company-news";
 export * from "./signal-research/report";
 export * from "./signal-research/usage";
 export * from "./signal-research/display";

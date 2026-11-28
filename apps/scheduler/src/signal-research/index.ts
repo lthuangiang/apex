@@ -341,6 +341,9 @@ export function createSignalResearch(input: {
           log,
           config: pipelineConfig(input.env),
           sosoLimiter,
+          ...(input.requestBook === undefined
+            ? {}
+            : { bookDepth: bookDepthVia(input.requestBook) }),
           onTradeOpened: () => {
             watcher.invalidate();
           },
@@ -396,5 +399,22 @@ export function createSignalResearch(input: {
         backfillBusy = false;
       }
     },
+  };
+}
+
+/**
+ * #593: độ sâu sổ lệnh lúc quyết định qua cùng request `sr.book.request` (marketdata đọc sổ REST một lần, cache ngắn).
+ * Không đọc được / marketdata bản trước không trả độ sâu → null ("–"). Không bao giờ ném lỗi.
+ */
+export function bookDepthVia(
+  requestBook: (market: string) => Promise<RestBookResult>,
+): (market: string) => Promise<{ bidsUsd: string; asksUsd: string } | null> {
+  return async (market) => {
+    try {
+      const r = await requestBook(market);
+      return r.ok ? (r.depth ?? null) : null;
+    } catch {
+      return null;
+    }
   };
 }
