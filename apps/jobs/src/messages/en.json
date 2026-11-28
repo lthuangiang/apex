@@ -251,5 +251,5 @@
     "adaptive_dca": "AI Adaptive DCA",
     "copy_trade": "Copy Trade"
   },
-  "_pendingReview": ["telegram.buttons.wealth", "telegram.wealth"]
+  "_pendingReview": []
 }
