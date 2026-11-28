@@ -24,6 +24,7 @@ import { PageHead } from "@/components/workspace";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { AskAboutThis } from "@/features/desk/components/ask-about-this";
 import { PaperChip } from "@/features/desk/components/paper-chip";
+import { anthropicMarketOf, shortMarketLabel, UsMarketBanner } from "@/features/us-market";
 import { api } from "@/lib/api";
 import { feeLabels, formatAmount, formatDateTime } from "@/lib/format";
 import { useMarketNames } from "@/lib/markets";
@@ -228,6 +229,9 @@ export function BotsPage() {
       ? ""
       : `?${new URLSearchParams({ market: forMarket.market, engine: forMarket.engine }).toString()}`;
   const count = { mine: items.length, catalog: catalog.length };
+  // US Market (DEC-402 mục 9): công tắc tắt thì không banner, không nhãn "Trades …".
+  const usMarket = features.data?.usMarket === true;
+  const anthropic = (key: string) => anthropicMarketOf(key)?.symbol ?? null;
 
   const catalogList = (keys: readonly (keyof typeof FIELDS)[]) => (
     <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(300px,100%),1fr))] gap-4 p-0">
@@ -239,8 +243,16 @@ export function BotsPage() {
           >
             <div className="flex items-center justify-between gap-2">
               <span className={`${CHIP} ${GROUP_CHIP[key]}`}>{t(`groups.${key}`)}</span>
-              <span className={`${CHIP} ${ENGINE_CHIP[key]}`}>
-                {tc(`strategies.${key}.engine`)}
+              <span className="flex flex-wrap items-center justify-end gap-1.5">
+                {/* US Market (bản phác màn 01, DEC-402): chiến lược giao dịch được market Anthropic. */}
+                {usMarket && anthropic(key) !== null ? (
+                  <span className={`${CHIP} bg-accent-tint text-accent-ink`}>
+                    {t("catalog.trades", { market: shortMarketLabel(anthropic(key) ?? "") })}
+                  </span>
+                ) : null}
+                <span className={`${CHIP} ${ENGINE_CHIP[key]}`}>
+                  {tc(`strategies.${key}.engine`)}
+                </span>
               </span>
             </div>
             <h2 className="m-0 flex flex-wrap items-center gap-2 text-lg font-extrabold">
@@ -266,7 +278,8 @@ export function BotsPage() {
                 </dd>
               ) : (
                 <dd className="col-span-2 m-0 font-bold text-ink">
-                  {t("catalog.feeRate", {
+                  {/* Builder fee spot chỉ thu chiều bán (DEC-402, bản phác màn 01: "on sells"). */}
+                  {t(ENGINE_CHIP[key] === SPOT_CHIP ? "catalog.feeRateSells" : "catalog.feeRate", {
                     rate: feeLabels(builderFeeRateFor(key, features.data?.builderFees)).pct,
                   })}
                 </dd>
@@ -349,6 +362,8 @@ export function BotsPage() {
             </button>
           ))}
         </div>
+
+        {usMarket ? <UsMarketBanner /> : null}
 
         <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
           {tab === "mine" ? (

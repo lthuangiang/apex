@@ -230,7 +230,8 @@
         "fix": "fix {check}",
         "leverage": "confirm the leverage change",
         "field": "fill in {field}",
-        "wait": "wait for the checks"
+        "wait": "wait for the checks",
+        "depth": "Make the position fit the order book"
       },
       "renewKey": "Renew key",
       "leverage_conflict": "Leverage on SoDEX",
@@ -1313,7 +1314,9 @@
       "invalid": "Fix the highlighted fields.",
       "fieldRequired": "Enter a valid value.",
       "invalidFields": "Fix these fields: {fields}.",
-      "archiveOpenTrades": "This bot still has open trades. Close them first, then archive."
+      "archiveOpenTrades": "This bot still has open trades. Close them first, then archive.",
+      "depthTooLarge": "Too large for {market}'s order book: max position is {limit} USD here (the thinner side of the top 10 levels).",
+      "depthEmpty": "{market} has no orders on one side of the order book. Try again when it trades."
     },
     "ai": {
       "filled": "✦ Filled by AI",
@@ -2975,7 +2978,9 @@
       "risk": "Risk",
       "setUp": "Set up {name}",
       "comingSoon": "Coming soon",
-      "forMarket": "Strategies that can trade {market}"
+      "forMarket": "Strategies that can trade {market}",
+      "feeRateSells": "Builder fee {rate} on sells",
+      "trades": "Trades {market}"
     },
     "groups": {
       "spot_grid": "GRID",
@@ -10501,5 +10506,121 @@
     "claimsNone": "The token isn't a JWT, so it has no readable claims.",
     "empty": "No fields.",
     "valuesSeen": "Values seen"
+  },
+  "usMarket": {
+    "page": {
+      "crumbLab": "Strategy Lab",
+      "crumbLabel": "Breadcrumb",
+      "title": "US Market",
+      "subtitle": "Anthropic, US funds and SoDEX Wealth in one place: what your bots can trade, and what you hold.",
+      "loadError": "Couldn’t read US Market data from SoDEX. Try again in a moment.",
+      "disclaimer": "Not financial advice. Past results are not a forecast. Powered by SoDEX Builder Code."
+    },
+    "banner": {
+      "new": "NEW ON SODEX",
+      "title": "Anthropic markets: vANT and ANT-USD",
+      "body": "Run your DeskLabs bots on the new Anthropic spot and perps markets. US fund tokens are listed too; we are watching their order books.",
+      "cta": "See US Market"
+    },
+    "wealth": {
+      "label": "Your SoDEX Wealth",
+      "totalResult": "Total result",
+      "h24": "24h",
+      "fundsHeld": "Funds held",
+      "source": "Read from SoDEX for your wallet",
+      "open": "Open My Wealth"
+    },
+    "anthropic": {
+      "title": "Anthropic",
+      "new": "NEW ON SODEX",
+      "subtitle": "One spot market and one perps market.",
+      "readAgo": "Order book read {n} s ago",
+      "caption": "Anthropic markets on SoDEX",
+      "cols": {
+        "market": "Market",
+        "lastPrice": "Last price",
+        "volume": "24h volume",
+        "book": "Order book",
+        "depth": "Depth, 10 levels · bids / asks",
+        "largest": "Largest new position",
+        "actions": "Actions"
+      },
+      "perpsMax": "Perps · max {lev}x",
+      "perps": "Perps",
+      "spot": "Spot",
+      "lastTrade": "Last trade {ago}",
+      "startBot": "Start a bot",
+      "startBotOn": "Start a bot on {market}",
+      "thinTitle": "Thin order book.",
+      "thinBody": "Large market orders move the price here. A new bot's total position can't be larger than the thinner side of the book, and a market order that opens a position is capped at 25% of the side it takes. Orders that close a position are never held back.",
+      "strategiesTitle": "Strategies for these markets",
+      "chip": "{strategy} · {market}",
+      "newsSignal": "News Signal"
+    },
+    "book": {
+      "trading": "Trading",
+      "empty": "Empty",
+      "halted": "Halted"
+    },
+    "depth": {
+      "thin": "Thin",
+      "very_thin": "Very thin",
+      "pair": "{bids} / {asks}"
+    },
+    "ago": {
+      "now": "just now",
+      "minutes": "{n} min ago",
+      "hours": "{n} h ago",
+      "days": "{n, plural, one {# day ago} other {# days ago}}"
+    },
+    "funds": {
+      "title": "SoDEX Wealth funds",
+      "subtitle": "Vaults you invest in with your own wallet on SoDEX. DeskLabs shows them and what you hold; it doesn't invest or redeem.",
+      "openSodex": "Open SoDEX Wealth ↗",
+      "invest": "Invest on SoDEX ↗",
+      "investOn": "Invest in {fund} on SoDEX (opens in a new tab)",
+      "cols": {
+        "fund": "Fund",
+        "type": "Type",
+        "nav": "NAV",
+        "size": "Fund size",
+        "requests": "Open for requests",
+        "held": "You hold",
+        "actions": "Actions"
+      },
+      "open": "Open",
+      "opensOn": "Opens {day}",
+      "closed": "Closed",
+      "empty": "No SoDEX Wealth funds right now.",
+      "note": "NAV and fund size as SoDEX reports them. DeskLabs shows no yield or return figures for funds."
+    },
+    "tokens": {
+      "title": "US fund tokens",
+      "subtitle": "Listed on the SoDEX spot order book. Not enough trading for a bot yet.",
+      "watching": "Watching",
+      "cols": {
+        "lastTrade": "Last trade"
+      },
+      "empty": "No US fund tokens listed right now.",
+      "more": "{count} more: {names}",
+      "note": "Bots on these markets wait while the order book is empty."
+    },
+    "panel": {
+      "title": "{market} order book",
+      "bids": "Bids, 10 levels",
+      "asks": "Asks, 10 levels",
+      "largest": "Largest new position",
+      "note": "The thinner side, 10 levels. Read {n} s ago from SoDEX."
+    },
+    "largest": {
+      "grid_perps": "Largest position (margin × leverage)",
+      "grid_spot": "Largest position (investment)",
+      "dca_perps": "Largest position (all buys × leverage)",
+      "dca_spot": "Largest position (all buys)",
+      "fits": "Fits. {market} allows up to {limit} USDC right now. Checked again when you start.",
+      "tooLarge": "This position is larger than the {market} order book can take: {limit} USDC. Lower the investment or the leverage.",
+      "tooLargeSpot": "This position is larger than the {market} order book can take: {limit} USDC. Lower the amount.",
+      "empty": "{market} has no orders on one side of the order book. Try again when it trades."
+    }
   }
 }
