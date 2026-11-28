@@ -2909,32 +2909,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "usMarket.page.crumbLabel",
-    "usMarket.page.loadError",
-    "usMarket.anthropic.caption",
-    "usMarket.anthropic.cols.actions",
-    "usMarket.anthropic.perps",
-    "usMarket.anthropic.lastTrade",
-    "usMarket.anthropic.startBotOn",
-    "usMarket.book.halted",
-    "usMarket.ago.now",
-    "usMarket.ago.minutes",
-    "usMarket.ago.hours",
-    "usMarket.funds.investOn",
-    "usMarket.funds.cols.actions",
-    "usMarket.funds.closed",
-    "usMarket.funds.empty",
-    "usMarket.tokens.empty",
-    "usMarket.largest.grid_perps",
-    "usMarket.largest.grid_spot",
-    "usMarket.largest.dca_perps",
-    "usMarket.largest.dca_spot",
-    "usMarket.largest.tooLargeSpot",
-    "usMarket.largest.empty",
-    "createBot.beforeStart.missing.depth",
-    "createBot.errors.depthTooLarge",
-    "createBot.errors.depthEmpty"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
@@ -10628,7 +10603,7 @@
       },
       "empty": "No US fund tokens listed right now.",
       "more": "{count} more: {names}",
-      "note": "DeskLabs opens bots on a market once its order book has steady depth."
+      "note": "Bots on these markets wait while the order book is empty."
     },
     "panel": {
       "title": "{market} order book",

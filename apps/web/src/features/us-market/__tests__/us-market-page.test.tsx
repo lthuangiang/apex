@@ -214,6 +214,19 @@ describe("US Market page", () => {
     ).toBeInTheDocument();
   });
 
+  it("links Open SoDEX Wealth and Invest to the SoDEX Wealth page in a new tab, with no parameters", async () => {
+    show();
+    const open = await screen.findByRole("link", { name: "Open SoDEX Wealth ↗" });
+    const invest = await screen.findByRole("link", {
+      name: "Invest in UNITREE FUND on SoDEX (opens in a new tab)",
+    });
+    for (const link of [open, invest]) {
+      expect(link).toHaveAttribute("href", "https://sodex.com/wealth");
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    }
+  });
+
   it("shows the Your SoDEX Wealth strip from the API, and hides it when not connected", async () => {
     const view = show();
     const strip = await screen.findByRole("region", { name: "Your SoDEX Wealth" });
