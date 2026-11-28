@@ -400,7 +400,13 @@ describe("GET /api/v1/wealth/me", () => {
     await a.request("GET", "/api/v1/wealth/me");
     expect(calls.filter((c) => c === `pnl:${WALLET_A.toLowerCase()}`)).toHaveLength(1);
 
-    const logs = env.logs.slice(logStart).join("\n").toLowerCase();
+    // Dòng log request của fastify ghi URL mà client gửi (ở đây chính test đã chèn `?address=` giả); chỉ xét log do
+    // module US Market ghi: không được có địa chỉ ví.
+    const logs = env.logs
+      .slice(logStart)
+      .filter((line) => !line.includes('"req":') && !line.includes('"res":'))
+      .join("\n")
+      .toLowerCase();
     expect(logs).toContain("wealth: read failed");
     expect(logs).not.toContain(WALLET_A.toLowerCase());
     expect(logs).not.toContain(WALLET_B.toLowerCase());
