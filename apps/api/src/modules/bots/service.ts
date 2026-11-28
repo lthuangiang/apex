@@ -85,6 +85,7 @@ import {
   type MarketRules,
   type VolumeFarmState,
   type VolumeMakerState,
+  type DepthCapScope,
 } from "@drift/strategies";
 import { and, desc, eq, gte, inArray, isNull, max, or, sql } from "drizzle-orm";
 import { getAddress } from "viem";
@@ -124,6 +125,8 @@ export interface BotDeps extends TwoFactorDeps {
   prices: (markets: readonly string[]) => Promise<Record<string, string>>;
   /** Signer giải mã thử key (UI_REVIEW H1). Không có (test cũ) thì chỉ xét trạng thái và hạn trong DB. */
   verifyApiKey?: (id: string) => Promise<"ok" | "unusable" | "unavailable">;
+  /** Market áp giới hạn theo sổ lệnh (`DEPTH_CAP_MARKETS`, #590). Thiếu = danh sách mặc định. */
+  depthCapMarkets?: DepthCapScope;
 }
 
 /** Admin đã bật bot khối lượng cho tài khoản này chưa (Users › Volume bots, DEC-80). */

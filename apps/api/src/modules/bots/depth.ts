@@ -2,6 +2,9 @@ import { AppError, dec, ErrorCode } from "@drift/shared";
 import type { SodexRestClient } from "@drift/sodex";
 import {
   DEPTH_CAP_LEVELS,
+  inDepthCapScope,
+  parseDepthCapMarkets,
+  type DepthCapScope,
   maxPositionsOf,
   positionDepthIssue,
   raisedPositions,
@@ -73,11 +76,14 @@ const midOf = (b: BookTop) => dec(b.bid).add(b.ask).div(2).toString();
  * `before`: cấu hình đang có khi SỬA; chỉ market tăng tổng vị thế tối đa mới bị kiểm.
  */
 export async function assertDepthFits(
-  deps: { rest: BookRest; now: () => Date },
+  deps: { rest: BookRest; now: () => Date; depthCapMarkets?: DepthCapScope | undefined },
   strategy: string,
   config: Record<string, unknown>,
   before?: Record<string, unknown>,
 ): Promise<void> {
+  // Chỉ market trong `DEPTH_CAP_MARKETS` (DEC-402 bổ sung 2026-11-28): ngoài danh sách thì không đọc sổ, không kiểm.
+  const scope = deps.depthCapMarkets ?? parseDepthCapMarkets(undefined);
+  const inScope = (m: string) => inDepthCapScope(scope, m);
   const books = new Map<string, BookTop | null>();
   const read = async (p: Pick<MaxPosition, "engine" | "market">) => {
     const key = `${p.engine}:${p.market}`;
@@ -86,7 +92,7 @@ export async function assertDepthFits(
   };
   // TWAP tính theo base: cần giá, lấy giá giữa của chính sổ đang kiểm.
   let price: string | undefined;
-  if (strategy === "twap" && typeof config.market === "string") {
+  if (strategy === "twap" && typeof config.market === "string" && inScope(config.market)) {
     const b = await read({
       engine: config.engine === "perps" ? "perps" : "spot",
       market: config.market,
@@ -104,6 +110,7 @@ export async function assertDepthFits(
   const check =
     before === undefined ? after : raisedPositions(maxPositionsOf(strategy, before, price), after);
   for (const p of check) {
+    if (!inScope(p.market)) continue;
     if (p.market === "" || !dec(p.notional).gt(0)) continue;
     const issue = positionDepthIssue(p, await read(p));
     if (issue !== null)
