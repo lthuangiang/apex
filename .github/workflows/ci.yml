@@ -39,10 +39,11 @@ jobs:
           restore-keys: eslint-${{ hashFiles('pnpm-lock.yaml', 'eslint.config.mjs', 'tsconfig.base.json') }}-
       - if: github.event_name == 'push'
         run: rm -rf node_modules/.cache/eslint
-      # ESLint có kiểm tra kiểu trên cả repo: mặc định ~4 GB heap không còn đủ (#98 hết bộ nhớ).
+      # ESLint có kiểm tra kiểu trên cả repo: mặc định ~4 GB heap không còn đủ (#98 hết bộ nhớ). 6 GB cũng hết khi
+      # lint lại toàn bộ trên main sau gói US Market (2026-11-28, hai lần liên tiếp); runner có 16 GB nên nâng lên 10 GB.
       - run: pnpm lint --cache --cache-strategy content --cache-location node_modules/.cache/eslint/
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=10240
 
   static:
     runs-on: ubuntu-latest
