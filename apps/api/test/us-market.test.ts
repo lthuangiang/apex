@@ -433,6 +433,13 @@ describe("GET /api/v1/wealth/me", () => {
     await a.request("GET", "/api/v1/wealth/me");
     expect(calls.filter((c) => c === `pnl:${WALLET_A.toLowerCase()}`)).toHaveLength(1);
 
+    // Phần thêm lỗi (ví không có kế hoạch mua định kỳ → `code -1`): log `wealth: read failed`, không có địa chỉ.
+    const withPlans = wealthMeResponseSchema.parse(
+      (await a.request("GET", "/api/v1/wealth/me?include=recurringBuys")).json(),
+    );
+    if (withPlans.status !== "ok") throw new Error("expected ok");
+    expect(withPlans.recurringBuys).toEqual({ status: "not_provided" });
+
     // Dòng log request của fastify ghi URL mà client gửi (ở đây chính test đã chèn `?address=` giả); chỉ xét log do
     // module US Market ghi: không được có địa chỉ ví.
     const logs = env.logs
