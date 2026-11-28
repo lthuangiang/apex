@@ -6300,7 +6300,13 @@ describe("Rebalancing order books (IOC at ask / bid)", () => {
       feeCheckMs: 0,
       orderbook: (market, engine) => {
         calls.push(`${engine ?? "perps"}:${market}`);
-        return Promise.resolve({ bid: "99", ask: "101", bidNotional: "1", askNotional: "1" });
+        // Sổ đủ sâu: giới hạn theo sổ lệnh (#590) không áp ở đây.
+        return Promise.resolve({
+          bid: "99",
+          ask: "101",
+          bidNotional: "100000",
+          askNotional: "100000",
+        });
       },
     });
     await e.tick();
@@ -12541,5 +12547,161 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
       ["dropped", "LEVERAGE_NOT_SET", { leverage: "unknown" }],
     ]);
     await e.stop();
+  });
+});
+
+describe("order book depth caps (DEC-402 (5), #590)", () => {
+  useCleanDb("depth_caps_590");
+  type Book = { bid: string; ask: string; bidNotional: string; askNotional: string } | null;
+  const dca = {
+    strategy: "futures_dca",
+    market: "ANT-USD",
+    engine: "perps" as const,
+    config: {
+      market: "ANT-USD",
+      leverage: 2,
+      marginMode: "cross",
+      direction: "long",
+      // 50 margin × 2 = 100 notional → 1 at 100.
+      baseOrder: "50",
+      safetyOrder: "50",
+      maxSafetyOrders: 1,
+      firstStepPct: "2",
+      stepMultiplier: "1",
+      sizeMultiplier: "1",
+      takeProfitPct: "1",
+      stopLossPct: "20",
+    },
+  };
+  const depthEngine = (gw: FakeGateway, workerId: string, read: () => Promise<Book>) =>
+    new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId,
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      orderbook: () => read(),
+    });
+  const decisions = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    return db.select().from(botEvents).where(eq(botEvents.botId, botId));
+  };
+  const base = (gw: FakeGateway) => gw.received.filter((o) => o.tag.endsWith(":base"));
+  async function run(e: Engine, gw: FakeGateway, until: () => boolean, price = "100") {
+    for (let i = 0; i < 20 && !until(); i += 1) {
+      clock += 1_000;
+      await e.tick();
+      await e.onPrice("ANT-USD", price, clock);
+      if (!until()) await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+
+  it("cuts a market entry to 25% of the ask side's top 10 levels and logs Order reduced", async () => {
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", dca);
+    // Ask side 200 USD (Very thin): cap 50 USD → 0.5 at 100.
+    const book: Book = { bid: "99", ask: "100", bidNotional: "5000", askNotional: "200" };
+    const e = depthEngine(gw, "depth-cut", () => Promise.resolve(book));
+    await run(e, gw, () => base(gw).length > 0);
+    expect(base(gw)).toEqual([
+      expect.objectContaining({ side: "buy", type: "market", quantity: "0.5" }),
+    ]);
+    const lines = (await decisions(botId)).filter((x) => x.decision === "Order reduced");
+    expect(lines.map((x) => x.why)).toEqual([
+      "ANT-USD: buy size cut from 1 to 0.5. An order that fills at once can take at most 25% of the top 10 ask levels (50 of 200 USD).",
+    ]);
+    await e.stop();
+  });
+
+  it("leaves a deep market alone", async () => {
+    const gw = new FakeGateway();
+    await seedBot("running", dca);
+    const book: Book = { bid: "99", ask: "100", bidNotional: "50000", askNotional: "50000" };
+    const e = depthEngine(gw, "depth-deep", () => Promise.resolve(book));
+    await run(e, gw, () => base(gw).length > 0);
+    expect(base(gw)).toEqual([expect.objectContaining({ quantity: "1" })]);
+    await e.stop();
+  });
+
+  it("waits on an empty ask side (logged once), then enters at full size when the book is deep", async () => {
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", dca);
+    let book: Book = null;
+    const e = depthEngine(gw, "depth-empty", () => Promise.resolve(book));
+    for (let i = 0; i < 6; i += 1) {
+      clock += 4_000;
+      await e.tick();
+      await e.onPrice("ANT-USD", "100", clock);
+    }
+    expect(base(gw)).toEqual([]);
+    const waits = (await decisions(botId)).filter(
+      (x) => x.decision === "Waiting: order book empty",
+    );
+    expect(waits.map((x) => x.why)).toEqual([
+      "ANT-USD: no ask orders in the order book. The bot won't open or add until there are. Closing orders still go.",
+    ]);
+    book = { bid: "99", ask: "100", bidNotional: "50000", askNotional: "50000" };
+    clock += 4_000;
+    await run(e, gw, () => base(gw).length > 0);
+    expect(base(gw)).toEqual([expect.objectContaining({ quantity: "1" })]);
+    await e.stop();
+  });
+
+  it("waits when 25% of the side is below SoDEX's minimum order", async () => {
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", dca);
+    // 25% of 16 = 4 USD < minNotional 5.
+    const book: Book = { bid: "99", ask: "100", bidNotional: "5000", askNotional: "16" };
+    const e = depthEngine(gw, "depth-min", () => Promise.resolve(book));
+    for (let i = 0; i < 4; i += 1) {
+      clock += 4_000;
+      await e.tick();
+      await e.onPrice("ANT-USD", "100", clock);
+    }
+    expect(base(gw)).toEqual([]);
+    expect((await decisions(botId)).map((x) => x.decision)).toContain(
+      "Waiting: order book too thin",
+    );
+    await e.stop();
+  });
+
+  it("never holds a close: Stop closes the whole position on an empty book", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", dca);
+    const deep: Book = { bid: "99", ask: "100", bidNotional: "50000", askNotional: "50000" };
+    let book: Book = deep;
+    const e = depthEngine(gw, "depth-close", () => Promise.resolve(book));
+    let rt: typeof botRuntime.$inferSelect | undefined;
+    for (let i = 0; i < 20 && rt === undefined; i += 1) {
+      clock += 1_000;
+      await e.tick();
+      await e.onPrice("ANT-USD", "100", clock);
+      [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      if (rt === undefined) await new Promise((r) => setTimeout(r, 100));
+    }
+    const st = rt?.state as { ledger: Record<string, string> };
+    await db
+      .update(botRuntime)
+      .set({ state: { ...st, ledger: { ...st.ledger, position: "3", avgCost: "100" } } })
+      .where(eq(botRuntime.botId, botId));
+    await e.stop();
+    book = null;
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    const e2 = depthEngine(gw, "depth-close2", () => Promise.resolve(book));
+    for (let i = 0; i < 10 && !gw.received.some((o) => o.tag === "close"); i += 1) {
+      clock += 1_000;
+      await e2.tick();
+      if (!gw.received.some((o) => o.tag === "close")) await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(gw.received.filter((o) => o.tag === "close")).toEqual([
+      expect.objectContaining({ side: "sell", quantity: "3" }),
+    ]);
+    await e2.stop();
   });
 });

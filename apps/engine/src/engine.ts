@@ -123,6 +123,15 @@ import type { Logger } from "pino";
 import { withBotCallContext } from "./call-context";
 import { openedAlerts, SkipGate, skipMarket, skippedAlert, skipReason } from "./copy-alerts";
 import {
+  depthKey,
+  depthNeeds,
+  depthWaitDecision,
+  depthWaitKey,
+  planDepth,
+  type DepthRead,
+  type DepthWait,
+} from "./depth-gate";
+import {
   MARKET_NOT_FOUND,
   type AccountRef,
   type CancelResult,
@@ -844,6 +853,13 @@ interface Runner {
   resumeRepaired: boolean;
   /** Đã log "bỏ bước có lệnh chỉ giảm khi vị thế thật bằng 0" trong đợt lệch này. */
   zeroRealSkipLogged: boolean;
+  /**
+   * Dòng "Waiting: order book …" đã ghi (DEC-402 mục 5, #590), theo `market:chiều:lý do`: một lần mỗi đợt, xoá khi market
+   * qua cổng độ sâu. Chỉ nhớ trong bộ nhớ.
+   */
+  depthWaits: Set<string>;
+  /** Số tầng `orderDone` giả đang lồng nhau (lệnh vào bị bỏ vì sổ mỏng, #590): chặn vòng lặp vô hạn. */
+  depthNested: number;
 }
 
 /**
@@ -960,6 +976,15 @@ const BOOKS_EVERY_MS: Readonly<Record<string, number>> = {
 };
 /** Đỉnh sổ lệnh đọc gần đây được dùng chung cho mọi bot cùng market trong chừng này. */
 const BOOK_CACHE_MS = 3_000;
+/**
+ * Cổng độ sâu (#590): đọc sổ lỗi thì dùng lần đọc được gần nhất của market nếu không cũ hơn mức này; không có thì lệnh vào
+ * khớp ngay chờ (không đoán độ sâu). Lệnh đóng không bao giờ chờ.
+ */
+export const DEPTH_FALLBACK_MS = 60_000;
+/** Lệnh vào bị bỏ vì sổ mỏng ở bước đã lồng chừng này tầng `orderDone` giả: báo `orderReject` (chiến lược pause). */
+const DEPTH_MAX_NESTED = 2;
+/** Mã `orderReject` khi cổng độ sâu phải dừng vòng lặp (`DEPTH_MAX_NESTED`). Không bao giờ rời DeskLabs. */
+export const ORDER_BOOK_THIN = "ORDER_BOOK_THIN";
 
 const VOLUME: ReadonlySet<string> = new Set(VOLUME_STRATEGIES);
 /** Trạng thái chuyển tiếp mà engine phải xác nhận: đọc lại dòng bot ngay trước khi xử lý (snapshot của vòng có thể cũ). */
@@ -1075,6 +1100,12 @@ export class Engine {
    */
   readonly #snapshotLoads = new Map<string, Promise<MarketSnapshot>>();
   readonly #bookLoads = new Map<string, Promise<BookTop | null>>();
+  /** Cổng độ sâu (#590): lần đọc sổ 10 mức gần nhất theo `engine:market` (`"error"` = đọc lỗi), lần đọc được gần nhất. */
+  readonly #depths = new Map<string, { at: number; read: DepthRead }>();
+  readonly #depthGood = new Map<string, { at: number; book: BookTop | null }>();
+  readonly #depthLoads = new Map<string, Promise<void>>();
+  /** Có nguồn sổ lệnh thật (`deps.orderbook`); không có (test, công cụ) thì cổng độ sâu không chạy. */
+  readonly #depthSource: boolean;
   readonly #openChecks = new Map<string, number>();
   /** Lần thử lại gần nhất cho lệnh đã bỏ cuộc mà chiến lược chưa được báo kết thúc (`TickSnapshot.gaveUp`). */
   readonly #gaveUpRetryAt = new Map<string, number>();
@@ -1187,6 +1218,7 @@ export class Engine {
   #renewing: Promise<void> | null = null;
 
   constructor(deps: EngineDeps) {
+    this.#depthSource = deps.orderbook !== undefined;
     this.#d = {
       now: () => Date.now(),
       leaseTtlMs: 15_000,
@@ -3374,6 +3406,8 @@ export class Engine {
           : null,
       resumeRepaired: false,
       zeroRealSkipLogged: false,
+      depthWaits: new Set(),
+      depthNested: 0,
     };
   }
 
@@ -3759,7 +3793,7 @@ export class Engine {
   }
 
   /** Đưa event cho chiến lược (chỉ khi bot đang chạy), lưu state, thực hiện hành động. */
-  async #feed(r: Runner, incoming: StrategyEvent): Promise<void> {
+  async #feed(r: Runner, incoming: StrategyEvent, depthWarm = false): Promise<void> {
     let event = incoming;
     // Đang áp version mới (#223 M1): xem `Runner.applying`.
     const applying = r.applying ?? null;
@@ -3907,6 +3941,53 @@ export class Engine {
         }
       }
     }
+    // Giới hạn theo sổ lệnh (DEC-402 mục 5, #590), chỉ bot tiền thật: lệnh khớp ngay để VÀO / TĂNG vị thế trên market
+    // `Thin` / `Very thin` lấy tối đa 25% notional 10 mức phía nó ăn (cắt về trần, ghi "Order reduced"); sổ phía đó rỗng
+    // hoặc trần dưới min size thì chờ. Lệnh đóng / reduce-only / stop / Stop và lệnh maker không bao giờ bị cắt hay chờ.
+    // Sổ chưa có trong cache: đọc rồi chạy lại cả bước (không có await nào giữa bước và lúc gán `r.state`).
+    let depthStripped: DepthWait[] = [];
+    if (!r.paper && this.#depthSource) {
+      const posOf = (m: string, e: "spot" | "perps") => positionOf(prev, m, e);
+      const needs = depthNeeds(actions, posOf, opensPosition);
+      if (needs.length > 0) {
+        const missing = needs.filter((n) => !this.#depthFresh(depthKey(n), event.at));
+        if (missing.length > 0 && !depthWarm) {
+          await Promise.all(missing.map((n) => this.#loadDepth(n.market, n.engine, event.at)));
+          await this.#feed(r, incoming, true);
+          return;
+        }
+        const books = new Map(
+          needs.map((n) => [depthKey(n), this.#depthRead(depthKey(n), event.at)] as const),
+        );
+        const plan = planDepth({
+          actions,
+          positionOf: posOf,
+          opens: opensPosition,
+          books,
+          rules: r.ctx.rules,
+          accounting,
+        });
+        for (const m of plan.clear)
+          for (const k of r.depthWaits) if (k.startsWith(`${m}:`)) r.depthWaits.delete(k);
+        if (plan.kind === "hold") {
+          // Không gửi gì, state không đổi: sự kiện thị trường kế tiếp chiến lược quyết lại (như lệch vị thế, DEC-306).
+          if (event.type === "resumed") r.resumeOwed = true;
+          for (const w of plan.waits) {
+            const line = this.#depthWaitLine(r, w);
+            if (line !== null) await this.#event(r, "decision", line.decision, line.why, event.at);
+          }
+          return;
+        }
+        if (plan.kind === "apply") {
+          actions = plan.actions;
+          depthStripped = plan.stripped;
+          for (const w of plan.stripped) {
+            const line = this.#depthWaitLine(r, w);
+            if (line !== null) actions.push({ type: "log", ...line });
+          }
+        }
+      }
+    }
     if (event.type === "resumed") r.resumeOwed = false;
     r.state = result.state;
     // Bot copy tiền thật: lệnh mở vừa khớp → thêm outbox trong CÙNG transaction (DEC-212).
@@ -3983,6 +4064,96 @@ export class Engine {
     // stop / lệnh thoát đang có (review #253, lệnh "ma").
     for (const clOrdID of stripped)
       await this.#feed(r, { type: "orderReject", at: event.at, clOrdID, code: NO_REAL_POSITION });
+    // Lệnh vào bị bỏ vì sổ mỏng (#590) không bao giờ rời DeskLabs: báo chiến lược như lệnh IOC không khớp gì (`orderDone`),
+    // để nó không chờ một lệnh "ma". Bước sinh ra từ đó lại bị bỏ quá DEPTH_MAX_NESTED tầng thì báo `orderReject` (pause).
+    for (const w of depthStripped) {
+      const clOrdID = w.order.clOrdID;
+      r.depthNested += 1;
+      try {
+        await this.#feed(
+          r,
+          r.depthNested > DEPTH_MAX_NESTED
+            ? { type: "orderReject", at: event.at, clOrdID, code: ORDER_BOOK_THIN }
+            : { type: "orderDone", at: event.at, clOrdID },
+        );
+      } finally {
+        r.depthNested -= 1;
+      }
+    }
+  }
+
+  /** Dòng Decisions "Waiting: order book …" cho một lệnh vào phải chờ, một lần mỗi đợt; null = không ghi (#590). */
+  #depthWaitLine(r: Runner, w: DepthWait): { decision: string; why: string } | null {
+    const key = depthWaitKey(w);
+    if (r.depthWaits.has(key)) return null;
+    r.depthWaits.add(key);
+    const line = depthWaitDecision(w);
+    if (line === null)
+      this.#d.log.warn(
+        { botId: r.botId, market: w.order.market, engine: w.order.engine },
+        "entry held: order book depth unknown (read failed)",
+      );
+    return line;
+  }
+
+  /** Sổ của khoá này đã đọc trong BOOK_CACHE_MS (tính theo giờ của sự kiện). */
+  #depthFresh(key: string, at: number): boolean {
+    const hit = this.#depths.get(key);
+    return hit !== undefined && at - hit.at < BOOK_CACHE_MS;
+  }
+
+  /** Độ sâu dùng cho cổng: lần đọc trong cache; đọc lỗi thì lần đọc được gần nhất trong DEPTH_FALLBACK_MS, không thì lỗi. */
+  #depthRead(key: string, at: number): DepthRead {
+    const hit = this.#depths.get(key);
+    if (hit === undefined) return "error";
+    if (hit.read !== "error") return hit.read;
+    const good = this.#depthGood.get(key);
+    return good !== undefined && at - good.at <= DEPTH_FALLBACK_MS ? good.book : "error";
+  }
+
+  /**
+   * Đọc sổ 10 mức cho cổng độ sâu (#590). Dùng lại lần đọc còn mới của `#bookTop` / tín hiệu news nếu có (không tốn thêm
+   * request SoDEX); các bot cùng market chờ chung một lần đọc. Đọc lỗi khác sổ rỗng (`null`): lỗi không bao giờ bị coi là rỗng.
+   */
+  async #loadDepth(market: string, engine: "spot" | "perps", at: number): Promise<void> {
+    const key = `${engine}:${market}`;
+    const loading = this.#depthLoads.get(key);
+    if (loading !== undefined) return loading;
+    const store = (read: DepthRead) => {
+      this.#depths.set(key, { at, read });
+      if (read !== "error") this.#depthGood.set(key, { at, book: read });
+    };
+    const shared = this.#books.get(key);
+    if (shared !== undefined && shared.book !== null && at - shared.at < BOOK_CACHE_MS) {
+      store(shared.book);
+      return;
+    }
+    // Nến + sổ của Volume Farm / Market Making / Adaptive DCA (`#snapshot`, Perps).
+    const snap = engine === "perps" ? this.#snapshots.get(market) : undefined;
+    if (snap !== undefined && snap.snap.book !== null && at - snap.at < BOOK_CACHE_MS) {
+      store(snap.snap.book);
+      return;
+    }
+    const news = engine === "perps" ? this.#newsBooks.get(market) : undefined;
+    if (news !== undefined && at - news.at <= NEWS_BOOK_MAX_AGE_MS) {
+      const b = await news.p;
+      if (b !== null) {
+        store(b);
+        return;
+      }
+    }
+    const load = this.#d
+      .orderbook(market, engine)
+      .then(
+        (book): DepthRead => book,
+        (): DepthRead => "error",
+      )
+      .then(store)
+      .finally(() => {
+        this.#depthLoads.delete(key);
+      });
+    this.#depthLoads.set(key, load);
+    return load;
   }
 
   /**
