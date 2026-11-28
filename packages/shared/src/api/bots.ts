@@ -67,6 +67,11 @@ export const featuresSchema = z.object({
    * hệ thống `US_MARKET_ENABLED` của api (mặc định bật). Thiếu trường = false (an toàn).
    */
   usMarket: z.boolean().default(false),
+  /**
+   * #590 (DEC-402 bổ sung 2026-11-28): market đang áp giới hạn theo sổ lệnh (`DEPTH_CAP_MARKETS` của api). `["*"]` = mọi
+   * market; thiếu trường / `[]` = không market nào.
+   */
+  depthCapMarkets: z.array(z.string()).default([]),
   /** Builder fee hiệu lực theo chiến lược của user (DEC-159), phần mười bp; thiếu key = mặc định. */
   builderFees: z.record(z.string(), z.number().int()).default({}),
   /** Thẻ builder fee Market Making; null khi chưa đăng nhập. */

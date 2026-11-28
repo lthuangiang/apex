@@ -83,6 +83,12 @@ const envSchema = z.object({
    * sổ lệnh của bot (DEC-402 mục 5) không phụ thuộc công tắc này.
    */
   US_MARKET_ENABLED: z.stringbool().default(true),
+  /**
+   * #590 (DEC-402 bổ sung 2026-11-28): market áp giới hạn theo sổ lệnh lúc tạo / sửa bot. Thiếu hoặc `default` = danh sách
+   * mặc định (ANT + 8 cặp token quỹ); chuỗi trống = tắt hẳn; `*` = mọi market; còn lại = danh sách phân cách dấu phẩy.
+   * Engine đọc cùng biến; đặt cùng một giá trị cho hai service.
+   */
+  DEPTH_CAP_MARKETS: z.string().optional(),
   /** #589: trần riêng weight / phút của lời gọi Wealth API từ api (bucket `rl:sodex:wealth:<egress>`; mỗi lời gọi 20). */
   WEALTH_READ_MAX_WEIGHT_PER_MIN: z.coerce.number().int().positive().default(400),
   /** Notifications v2: kênh Telegram (DEC-170). Tắt thì mọi route `/api/v1/telegram/*` trả 404. */
