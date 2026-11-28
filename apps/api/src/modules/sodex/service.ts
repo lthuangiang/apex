@@ -52,6 +52,7 @@ import { markSideEffect } from "../../lib/idempotency";
 import { removeRewardsWatch } from "../rewards-watch/service";
 import { iso } from "../security/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
+import { removeWealthWatch } from "../wealth-watch/service";
 
 // Kết nối SoDEX bằng hai chữ ký master wallet (DEC-25, SODEX.md mục 5.2):
 //   1. UserSignedAddPermissionedAPIKeyAction: key DRIFT do signer sinh, mặt nạ 14.
@@ -379,6 +380,8 @@ export async function startDisconnect(
     const perps = await create(tx, RevokeEngine.perps);
     // #558 (DEC-398): ngắt SoDEX thì xoá luôn phiên rewards lưu ở server (cùng transaction).
     await removeRewardsWatch(tx, userId, "sodex_disconnect", ip);
+    // #594 (DEC-404): ngắt SoDEX thì xoá luôn cảnh báo SoDEX Wealth (mốc đã lưu).
+    await removeWealthWatch(tx, userId, "sodex_disconnect", ip);
     return { spot, perps };
   });
 }

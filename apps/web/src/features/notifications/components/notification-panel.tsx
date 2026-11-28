@@ -8,6 +8,7 @@ import {
   CircleHelp,
   Gift,
   KeyRound,
+  Landmark,
   Pause,
   Send,
   ShieldAlert,
@@ -81,6 +82,9 @@ const ICONS: Record<NotificationItem["type"], { icon: LucideIcon; tone: string }
   // #567: tin tuần SoDEX.
   rewards_week_snapshot: { icon: Gift, tone: "bg-accent-tint text-accent" },
   rewards_week_points: { icon: Gift, tone: "bg-pos-bg text-pos" },
+  // SoDEX Wealth (#594): tin thông tin, không phải sự cố.
+  wealth_request_settled: { icon: Landmark, tone: "bg-accent-tint text-accent" },
+  wealth_recurring_issue: { icon: Landmark, tone: "bg-warn-bg text-warn" },
 };
 /** Bot dừng đúng kế hoạch hoặc bot tiền ảo: không tô đỏ (DEC-180). */
 const QUIET_TONE = "bg-bg text-ink-2";

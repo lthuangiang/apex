@@ -50,6 +50,10 @@ export const NOTIFICATION_TYPES = [
   // #567: tổng kết tuần SoDEX sau snapshot và điểm tuần (SoPoints), mỗi loại một tin mỗi tuần.
   "rewards_week_snapshot",
   "rewards_week_points",
+  // SoDEX Wealth (#594, DEC-404): yêu cầu nạp / redeem / mua định kỳ kết thúc, kỳ mua định kỳ bị bỏ qua / lỗi.
+  // Dữ liệu: `api/wealth-watch.ts`.
+  "wealth_request_settled",
+  "wealth_recurring_issue",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -81,6 +85,7 @@ export const NOTIFICATION_GROUPS = {
     "rewards_week_snapshot",
     "rewards_week_points",
   ],
+  wealth: ["wealth_request_settled", "wealth_recurring_issue"],
 } as const satisfies Record<string, readonly NotificationType[]>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;
 /**
@@ -119,6 +124,8 @@ export const NOTIFICATION_DEFAULTS: Record<
   teamOps: { in_app: false, email: false, telegram: true },
   // DEC-398 (chủ sản phẩm chốt 2026-11-26): in-app bật; Telegram bật (chỉ gửi khi đã kết nối); email tắt.
   rewards: { in_app: true, email: false, telegram: true },
+  // DEC-402 mục 7 / DEC-404: in-app bật; Telegram bật (chỉ gửi khi đã kết nối); email tắt.
+  wealth: { in_app: true, email: false, telegram: true },
 };
 
 export function groupOf(type: NotificationType): NotificationGroup {

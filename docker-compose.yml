@@ -28,6 +28,11 @@ x-app-env: &app-env
   COPY_BIG_MOVE_MIN_USD: ${COPY_BIG_MOVE_MIN_USD:-50000}
   # #558 / DEC-398: báo box mới SoDEX rewards (api nhận token, scheduler đọc định kỳ). Mặc định tắt (docs/DEPLOY.md mục 2.23).
   REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}
+  # #594 / DEC-404: cảnh báo SoDEX Wealth (api: công tắc Alerts; scheduler: job đọc). Mặc định tắt, team vẫn dùng được.
+  # Chu kỳ 5–60 phút (chỉ scheduler), trần Wealth chung api + scheduler (docs/DEPLOY.md mục 2.26).
+  WEALTH_WATCH_ENABLED: ${WEALTH_WATCH_ENABLED:-false}
+  WEALTH_WATCH_INTERVAL_MIN: ${WEALTH_WATCH_INTERVAL_MIN:-10}
+  WEALTH_READ_MAX_WEIGHT_PER_MIN: ${WEALTH_READ_MAX_WEIGHT_PER_MIN:-400}
   API_TOTP_ENC_KEY: ${API_TOTP_ENC_KEY}
   API_COOKIE_SECURE: ${API_COOKIE_SECURE:-true}
   SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025}

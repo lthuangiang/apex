@@ -38,6 +38,9 @@ export const AuditAction = {
   /** #558 (DEC-398): bật / tắt báo box mới SoDEX rewards. metadata không bao giờ chứa token. */
   rewardsWatchEnabled: "rewards.watch_enabled",
   rewardsWatchDisabled: "rewards.watch_disabled",
+  /** #594 (DEC-404): bật / tắt cảnh báo SoDEX Wealth. metadata không chứa địa chỉ ví. */
+  wealthWatchEnabled: "wealth.watch_enabled",
+  wealthWatchDisabled: "wealth.watch_disabled",
 } as const;
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 

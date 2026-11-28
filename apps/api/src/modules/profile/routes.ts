@@ -27,6 +27,7 @@ import { idempotent } from "../../lib/idempotency";
 import { clearSessionCookie, requireAuth } from "../../plugins/session";
 import { removeRewardsWatch } from "../rewards-watch/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
+import { removeWealthWatch } from "../wealth-watch/service";
 
 // Settings › Trading defaults / Profile (SCREENS.md mục 8.5, DEC-42): tuỳ chọn hiển thị, xuất CSV, xoá tài khoản.
 // Xoá tài khoản cần 2FA, mọi bot đã dừng và SoDEX đã Disconnect (key của DRIFT đã bị xoá phía SoDEX).
@@ -189,6 +190,8 @@ export function registerProfileRoutes(
       await tx.delete(telegramLinkTokens).where(eq(telegramLinkTokens.userId, auth.userId));
       // #558 (DEC-398): xoá phiên rewards lưu ở server (FK `rewards_watch.user_id` không cascade).
       await removeRewardsWatch(tx, auth.userId, "account_deleted", request.ip);
+      // #594 (DEC-404): xoá cảnh báo SoDEX Wealth (FK `wealth_watch.user_id` không cascade).
+      await removeWealthWatch(tx, auth.userId, "account_deleted", request.ip);
     });
     await audit(db, {
       userId: auth.userId,

@@ -68,6 +68,11 @@ export const featuresSchema = z.object({
    */
   usMarket: z.boolean().default(false),
   /**
+   * #594 / DEC-404: công tắc "Alerts" ở Portfolio › My Wealth và nhóm thông báo `wealth`. `usMarket` bật và (công tắc
+   * hệ thống `WEALTH_WATCH_ENABLED` của api, mặc định tắt, hoặc role team). Thiếu trường = false (an toàn).
+   */
+  wealthAlerts: z.boolean().default(false),
+  /**
    * #590 (DEC-402 bổ sung 2026-11-28): market đang áp giới hạn theo sổ lệnh (`DEPTH_CAP_MARKETS` của api). `["*"]` = mọi
    * market; thiếu trường / `[]` = không market nào.
    */

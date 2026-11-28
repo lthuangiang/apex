@@ -1,6 +1,7 @@
 import {
   escapeTelegramHtml,
   feeTierChangeText,
+  formatWealthAmount,
   groupOf,
   rewardsBoxReceivedDataSchema,
   rewardsClaimableDataSchema,
@@ -10,6 +11,8 @@ import {
   type NotificationType,
   type RewardsNotificationType,
   type TeamIncidentKind,
+  wealthRecurringIssueDataSchema,
+  wealthRequestSettledDataSchema,
 } from "@drift/shared";
 
 import messages from "./messages/en.json" with { type: "json" };
@@ -176,7 +179,70 @@ function targetOf(row: RenderRow): { path: string; label: string } {
     case "rewards_week_snapshot":
     case "rewards_week_points":
       return { path: "/rewards", label: M.buttons.rewards };
+    // SoDEX Wealth (#594): mở Portfolio › My Wealth.
+    case "wealth_request_settled":
+    case "wealth_recurring_issue":
+      return { path: "/portfolio?tab=wealth", label: M.buttons.wealth };
   }
+}
+
+// ---------- SoDEX Wealth (#594, DEC-404) ----------
+
+const W = M.wealth;
+
+/** Tên quỹ (chuỗi SoDEX trả, escape); thiếu tên thì `fundId`; thiếu cả hai thì nhãn chung. */
+function wealthFund(name: string | null, fundId: string | null): string {
+  return escapeTelegramHtml(name ?? fundId ?? W.aFund);
+}
+
+/**
+ * Tin SoDEX Wealth: tên quỹ, loại, trạng thái và số tiền ĐÚNG như SoDEX trả (`formatWealthAmount` chỉ thêm dấu phẩy,
+ * không làm tròn). Không % lợi nhuận, không lời khuyên. Thiếu số thì bỏ dòng có số (quy tắc 8). Payload sai dạng → null.
+ */
+export function wealthMessage(row: RenderRow): { title: string; body: string } | null {
+  if (row.type === "wealth_request_settled") {
+    const d = wealthRequestSettledDataSchema.safeParse(row.data);
+    if (!d.success) return null;
+    const x = d.data;
+    const title = fill(W.settled[x.status], {
+      what: W.what[x.what],
+      fund: wealthFund(x.fundName, x.fundId),
+    });
+    const cost = formatWealthAmount(x.cost);
+    const proceeds = formatWealthAmount(x.proceeds);
+    const shares = formatWealthAmount(x.shares);
+    const lines =
+      x.what === "redeem"
+        ? [
+            shares === null ? null : fill(W.shares, { shares }),
+            proceeds === null ? null : fill(W.received, { amount: proceeds }),
+          ]
+        : [
+            cost === null ? null : fill(W.paid, { amount: cost }),
+            x.status === "completed" && shares !== null ? fill(W.shares, { shares }) : null,
+          ];
+    return {
+      title,
+      body: [...lines.filter((l): l is string => l !== null), W.source].join("\n"),
+    };
+  }
+  if (row.type === "wealth_recurring_issue") {
+    const d = wealthRecurringIssueDataSchema.safeParse(row.data);
+    if (!d.success) return null;
+    const x = d.data;
+    const amount = formatWealthAmount(x.amount);
+    return {
+      title: fill(W.recurring[x.status], { fund: wealthFund(x.fundName, x.fundId) }),
+      body: [
+        fill(W.scheduled, { date: escapeTelegramHtml(x.scheduledDate) }),
+        amount === null ? null : fill(W.paid, { amount }),
+        W.source,
+      ]
+        .filter((l): l is string => l !== null)
+        .join("\n"),
+    };
+  }
+  return null;
 }
 
 // ---------- Sự cố tiền thật cho team (#241) ----------
@@ -493,6 +559,10 @@ function title(row: RenderRow): string {
     case "rewards_week_snapshot":
     case "rewards_week_points":
       return rewardsTitle(row.type, row);
+    case "wealth_request_settled":
+    case "wealth_recurring_issue":
+      // Payload sai dạng: tiêu đề chung, không đoán loại / trạng thái.
+      return wealthMessage(row)?.title ?? W.update;
   }
 }
 
@@ -579,6 +649,9 @@ function body(row: RenderRow): string | null {
     case "rewards_week_snapshot":
     case "rewards_week_points":
       return rewardsWeekMessage(row.type, row.data)?.body ?? null;
+    case "wealth_request_settled":
+    case "wealth_recurring_issue":
+      return wealthMessage(row)?.body ?? null;
   }
 }
 
@@ -699,7 +772,9 @@ export function renderTelegram(rows: readonly RenderRow[], appUrl: string): Rend
       ? { path: "/agent", label: M.buttons.review }
       : group === "risk"
         ? { path: "/risk", label: M.buttons.risk }
-        : { path: "", label: M.buttons.app };
+        : group === "wealth"
+          ? { path: "/portfolio?tab=wealth", label: M.buttons.wealth }
+          : { path: "", label: M.buttons.app };
   return {
     text: `${head}\n${lines.join("\n")}`,
     button: { text: target.label, url: `${base}${target.path}` },

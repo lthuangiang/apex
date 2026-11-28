@@ -169,6 +169,17 @@ export function emailText(
       return { subject: "DeskLabs: your SoDEX week", text: "Open Rewards in DeskLabs." };
     case "rewards_week_points":
       return { subject: "DeskLabs: your weekly SoPoints", text: "Open Rewards in DeskLabs." };
+    // SoDEX Wealth (#594): email tắt mặc định; người dùng bật thì chỉ câu ngắn, chi tiết trong app.
+    case "wealth_request_settled":
+      return {
+        subject: "DeskLabs: SoDEX Wealth request update",
+        text: "Open Portfolio › My Wealth in DeskLabs.",
+      };
+    case "wealth_recurring_issue":
+      return {
+        subject: "DeskLabs: SoDEX Wealth recurring buy",
+        text: "Open Portfolio › My Wealth in DeskLabs.",
+      };
   }
 }
 

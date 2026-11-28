@@ -470,6 +470,13 @@
       "when": 1795844593604,
       "tag": "0066_sr_context_book_depth",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1795860678376,
+      "tag": "0067_wealth_watch",
+      "breakpoints": true
     }
   ]
 }

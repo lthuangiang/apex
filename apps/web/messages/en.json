@@ -2287,6 +2287,10 @@
           "rewards": {
             "name": "SoDEX rewards",
             "body": "New boxes to claim, boxes you received and weekly draw wins."
+          },
+          "wealth": {
+            "name": "SoDEX Wealth",
+            "body": "Requests that settle or fail, and recurring buys that are skipped or fail."
           }
         }
       },
@@ -2909,7 +2913,12 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch"
+    "signalAnalysis.research.live.batch",
+    "notifications.types.wealth_request_settled",
+    "notifications.types.wealth_recurring_issue",
+    "notifications.panel.wealth",
+    "settings.notifications.what.rows.wealth",
+    "myWealth.alerts"
   ],
   "beta": {
     "label": "Beta",
@@ -4244,7 +4253,21 @@
       "body": "Funds you invest in on SoDEX Wealth with this wallet show here. DeskLabs never invests, redeems or moves funds."
     },
     "notConnected": "Connect your SoDEX account to see what you hold on SoDEX Wealth.",
-    "busy": "SoDEX Wealth is busy. Try again in a minute."
+    "busy": "SoDEX Wealth is busy. Try again in a minute.",
+    "alerts": {
+      "title": "Alerts",
+      "channels": "Telegram and bell",
+      "toggle": "Send me SoDEX Wealth alerts",
+      "on": "On",
+      "off": "Off",
+      "turningOn": "Turning on…",
+      "turningOff": "Turning off…",
+      "settles": "A request settles or fails",
+      "recurring": "A recurring buy runs or is skipped",
+      "delayed": "SoDEX is slow to answer right now, so alerts may arrive late.",
+      "failed": "Couldn't change alerts. Try again.",
+      "note": "DeskLabs reads public SoDEX data for your wallet. It keeps only this switch and which updates it already sent you, never your balances."
+    }
   },
   "risk": {
     "title": "Risk Center",
@@ -4459,7 +4482,9 @@
       "rewards_draw_won": "Weekly draw prize received",
       "rewards_watch_paused": "New box alerts paused",
       "rewards_week_snapshot": "Your SoDEX week",
-      "rewards_week_points": "Your weekly SoPoints"
+      "rewards_week_points": "Your weekly SoPoints",
+      "wealth_request_settled": "SoDEX Wealth request update",
+      "wealth_recurring_issue": "Recurring buy needs a look"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
@@ -4556,6 +4581,28 @@
         "weekFallback": "Week {n}",
         "rank": "Rank {rank}",
         "rankOf": "Rank {rank} of {total}"
+      },
+      "wealth": {
+        "what": {
+          "invest": "Investment",
+          "redeem": "Redemption",
+          "recurring_buy": "Recurring buy"
+        },
+        "settled": {
+          "completed": "{what} completed · {fund}",
+          "failed": "{what} failed · {fund}",
+          "rejected": "{what} rejected · {fund}",
+          "cancelled": "{what} cancelled · {fund}"
+        },
+        "recurring": {
+          "skipped": "Recurring buy skipped · {fund}",
+          "failed": "Recurring buy failed · {fund}"
+        },
+        "aFund": "SoDEX Wealth fund",
+        "usd": "${amount}",
+        "shares": "{shares} shares",
+        "scheduled": "Scheduled for {date}",
+        "source": "SoDEX Wealth"
       }
     },
     "reasonText": {

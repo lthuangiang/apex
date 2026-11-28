@@ -18,7 +18,8 @@
       "botMonitor": "Open Bot Monitor",
       "debugger": "Open SoDEX Debugger",
       "signalAnalysis": "Open Signal Analysis",
-      "rewards": "Open Rewards"
+      "rewards": "Open Rewards",
+      "wealth": "Open My Wealth"
     },
     "titles": {
       "bot_paused": "🔴 <b>{bot} paused</b>",
@@ -166,6 +167,30 @@
       "nextToGo": "{tier} at {at} · {left} to go",
       "next": "{tier} at {at}",
       "weekFallback": "Week {n}"
+    },
+    "wealth": {
+      "update": "ℹ️ <b>SoDEX Wealth update</b>",
+      "what": {
+        "invest": "Investment",
+        "redeem": "Redemption",
+        "recurring_buy": "Recurring buy"
+      },
+      "settled": {
+        "completed": "✅ <b>{what} completed · {fund}</b>",
+        "failed": "⚠️ <b>{what} failed · {fund}</b>",
+        "rejected": "⚠️ <b>{what} rejected · {fund}</b>",
+        "cancelled": "⏹ <b>{what} cancelled · {fund}</b>"
+      },
+      "recurring": {
+        "skipped": "⏭ <b>Recurring buy skipped · {fund}</b>",
+        "failed": "⚠️ <b>Recurring buy failed · {fund}</b>"
+      },
+      "aFund": "SoDEX Wealth fund",
+      "paid": "Amount: ${amount}",
+      "received": "Received: ${amount}",
+      "shares": "Shares: {shares}",
+      "scheduled": "Scheduled for {date}",
+      "source": "As reported by SoDEX Wealth."
     }
   },
   "copySkip": {
@@ -225,5 +250,6 @@
     "volume_farm": "Volume Builder",
     "adaptive_dca": "AI Adaptive DCA",
     "copy_trade": "Copy Trade"
-  }
+  },
+  "_pendingReview": ["telegram.buttons.wealth", "telegram.wealth"]
 }

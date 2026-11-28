@@ -242,4 +242,26 @@ describe("WealthReadClient failures → not_provided", () => {
     expect(second.kind === "not_provided" ? second.retryAfterMs : undefined).toBeGreaterThan(0);
     expect(f.calls).toHaveLength(1);
   });
+
+  it("#594: the alerts job keeps half of the shared Wealth cap for people viewing /wealth/me", async () => {
+    const store = new MemoryRateLimitStore();
+    const f = fakeFetch(() => okJson(FUNDS));
+    const cap = WEALTH_READ_WEIGHT * 4;
+    const job = new WealthReadClient({
+      rateLimit: store,
+      egressKey: "test",
+      ipBucket: BUCKET,
+      maxWeightPerMinute: cap,
+      capReserve: 0.5,
+      fetch: f.fn,
+    });
+    // Trần 4 lời gọi, dành 2: job chỉ lấy được 2.
+    expect((await job.getFunds()).kind).toBe("ok");
+    expect((await job.getFunds()).kind).toBe("ok");
+    expect(await job.getFunds()).toMatchObject({ kind: "not_provided", reason: "budget" });
+    // Cùng bucket, không dự trữ (api): vẫn lấy được phần còn lại.
+    const viewer = client(f.fn, { rateLimit: store, maxWeightPerMinute: cap });
+    expect((await viewer.getFunds()).kind).toBe("ok");
+    expect(f.calls).toHaveLength(3);
+  });
 });

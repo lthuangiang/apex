@@ -94,6 +94,8 @@ const app = await buildApp({
     signer: httpRewardsSigner(config.SIGNER_URL, loadClientTls(process.env, "SIGNER_CLIENT")),
   },
   // #589 / DEC-402: US Market + SoDEX Wealth (mặc định bật). Wealth đọc qua client chỉ đọc, chung bucket IP.
+  // #594 / DEC-404: cảnh báo SoDEX Wealth (mặc định tắt; team vẫn dùng được).
+  wealthWatchEnabled: () => config.WEALTH_WATCH_ENABLED,
   usMarket: {
     enabled: () => config.US_MARKET_ENABLED,
     wealth: new WealthReadClient({
