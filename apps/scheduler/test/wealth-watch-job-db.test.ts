@@ -190,7 +190,7 @@ describe("wealth watch job", () => {
     expect(await notices()).toHaveLength(0);
     const row = await rowOf(w.userId);
     expect(row?.baselinePending).toBe(false);
-    expect(Object.values(row?.fundMarks ?? {})).toEqual(["completed", "failed"]);
+    expect(Object.values(row?.fundMarks ?? {}).sort()).toEqual(["completed", "failed"]);
     // Không lưu số tiền / địa chỉ.
     const stored = JSON.stringify(row);
     expect(stored).not.toContain("500");
