@@ -11,6 +11,12 @@ import { decimalStringSchema } from "./schemas";
 export const SODEX_REWARDS_DEFAULT_ORIGIN = "https://mainnet-gw.sodex.dev";
 
 /**
+ * #601 / DEC-405: host lottery mà trang SoDEX dùng cho `lottery/progress`. Endpoint KHÔNG có trong tài liệu Rewards API
+ * (ngoại lệ có chủ đích): SoDEX có thể đổi bất cứ lúc nào, nên mọi lỗi / sai dạng đều làm dòng phụ tự ẩn.
+ */
+export const SODEX_LOTTERY_DEFAULT_ORIGIN = "https://mainnet-lottery.sodex.dev";
+
+/**
  * Envelope của auth / lottery / sopoints: thành công khi `code === 0`; lỗi nghiệp vụ đọc `msg` (đa số) hoặc `message`
  * (`sopoints/volume-weights` trả `message`). Cybereator không có envelope.
  */
@@ -172,6 +178,18 @@ export const lotteryTreasuresSchema = z.object({
     .object({ granted: z.number().int().nullish(), opened: z.number().int().nullish() })
     .nullish(),
 });
+
+/**
+ * #601 / DEC-405: `GET lottery/progress` (không có trong tài liệu). Chỉ giữ trường dùng; `wallet` / `newcomer` bị bỏ.
+ * `toNextBoxU`: USD khối lượng còn thiếu tới box kế tiếp (chuỗi thập phân), thiếu hoặc sai dạng thì cả response bị loại.
+ */
+export const lotteryProgressSchema = z.object({
+  toNextBoxU: decimalStringSchema,
+  effectiveU: decimalStringSchema.nullish(),
+  boxesEarned: z.number().int().nonnegative().nullish(),
+  computedThroughTsMs: z.number().int().nullish(),
+});
+export type LotteryProgress = z.infer<typeof lotteryProgressSchema>;
 
 export const lotteryBoxSchema = z.object({
   tokenId: z.number().int(),

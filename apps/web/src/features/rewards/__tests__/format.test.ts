@@ -9,7 +9,6 @@ import {
   formatUsdAmount,
   weekPoints,
   weekState,
-  weekVolumeTotal,
   decimalOf,
   formatCoefficient,
   formatCount,
@@ -89,16 +88,6 @@ describe("rewards format", () => {
     expect(formatUsdAmount(0)).toBe("$0.00");
     expect(formatUsdAmount("12.40")).toBe("$12.40");
     expect(formatUsdAmount(null)).toBeNull();
-  });
-
-  it("week volume (#601): spot + futures as SoDEX returns them; one missing uses the other; both missing is null", () => {
-    expect(weekVolumeTotal({ spotVolume: 1920, futuresVolume: "84300" })).toBe("86220");
-    expect(weekVolumeTotal({ spotVolume: null, futuresVolume: 500.5 })).toBe("500.5");
-    expect(weekVolumeTotal({ spotVolume: "12.25" })).toBe("12.25");
-    expect(weekVolumeTotal({ spotVolume: 0, futuresVolume: 0 })).toBe("0");
-    expect(weekVolumeTotal({})).toBeNull();
-    expect(weekVolumeTotal({ spotVolume: "n/a", futuresVolume: null })).toBeNull();
-    expect(formatUsdAmount(weekVolumeTotal({ spotVolume: 0, futuresVolume: 0 }))).toBe("$0.00");
   });
 
   it("week state: isLive → live, ended non-CONFIRMED → snapshot, CONFIRMED 0 is a real 0", () => {

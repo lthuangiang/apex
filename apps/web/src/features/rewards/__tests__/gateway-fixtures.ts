@@ -18,6 +18,15 @@ export type Reply =
 const ok = (data: unknown) => ({ body: { code: 0, msg: "ok", data } });
 
 export const fixtures = {
+  /** #601 / DEC-405: `lottery/progress` trên host lottery (không có trong tài liệu); ví là địa chỉ giả. */
+  progress: ok({
+    wallet: MASTER,
+    newcomer: false,
+    toNextBoxU: "1234.5",
+    effectiveU: "8765.5",
+    boxesEarned: 2,
+    computedThroughTsMs: 1764500000000,
+  }),
   weekInfo: ok({
     weekNo: 13,
     weekName: "Week 13",
@@ -269,6 +278,7 @@ export type Route =
   | "lottery/feed"
   | "sopoints/summary"
   | "sopoints/week/list"
+  | "lottery/progress"
   | "lottery/treasures"
   | "lottery/boxes"
   | "lottery/jobs"
@@ -287,6 +297,7 @@ export function defaultRoutes(): Record<Route, Reply> {
     "lottery/feed": fixtures.feed,
     "sopoints/summary": fixtures.summary,
     "sopoints/week/list": fixtures.weekList,
+    "lottery/progress": fixtures.progress,
     "lottery/treasures": fixtures.treasures,
     "lottery/boxes": fixtures.boxes,
     "lottery/jobs": fixtures.jobs,

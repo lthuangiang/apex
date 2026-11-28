@@ -1,7 +1,7 @@
 import { SESSION_COOKIE } from "@drift/shared";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { REWARDS_GATEWAY_ORIGIN } from "./features/rewards/gateway";
+import { LOTTERY_GATEWAY_ORIGIN, REWARDS_GATEWAY_ORIGIN } from "./features/rewards/gateway";
 
 // Content-Security-Policy chặt (CODING_STANDARDS C12): script chỉ chạy khi có nonce của request này, không có
 // `unsafe-inline` cho script. Next đọc nonce từ header CSP của request và gắn vào script của nó.
@@ -25,6 +25,7 @@ export function buildCsp(
   dev: boolean,
   walletConnect = false,
   rewardsGateway: string = REWARDS_GATEWAY_ORIGIN,
+  lotteryGateway: string = LOTTERY_GATEWAY_ORIGIN,
 ): string {
   const wc = (k: keyof typeof WALLETCONNECT) => (walletConnect ? ` ${WALLETCONNECT[k]}` : "");
   return [
@@ -34,8 +35,9 @@ export function buildCsp(
     `img-src 'self' data: blob:${wc("img")}`,
     `font-src 'self'${wc("font")}`,
     // RPC ValueChain: wagmi đọc chain khi chuyển mạng trong ví. Gateway Rewards API của SoDEX (DEC-397): trình duyệt
-    // gọi thẳng, luôn mở (trang chẩn đoán team chạy cả khi công tắc REWARDS_ENABLED tắt).
-    `connect-src 'self' https://mainnet.valuechain.xyz ${rewardsGateway}${dev ? " ws: wss:" : " wss:"}${wc("connect")}`,
+    // gọi thẳng, luôn mở (trang chẩn đoán team chạy cả khi công tắc REWARDS_ENABLED tắt). Host lottery cho
+    // `lottery/progress` (#601 / DEC-405, không có trong tài liệu): chỉ đúng origin đó.
+    `connect-src 'self' https://mainnet.valuechain.xyz ${rewardsGateway} ${lotteryGateway}${dev ? " ws: wss:" : " wss:"}${wc("connect")}`,
     `frame-src 'self'${wc("frame")}`,
     "object-src 'none'",
     "base-uri 'self'",

@@ -9,6 +9,7 @@ import {
   lotteryLedgerSchema,
   lotteryMetaSchema,
   lotteryPfpsSchema,
+  lotteryProgressSchema,
   lotteryTreasuresSchema,
   sopointsSummarySchema,
   sopointsVolumeWeightsSchema,
@@ -18,6 +19,7 @@ import {
 import { z } from "zod";
 
 import { RewardsError, rewardsRequest, type RewardsRequest } from "./client";
+import { LOTTERY_GATEWAY_ORIGIN } from "./gateway";
 import { describeShape, type FieldRow } from "./shape";
 
 // Các endpoint ĐỌC mà trang chẩn đoán gọi (#547). Không có endpoint ghi (claim / open / merge), không transfer.
@@ -29,6 +31,8 @@ export interface ProbeSpec {
   auth: boolean;
   schema: z.ZodType;
   envelope?: boolean;
+  /** Origin khác gateway Rewards (vd host lottery của `lottery/progress`, #601 / DEC-405). */
+  origin?: string;
   groupBy?: string;
   /** Trường dạng enum cần liệt kê mọi giá trị khác nhau trong mảng (chỉ chuỗi / boolean / null, không số liệu). */
   enums?: readonly string[];
@@ -62,6 +66,14 @@ export const PROBES: readonly ProbeSpec[] = [
     path: "lottery/treasures",
     auth: true,
     schema: lotteryTreasuresSchema,
+  },
+  {
+    // #601 / DEC-405: không có trong tài liệu, host lottery riêng; giá trị `wallet` bị ẩn như trường nhạy cảm.
+    id: "lottery/progress",
+    path: "lottery/progress",
+    origin: LOTTERY_GATEWAY_ORIGIN,
+    auth: true,
+    schema: lotteryProgressSchema,
   },
   { id: "lottery/boxes", path: "lottery/boxes", auth: true, schema: lotteryBoxesSchema },
   {
@@ -169,6 +181,7 @@ export async function runProbe(
       schema: z.unknown(),
       ...(spec.query === undefined ? {} : { query: spec.query }),
       ...(spec.envelope === undefined ? {} : { envelope: spec.envelope }),
+      ...(spec.origin === undefined ? {} : { origin: spec.origin }),
     });
     const check = spec.schema.safeParse(data);
     return {

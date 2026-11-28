@@ -194,12 +194,14 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
     expect(bagArt).toHaveAttribute("width", "26");
     expect(bagArt?.getAttribute("data-kind")).toBe("rare");
     expect(bagArt).toHaveAttribute("aria-hidden", "true");
-    // #601: tuần đang chạy hiện khối lượng tuần = spotVolume + futuresVolume (1,920 + 84,300), không điểm, không chip.
+    // #601: tuần đang chạy hiện hai số riêng Spot / Perps (không cộng), không điểm, không chip.
     await waitFor(() => {
-      expect(row("Volume this week")).toHaveTextContent("$86,220.00");
+      expect(row("This week")).toHaveTextContent("Spot $1,920.00");
     });
-    expect(row("Volume this week").querySelector("svg.bx")).toBeNull();
-    expect(row("Volume this week")).not.toHaveTextContent("2,140");
+    expect(row("This week")).toHaveTextContent("Perps $84,300.00");
+    expect(row("This week")).not.toHaveTextContent("$86,220.00");
+    expect(row("This week").querySelector("svg.bx")).toBeNull();
+    expect(row("This week")).not.toHaveTextContent("2,140");
     expect(within(card()).queryByText("In progress")).toBeNull();
     expect(within(card()).getByRole("link", { name: "Open Rewards" })).toHaveAttribute(
       "href",
@@ -207,6 +209,90 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
     );
     expect(gw.calls.find((c) => c.path === "lottery/jobs")?.url).toContain("active=true");
     expect(gw.calls.some((c) => c.url.includes(FAKE_TOKEN))).toBe(false);
+  });
+
+  it("next box (#601 / DEC-405): with 0 boxes to claim, shows Trade {amount} more from lottery/progress on the lottery host", async () => {
+    gateway({
+      "lottery/treasures": {
+        body: {
+          code: 0,
+          msg: "ok",
+          data: { total: 0, maxPerOpen: 100, bySource: {}, lifetime: null },
+        },
+      },
+    });
+    show();
+    expect(
+      await within(card()).findByText("Trade $1,234.50 more to unlock your next Blind Box"),
+    ).toBeInTheDocument();
+    const call = gw.calls.find((c) => c.path === "lottery/progress");
+    expect(call?.url.startsWith("https://mainnet-lottery.sodex.dev/")).toBe(true);
+    expect(call?.auth).toBe(`Bearer ${FAKE_TOKEN}`);
+  });
+
+  it("next box: hidden while there are boxes to claim (not even read)", async () => {
+    show();
+    const row = (label: string) => within(card()).getByText(label).closest("li") as HTMLElement;
+    await waitFor(() => {
+      expect(row("Blind Boxes to claim")).toHaveTextContent("3");
+    });
+    expect(within(card()).queryByText(/more to unlock your next Blind Box/)).toBeNull();
+    expect(gw.calls.some((c) => c.path === "lottery/progress")).toBe(false);
+  });
+
+  it.each([
+    ["an HTTP error", { status: 500, body: {} }],
+    ["a business error", { body: { code: 7, msg: "nope" } }],
+    ["a missing toNextBoxU", { body: { code: 0, msg: "ok", data: { effectiveU: "10" } } }],
+    ["a malformed toNextBoxU", { body: { code: 0, msg: "ok", data: { toNextBoxU: "soon" } } }],
+  ])("next box: hidden on %s, never 0 or an old number", async (_name, reply) => {
+    gateway({
+      "lottery/treasures": {
+        body: {
+          code: 0,
+          msg: "ok",
+          data: { total: 0, maxPerOpen: 100, bySource: {}, lifetime: null },
+        },
+      },
+      "lottery/progress": reply,
+    });
+    show();
+    await waitFor(() => {
+      expect(gw.calls.some((c) => c.path === "lottery/progress")).toBe(true);
+    });
+    expect(within(card()).queryByText(/more to unlock your next Blind Box/)).toBeNull();
+    expect(within(card()).queryByText(/\$0\.00 more/)).toBeNull();
+  });
+
+  it("this week: a missing field shows Not provided for that field only", async () => {
+    gateway({
+      "sopoints/week/list": {
+        body: {
+          code: 0,
+          msg: "ok",
+          data: [
+            {
+              weekNo: 13,
+              weekName: "Week 13",
+              status: "LIVE",
+              isLive: true,
+              weekStartTime: 1763942400,
+              weekEndTime: 1764547200,
+              spotVolume: 0,
+              futuresVolume: null,
+              points: 0,
+              pointsStatus: "PENDING",
+            },
+          ],
+        },
+      },
+    });
+    show();
+    const row = (label: string) => within(card()).getByText(label).closest("li") as HTMLElement;
+    await waitFor(() => {
+      expect(row("This week")).toHaveTextContent("Spot $0.00");
+    });
+    expect(row("This week")).toHaveTextContent("Perps Not provided");
   });
 
   it("job line: newest running job, +1 more, View reopens the popup", async () => {
@@ -335,7 +421,7 @@ describe("SoDEX rewards card, signed in (mockups 03, 04, 06)", () => {
   it("passes axe", async () => {
     const { container } = show();
     await within(card()).findByText("48,210");
-    await within(card()).findByText("$86,220.00");
+    await within(card()).findByText("Spot $1,920.00");
     expect((await axe.run(container)).violations).toEqual([]);
   });
 });

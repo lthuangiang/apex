@@ -41,21 +41,6 @@ export function formatUsdAmount(value: NumLike | null | undefined): string | nul
   return text === null ? null : `$${text}`;
 }
 
-/**
- * #601: khối lượng tuần = `spotVolume + futuresVolume` đúng như SoDEX trả (không tự tính effective volume / hệ số boost).
- * Thiếu một trường thì lấy trường còn lại; thiếu cả hai → null ("Not provided"); 0 thật vẫn là "0".
- */
-export function weekVolumeTotal(row: {
-  spotVolume?: NumLike | null | undefined;
-  futuresVolume?: NumLike | null | undefined;
-}): string | null {
-  const parts = [decimalOf(row.spotVolume), decimalOf(row.futuresVolume)].filter(
-    (v): v is string => v !== null,
-  );
-  if (parts.length === 0) return null;
-  return parts.reduce((sum, v) => sum.add(dec(v)), dec("0")).toString();
-}
-
 /** Khối lượng tuần (USD, dữ liệu thật). */
 export function formatVolume(value: NumLike | null | undefined): string | null {
   return formatUsdAmount(value);

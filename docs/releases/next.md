@@ -9,8 +9,11 @@ PM đổi tên file theo tag khi người dùng gõ "release" (xem `docs/RELEASE
 - Portfolio › My Wealth: a read-only view of what you hold on SoDEX Wealth (totals, funds you hold, activity), read from SoDEX for your wallet with no signature. DeskLabs never invests, redeems or moves funds; use SoDEX Wealth with your own wallet for that. (**chưa merge**, #592)
 
 Not financial advice. Past results are not a forecast.
+- SoDEX rewards card on Overview: "This week" shows your Spot and Perps volume for the running week as SoDEX reports them, and when you have no Blind Box to claim, how much more trading unlocks your next one. (**chưa merge**, #601)
 
 ## Kỹ thuật
+
+- **Thẻ SoDEX rewards ở Overview (#601, chưa merge; DEC-405):** tuần đang chạy hiện "Spot $… · Perps $…" (`spotVolume` / `futuresVolume` của `sopoints/week/list`, không cộng; thiếu trường nào → "Not provided"). Khi 0 box chờ claim: "Trade {amount} more to unlock your next Blind Box" từ `toNextBoxU` của `GET lottery/progress` trên host lottery của SoDEX (**không có trong tài liệu**, trình duyệt gọi, CSP mở đúng host; lỗi / sai dạng thì dòng tự ẩn). Build arg tuỳ chọn mới `SODEX_LOTTERY_GATEWAY` (trống = `https://mainnet-lottery.sodex.dev`, prod không cần đặt). Không migration.
 
 - **US Market + SoDEX Wealth, phần api (#589, chưa merge):** client chỉ đọc SoDEX Wealth (allowlist GET, chung bucket IP, ưu tiên thấp), zod cho Wealth API, quy tắc độ sâu sổ lệnh ở `packages/shared` (`Thin` < 10.000 USD, `Very thin` < 1.000 USD theo phía mỏng hơn), `GET /api/v1/markets/us`, `GET /api/v1/wealth/me`, `features.usMarket` (DEC-402).
 - **Portfolio › My Wealth (#592, chưa merge; Refs #588):** tab chỉ đọc trong Portfolio (ẩn khi `features.usMarket` false). api: cache `/wealth/me` 30 s → 90 s theo địa chỉ; mặc định chỉ 4 lời gọi Wealth (80 weight, giả định 20 / lời gọi chưa đo), `recurring-buys` / `pnl-history` chỉ khi `?include=`; hết ngân sách weight của chính DeskLabs → 429 `RATE_LIMITED` `details.reason = "sodex_wealth_budget"` + `retryAfterMs`, web hiện "SoDEX Wealth is busy". Không migration, không biến môi trường mới.
