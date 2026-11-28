@@ -2909,7 +2909,22 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch"
+    "signalAnalysis.research.live.batch",
+    "myWealth.updated",
+    "myWealth.pageTabs.label",
+    "myWealth.incomplete",
+    "myWealth.holdings.none",
+    "myWealth.activity.none",
+    "myWealth.activity.kind.airdrop",
+    "myWealth.activity.kind.liquidation",
+    "myWealth.activity.kind.transferIn",
+    "myWealth.activity.kind.transferOut",
+    "myWealth.activity.status.rejected",
+    "myWealth.activity.status.cancelled",
+    "myWealth.empty.title",
+    "myWealth.empty.body",
+    "myWealth.notConnected",
+    "myWealth.busy"
   ],
   "beta": {
     "label": "Beta",
@@ -4164,6 +4179,87 @@
     "balancesSpot": "Spot",
     "balancesPerps": "Perps",
     "indexPriced": "Priced at the SoDEX index price: {coins}"
+  },
+  "myWealth": {
+    "title": "My Wealth",
+    "subtitle": "What you hold on SoDEX Wealth. Read from SoDEX for your wallet; no signature needed.",
+    "updated": "Read from SoDEX {time}",
+    "pageTabs": {
+      "label": "Portfolio views",
+      "trading": "Trading",
+      "wealth": "My Wealth"
+    },
+    "kpi": {
+      "totalValue": "Total value",
+      "totalCost": "Total cost",
+      "totalResult": "Total result",
+      "resultSplit": "Realized {realized} · open {open}",
+      "pnl24h": "24h",
+      "inFlight": "Being processed",
+      "requests": "{n, plural, one {# request} other {# requests}}"
+    },
+    "incomplete": "Some funds have no price yet and are left out of the totals.",
+    "holdings": {
+      "title": "Funds you hold",
+      "openSodex": "Open SoDEX Wealth ↗",
+      "none": "You don't hold any funds right now.",
+      "type": {
+        "vault": "Vault"
+      },
+      "redeeming": "{shares} shares redeeming",
+      "cols": {
+        "fund": "Fund",
+        "shares": "Shares",
+        "price": "Price",
+        "value": "Value",
+        "avgCost": "Avg cost",
+        "result": "Result",
+        "pnl24h": "24h"
+      }
+    },
+    "activity": {
+      "title": "Activity",
+      "none": "No activity yet.",
+      "amountShares": "{shares} shares",
+      "cols": {
+        "when": "When",
+        "fund": "Fund",
+        "what": "What",
+        "amount": "Amount",
+        "status": "Status"
+      },
+      "kind": {
+        "invest": "Invest",
+        "redeem": "Redeem",
+        "recurringBuy": "Recurring buy",
+        "airdrop": "Airdrop",
+        "liquidation": "Liquidation",
+        "transferIn": "Transfer in",
+        "transferOut": "Transfer out"
+      },
+      "status": {
+        "processing": "Processing",
+        "completed": "Completed",
+        "failed": "Failed",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled"
+      }
+    },
+    "can": {
+      "title": "What DeskLabs can do here",
+      "see": "See your funds and results",
+      "alerts": "Send you alerts",
+      "move": "Invest, redeem or move funds",
+      "yes": "Yes",
+      "never": "Never",
+      "note": "To invest or redeem, use SoDEX Wealth with your own wallet."
+    },
+    "empty": {
+      "title": "Nothing on SoDEX Wealth yet",
+      "body": "Funds you invest in on SoDEX Wealth with this wallet show here. DeskLabs never invests, redeems or moves funds."
+    },
+    "notConnected": "Connect your SoDEX account to see what you hold on SoDEX Wealth.",
+    "busy": "SoDEX Wealth is busy. Try again in a minute."
   },
   "risk": {
     "title": "Risk Center",

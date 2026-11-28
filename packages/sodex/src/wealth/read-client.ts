@@ -42,8 +42,8 @@ export const WEALTH_READ_ENDPOINTS = {
 export type WealthReadEndpoint = keyof typeof WEALTH_READ_ENDPOINTS;
 
 /**
- * Weight mỗi lời gọi trên bucket IP chung. Tài liệu SoDEX (Rate limits) không liệt kê route Wealth: endpoint không liệt
- * kê tính 20, nên tính 20 cho chắc.
+ * Weight mỗi lời gọi trên bucket IP chung. GIẢ ĐỊNH CHƯA ĐO: tài liệu SoDEX (Rate limits) không liệt kê route Wealth;
+ * endpoint không liệt kê tính 20, nên tính 20 cho chắc.
  */
 export const WEALTH_READ_WEIGHT = 20;
 /** Body tối đa (byte); lớn hơn thì bỏ, coi như không đọc được. */
@@ -73,7 +73,13 @@ export type WealthReadFailureReason =
 /** Gateway lỗi / trả sai dạng → `not_provided` (không ném), người gọi hiện "Not provided". */
 export type WealthReadResult<T> =
   | { kind: "ok"; data: T }
-  | { kind: "not_provided"; reason: WealthReadFailureReason; status?: number };
+  | {
+      kind: "not_provided";
+      reason: WealthReadFailureReason;
+      status?: number;
+      /** Chỉ với `budget`: bao lâu nữa bucket đủ token cho một lời gọi (ms). */
+      retryAfterMs?: number;
+    };
 
 export type WealthFetch = (input: string, init: RequestInit) => Promise<Response>;
 
@@ -208,21 +214,22 @@ export class WealthReadClient {
     return this.#read("tvl", { a: address }, {}, wealthTvlSchema);
   }
 
-  async #take(): Promise<boolean> {
+  /** null = lấy được token; số = chờ bao lâu (ms) mới đủ. */
+  async #take(): Promise<number | null> {
     if (this.#capBucket !== null) {
       const cap = await this.#rateLimit.take(
         `sodex:wealth:${this.#egressKey}`,
         this.#capBucket,
         WEALTH_READ_WEIGHT,
       );
-      if (!cap.allowed) return false;
+      if (!cap.allowed) return Math.max(0, cap.retryAfterMs);
     }
     const ip = await this.#rateLimit.take(
       `sodex:ip:${this.#egressKey}`,
       this.#ipBucket,
       WEALTH_READ_WEIGHT,
     );
-    return ip.allowed;
+    return ip.allowed ? null : Math.max(0, ip.retryAfterMs);
   }
 
   #path(endpoint: WealthReadEndpoint, params: Params): string | null {
@@ -250,7 +257,8 @@ export class WealthReadClient {
   ): Promise<WealthReadResult<z.output<T>>> {
     const path = this.#path(endpoint, params);
     if (path === null) return { kind: "not_provided", reason: "invalid_param" };
-    if (!(await this.#take())) return { kind: "not_provided", reason: "budget" };
+    const wait = await this.#take();
+    if (wait !== null) return { kind: "not_provided", reason: "budget", retryAfterMs: wait };
 
     const url = new URL(`/api/v1/wealth/${path}`, this.#origin);
     for (const [k, v] of Object.entries(query)) if (v !== undefined) url.searchParams.set(k, v);

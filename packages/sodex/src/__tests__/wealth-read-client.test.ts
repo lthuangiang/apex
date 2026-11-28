@@ -229,15 +229,17 @@ describe("WealthReadClient failures → not_provided", () => {
     // Bucket IP chỉ còn đúng phần dự trữ 50%: Wealth không được lấy.
     await store.take("sodex:ip:test", BUCKET, 600);
     const f = fakeFetch(() => okJson(FUNDS));
-    expect(await client(f.fn, { rateLimit: store }).getFunds()).toEqual({
-      kind: "not_provided",
-      reason: "budget",
-    });
+    const out = await client(f.fn, { rateLimit: store }).getFunds();
+    expect(out).toMatchObject({ kind: "not_provided", reason: "budget" });
+    // Báo lại bao lâu nữa đủ token (api trả 429 kèm `retryAfterMs`, #592).
+    expect(out.kind === "not_provided" ? out.retryAfterMs : undefined).toBeGreaterThan(0);
     expect(f.calls).toHaveLength(0);
 
     const capped = client(f.fn, { maxWeightPerMinute: WEALTH_READ_WEIGHT });
     expect((await capped.getFunds()).kind).toBe("ok");
-    expect(await capped.getFunds()).toMatchObject({ reason: "budget" });
+    const second = await capped.getFunds();
+    expect(second).toMatchObject({ reason: "budget" });
+    expect(second.kind === "not_provided" ? second.retryAfterMs : undefined).toBeGreaterThan(0);
     expect(f.calls).toHaveLength(1);
   });
 });

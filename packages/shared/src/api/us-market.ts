@@ -264,8 +264,43 @@ export const wealthPnlPointSchema = z.object({
 export const WEALTH_ACTIVITY_LIMIT = 50;
 
 /**
+ * Phần đọc thêm của `GET /api/v1/wealth/me` (#592): mặc định không đọc, chỉ khi `?include=recurringBuys,pnlHistory`
+ * (mỗi phần thêm một lời gọi Wealth, weight 20 theo giả định chưa đo).
+ */
+export const WEALTH_ME_INCLUDES = ["recurringBuys", "pnlHistory"] as const;
+export type WealthMeInclude = (typeof WEALTH_ME_INCLUDES)[number];
+
+/** Query `include` (danh sách cách nhau bằng dấu phẩy); giá trị lạ → 400. Thiếu / rỗng = không đọc thêm. */
+export const wealthMeQuerySchema = z
+  .object({ include: z.string().max(200).optional() })
+  .transform((q, ctx) => {
+    const parts = (q.include ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s !== "");
+    const out = new Set<WealthMeInclude>();
+    for (const part of parts) {
+      const hit = WEALTH_ME_INCLUDES.find((x) => x === part);
+      if (hit === undefined) {
+        ctx.addIssue({ code: "custom", path: ["include"], message: `Unknown include: ${part}` });
+        return z.NEVER;
+      }
+      out.add(hit);
+    }
+    return { include: [...out] };
+  });
+
+/**
+ * Hết ngân sách weight của chính DeskLabs khi đọc Wealth (#592): 429 `RATE_LIMITED`, `details.reason` này và
+ * `details.retryAfterMs`. Web hiện "SoDEX Wealth is busy", không hiện "Not provided".
+ */
+export const WEALTH_BUSY_REASON = "sodex_wealth_budget";
+
+/**
  * `GET /api/v1/wealth/me` (#589): đọc theo master wallet của tài khoản đang đăng nhập, không lưu. Chưa kết nối SoDEX →
- * `not_connected`. Tổng (`pnl`) lỗi → 502 `SODEX_UNAVAILABLE`; các phần còn lại lỗi → `not_provided`.
+ * `not_connected`. Tổng (`pnl`) lỗi → 502 `SODEX_UNAVAILABLE`; các phần còn lại lỗi → `not_provided`. Hết ngân sách
+ * weight ở bất kỳ phần nào → 429 (`WEALTH_BUSY_REASON`). `recurringBuys` / `pnlHistory` chỉ có khi được yêu cầu qua
+ * `include` (#592).
  */
 export const wealthMeResponseSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("not_connected") }),
@@ -276,9 +311,10 @@ export const wealthMeResponseSchema = z.discriminatedUnion("status", [
     holdings: z.array(wealthHoldingSchema),
     inFlight: providedSection(wealthInFlightRowSchema),
     activity: providedSection(wealthActivityRowSchema),
-    recurringBuys: providedSection(wealthRecurringBuyRowSchema),
-    /** 1 tháng, mỗi ngày một điểm, cũ nhất trước. */
-    pnlHistory: providedSection(wealthPnlPointSchema),
+    /** Chỉ khi `include=recurringBuys`. */
+    recurringBuys: providedSection(wealthRecurringBuyRowSchema).optional(),
+    /** Chỉ khi `include=pnlHistory`. 1 tháng, mỗi ngày một điểm, cũ nhất trước. */
+    pnlHistory: providedSection(wealthPnlPointSchema).optional(),
   }),
 ]);
 export type WealthMeResponse = z.infer<typeof wealthMeResponseSchema>;
