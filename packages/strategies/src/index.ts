@@ -22,6 +22,29 @@ export * from "./core";
 export * from "./sim";
 export * from "./paper";
 export { safetyOffsetPct } from "./common/dca-math";
+export {
+  capEntryOrder,
+  depthCapApplies,
+  depthCapLabel,
+  depthReducedWhy,
+  depthWaitWhy,
+  isEntryCandidate,
+  isImmediateOrder,
+  maxPositionsOf,
+  positionDepthIssue,
+  raisedPositions,
+  DEPTH_CAP_LEVELS,
+  DEPTH_CAP_THIN_USD,
+  DEPTH_CAP_VERY_THIN_USD,
+  DEPTH_EMPTY_DECISION,
+  DEPTH_REDUCED_DECISION,
+  DEPTH_THIN_DECISION,
+  ENTRY_DEPTH_SHARE,
+  type DepthCapLabel,
+  type EntryCapResult,
+  type MaxPosition,
+  type PositionDepthIssue,
+} from "./common/depth-cap";
 export { entryReady, type EntryCondition, type NextCycle, type WaitingInfo } from "./common/entry";
 export { gridPrices, stepCoversFees } from "./common/grid";
 export { gridStopLimits, leverageCapIssue, perpsStopMaxPct } from "./common/perps";
