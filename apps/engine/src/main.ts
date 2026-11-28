@@ -8,6 +8,8 @@ import {
   leaderPositionMessageSchema,
   mmBookMessageSchema,
   mmFairMessageSchema,
+  parseDepthCapMarkets,
+  sideNotional,
   type MmBookMessage,
 } from "@drift/shared";
 import {
@@ -16,7 +18,6 @@ import {
   RedisRateLimitStore,
   WsUserStream,
 } from "@drift/sodex";
-import { parseDepthCapMarkets } from "@drift/strategies";
 import { connect } from "@nats-io/transport-node";
 import { eq } from "drizzle-orm";
 import { Redis } from "ioredis";
@@ -282,13 +283,11 @@ const engine = new Engine({
     const [bid] = b.bids;
     const [ask] = b.asks;
     if (bid === undefined || ask === undefined) return null;
-    const notional = (levels: readonly (readonly [string, string])[]) =>
-      levels.reduce((sum, [p, q]) => sum.add(dec(p).mul(q)), dec("0")).toString();
     return {
       bid: bid[0],
       ask: ask[0],
-      bidNotional: notional(b.bids),
-      askNotional: notional(b.asks),
+      bidNotional: sideNotional(b.bids),
+      askNotional: sideNotional(b.asks),
     };
   },
 });

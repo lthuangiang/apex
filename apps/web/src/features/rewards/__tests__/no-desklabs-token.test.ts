@@ -2,7 +2,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { SODEX_REWARDS_DEFAULT_ORIGIN } from "@drift/shared";
+import { SODEX_LOTTERY_DEFAULT_ORIGIN, SODEX_REWARDS_DEFAULT_ORIGIN } from "@drift/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { rewardsRequest, rewardsUrl, resetRewardsRateLimit } from "../client";
@@ -69,7 +69,12 @@ describe("rewards token never reaches DeskLabs", () => {
     expect(paths).toContain("/api/v1/cybereator/profile/2051");
     for (const [input, init] of f.mock.calls) {
       const url = new URL(urlOf(input));
-      expect(url.origin).toBe(SODEX_REWARDS_DEFAULT_ORIGIN);
+      // Chỉ gateway Rewards; riêng `lottery/progress` đi host lottery của SoDEX (#601 / DEC-405).
+      expect(url.origin).toBe(
+        url.pathname === "/api/v1/lottery/progress"
+          ? SODEX_LOTTERY_DEFAULT_ORIGIN
+          : SODEX_REWARDS_DEFAULT_ORIGIN,
+      );
       expect(url.origin).not.toBe(window.location.origin);
       expect(url.toString()).not.toContain(FAKE_TOKEN);
       expect(bodyOf(init)).not.toContain(FAKE_TOKEN);

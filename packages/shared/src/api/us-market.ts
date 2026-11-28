@@ -1,26 +1,27 @@
 import { z } from "zod";
 
-import { add, dec, mul, type Decimal } from "../money";
+import {
+  DEPTH_LABELS,
+  DEPTH_LEVELS,
+  DepthLabel,
+  depthLabelOf,
+  sideNotional,
+  type DepthBookLevel,
+} from "../depth";
+import { dec, Decimal } from "../money";
 import { decimalStringSchema, isoDateTimeSchema } from "../schemas";
+
+export * from "../depth";
 
 // US Market + SoDEX Wealth (DEC-402, #588). Hằng số và hàm thuần dùng chung cho api (#589), engine (#590) và web
 // (#591 / #592); schema response của `GET /api/v1/markets/us` và `GET /api/v1/wealth/me`.
+// Ngưỡng, nhãn và công thức độ sâu nằm ở `../depth` (một nguồn, #588); xuất lại từ đây để `@drift/shared` có chúng.
 // Không bịa số (quy tắc 8): trường không đọc được là null, web hiện "Not provided"; không bao giờ thay bằng "0".
 
-/** Độ sâu = tổng notional (giá × khối lượng, đơn vị quote ≈ USD) của 10 mức giá mỗi phía (DEC-402 mục 4). */
-export const DEPTH_LEVELS = 10;
-/** Nhãn `Thin`: phía mỏng hơn dưới 10.000 USD. */
-export const DEPTH_THIN_USD = "10000";
-/** Nhãn `Very thin`: phía mỏng hơn dưới 1.000 USD. */
-export const DEPTH_VERY_THIN_USD = "1000";
 /** Lần khớp cuối cũ hơn mức này thì không hiện khối lượng ticker mà hiện "Last trade" (DEC-402 mục 3). */
 export const LAST_TRADE_STALE_MS = 24 * 60 * 60 * 1000;
 /** Cache đọc sổ lệnh / ticker / quỹ của `GET /api/v1/markets/us` (DEC-402 mục 4: 30–60 s). */
 export const US_MARKET_CACHE_MS = 30_000;
-
-export const DepthLabel = { ok: "ok", thin: "thin", veryThin: "very_thin" } as const;
-export type DepthLabel = (typeof DepthLabel)[keyof typeof DepthLabel];
-export const DEPTH_LABELS = [DepthLabel.ok, DepthLabel.thin, DepthLabel.veryThin] as const;
 
 /** Trạng thái sổ lệnh lấy từ dữ liệu thật: `halted` theo `status` symbol; một phía rỗng = `empty`. */
 export const BookStatus = { trading: "trading", empty: "empty", halted: "halted" } as const;
@@ -33,33 +34,6 @@ export const US_MARKET_ANTHROPIC: readonly { engine: UsMarketEngine; symbol: str
   { engine: "perps", symbol: "ANT-USD" },
   { engine: "spot", symbol: "vANT_vUSDC" },
 ];
-
-/** Một mức giá của sổ lệnh: [giá, khối lượng] dạng chuỗi thập phân. */
-export type DepthBookLevel = readonly [string, string];
-
-/** Tổng notional `levels` mức đầu tiên (mặc định 10). Phía rỗng = "0" (đó là dữ liệu thật, không phải thiếu). */
-export function sideNotional(
-  levels: readonly DepthBookLevel[],
-  max: number = DEPTH_LEVELS,
-): string {
-  let total: Decimal = dec("0");
-  for (const [price, size] of levels.slice(0, max)) total = add(total, mul(price, size));
-  return total.toFixed();
-}
-
-/** Nhãn theo phía mỏng hơn (DEC-402 mục 4). */
-export function depthLabelOf(bidsNotional: string, asksNotional: string): DepthLabel {
-  const thinner = minDec(bidsNotional, asksNotional);
-  if (thinner.lessThan(dec(DEPTH_VERY_THIN_USD))) return DepthLabel.veryThin;
-  if (thinner.lessThan(dec(DEPTH_THIN_USD))) return DepthLabel.thin;
-  return DepthLabel.ok;
-}
-
-function minDec(a: string, b: string): Decimal {
-  const x = dec(a);
-  const y = dec(b);
-  return x.lessThan(y) ? x : y;
-}
 
 /** `halted` khi symbol không ở trạng thái giao dịch; còn lại một phía rỗng = `empty`. */
 export function bookStatusOf(input: { halted: boolean; bids: number; asks: number }): BookStatus {
@@ -97,7 +71,8 @@ export function marketDepthOf(book: {
     bidLevels: Math.min(book.bids.length, DEPTH_LEVELS),
     askLevels: Math.min(book.asks.length, DEPTH_LEVELS),
     label,
-    maxPositionUsd: label === DepthLabel.ok ? null : minDec(bidsNotional, asksNotional).toFixed(),
+    maxPositionUsd:
+      label === DepthLabel.ok ? null : Decimal.min(dec(bidsNotional), dec(asksNotional)).toFixed(),
   };
 }
 

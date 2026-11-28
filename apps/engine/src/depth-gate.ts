@@ -1,8 +1,6 @@
-import { dec } from "@drift/shared";
+import { dec, depthCapApplies, depthCapLabel } from "@drift/shared";
 import {
   capEntryOrder,
-  depthCapApplies,
-  depthCapLabel,
   depthReducedWhy,
   depthWaitWhy,
   isEntryCandidate,

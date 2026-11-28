@@ -70,6 +70,9 @@ import {
   UserRole,
   NewsEntryBlock,
   NEWS_SIGNAL_FALLBACK_MMR,
+  type DepthCapScope,
+  inDepthCapScope,
+  parseDepthCapMarkets,
 } from "@drift/shared";
 import {
   mmOrderContextSchema,
@@ -92,9 +95,6 @@ import {
   type DecisionPayload,
   type Ledger,
   type BookTop,
-  type DepthCapScope,
-  inDepthCapScope,
-  parseDepthCapMarkets,
   type MarketRules,
   type MarketSnapshot,
   type StepContext,

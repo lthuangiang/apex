@@ -15,15 +15,19 @@ import {
   formatCoefficient,
   formatCount,
   formatDayTime,
+  formatUsdAmount,
   weekPoints,
+  weekState,
   secToMs,
   sortByCoefficient,
+  type NumLike,
 } from "../format";
 import {
   firstRewardsError,
   useRewardsActiveJobs,
   useRewardsBoxes,
   useRewardsPause,
+  useRewardsProgress,
   useRewardsRetry,
   useRewardsSummary,
   useRewardsTreasures,
@@ -110,6 +114,45 @@ function Rows({ children, stale }: { children: ReactNode; stale?: boolean }) {
     >
       {children}
     </ul>
+  );
+}
+
+/**
+ * #601: khối lượng tuần đang chạy, hai số riêng như bảng Weekly performance (Spot / Perps, không cộng). Thiếu trường nào
+ * thì trường đó "Not provided"; 0 thật là "$0.00". Hẹp (390 px) thì tự xuống hai dòng.
+ */
+function WeekVolumes({
+  spot,
+  perps,
+}: {
+  spot: NumLike | null | undefined;
+  perps: NumLike | null | undefined;
+}) {
+  const t = useTranslations("rewards.card");
+  const tm = useTranslations("common.missing");
+  const amount = (v: NumLike | null | undefined) => formatUsdAmount(v) ?? tm("notProvided");
+  return (
+    <span className="flex flex-wrap justify-end gap-x-1.5 text-right">
+      <span className="whitespace-nowrap">{t("weekSpot", { amount: amount(spot) })}</span>
+      <span aria-hidden="true" className="text-ink-2">
+        ·
+      </span>
+      <span className="whitespace-nowrap">{t("weekPerps", { amount: amount(perps) })}</span>
+    </span>
+  );
+}
+/**
+ * #601 / DEC-405: "Trade {amount} more to unlock your next Blind Box" từ `toNextBoxU` của `lottery/progress` (không có
+ * trong tài liệu). Lỗi, sai dạng hay đang tải → không hiện gì (không số cũ, không 0); không tự tính từ `effectiveU`.
+ */
+function NextBoxLine({ progress }: { progress: CardData["progress"] }) {
+  const t = useTranslations("rewards.card");
+  const amount = progress.isError ? null : formatUsdAmount(progress.data?.toNextBoxU);
+  if (amount === null) return null;
+  return (
+    <li className="-mt-1 border-b border-border pb-2 text-right text-xs font-semibold text-ink-2 last:border-b-0">
+      {t("nextBox", { amount })}
+    </li>
   );
 }
 
@@ -270,11 +313,14 @@ export function JobLine({
  * lúc đang đọc (gỡ hết observer thì TanStack Query huỷ request đang chạy).
  */
 function useCardData(auth: Auth) {
+  const treasures = useRewardsTreasures(auth);
   return {
     week: useRewardsWeekInfo(),
     weights: useRewardsVolumeWeights(),
     summary: useRewardsSummary(auth),
-    treasures: useRewardsTreasures(auth),
+    treasures,
+    // #601 / DEC-405: chỉ đọc khi không còn box chờ claim (dòng phụ "Trade … more"). Lỗi của nó không vào dải lỗi thẻ.
+    progress: useRewardsProgress(auth, treasures.data?.total === 0),
     boxes: useRewardsBoxes(auth),
     weekList: useRewardsWeekList(auth),
     jobs: useRewardsActiveJobs(auth),
@@ -490,7 +536,7 @@ function SignedCard({ auth, data }: { auth: Auth; data: CardData }) {
   const tz = useZone();
   const retry = useRewardsRetry();
   const tierText = useTierText();
-  const { summary, treasures, boxes, weekList, week, jobs } = data;
+  const { summary, treasures, boxes, weekList, week, jobs, progress } = data;
   const error = firstRewardsError(
     summary.error,
     treasures.error,
@@ -524,8 +570,11 @@ function SignedCard({ auth, data }: { auth: Auth; data: CardData }) {
       : weekList.data?.find((r) => r.weekNo === week.data.weekNo));
   const next =
     week.data === undefined ? null : formatDayTime(secToMs(week.data.distributionTime), tz);
-  // Tuần chưa chốt (In progress / Snapshot done): chỉ chip, không số (quy tắc 8).
-  const thisWeek = current === undefined ? null : weekPoints(current);
+  // Tuần chưa chốt (In progress / Snapshot done): chỉ chip, không số điểm (quy tắc 8). #601: tuần đang chạy hiện hai
+  // khối lượng SoDEX trả, tách riêng (Spot = spotVolume, Perps = futuresVolume; không cộng), thay cho chip; tuần đã kết
+  // thúc chưa có điểm giữ chip "Snapshot done".
+  const live = current !== undefined && weekState(current) === "live";
+  const thisWeek = current === undefined || live ? null : weekPoints(current);
   return (
     <Shell>
       <BotBox
@@ -572,19 +621,26 @@ function SignedCard({ auth, data }: { auth: Auth; data: CardData }) {
                 </button>
               ) : null}
             </Row>
+            {treasures.data?.total === 0 ? <NextBoxLine progress={progress} /> : null}
             <Row label={t("backpack")} box={topBoxLevel(boxes.data?.byLevel)}>
               <Value text={formatCount(boxes.data?.total)} />
             </Row>
-            <Row label={t("thisWeek")}>
-              {thisWeek === null ? (
-                <Value text={null} />
-              ) : (
-                <>
-                  {thisWeek.hide ? null : <Value text={thisWeek.text} />}
-                  <WeekChip state={thisWeek.state} />
-                </>
-              )}
-            </Row>
+            {live ? (
+              <Row label={t("thisWeek")}>
+                <WeekVolumes spot={current.spotVolume} perps={current.futuresVolume} />
+              </Row>
+            ) : (
+              <Row label={t("thisWeek")}>
+                {thisWeek === null ? (
+                  <Value text={null} />
+                ) : (
+                  <>
+                    {thisWeek.hide ? null : <Value text={thisWeek.text} />}
+                    <WeekChip state={thisWeek.state} />
+                  </>
+                )}
+              </Row>
+            )}
             <Row label={tr("week.next")}>
               <Value text={next} />
             </Row>

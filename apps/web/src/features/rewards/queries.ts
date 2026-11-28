@@ -11,6 +11,7 @@ import {
   lotteryLedgerSchema,
   lotteryMetaSchema,
   lotteryPfpsSchema,
+  lotteryProgressSchema,
   lotteryTreasuresSchema,
   sopointsSummarySchema,
   sopointsVolumeWeightsSchema,
@@ -27,6 +28,7 @@ import {
   rewardsRequest,
   subscribeRewardsPause,
 } from "./client";
+import { LOTTERY_GATEWAY_ORIGIN } from "./gateway";
 import type { useRewardsAuth } from "./use-rewards-auth";
 
 // Hook dữ liệu SoDEX rewards dùng chung cho trang /rewards (#548) và thẻ Overview (#549). Trình duyệt gọi thẳng gateway
@@ -46,6 +48,7 @@ export const rewardsKeys = {
   summary: (address: string) => [...rewardsKeys.wallet(address), "summary"] as const,
   weekList: (address: string) => [...rewardsKeys.wallet(address), "week-list"] as const,
   treasures: (address: string) => [...rewardsKeys.wallet(address), "treasures"] as const,
+  progress: (address: string) => [...rewardsKeys.wallet(address), "progress"] as const,
   boxes: (address: string) => [...rewardsKeys.wallet(address), "boxes"] as const,
   activeJobs: (address: string) => [...rewardsKeys.wallet(address), "jobs-active"] as const,
   pfps: (address: string) => [...rewardsKeys.wallet(address), "pfps"] as const,
@@ -180,6 +183,27 @@ export function useRewardsTreasures(s: RewardsSession) {
       s.authed({ path: "lottery/treasures", schema: lotteryTreasuresSchema, signal }),
     refetchInterval: every(REWARDS_REFRESH_MS),
     enabled,
+  });
+}
+
+/**
+ * #601 / DEC-405: `lottery/progress` trên host lottery (không có trong tài liệu). Chỉ bật khi đã ký; lỗi / sai dạng thì
+ * thẻ ẩn dòng phụ (không số cũ: dữ liệu bị bỏ khi có lỗi). Cùng nhịp làm mới với thẻ, không thử lại dồn dập.
+ */
+export function useRewardsProgress(s: RewardsSession, on = true) {
+  const { address, enabled } = walletQuery(s);
+  return useQuery({
+    ...COMMON,
+    queryKey: rewardsKeys.progress(address),
+    queryFn: ({ signal }) =>
+      s.authed({
+        path: "lottery/progress",
+        origin: LOTTERY_GATEWAY_ORIGIN,
+        schema: lotteryProgressSchema,
+        signal,
+      }),
+    refetchInterval: every(REWARDS_REFRESH_MS),
+    enabled: enabled && on,
   });
 }
 

@@ -41,6 +41,10 @@ ENV NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=$NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 # Gateway Rewards API của SoDEX (DEC-397): trống thì web dùng https://mainnet-gw.sodex.dev.
 ARG NEXT_PUBLIC_SODEX_REWARDS_GATEWAY=""
 ENV NEXT_PUBLIC_SODEX_REWARDS_GATEWAY=$NEXT_PUBLIC_SODEX_REWARDS_GATEWAY
+# Host lottery của SoDEX cho `lottery/progress` (#601 / DEC-405, không có trong tài liệu): trống thì
+# https://mainnet-lottery.sodex.dev.
+ARG NEXT_PUBLIC_SODEX_LOTTERY_GATEWAY=""
+ENV NEXT_PUBLIC_SODEX_LOTTERY_GATEWAY=$NEXT_PUBLIC_SODEX_LOTTERY_GATEWAY
 RUN pnpm --filter @drift/web build
 ENV NODE_ENV=production
 CMD ["pnpm", "--filter", "@drift/web", "start"]

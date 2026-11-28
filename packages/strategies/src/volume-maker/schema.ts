@@ -1,4 +1,4 @@
-import { dec } from "@drift/shared";
+import { dec, VM_MAX_INVENTORY_MULTIPLE } from "@drift/shared";
 import { z } from "zod";
 
 import { marketSchema, positiveDecimal } from "../common/schema";
@@ -12,7 +12,7 @@ export const VM_DEFAULTS = {
   distanceBp: "1",
   refreshSeconds: 3,
   /** Max open position = 2 × order size khi không đặt (DEC-100). */
-  maxInventoryMultiple: 2,
+  maxInventoryMultiple: VM_MAX_INVENTORY_MULTIPLE,
 } as const;
 
 /**
