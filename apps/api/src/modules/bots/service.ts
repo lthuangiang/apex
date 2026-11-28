@@ -94,6 +94,7 @@ import { markSideEffect } from "../../lib/idempotency";
 import { iso } from "../security/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
 
+import { assertDepthFits } from "./depth";
 import { hasPositionMismatch, needsAttentionOf } from "./position-mismatch";
 import { botSummaryLine } from "./summary-line";
 
@@ -112,6 +113,7 @@ export interface BotDeps extends TwoFactorDeps {
     | "getPerpsAccountState"
     | "getSpotSymbols"
     | "getPerpsSymbols"
+    | "getOrderbook"
   >;
   builderId: bigint;
   /** Account builder được miễn builder fee (DEC-47); false = thu như mọi account (DEC-124). Thiếu = true. */
@@ -779,6 +781,8 @@ export async function createBot(
   const config = parseConfig(body.strategy, newBotDefaults(body.strategy, body.config));
   assertCopyLeader(body.strategy, config, a.address);
   await assertLeverageCap(deps, a.id, body.strategy, config);
+  // Bot tạo ở đây luôn là bot tiền thật (bot paper tạo từ AI Desk): kiểm tổng vị thế tối đa theo sổ lệnh (#590).
+  await assertDepthFits(deps, body.strategy, config);
   const req = requirementOf(body.strategy, config);
   const bot = await deps.db.transaction(async (tx) => {
     const [b] = await tx
@@ -1915,6 +1919,22 @@ export async function checkVersionConfig(
         });
   }
   await assertLeverageCap(deps, b.sodexAccountId, b.strategy, config);
+  // Giới hạn theo sổ lệnh (#590): chỉ bot tiền thật, chỉ khi bản sửa làm tăng tổng vị thế tối đa ở market nào đó (so với
+  // version mới nhất). Sửa không tăng vốn không bao giờ bị chặn, bot đang chạy không bị dừng.
+  if (b.mode !== "paper") {
+    const [latest] = await deps.db
+      .select({ config: botVersions.config })
+      .from(botVersions)
+      .where(eq(botVersions.botId, b.id))
+      .orderBy(desc(botVersions.version))
+      .limit(1);
+    await assertDepthFits(
+      deps,
+      b.strategy,
+      config,
+      (latest?.config ?? {}) as Record<string, unknown>,
+    );
+  }
   return config;
 }
 
@@ -1930,6 +1950,7 @@ export async function checkNewBotConfig(
   const config = parseConfig(strategy, newBotDefaults(strategy, raw));
   assertCopyLeader(strategy, config, a.address);
   await assertLeverageCap(deps, a.id, strategy, config);
+  await assertDepthFits(deps, strategy, config);
   return config;
 }
 
