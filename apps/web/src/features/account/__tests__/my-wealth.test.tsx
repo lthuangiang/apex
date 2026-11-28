@@ -323,6 +323,11 @@ describe("Portfolio › My Wealth (#592)", () => {
     expect(within(activity).getByText("$25.00")).toBeInTheDocument();
     expect(within(activity).getByText("Failed")).toBeInTheDocument();
 
+    // Link ra ngoài, tab mới (DEC-402: chỉ đọc trong DeskLabs).
+    const open = screen.getByRole("link", { name: "Open SoDEX Wealth ↗" });
+    expect(open).toHaveAttribute("target", "_blank");
+    expect(open).toHaveAttribute("rel", "noopener noreferrer");
+
     const can = screen.getByRole("region", { name: "What DeskLabs can do here" });
     expect(within(can).getByText("Invest, redeem or move funds")).toBeInTheDocument();
     expect(within(can).getByText("Never")).toBeInTheDocument();

@@ -19,6 +19,12 @@ import { z } from "zod";
 import { MmFeeCatalog, mmFeeView, mmTierArgs } from "@/components/mm-fee-tiers";
 import { NotConnected, useSodexMissing } from "@/components/not-connected";
 import { WorkspaceShell } from "@/components/workspace-shell";
+import {
+  depthBlocks,
+  LargestPositionLine,
+  OrderBookPanel,
+  useDepthHint,
+} from "@/features/us-market";
 import { api, ApiError } from "@/lib/api";
 import { uncertainOutcome, useFinancialMutation } from "@/lib/financial-action";
 import { feeLabels, formatMoney } from "@/lib/format";
@@ -206,6 +212,12 @@ export function CreateBot({
     },
   });
 
+  // Độ sâu sổ lệnh cho market có giới hạn theo sổ (DEC-402 mục 5, bản phác màn 03): chỉ gợi ý, server kiểm lại khi tạo.
+  const depth = useDepthHint(
+    strategy,
+    typeof values.market === "string" ? values.market : "",
+    toConfig(strategy, values),
+  );
   const priceMarket = priceMarketOf(strategy, values);
   const last = useMarketLast(priceMarket);
   const lastPrice = priceMarket === null ? null : (last.data ?? null);
@@ -311,6 +323,7 @@ export function CreateBot({
           },
         ]
       : []),
+    ...(depthBlocks(depth) ? [{ label: t("beforeStart.missing.depth"), target: "settings" }] : []),
     ...(levWarn !== null && !levAck
       ? [{ label: t("beforeStart.missing.leverage"), target: "start-lev-ack" }]
       : []),
@@ -436,6 +449,7 @@ export function CreateBot({
             // Widget chart nằm dưới Preview / Backtest ở cột trái (IMP-05). Cột cao hơn màn hình nên bỏ sticky.
             <div className="flex min-w-0 flex-[3_1_480px] flex-col gap-4 self-start">
               {visual}
+              {depth === null ? null : <OrderBookPanel hint={depth} />}
               <MarketChart
                 strategy={strategy}
                 values={values}
@@ -492,6 +506,7 @@ export function CreateBot({
                     ) : null}
                     {isMobile ? (
                       <>
+                        {depth === null ? null : <OrderBookPanel hint={depth} />}
                         <MarketChart
                           inline
                           strategy={strategy}
@@ -521,6 +536,7 @@ export function CreateBot({
                 </Field>
               }
             />
+            {depth === null ? null : <LargestPositionLine hint={depth} />}
           </section>
         </div>
 

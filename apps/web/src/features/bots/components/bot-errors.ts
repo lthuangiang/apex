@@ -1,6 +1,7 @@
 import { useTranslations } from "next-intl";
 
 import { ApiError } from "@/lib/api";
+import { formatMoney } from "@/lib/format";
 
 import { friendlyFieldErrors } from "../field-errors";
 
@@ -25,6 +26,15 @@ export function useBotErrorText() {
     // #471: archive bot news còn lệnh mở (API 409 `open_trades`): câu riêng, không phải lỗi chung.
     if (e.code === "STATE_CONFLICT" && (e.details as { reason?: unknown }).reason === "open_trades")
       return t("archiveOpenTrades");
+    // DEC-402 mục 5 (#590): server kiểm độ sâu sổ lệnh khi tạo / sửa. Câu chữ theo câu của server, dựng từ `details`
+    // (C6: không hiện message thô).
+    const d = e.details as { reason?: unknown; market?: unknown; maxPosition?: unknown };
+    if (e.code === "VALIDATION_FAILED" && d.reason === "order_book_depth") {
+      const market = typeof d.market === "string" ? d.market : "";
+      return typeof d.maxPosition === "string"
+        ? t("depthTooLarge", { market, limit: formatMoney(d.maxPosition) ?? d.maxPosition })
+        : t("depthEmpty", { market });
+    }
     const messages: Partial<Record<ApiError["code"], string>> = {
       TWO_FACTOR_INVALID: t("twoFactor"),
       TWO_FACTOR_REQUIRED: t("twoFactor"),

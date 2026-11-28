@@ -15,6 +15,9 @@ import type { ReactNode } from "react";
 
 import { NotConnected } from "@/components/not-connected";
 import { Card } from "@/components/workspace";
+// Cùng URL "Open SoDEX Wealth ↗" và cùng query key với dải "Your SoDEX Wealth" của `/markets/us` (#591): một lần đọc.
+import { SODEX_WEALTH_URL } from "@/features/us-market/links";
+import { WEALTH_ME_KEY } from "@/features/us-market/queries";
 import { api, ApiError } from "@/lib/api";
 import { formatAmount, formatDateTime, formatMoney } from "@/lib/format";
 
@@ -23,15 +26,6 @@ import { formatAmount, formatDateTime, formatMoney } from "@/lib/format";
 // Quy tắc 1: không có nút nạp / rút / chuyển. Quy tắc 8: trường null hiện "Not provided", không bao giờ "0"; ví không
 // có gì thì hiện empty state thay cho các ô 0. Hết ngân sách weight của chính DeskLabs (429 `sodex_wealth_budget`) thì
 // hiện câu "busy", không hiện "Not provided".
-
-/** Cùng khoá với dải "Your SoDEX Wealth" của `/markets/us` (#591): một lần đọc cho cả hai. */
-export const WEALTH_ME_KEY = ["wealth", "me"] as const;
-
-/**
- * Trang SoDEX Wealth cho nút "Open SoDEX Wealth ↗" (link ra ngoài, DEC-402). Chưa có URL đã chốt nên để null: nút không
- * hiện, không đoán URL (cùng cách với #591).
- */
-export const SODEX_WEALTH_URL: string | null = null;
 
 type WealthOk = Extract<WealthMeResponse, { status: "ok" }>;
 type Activity = Extract<WealthOk["activity"], { status: "ok" }>["items"][number];
