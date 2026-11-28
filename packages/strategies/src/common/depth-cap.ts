@@ -1,82 +1,28 @@
-import { dec, Decimal, Strategy } from "@drift/shared";
+import { dec, ENTRY_DEPTH_SHARE } from "@drift/shared";
 
 import { meetsMinimum, roundQty } from "../core/rounding";
 import type { BookTop, MarketRules, OrderIntent } from "../core/types";
-import { copyMarkets } from "../requirements";
-import { VM_DEFAULTS } from "../volume-maker/schema";
 
-// Giới hạn theo sổ lệnh (DEC-402 mục 5, #590). Hàm thuần: engine và api đọc sổ lệnh 10 mức rồi gọi các hàm này.
+// Giới hạn theo sổ lệnh (DEC-402 mục 5, #590). Hàm thuần: engine đọc sổ lệnh 10 mức rồi gọi các hàm này.
 //
-// Hằng ngưỡng và hàm phân loại ở đây trùng ý với nhãn độ sâu của trang US Market (#589, `packages/shared`). Giữ riêng ở
-// đây để hai task không sửa chung file; PM nối về một chỗ sau khi cả hai merge.
-
-/** Số mức giá mỗi phía được cộng notional (DEC-402 mục 4). */
-export const DEPTH_CAP_LEVELS = 10;
-/** Một phía dưới mức này (USD, notional 10 mức) thì market là `Thin`. */
-export const DEPTH_CAP_THIN_USD = "10000";
-/** Một phía dưới mức này thì market là `Very thin`. */
-export const DEPTH_CAP_VERY_THIN_USD = "1000";
-/** Lệnh khớp ngay để VÀO vị thế lấy tối đa phần này của notional 10 mức phía nó ăn. */
-export const ENTRY_DEPTH_SHARE = "0.25";
-
-export type DepthCapLabel = "deep" | "thin" | "very_thin" | "empty";
-
-/**
- * Market áp giới hạn theo sổ lệnh trong bản đầu (DEC-402 bổ sung 2026-11-28): Anthropic (perps + spot) và 8 cặp token quỹ.
- * Ghi đè bằng `DEPTH_CAP_MARKETS` (engine + api). Market ngoài danh sách: không đọc sổ, không cắt, không kiểm lúc tạo / sửa.
- */
-export const DEFAULT_DEPTH_CAP_MARKETS: readonly string[] = [
-  "ANT-USD",
-  "vANT_vUSDC",
-  "vVOO_vUSDC",
-  "vQQQ_vUSDC",
-  "vSCHD_vUSDC",
-  "vSMH_vUSDC",
-  "vVGT_vUSDC",
-  "vVYM_vUSDC",
-  "vBOXX_vUSDC",
-  "vSTRC_vUSDC",
-];
-
-/** Phạm vi giới hạn theo sổ: `all` = mọi market (`*`, có hỗ trợ nhưng chưa dùng), hoặc danh sách market. */
-export interface DepthCapScope {
-  all: boolean;
-  markets: readonly string[];
-}
-
-/**
- * Đọc `DEPTH_CAP_MARKETS`: thiếu biến hoặc `default` → danh sách mặc định; chuỗi trống → tắt hẳn; `*` → mọi market; còn
- * lại là danh sách phân cách dấu phẩy (bỏ khoảng trắng, bỏ mục trống).
- */
-export function parseDepthCapMarkets(raw: string | undefined): DepthCapScope {
-  if (raw === undefined || raw.trim() === "default")
-    return { all: false, markets: [...DEFAULT_DEPTH_CAP_MARKETS] };
-  const items = raw
-    .split(",")
-    .map((x) => x.trim())
-    .filter((x) => x !== "");
-  if (items.includes("*")) return { all: true, markets: [] };
-  return { all: false, markets: [...new Set(items)] };
-}
-
-export const inDepthCapScope = (scope: DepthCapScope, market: string): boolean =>
-  scope.all || scope.markets.includes(market);
-
-/**
- * Nhãn độ sâu của market theo sổ 10 mức. `null` = một phía không có lệnh nào (engine `orderbook()` trả null khi một
- * phía rỗng), hoặc notional một phía bằng 0.
- */
-export function depthCapLabel(book: BookTop | null): DepthCapLabel {
-  if (book === null) return "empty";
-  const thinner = Decimal.min(dec(book.bidNotional), dec(book.askNotional));
-  if (!thinner.gt(0)) return "empty";
-  if (thinner.lt(DEPTH_CAP_VERY_THIN_USD)) return "very_thin";
-  if (thinner.lt(DEPTH_CAP_THIN_USD)) return "thin";
-  return "deep";
-}
-
-/** Giới hạn theo sổ chỉ áp cho market `Thin` / `Very thin` (và sổ rỗng); market đủ sâu giữ hành vi cũ (DEC-402 mục 5). */
-export const depthCapApplies = (label: DepthCapLabel): boolean => label !== "deep";
+// Ngưỡng, nhãn, phạm vi `DEPTH_CAP_MARKETS` và tổng vị thế tối đa nằm ở `@drift/shared` (một nguồn với trang US Market và
+// form tạo bot của web, #588); xuất lại từ đây để engine và test cũ giữ nguyên chỗ import. Ở đây chỉ còn phần riêng của
+// engine: trần 25% cho lệnh vào và câu Decisions.
+export {
+  DEFAULT_DEPTH_CAP_MARKETS,
+  depthCapApplies,
+  depthCapLabel,
+  ENTRY_DEPTH_SHARE,
+  inDepthCapScope,
+  maxPositionsOf,
+  parseDepthCapMarkets,
+  positionDepthIssue,
+  raisedPositions,
+  type DepthCapLabel,
+  type DepthCapScope,
+  type MaxPosition,
+  type PositionDepthIssue,
+} from "@drift/shared";
 
 /** Lệnh khớp ngay (market hoặc IOC). Lệnh limit GTC / GTX nằm chờ trên sổ (grid, safety DCA) không bao giờ bị cắt. */
 export const isImmediateOrder = (o: Pick<OrderIntent, "type" | "timeInForce">): boolean =>
@@ -172,150 +118,4 @@ export function depthWaitWhy(
   return r.reason === "empty"
     ? `${market}: no ${sideWord(side)} orders in the order book. The bot won't open or add until there are. Closing orders still go.`
     : `${market}: 25% of the top 10 ${sideWord(side)} levels is ${r.capNotional} USD, below SoDEX's minimum order. The bot won't open or add until the book is deeper. Closing orders still go.`;
-}
-
-// ── Tổng vị thế tối đa lúc tạo / sửa bot ─────────────────────────────────────────────────────────────────────────
-
-export interface MaxPosition {
-  market: string;
-  engine: "spot" | "perps";
-  /** Notional tối đa (USD) bot có thể giữ trên market này theo cấu hình. */
-  notional: string;
-}
-
-type Cfg = Record<string, unknown>;
-const str = (c: Cfg, k: string): string => {
-  const v = c[k];
-  return typeof v === "string" || typeof v === "number" ? String(v) : "0";
-};
-const num = (c: Cfg, k: string): number => {
-  const v = c[k];
-  return typeof v === "number" ? v : Number(v ?? 0) || 0;
-};
-const market = (c: Cfg, k = "market"): string => (typeof c[k] === "string" ? c[k] : "");
-
-/**
- * Tổng vị thế tối đa (notional USD) của bot theo từng market (DEC-402 mục 5): vốn × đòn bẩy, hoặc tổng các lần mua của
- * DCA. `price` chỉ cần cho TWAP (khối lượng tính theo base). Trả mảng rỗng khi chiến lược không có market cố định lúc tạo
- * (`news_signal`: market theo tín hiệu, engine vẫn áp trần 25% cho từng lệnh vào).
- *
- * Recurring Buy dùng một lần mua (`amountPerBuy`): các lần mua cách nhau theo ngày / tuần, không mua dồn vào một sổ.
- */
-export function maxPositionsOf(strategy: string, c: Cfg, price?: string): MaxPosition[] {
-  const lev = (k = "leverage") => num(c, k) || 1;
-  switch (strategy) {
-    case Strategy.spotGrid:
-      return [{ market: market(c), engine: "spot", notional: str(c, "investment") }];
-    case Strategy.futuresGrid:
-      return [
-        {
-          market: market(c),
-          engine: "perps",
-          notional: dec(str(c, "margin")).mul(lev()).toString(),
-        },
-      ];
-    case Strategy.spotDca:
-    case Strategy.futuresDca: {
-      let total = dec(str(c, "baseOrder"));
-      for (let k = 1; k <= num(c, "maxSafetyOrders"); k += 1)
-        total = total.add(dec(str(c, "safetyOrder")).mul(dec(str(c, "sizeMultiplier")).pow(k - 1)));
-      return strategy === Strategy.spotDca
-        ? [{ market: market(c), engine: "spot", notional: total.toString() }]
-        : [{ market: market(c), engine: "perps", notional: total.mul(lev()).toString() }];
-    }
-    case Strategy.recurringBuy:
-      return [{ market: market(c), engine: "spot", notional: str(c, "amountPerBuy") }];
-    case Strategy.rebalancing: {
-      const assets = Array.isArray(c.assets) ? (c.assets as Cfg[]) : [];
-      return assets.flatMap((a) =>
-        typeof a.market === "string"
-          ? [
-              {
-                market: a.market,
-                engine: "spot" as const,
-                notional: dec(str(c, "investment")).mul(str(a, "weightPct")).div(100).toString(),
-              },
-            ]
-          : [],
-      );
-    }
-    case Strategy.fundingArb: {
-      const leg = dec(str(c, "investment")).div(2).toString();
-      return [
-        { market: market(c, "spotMarket"), engine: "spot", notional: leg },
-        { market: market(c, "perpMarket"), engine: "perps", notional: leg },
-      ];
-    }
-    case Strategy.twap:
-      return price === undefined
-        ? []
-        : [
-            {
-              market: market(c),
-              engine: c.engine === "perps" ? "perps" : "spot",
-              notional: dec(str(c, "totalSize")).mul(price).toString(),
-            },
-          ];
-    case Strategy.volumeMaker: {
-      const inv =
-        c.maxInventory !== undefined && c.maxInventory !== ""
-          ? dec(str(c, "maxInventory"))
-          : dec(str(c, "orderSize")).mul(
-              typeof c.maxOrders === "number" ? c.maxOrders : VM_DEFAULTS.maxInventoryMultiple,
-            );
-      return [{ market: market(c), engine: "perps", notional: inv.toString() }];
-    }
-    case Strategy.adaptiveDca:
-      return [{ market: market(c), engine: "perps", notional: str(c, "maxExposure") }];
-    case Strategy.copyTrade:
-      // `maxExposure` là trần tổng; bot có thể dồn hết vào một market, nên mỗi market kiểm với cả mức này.
-      return copyMarkets(c).map((m) => ({
-        market: m,
-        engine: "perps" as const,
-        notional: str(c, "maxExposure"),
-      }));
-    case Strategy.volumeFarm:
-      return [{ market: market(c), engine: "perps", notional: str(c, "orderSizeMaxUsd") }];
-    default:
-      return [];
-  }
-}
-
-export type PositionDepthIssue =
-  | { kind: "empty"; market: string }
-  | { kind: "too_large"; market: string; limit: string; notional: string };
-
-/**
- * So tổng vị thế tối đa với phía mỏng hơn của sổ 10 mức (DEC-402 mục 5). Market đủ sâu (cả hai phía ≥ 10.000 USD) không
- * bị kiểm. Sổ rỗng một phía → `empty`.
- */
-export function positionDepthIssue(
-  p: MaxPosition,
-  book: BookTop | null,
-): PositionDepthIssue | null {
-  const label = depthCapLabel(book);
-  if (!depthCapApplies(label)) return null;
-  if (label === "empty" || book === null) return { kind: "empty", market: p.market };
-  const thinner = Decimal.min(dec(book.bidNotional), dec(book.askNotional));
-  if (dec(p.notional).lte(thinner)) return null;
-  return {
-    kind: "too_large",
-    market: p.market,
-    limit: thinner.toDecimalPlaces(0, Decimal.ROUND_DOWN).toString(),
-    notional: dec(p.notional).toDecimalPlaces(2).toString(),
-  };
-}
-
-/**
- * Bản sửa có làm tăng tổng vị thế tối đa ở market nào không (chỉ khi đó api kiểm lại theo sổ, DEC-402: bot đang chạy không
- * bị chặn khi sửa mà không tăng vốn). Market mới (không có ở bản cũ) tính là tăng.
- */
-export function raisedPositions(
-  before: readonly MaxPosition[],
-  after: readonly MaxPosition[],
-): MaxPosition[] {
-  return after.filter((p) => {
-    const old = before.find((b) => b.market === p.market && b.engine === p.engine);
-    return old === undefined || dec(p.notional).gt(old.notional);
-  });
 }

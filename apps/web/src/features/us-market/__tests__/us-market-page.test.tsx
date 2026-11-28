@@ -245,6 +245,16 @@ describe("US Market page", () => {
     expect(screen.queryByRole("region", { name: "Your SoDEX Wealth" })).not.toBeInTheDocument();
   });
 
+  it("shows the wallet total from summary.totalValue, and Not provided when SoDEX doesn't return it", async () => {
+    const ok = wealthOk();
+    if (ok.status !== "ok") throw new Error("fixture");
+    state.wealth = { ...ok, summary: { ...ok.summary, totalValue: null } };
+    show();
+    const strip = await screen.findByRole("region", { name: "Your SoDEX Wealth" });
+    expect(within(strip).getByText("Not provided")).toBeInTheDocument();
+    expect(within(strip).queryByText("$0.00")).not.toBeInTheDocument();
+  });
+
   it("says Not available when the funds or fund tokens could not be read", async () => {
     state.markets = markets({
       fundTokens: { status: "not_provided" },

@@ -1,11 +1,17 @@
 "use client";
 
-import { dec, DEPTH_THIN_USD, type UsMarketRow } from "@drift/shared";
+import {
+  dec,
+  DEPTH_THIN_USD,
+  largestPositionOf,
+  type LargestKind,
+  type UsMarketRow,
+} from "@drift/shared";
 import { useTranslations } from "next-intl";
 
 import { formatMoney } from "@/lib/format";
 
-import { depthFitOf, largestPositionOf, type DepthFit, type LargestKind } from "../depth-hint";
+import { depthFitOf, type DepthFit } from "../depth-hint";
 import { useInDepthCapScope, usMarketRowOf, useUsMarkets } from "../queries";
 import { marketLabel, secondsSince, usd } from "../shape";
 

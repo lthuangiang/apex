@@ -8,6 +8,12 @@ import { decimalStringSchema, isoDateTimeSchema } from "../schemas";
 // Copy Trading v1 (DEC-163, STRATEGIES.md S12.1, SCREENS.md 8.x). Số trên thẻ trader là lịch sử từ fill thật
 // ("Past results, not a forecast."); thiếu dữ liệu là null, không bao giờ 0 (quy tắc 1.8).
 
+/** Market của bot copy: `markets` (DEC-163), hoặc `market` của config cũ. */
+export function copyMarkets(c: Readonly<Record<string, unknown>>): string[] {
+  if (Array.isArray(c.markets)) return c.markets.filter((m): m is string => typeof m === "string");
+  return typeof c.market === "string" ? [c.market] : [];
+}
+
 export const traderAddressSchema = z
   .string()
   .regex(/^0x[0-9a-fA-F]{40}$/)

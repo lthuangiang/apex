@@ -1,6 +1,6 @@
 import { createDb, createSodexCallSink } from "@drift/db";
 import { loadClientTls, createBotApi } from "@drift/runtime";
-import { SR_LANE_KEY, SR_MARKETS_KEY, SR_QUOTES_KEY } from "@drift/shared";
+import { parseDepthCapMarkets, SR_LANE_KEY, SR_MARKETS_KEY, SR_QUOTES_KEY } from "@drift/shared";
 import {
   createSodexCallRecorder,
   ipBucket,
@@ -10,7 +10,6 @@ import {
   SodexRestClient,
   WealthReadClient,
 } from "@drift/sodex";
-import { parseDepthCapMarkets } from "@drift/strategies";
 import { Redis } from "ioredis";
 import { z } from "zod";
 
