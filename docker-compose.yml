@@ -104,6 +104,9 @@ services:
       REWARDS_ENABLED: ${REWARDS_ENABLED:-true}
       # #589 / DEC-402: US Market + SoDEX Wealth (qua /api/v1/features); mặc định bật.
       US_MARKET_ENABLED: ${US_MARKET_ENABLED:-true}
+      # #590 / DEC-402: market áp giới hạn theo sổ lệnh; cùng giá trị cho api và engine. `default` = ANT + 8 cặp token quỹ,
+      # trống = tắt hẳn, `*` = mọi market (chưa dùng). Dùng `-` (không phải `:-`) để giá trị trống vẫn là tắt (DEPLOY 2.25).
+      DEPTH_CAP_MARKETS: ${DEPTH_CAP_MARKETS-default}
       # #558 / DEC-398: aud được phép của JWT rewards (chỉ api); trống = từ chối mọi token.
       REWARDS_JWT_AUD_ALLOW: ${REWARDS_JWT_AUD_ALLOW:-}
       # Telegram (DEC-170, docs/NOTIFICATIONS.md). Production: token và webhook secret lấy từ Vault.
@@ -170,6 +173,9 @@ services:
       ENGINE_CLOCK_CONCURRENCY: ${ENGINE_CLOCK_CONCURRENCY:-4}
       # #419 engine A: cùng công tắc với api; tắt = engine không nạp bot news_signal (docs/DEPLOY.md mục 2.19).
       SIGNAL_NEWS_BOTS_ENABLED: ${SIGNAL_NEWS_BOTS_ENABLED:-false}
+      # #590 / DEC-402: market áp giới hạn theo sổ lệnh; cùng giá trị cho api và engine. `default` = ANT + 8 cặp token quỹ,
+      # trống = tắt hẳn, `*` = mọi market (chưa dùng). Dùng `-` (không phải `:-`) để giá trị trống vẫn là tắt (DEPLOY 2.25).
+      DEPTH_CAP_MARKETS: ${DEPTH_CAP_MARKETS-default}
       SIGNER_URL: https://signer:8090
       SIGNER_CLIENT_CERT: /certs/engine.crt
       SIGNER_CLIENT_KEY: /certs/engine.key

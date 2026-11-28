@@ -10,6 +10,7 @@ import {
   SodexRestClient,
   WealthReadClient,
 } from "@drift/sodex";
+import { parseDepthCapMarkets } from "@drift/strategies";
 import { Redis } from "ioredis";
 import { z } from "zod";
 
@@ -79,6 +80,7 @@ const app = await buildApp({
   newsSignalBotsEnabled: () => config.SIGNAL_NEWS_BOTS_ENABLED,
   // #547 / DEC-397: công tắc toàn hệ thống của SoDEX rewards (mặc định tắt tới #551).
   rewardsEnabled: () => config.REWARDS_ENABLED,
+  depthCapMarkets: parseDepthCapMarkets(config.DEPTH_CAP_MARKETS),
   // #558 / DEC-398: báo box mới SoDEX rewards (mặc định tắt). Gateway chỉ đọc qua client chỉ đọc dùng chung.
   rewardsWatch: {
     enabled: () => config.REWARDS_WATCH_ENABLED,

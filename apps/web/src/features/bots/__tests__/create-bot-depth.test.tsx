@@ -17,7 +17,11 @@ import { emptyValues } from "../fields";
 // position" chỉ cho market trong `features.depthCapMarkets` (api quyết định) và có dòng ở `/markets/us`; câu lỗi
 // `order_book_depth` của server khi Save / Start.
 
-const page = vi.hoisted<{ caps: unknown; markets: unknown; createError: Error | null }>(() => ({
+const page = vi.hoisted<{
+  caps: string[] | undefined;
+  markets: unknown;
+  createError: Error | null;
+}>(() => ({
   caps: ["ANT-USD"],
   markets: null,
   createError: null,
@@ -42,7 +46,7 @@ vi.mock("@/components/not-connected", () => ({
 vi.mock("@/lib/queries", () => ({
   ME_KEY: ["me"],
   useMe: () => ({ data: { role: "user", timezone: "UTC", defaultMaxLossPct: null } }),
-  useFeatures: () => ({ data: { mmFee: null } }),
+  useFeatures: () => ({ data: { mmFee: null, depthCapMarkets: page.caps } }),
   useBuilderFeeRate: () => 10,
   useTwoFactorNeeded: () => false,
 }));
@@ -55,8 +59,6 @@ vi.mock("@/lib/api", async (importActual) => {
   return {
     ApiError: actual.ApiError,
     api: (method: string, path: string) => {
-      if (path === "/api/v1/features")
-        return Promise.resolve(page.caps === undefined ? {} : { depthCapMarkets: page.caps });
       if (path === "/api/v1/markets/us") return Promise.resolve(page.markets);
       if (method === "POST" && path === "/api/v1/bots")
         return page.createError === null
@@ -169,7 +171,7 @@ describe("Create bot on a market with order book caps", () => {
     expect(within(screen.getByTestId("order-book-panel")).getByText("Empty")).toBeInTheDocument();
   });
 
-  it("shows nothing for a market the API doesn't list in depthCapMarkets (or when the field is missing)", async () => {
+  it("shows nothing for a market the API doesn't list in depthCapMarkets (or when the list is missing)", async () => {
     page.caps = [];
     const view = showCreate();
     await screen.findByTestId("visual");
@@ -180,6 +182,12 @@ describe("Create bot on a market with order book caps", () => {
     showCreate();
     await screen.findByTestId("visual");
     expect(screen.queryByTestId("order-book-panel")).not.toBeInTheDocument();
+  });
+
+  it('treats depthCapMarkets ["*"] as every market', async () => {
+    page.caps = ["*"];
+    showCreate();
+    expect(await screen.findByTestId("order-book-panel")).toBeInTheDocument();
   });
 
   it("shows nothing when /markets/us has no row for the market", async () => {

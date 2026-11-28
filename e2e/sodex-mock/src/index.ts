@@ -92,6 +92,15 @@ export interface SodexMock {
   fill(address: string, clOrdID: string, price: string): void;
   /** Dữ liệu lịch sử cho các endpoint chỉ đọc (P4). */
   setHistory(address: string, history: Partial<MockHistory>): void;
+  /**
+   * Sổ lệnh của một market (#590, giới hạn theo sổ lệnh): mức `[giá, khối lượng]` mỗi phía, tốt nhất trước; `"fail"` = SoDEX
+   * trả lỗi. Mặc định mọi market có sổ sâu (10 mức × 1000 quanh giá 100 mỗi phía, khoảng 1 triệu USD).
+   */
+  setOrderbook(
+    engine: "spot" | "perps",
+    market: string,
+    book: { bids: [string, string][]; asks: [string, string][] } | "fail",
+  ): void;
   /** Request ghi tiếp theo: `timeout` = treo quá lâu (client coi là unknown) nhưng VẪN áp dụng; `reject` = từ chối. */
   failNextWrite(mode: "timeout-after-apply" | "reject", error?: string): void;
   /** `fetch` gọi thẳng vào mock qua inject, cho test không cần mở cổng. */
@@ -391,6 +400,21 @@ export function buildSodexMock(
       })),
     ]),
   );
+  // Sổ lệnh (#590): mặc định sâu để kiểm theo sổ lúc tạo bot không chặn các test khác.
+  const books = new Map<string, { bids: [string, string][]; asks: [string, string][] } | "fail">();
+  const deepBook = {
+    bids: Array.from({ length: 10 }, (_, i): [string, string] => [String(99 - i), "1000"]),
+    asks: Array.from({ length: 10 }, (_, i): [string, string] => [String(101 + i), "1000"]),
+  };
+  for (const engine of ["spot", "perps"] as const)
+    app.get(`/api/v1/${engine}/markets/:symbol/orderbook`, (request, reply) => {
+      const { symbol } = request.params as { symbol: string };
+      const { limit } = request.query as { limit?: string };
+      const book = books.get(`${engine}:${symbol}`) ?? deepBook;
+      if (book === "fail") return fail(reply, 500, "orderbook unavailable");
+      const n = limit === undefined ? 10 : Number(limit);
+      return ok(reply, { bids: book.bids.slice(0, n), asks: book.asks.slice(0, n) });
+    });
   app.get("/api/v1/spot/accounts/:addr/balances", (request, reply) => {
     const u = user((request.params as { addr: string }).addr);
     if (u === undefined) return fail(reply, 400, "user not found");
@@ -622,6 +646,9 @@ export function buildSodexMock(
     setHistory(address, history) {
       const u = users.get(address.toLowerCase());
       if (u !== undefined) u.history = { ...u.history, ...history };
+    },
+    setOrderbook(engine, market, book) {
+      books.set(`${engine}:${market}`, book);
     },
     failNextWrite(mode, error = "rejected by mock") {
       failNext = { mode, error };

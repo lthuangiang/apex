@@ -1,8 +1,9 @@
 import { usMarketsResponseSchema, wealthMeResponseSchema, type UsMarketRow } from "@drift/shared";
 import { useQuery } from "@tanstack/react-query";
-import { z } from "zod";
+import type { z } from "zod";
 
 import { api } from "@/lib/api";
+import { useFeatures } from "@/lib/queries";
 
 // US Market (DEC-402, #591): dữ liệu của `GET /api/v1/markets/us` và `GET /api/v1/wealth/me` (#589). api cache 30 s.
 
@@ -30,23 +31,12 @@ export function useWealthMe(enabled = true) {
 }
 
 /**
- * Market có giới hạn theo sổ lệnh (DEC-402 mục 5): `depthCapMarkets` của `GET /api/v1/features` (#597). Danh sách do api
- * quyết định, web không hard-code. Thiếu trường / sai dạng = [] (không hiện bảng độ sâu trong form tạo bot). Key riêng
- * để không đè dữ liệu của `useFeatures` (schema chung bỏ trường lạ).
+ * Market có giới hạn theo sổ lệnh (DEC-402 mục 5): `features.depthCapMarkets` (#590, `DEPTH_CAP_MARKETS` của api). Danh
+ * sách do api quyết định, web không hard-code. `["*"]` = mọi market; thiếu / `[]` = không market nào.
  */
-const depthCapFeaturesSchema = z.object({
-  depthCapMarkets: z.array(z.string()).catch([]).default([]),
-});
-const NO_MARKETS: readonly string[] = [];
-
-export function useDepthCapMarkets(): readonly string[] {
-  return (
-    useQuery({
-      queryKey: ["features", "depthCapMarkets"],
-      queryFn: () => api("GET", "/api/v1/features", depthCapFeaturesSchema),
-      staleTime: 60_000,
-    }).data?.depthCapMarkets ?? NO_MARKETS
-  );
+export function useInDepthCapScope(market: string): boolean {
+  const caps = useFeatures().data?.depthCapMarkets ?? [];
+  return market !== "" && (caps.includes("*") || caps.includes(market));
 }
 
 /** Dòng market theo symbol trong `/markets/us` (Anthropic trước, rồi token quỹ); null khi không có. */

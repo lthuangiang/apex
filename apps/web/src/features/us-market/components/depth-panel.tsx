@@ -6,13 +6,13 @@ import { useTranslations } from "next-intl";
 import { formatMoney } from "@/lib/format";
 
 import { depthFitOf, largestPositionOf, type DepthFit, type LargestKind } from "../depth-hint";
-import { useDepthCapMarkets, usMarketRowOf, useUsMarkets } from "../queries";
+import { useInDepthCapScope, usMarketRowOf, useUsMarkets } from "../queries";
 import { marketLabel, secondsSince, usd } from "../shape";
 
 import { BookStatusPill, DepthLabelPill, useNow } from "./parts";
 
 // Bảng độ sâu sổ lệnh và dòng "Largest position" trong form tạo bot (bản phác màn 03, DEC-402 mục 5). Chỉ hiện cho market
-// trong `depthCapMarkets` của `/features` (api quyết định, #597) và khi `/markets/us` có dòng của market đó. Chỉ là gợi ý:
+// trong `features.depthCapMarkets` (api quyết định, #590) và khi `/markets/us` có dòng của market đó. Chỉ là gợi ý:
 // server kiểm lại khi tạo (`VALIDATION_FAILED reason order_book_depth`). Không có "Spread" (api không trả giá tốt nhất).
 
 export interface DepthHint {
@@ -28,8 +28,7 @@ export function useDepthHint(
   market: string,
   config: Record<string, unknown>,
 ): DepthHint | null {
-  const caps = useDepthCapMarkets();
-  const capped = market !== "" && caps.includes(market);
+  const capped = useInDepthCapScope(market);
   const markets = useUsMarkets(capped);
   if (!capped) return null;
   const row = usMarketRowOf(markets.data, market);

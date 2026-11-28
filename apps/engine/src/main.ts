@@ -16,6 +16,7 @@ import {
   RedisRateLimitStore,
   WsUserStream,
 } from "@drift/sodex";
+import { parseDepthCapMarkets } from "@drift/strategies";
 import { connect } from "@nats-io/transport-node";
 import { eq } from "drizzle-orm";
 import { Redis } from "ioredis";
@@ -61,6 +62,8 @@ const env = z
      * `news_signal` và không đọc tín hiệu.
      */
     SIGNAL_NEWS_BOTS_ENABLED: z.stringbool().default(false),
+    /** Market áp giới hạn theo sổ lệnh (DEC-402 bổ sung 2026-11-28): thiếu / `default` = mặc định, trống = tắt, `*` = mọi market. */
+    DEPTH_CAP_MARKETS: z.string().optional(),
   })
   .parse(process.env);
 const log = pino({
@@ -262,6 +265,7 @@ const engine = new Engine({
   lookupBudget: env.ENGINE_LOOKUP_BUDGET,
   clockConcurrency: env.ENGINE_CLOCK_CONCURRENCY,
   newsSignalBots: env.SIGNAL_NEWS_BOTS_ENABLED,
+  depthCapMarkets: parseDepthCapMarkets(env.DEPTH_CAP_MARKETS),
   loopDelay: loopDelayMs,
   health,
   rules: (market) => marketInfo(rest, market),

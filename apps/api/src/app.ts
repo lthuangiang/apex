@@ -1,5 +1,6 @@
 import type { Db } from "@drift/db";
 import type { BotApi } from "@drift/runtime";
+import { parseDepthCapMarkets, type DepthCapScope } from "@drift/strategies";
 import { fastifyCookie as cookie } from "@fastify/cookie";
 import Fastify, { type FastifyInstance } from "fastify";
 
@@ -134,6 +135,11 @@ export interface AppDeps {
    * `/api/v1/markets/us` và `/api/v1/wealth/me` trả 404, `/features.usMarket` = false. `rest` thiếu = `sodex.rest`.
    */
   usMarket?: { enabled: () => boolean; wealth: WealthReader; rest?: UsMarketRest };
+  /**
+   * #590 (DEC-402 bổ sung 2026-11-28): market áp giới hạn theo sổ lệnh lúc tạo / sửa bot (`DEPTH_CAP_MARKETS`). Thiếu =
+   * danh sách mặc định. Trả về web qua `/features.depthCapMarkets`.
+   */
+  depthCapMarkets?: DepthCapScope;
   rateLimiter: RateLimiter;
   /** Nhà cung cấp bản đồ thanh lý (IMP-05). Không có / null: tab Liquidation map ẩn. */
   liquidations?: LiquidationProvider | null;
@@ -180,6 +186,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
   registerDataRoutes(app, { db: deps.db, now });
   // Tính năng của người đang đăng nhập: bot khối lượng do admin bật ở Users (DEC-80). Chưa đăng nhập → tắt.
+  const depthCapMarkets = deps.depthCapMarkets ?? parseDepthCapMarkets(undefined);
   app.get("/api/v1/features", async (request) => {
     const on = request.auth === null ? false : await volumeBotsOn(deps.db, request.auth.userId);
     const desk = request.auth === null ? false : await aiDeskOn(deps.db, request.auth.userId);
@@ -208,6 +215,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       ),
       // #589 / DEC-402 mục 9: công tắc toàn hệ thống `US_MARKET_ENABLED`.
       usMarket: deps.usMarket?.enabled() ?? false,
+      // #590: market đang áp giới hạn theo sổ lệnh (`DEPTH_CAP_MARKETS`); `["*"]` = mọi market, `[]` = tắt.
+      depthCapMarkets: depthCapMarkets.all ? ["*"] : [...depthCapMarkets.markets],
       builderFees,
       mmFee,
     };
@@ -223,6 +232,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     lastPrice: deps.lastPrice,
     prices: deps.prices,
     verifyApiKey: (id: string) => deps.sodex.signer.verifyApiKey(id),
+    depthCapMarkets,
     newsBotsEnabled,
   });
   const chart = createChartService({
@@ -249,6 +259,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     lastPrice: deps.lastPrice,
     prices: deps.prices,
     verifyApiKey: (id: string) => deps.sodex.signer.verifyApiKey(id),
+    depthCapMarkets,
   };
   const accountDeps = {
     db: deps.db,
