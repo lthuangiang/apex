@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DeskLabs · US Market and Wealth mockups</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap">
+<style>
+/* Bản phác ý tưởng (2026-11-28): US Market + rổ ETF + My Wealth. Mọi con số là DỮ LIỆU MẪU. Câu chữ là bản nháp chờ duyệt. */
+:root{--bg:#eef1fa;--card:#fff;--ink:#141a33;--ink2:#5b6690;--line:#e4e8f5;--accent:#2e62e8;--tint:#eef2ff;--pos:#16a05a;--posbg:#e6f8ee;--neg:#c0392b;--negbg:#fdecec;--warn:#9a6a12;--warnbg:#fff3dc;--f:"Plus Jakarta Sans",system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:#cfd6ea;font-family:var(--f);color:var(--ink);font-size:14px;-webkit-font-smoothing:antialiased}
+.board{width:1440px;display:flex;background:var(--bg);margin:0 0 40px}
+nav{width:232px;flex:none;background:#fff;border-right:1px solid var(--line);padding:22px 14px;display:flex;flex-direction:column;gap:3px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;padding:0 8px 18px}
+.mark{width:32px;height:32px;border-radius:9px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800}
+nav a{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:10px;color:#3b4458;font-weight:600;text-decoration:none}
+nav a.on{background:var(--tint);color:#1d47b8}
+.new{font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px;background:var(--posbg);color:var(--pos)}
+main{flex:1;min-width:0;padding:26px 30px 36px;display:flex;flex-direction:column;gap:18px}
+h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-.02em}
+h2{margin:0;font-size:17px;font-weight:800}
+.sub{color:var(--ink2);font-size:14px;font-weight:500;margin-top:4px}
+.crumb{font-size:12.5px;color:var(--ink2);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px 22px}
+.row{display:flex;align-items:center;gap:12px}
+.sp{justify-content:space-between}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:4px 11px;font-size:12px;font-weight:800;white-space:nowrap}
+.p-pos{background:var(--posbg);color:var(--pos)} .p-warn{background:var(--warnbg);color:var(--warn)} .p-tint{background:var(--tint);color:#1d47b8} .p-neg{background:var(--negbg);color:var(--neg)} .p-mute{background:#f1f3f9;color:var(--ink2)}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:38px;padding:0 15px;border-radius:11px;font-weight:800;font-size:13.5px;border:1px solid #d5dbe7;background:#fff;color:var(--ink);white-space:nowrap}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.lg{height:46px;padding:0 22px;font-size:15px}
+table{width:100%;border-collapse:collapse}
+th{font-size:11.5px;font-weight:800;color:var(--ink2);text-align:right;padding:8px 10px;letter-spacing:.03em;text-transform:uppercase}
+td{padding:13px 10px;border-top:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+th:first-child,td:first-child{text-align:left;padding-left:0} td:last-child,th:last-child{padding-right:0}
+.tk{display:flex;align-items:center;gap:11px}
+.ico{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:11px;font-weight:800;color:#fff;flex:none}
+.nm{font-weight:800;font-size:14.5px} .sm{font-size:12px;color:var(--ink2);font-weight:600}
+.kpi{flex:1;padding:16px 18px;border-radius:16px;background:#fff;border:1px solid var(--line)}
+.kpi .l{font-size:11.5px;font-weight:800;color:var(--ink2);letter-spacing:.03em;text-transform:uppercase} .kpi .v{font-size:25px;font-weight:800;margin-top:4px}
+.note{font-size:12.5px;color:var(--ink2);line-height:1.5;font-weight:500}
+.bar{height:10px;border-radius:99px;background:#eef1f8;overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12.5px;font-weight:800;color:#3b4458}
+.inp{height:44px;border:1px solid #d5dbe7;border-radius:11px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-weight:700;background:#fff}
+.seg{display:flex;gap:4px;padding:4px;background:#f1f3f9;border-radius:11px}
+.seg span{height:36px;padding:0 14px;border-radius:8px;display:grid;place-items:center;font-weight:700;font-size:13px;color:#3b4458}
+.seg span.on{background:var(--accent);color:#fff}
+.tabs{display:flex;gap:6px}
+.tabs span{padding:9px 16px;border-radius:11px;font-weight:800;font-size:13.5px;color:#3b4458;background:#fff;border:1px solid var(--line)}
+.tabs span.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.dash{border:1px dashed #aeb6c8;border-radius:12px;padding:12px 14px}
+.label{position:relative}
+.tag{display:block;background:#141a33;color:#fff;font:800 13px var(--f);padding:8px 14px;width:1440px}
+</style>
+</head>
+<body>
+<div class="tag">A · Strategy Lab — tabs unchanged; one banner opens the new page; cards show which strategy can trade the new markets</div>
+<div class="board" id="v2a"><nav><div class="brand"><span class="mark">D</span>DeskLabs</div><a>Overview</a><a>Rewards</a><a>Trading Agent</a><a class="on">Strategy Lab</a><a>AI Desk</a><a>Copy Trading</a><a>Portfolio</a><a>Settings</a></nav><main>
+  <div class="row sp" style="align-items:flex-start"><div><h1>Strategy Lab</h1><div class="sub">Your bots, drafts, and the strategies you can start from.</div></div><div class="row"><span class="pill p-warn">Sample data</span><span class="btn pri">New bot</span></div></div>
+  <div class="tabs"><span>My bots</span><span class="on">Strategy catalog</span></div>
+  <div class="card" style="background:#141a33;border-color:#141a33;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px 26px">
+    <div><div class="row" style="gap:10px"><span class="new">NEW ON SODEX</span><span style="font-size:19px;font-weight:800">Anthropic markets: vANT and ANT-USD</span></div><div style="font-size:13.5px;color:#b8c1d6;margin-top:6px;font-weight:500">Run your DeskLabs bots on the new Anthropic spot and perps markets. US fund tokens are listed too; we are watching their order books.</div></div>
+    <span class="btn pri">See US Market</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px"><div class="card" style="display:flex;flex-direction:column;gap:9px;padding:18px 20px"><div class="row sp"><span style="font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--ink2)">GRID</span><span class="pill p-tint">Trades ANT-USD</span></div><div style="font-size:18px;font-weight:800">Futures Grid</div><div class="note" style="min-height:38px">Grid on a perpetual contract: long, short or neutral, with leverage.</div><div class="note"><b style="color:var(--ink)">Fits</b> Ranges you expect to hold; can profit in a falling range (short).</div><div class="note"><b style="color:var(--ink)">Risk</b> Leverage and liquidation; funding costs.</div><div class="row sp" style="margin-top:4px"><span class="sm">Builder fee 0.01%</span><span class="btn">Set up Futures Grid</span></div></div><div class="card" style="display:flex;flex-direction:column;gap:9px;padding:18px 20px"><div class="row sp"><span style="font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--ink2)">DCA</span><span class="pill p-tint">Trades vANT</span></div><div style="font-size:18px;font-weight:800">Spot DCA</div><div class="note" style="min-height:38px">Buys, then buys more as the price drops, and sells the whole position at a take profit.</div><div class="note"><b style="color:var(--ink)">Fits</b> Dips you expect to recover.</div><div class="note"><b style="color:var(--ink)">Risk</b> Long downtrends use all extra buys.</div><div class="row sp" style="margin-top:4px"><span class="sm">Builder fee 0.01% on sells</span><span class="btn">Set up Spot DCA</span></div></div><div class="card" style="display:flex;flex-direction:column;gap:9px;padding:18px 20px"><div class="row sp"><span style="font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--ink2)">GRID</span><span class="pill p-tint">Trades vANT</span></div><div style="font-size:18px;font-weight:800">Spot Grid</div><div class="note" style="min-height:38px">Buys low and sells high inside a price range, again and again.</div><div class="note"><b style="color:var(--ink)">Fits</b> Sideways markets.</div><div class="note"><b style="color:var(--ink)">Risk</b> Price leaves the range; you hold the asset at a loss.</div><div class="row sp" style="margin-top:4px"><span class="sm">Builder fee 0.01% on sells</span><span class="btn">Set up Spot Grid</span></div></div></div>
+  <div class="note">More below, unchanged: Futures DCA, Recurring Buy, Rebalancing, Funding Arbitrage, TWAP, Market Making, Volume Builder, Copy Trade, News Signal.</div>
+</main></div>
+
+<div class="tag">B · US Market (own page, opened from the banner) — Anthropic first; US funds shown honestly as "no trading yet"</div>
+<div class="board" id="v2b"><nav><div class="brand"><span class="mark">D</span>DeskLabs</div><a>Overview</a><a>Rewards</a><a>Trading Agent</a><a class="on">Strategy Lab</a><a>AI Desk</a><a>Copy Trading</a><a>Portfolio</a><a>Settings</a></nav><main>
+  <div class="row sp" style="align-items:flex-start"><div><div class="crumb">Strategy Lab › US Market</div><h1>US Market</h1><div class="sub">Anthropic, US funds and SoDEX Wealth in one place: what your bots can trade, and what you hold.</div></div><span class="pill p-warn">Sample data</span></div>
+
+  <div class="card" style="background:#141a33;border-color:#141a33;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:20px 24px">
+    <div class="row" style="gap:36px">
+      <div><div style="font-size:11.5px;font-weight:800;letter-spacing:.04em;color:#b8c1d6">YOUR SODEX WEALTH</div><div style="font-size:28px;font-weight:800;margin-top:2px">$2,662.72</div></div>
+      <div><div style="font-size:11.5px;font-weight:800;letter-spacing:.04em;color:#b8c1d6">TOTAL RESULT</div><div style="font-size:20px;font-weight:800;margin-top:6px;color:#8be3b4">+$201.39</div></div>
+      <div><div style="font-size:11.5px;font-weight:800;letter-spacing:.04em;color:#b8c1d6">24H</div><div style="font-size:20px;font-weight:800;margin-top:6px;color:#8be3b4">+$12.05</div></div>
+      <div><div style="font-size:11.5px;font-weight:800;letter-spacing:.04em;color:#b8c1d6">FUNDS HELD</div><div style="font-size:20px;font-weight:800;margin-top:6px">3</div></div>
+    </div>
+    <div class="row"><span style="font-size:12.5px;color:#b8c1d6;font-weight:500">Read from SoDEX for your wallet</span><span class="btn pri">Open My Wealth</span></div>
+  </div>
+  <div class="card">
+    <div class="row sp"><div><div class="row" style="gap:8px"><h2>Anthropic</h2><span class="new">NEW ON SODEX</span></div><div class="sm" style="margin-top:3px">One spot market and one perps market.</div></div><span class="note">Order book read 20 s ago</span></div>
+    <table style="margin-top:10px">
+      <thead><tr><th>Market</th><th>Last price</th><th>24h volume</th><th>Order book</th><th>Depth, 10 levels · bids / asks</th><th>Largest new position</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><div class="nm">ANT-USD</div><div class="sm">Perps · max 10x</div></td><td>$91.38</td><td>$129,004.10</td><td><span class="pill p-pos">● Trading</span></td><td>$2,449.00 / $1,955.00 <span class="pill p-warn" style="margin-left:6px">Thin</span></td><td><b>$1,955.00</b></td><td><span class="btn pri">Start a bot</span></td></tr>
+        <tr><td><div class="nm">vANT / vUSDC</div><div class="sm">Spot</div></td><td>$91.42</td><td>$6,812.40</td><td><span class="pill p-pos">● Trading</span></td><td>$1,410.00 / $4,990.00 <span class="pill p-warn" style="margin-left:6px">Thin</span></td><td><b>$1,410.00</b></td><td><span class="btn pri">Start a bot</span></td></tr>
+      </tbody>
+    </table>
+    <div class="dash note" style="margin-top:12px"><b style="color:var(--ink)">Thin order book.</b> Large market orders move the price here. A new bot's total position can't be larger than the thinner side of the book, and a market order that opens a position is capped at 25% of the side it takes. Orders that close a position are never held back.</div>
+    <div class="note" style="font-weight:800;color:var(--ink);margin-top:14px">Strategies for these markets</div>
+    <div class="row" style="margin-top:8px;flex-wrap:wrap"><span class="btn">Futures Grid · ANT-USD</span><span class="btn">Futures DCA · ANT-USD</span><span class="btn">News Signal · ANT-USD</span><span class="btn">Spot DCA · vANT</span><span class="btn">Spot Grid · vANT</span></div>
+  </div>
+
+  <div class="card">
+    <div class="row sp"><div><h2>SoDEX Wealth funds</h2><div class="sm" style="margin-top:3px">Vaults you invest in with your own wallet on SoDEX. DeskLabs shows them and what you hold; it doesn't invest or redeem.</div></div><span class="btn">Open SoDEX Wealth ↗</span></div>
+    <table style="margin-top:10px">
+      <thead><tr><th>Fund</th><th>Type</th><th>NAV</th><th>Fund size</th><th>Open for requests</th><th>You hold</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><div class="row" style="gap:8px"><div class="nm">ANT Believers Index</div><span class="new">NEW</span></div><div class="sm">Index of companies linked to Anthropic</div></td><td class="sm">Index</td><td>$9.57</td><td class="sm">Not provided</td><td><span class="pill p-pos">Open</span></td><td><b>$996.95</b><div class="sm" style="color:var(--neg)">−$3.05</div></td><td><span class="btn">Invest on SoDEX ↗</span></td></tr>
+        <tr><td><div class="nm">UNITREE FUND</div><div class="sm">Vault</div></td><td class="sm">Vault</td><td>$99.00</td><td>$202,644.90</td><td><span class="pill p-pos">Open</span></td><td class="sm">–</td><td><span class="btn">Invest on SoDEX ↗</span></td></tr>
+        <tr><td><div class="nm">CXMT</div><div class="sm">Vault</div></td><td class="sm">Vault</td><td>$4.94</td><td>$18,066.98</td><td><span class="pill p-mute">Opens Mon</span></td><td><b>$166.05</b><div class="sm" style="color:var(--neg)">−$33.95</div></td><td><span class="btn">Invest on SoDEX ↗</span></td></tr>
+        <tr><td><div class="nm">SoSoValue x Unified Labs USD</div><div class="sm">Vault</div></td><td class="sm">Vault</td><td>$1.01</td><td class="sm">Not provided</td><td><span class="pill p-pos">Open</span></td><td><b>$1,499.72</b><div class="sm" style="color:var(--pos)">+$19.72</div></td><td><span class="btn">Invest on SoDEX ↗</span></td></tr>
+      </tbody>
+    </table>
+    <div class="row sp" style="margin-top:10px"><span class="note">NAV and fund size as SoDEX reports them. DeskLabs shows no yield or return figures for funds.</span><span class="note">Get a Telegram alert when a request settles: My Wealth › Alerts</span></div>
+  </div>
+  <div class="card">
+    <div class="row sp"><div><h2>US fund tokens</h2><div class="sm" style="margin-top:3px">Listed on the SoDEX spot order book. Not enough trading for a bot yet.</div></div><span class="pill p-mute">Watching</span></div>
+    <table style="margin-top:10px">
+      <thead><tr><th>Market</th><th>Last trade</th><th>Order book</th><th>Depth, 10 levels · bids / asks</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><div class="nm">vVOO / vUSDC</div><div class="sm">vVOO Fund</div></td><td>3 days ago</td><td><span class="pill p-mute">Empty</span></td><td>–</td><td><span class="btn">Tell me when it trades</span></td></tr>
+        <tr><td><div class="nm">vQQQ / vUSDC</div><div class="sm">QQQ Fund</div></td><td>1 day ago</td><td><span class="pill p-mute">Empty</span></td><td>–</td><td><span class="btn">Tell me when it trades</span></td></tr>
+        <tr><td><div class="nm">vSCHD / vUSDC</div><div class="sm">vSCHD Fund</div></td><td>11 days ago</td><td><span class="pill p-mute">Empty</span></td><td>–</td><td><span class="btn">Tell me when it trades</span></td></tr>
+      </tbody>
+    </table>
+    <div class="row sp" style="margin-top:10px"><span class="note">5 more: vSMH, vVGT, vVYM, vBOXX, vSTRC</span><span class="note">DeskLabs opens bots on a market once its order book has steady depth.</span></div>
+  </div>
+  <div class="note">Not financial advice. Past results are not a forecast. Powered by SoDEX Builder Code.</div>
+</main></div>
+
+<div class="tag">C · New bot › Futures Grid on ANT-USD — the existing form, plus the order-book panel and the cap</div>
+<div class="board" id="v2c"><nav><div class="brand"><span class="mark">D</span>DeskLabs</div><a>Overview</a><a>Rewards</a><a>Trading Agent</a><a class="on">Strategy Lab</a><a>AI Desk</a><a>Copy Trading</a><a>Portfolio</a><a>Settings</a></nav><main>
+  <div class="row sp" style="align-items:flex-start"><div><div class="crumb">Strategy Lab › New bot › Futures Grid</div><h1>Futures Grid · ANT-USD</h1></div><div class="row"><span class="pill p-tint">Step 2 of 4 · Parameters</span><span class="pill p-warn">Sample data</span></div></div>
+  <div class="row" style="align-items:flex-start;gap:18px">
+    <div class="card" style="flex:1.4;display:flex;flex-direction:column;gap:16px">
+      <h2>Grid</h2>
+      <div class="row" style="gap:16px;align-items:flex-start">
+        <div class="field" style="flex:1"><label>Lower price</label><div class="inp">82.00<span class="sm">USD</span></div></div>
+        <div class="field" style="flex:1"><label>Upper price</label><div class="inp">100.00<span class="sm">USD</span></div></div>
+        <div class="field" style="flex:1"><label>Grid levels</label><div class="inp">12</div></div>
+      </div>
+      <div class="row" style="gap:16px;align-items:flex-start">
+        <div class="field" style="flex:1"><label>Investment</label><div class="inp">600.00<span class="sm">USDC</span></div></div>
+        <div class="field" style="flex:1"><label>Leverage</label><div class="seg"><span>1x</span><span class="on">2x</span><span>3x</span><span>5x</span></div></div>
+        <div class="field" style="flex:1"><label>Direction</label><div class="seg"><span class="on">Neutral</span><span>Long</span><span>Short</span></div></div>
+      </div>
+      <div class="field"><label>Largest position (investment × leverage)</label>
+        <div class="inp" style="border-color:#8fd6ad;background:#f4fbf7">1,200.00<span class="sm">USDC</span></div>
+        <span class="note" style="color:var(--pos);font-weight:700">Fits. ANT-USD allows up to 1,955.00 USDC right now. Checked again when you start.</span></div>
+      <div class="dash note"><b style="color:var(--ink)">If it is too large:</b> "This position is larger than the ANT-USD order book can take: 1,955.00 USDC. Lower the investment or the leverage." Next stays off until it fits.</div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:18px">
+      <div class="card" style="display:flex;flex-direction:column;gap:10px">
+        <div class="row sp"><h2>ANT-USD order book</h2><span class="pill p-warn">Thin</span></div>
+        <div class="row sp"><span class="sm">Bids, 10 levels</span><b>$2,449.00</b></div>
+        <div class="bar"><i style="width:49%;background:#16a05a"></i></div>
+        <div class="row sp"><span class="sm">Asks, 10 levels</span><b>$1,955.00</b></div>
+        <div class="bar"><i style="width:39%;background:#c0392b"></i></div>
+        <div class="row sp"><span class="sm">Spread</span><b>0.01%</b></div>
+        <div class="row sp"><span class="sm">Largest new position</span><b>$1,955.00</b></div>
+        <div class="note">The thinner side, 10 levels. Read 20 s ago from SoDEX.</div>
+      </div>
+      <div class="card" style="display:flex;flex-direction:column;gap:8px">
+        <h2>While the bot runs</h2>
+        <div class="note">Grid orders rest in the book and keep their size. A market order that closes the position is never held back: on a thin book the bot closes in parts and writes why in Decisions:</div>
+        <div class="row sp" style="padding:10px 0;border-top:1px solid var(--line)"><div><b>Closing in 3 parts</b><div class="sm">Thin order book: ANT-USD · stop loss</div></div><span class="pill p-warn">In parts</span></div>
+        <div class="row sp" style="padding:10px 0;border-top:1px solid var(--line)"><div><b>New grid orders paused</b><div class="sm">Order book empty on one side: ANT-USD</div></div><span class="pill p-mute">Waited</span></div>
+      </div>
+    </div>
+  </div>
+</main></div>
+
+<div class="tag">D · Signal Research — Anthropic news mapped to ANT-USD for the News Signal bot</div>
+<div class="board" id="v2d"><nav><div class="brand"><span class="mark">D</span>DeskLabs</div><a>Overview</a><a>Rewards</a><a>Trading Agent</a><a>Strategy Lab</a><a class="on">AI Desk</a><a>Copy Trading</a><a>Portfolio</a><a>Settings</a></nav><main>
+  <div class="row sp" style="align-items:flex-start"><div><div class="crumb">AI Desk › Signal Research</div><h1>Signal Research</h1><div class="sub">News the desk reads, the market it maps to, and what the rules decided.</div></div><span class="pill p-warn">Sample data</span></div>
+  <div class="row sp"><div class="tabs"><span>All markets</span><span>BTC-USD</span><span>ETH-USD</span><span class="on" style="display:flex;gap:8px;align-items:center">ANT-USD <i class="new" style="font-style:normal">NEW</i></span></div><span class="note">Company news about Anthropic maps to ANT-USD</span></div>
+  <div class="card">
+    <table>
+      <thead><tr><th>News</th><th>Time</th><th>Market</th><th>Read as</th><th>Rules</th><th>Book at the time</th></tr></thead>
+      <tbody>
+        <tr><td><div class="nm">Sample headline: funding round reported</div><div class="sm">Newswire · company news</div></td><td>Nov 27, 14:02</td><td><b>ANT-USD</b></td><td><span class="pill p-pos">Positive</span></td><td><span class="pill p-pos">Passed · traded</span></td><td>$2,610.00 / $2,180.00</td></tr>
+        <tr><td><div class="nm">Sample headline: new model released</div><div class="sm">Company blog · product news</div></td><td>Nov 26, 18:30</td><td><b>ANT-USD</b></td><td><span class="pill p-mute">Product, not company value</span></td><td><span class="pill p-mute">Skipped</span></td><td>–</td></tr>
+        <tr><td><div class="nm">Sample headline: regulator opens inquiry</div><div class="sm">Newswire · company news</div></td><td>Nov 25, 09:12</td><td><b>ANT-USD</b></td><td><span class="pill p-neg">Negative</span></td><td><span class="pill p-warn">Passed · entry reduced</span></td><td>$1,900.00 / $2,050.00</td></tr>
+      </tbody>
+    </table>
+    <div class="row sp" style="margin-top:12px"><div class="note">Product and tooling news is read but not traded. An entry is capped at 25% of the side of the book it takes.</div><span class="btn pri">Set up News Signal on ANT-USD</span></div>
+  </div>
+  <div class="note">Results of past signals are not a forecast.</div>
+</main></div>
+
+<div class="tag">E · Portfolio › My Wealth (read-only) — only fields the SoDEX Wealth API returns</div>
+<div class="board" id="v2e"><nav><div class="brand"><span class="mark">D</span>DeskLabs</div><a>Overview</a><a>Rewards</a><a>Trading Agent</a><a>Strategy Lab</a><a>AI Desk</a><a>Copy Trading</a><a class="on">Portfolio</a><a>Settings</a></nav><main>
+  <div class="row sp" style="align-items:flex-start"><div><div class="crumb">Portfolio</div><h1>My Wealth</h1><div class="sub">What you hold on SoDEX Wealth. Read from SoDEX for your wallet; no signature needed.</div></div><span class="pill p-warn">Sample data</span></div>
+  <div class="tabs"><span>Trading</span><span class="on">My Wealth</span></div>
+  <div class="row" style="gap:12px">
+    <div class="kpi" style="background:#141a33;border-color:#141a33;color:#fff"><div class="l" style="color:#b8c1d6">Total value</div><div class="v">$2,662.72</div></div>
+    <div class="kpi"><div class="l">Total cost</div><div class="v">$2,680.00</div></div>
+    <div class="kpi"><div class="l">Total result</div><div class="v" style="color:var(--pos)">+$201.39</div><div class="sm" style="margin-top:2px">Realized +$218.67 · open −$17.28</div></div>
+    <div class="kpi"><div class="l">24h</div><div class="v" style="color:var(--pos)">+$12.05</div></div>
+    <div class="kpi"><div class="l">Being processed</div><div class="v">$50.00</div><div class="sm" style="margin-top:2px">1 request</div></div>
+  </div>
+  <div class="row" style="align-items:flex-start;gap:18px">
+    <div style="flex:1.6;display:flex;flex-direction:column;gap:18px">
+      <div class="card">
+        <div class="row sp"><h2>Funds you hold</h2><span class="btn">Open SoDEX Wealth ↗</span></div>
+        <table style="margin-top:8px">
+          <thead><tr><th>Fund</th><th>Shares</th><th>Price</th><th>Value</th><th>Avg cost</th><th>Result</th><th>24h</th></tr></thead>
+          <tbody>
+            <tr><td><div class="nm">SoSoValue x Unified Labs USD</div><div class="sm">Vault</div></td><td>1,484.31</td><td>$1.01</td><td>$1,499.72</td><td>$1.00</td><td style="color:var(--pos)">+$19.72</td><td style="color:var(--pos)">+$0.18</td></tr>
+            <tr><td><div class="nm">ANT Believers Index</div><div class="sm">Index</div></td><td>104.20</td><td>$9.57</td><td>$996.95</td><td>$9.60</td><td style="color:var(--neg)">−$3.05</td><td style="color:var(--pos)">+$14.10</td></tr>
+            <tr><td><div class="nm">CXMT</div><div class="sm">Vault · 10.00 shares redeeming</div></td><td>33.63</td><td>$4.94</td><td>$166.05</td><td>$5.95</td><td style="color:var(--neg)">−$33.95</td><td style="color:var(--neg)">−$2.23</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2>Activity</h2>
+        <table style="margin-top:8px">
+          <thead><tr><th>When</th><th>Fund</th><th>What</th><th>Amount</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>Nov 27, 10:02</td><td>CXMT</td><td>Redeem</td><td>10.00 shares</td><td><span class="pill p-tint">Processing</span></td></tr>
+            <tr><td>Nov 24, 09:30</td><td>ANT Believers Index</td><td>Recurring buy</td><td>$25.00</td><td><span class="pill p-pos">Completed</span></td></tr>
+            <tr><td>Nov 20, 16:44</td><td>SoSoValue x Unified Labs USD</td><td>Invest</td><td>$500.00</td><td><span class="pill p-pos">Completed</span></td></tr>
+            <tr><td>Nov 17, 09:30</td><td>ANT Believers Index</td><td>Recurring buy</td><td>$25.00</td><td><span class="pill p-neg">Failed</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:18px">
+      <div class="card" style="display:flex;flex-direction:column;gap:10px">
+        <div class="row sp"><h2>Alerts</h2><span class="pill p-mute">Telegram and bell</span></div>
+        <div class="row sp"><span>A request settles or fails</span><span class="pill p-pos">On</span></div>
+        <div class="row sp"><span>A recurring buy runs or is skipped</span><span class="pill p-pos">On</span></div>
+        <div class="row sp"><span>A fund you hold moves 5% in a day</span><span class="pill p-mute">Off</span></div>
+        <div class="note">DeskLabs reads public SoDEX data for your wallet. Nothing is stored except these switches.</div>
+      </div>
+      <div class="card" style="display:flex;flex-direction:column;gap:8px">
+        <h2>What DeskLabs can do here</h2>
+        <div class="row sp"><span class="sm">See your funds and results</span><b style="color:var(--pos)">Yes</b></div>
+        <div class="row sp"><span class="sm">Send you alerts</span><b style="color:var(--pos)">Yes</b></div>
+        <div class="row sp"><span class="sm">Invest, redeem or move funds</span><b style="color:var(--neg)">Never</b></div>
+        <div class="note">To invest or redeem, use SoDEX Wealth with your own wallet.</div>
+      </div>
+      <div class="card" style="background:var(--tint);border-color:#d3deff"><h2>Ask AI Desk</h2><div class="note" style="margin-top:6px;color:#3b4458">"What do I hold on SoDEX Wealth?" · "Which of my funds lost the most this month?"</div></div>
+    </div>
+  </div>
+</main></div>
+</body></html>
