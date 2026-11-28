@@ -72,6 +72,10 @@ export const DROP: ReadonlyMap<string, ResearchDropReason> = new Map<string, Res
   ["BELOW_MIN_ORDER_SIZE", "belowMinSize"],
   // #530: bài đăng lại của sự kiện nhiều coin đã xét, lẽ ra mở câu chuyện mới cho coin: bỏ ở Filter (không có story).
   ["SAME_EVENT", "sameEvent"],
+  // #593 (DEC-403): tin sản phẩm / công cụ của công ty có market riêng (ANT-USD): đọc, không giao dịch.
+  ["PRODUCT_NEWS", "productNews"],
+  // #593: tiêu đề không cho thấy tin công ty của market đó: như tin không thuộc danh sách.
+  ["NOT_COMPANY_NEWS", "notCatalyst"],
 ]);
 
 /**
@@ -92,6 +96,9 @@ export const PRE_CLAUDE_REASONS = [
   "STALE_NEWS",
   "CLASSIFIER_LATE",
   "CLAUDE_BUDGET_REACHED",
+  // #593: bài chỉ có market công ty mà tiêu đề là tin sản phẩm / không rõ: quyết định tất định, không gửi Claude.
+  "PRODUCT_NEWS",
+  "NOT_COMPANY_NEWS",
 ] as const;
 
 /** Tin ngược chiều đầu tiên trên lệnh (#303): kết quả giả định nếu đóng lúc đó, và lệnh đã đóng vì nó hay vẫn giữ. */

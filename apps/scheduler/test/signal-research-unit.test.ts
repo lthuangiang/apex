@@ -1,7 +1,18 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { claudeCostUsd, Decimal, NEWS_CLASSIFIER, NEWS_RULES } from "@drift/shared";
+import {
+  assetInText,
+  catalystRule,
+  claudeCostUsd,
+  Decimal,
+  etfOnMajorAsset,
+  listingOnMajorAsset,
+  NEWS_CLASSIFIER,
+  NEWS_RULES,
+  SIGNAL_CATALYSTS,
+  treasuryOnMajorAsset,
+} from "@drift/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -14,11 +25,12 @@ import {
   weightedInput,
 } from "../src/signal-research/classifier";
 import {
+  bookDepthVia,
   disabledReason,
   parseSignalEnv,
   signalResearchEnvSchema,
 } from "../src/signal-research/index";
-import { collectFloor } from "../src/signal-research/pipeline";
+import { coinCheck, collectFloor, companyGate } from "../src/signal-research/pipeline";
 import {
   combineQuote,
   LiveBooks,
@@ -268,6 +280,43 @@ describe("quotes from stored market data only", () => {
           Promise.resolve({ reply: JSON.stringify({ ok: false, reason: "empty" }) }),
         ),
       ).toEqual({ ok: false, reason: "empty" });
+      // #593: độ sâu 10 mức mỗi phía khi marketdata trả; thiếu một phía thì không có `depth`.
+      const deep = JSON.stringify({
+        ok: true,
+        s: "ANT-USD",
+        b: "1",
+        a: "2",
+        at: 5,
+        bn: "2610",
+        an: "2180.5",
+      });
+      expect(await requestRestBook("ANT-USD", () => Promise.resolve({ reply: deep }))).toEqual({
+        ok: true,
+        bid: "1",
+        ask: "2",
+        at: 5,
+        depth: { bidsUsd: "2610", asksUsd: "2180.5" },
+      });
+      const half = JSON.stringify({ ok: true, s: "ANT-USD", b: "1", a: "2", at: 5, bn: "1" });
+      expect(await requestRestBook("ANT-USD", () => Promise.resolve({ reply: half }))).toEqual({
+        ok: true,
+        bid: "1",
+        ask: "2",
+        at: 5,
+      });
+      const bad = JSON.stringify({
+        ok: true,
+        s: "ANT-USD",
+        b: "1",
+        a: "2",
+        at: 5,
+        bn: "-1",
+        an: "1",
+      });
+      expect(await requestRestBook("ANT-USD", () => Promise.resolve({ reply: bad }))).toEqual({
+        ok: false,
+        reason: "error",
+      });
       expect(await requestRestBook("TRX-USD", () => Promise.reject(new Error("x")))).toEqual({
         ok: false,
         reason: "error",
@@ -1016,5 +1065,102 @@ describe("no SoDEX write path", () => {
         ]).toContain(i);
     }
     expect(src).not.toMatch(/HttpGateway|SignedWriteClient|SodexRestClient|sodex\.dev/);
+  });
+});
+
+// #593 (DEC-403): market công ty (ANT-USD) chỉ giao dịch tin công ty; tiêu đề là câu mẫu tự viết.
+describe("company gate before Claude (#593)", () => {
+  const ant = { symbol: "ANT", market: "ANT-USD", kind: "stock" as const };
+  const sol = { symbol: "SOL", market: "SOL-USD", kind: "crypto" as const };
+
+  it("company news keeps ANT-USD for Claude", () => {
+    expect(companyGate("Regulator opens inquiry into Anthropic", [ant])).toEqual({
+      kinds: [{ market: "ANT-USD", kind: "company" }],
+      sendable: [ant],
+      blocked: null,
+    });
+  });
+
+  it("product news with only ANT-USD is dropped before Claude as PRODUCT_NEWS", () => {
+    expect(companyGate("Anthropic releases a new Claude model", [ant])).toEqual({
+      kinds: [{ market: "ANT-USD", kind: "product" }],
+      sendable: [],
+      blocked: "PRODUCT_NEWS",
+    });
+  });
+
+  it("unclear headline with only ANT-USD is dropped as NOT_COMPANY_NEWS", () => {
+    expect(companyGate("AI labs race to hire", [ant]).blocked).toBe("NOT_COMPANY_NEWS");
+    expect(companyGate(null, [ant]).blocked).toBe("NOT_COMPANY_NEWS");
+  });
+
+  it("other markets are untouched: ANT-USD leaves the list, the article still goes to Claude", () => {
+    expect(
+      companyGate("Solana protocol drained; Anthropic tool found the bug", [ant, sol]),
+    ).toEqual({ kinds: [{ market: "ANT-USD", kind: "product" }], sendable: [sol], blocked: null });
+    expect(companyGate("Solana protocol drained", [sol])).toEqual({
+      kinds: [],
+      sendable: [sol],
+      blocked: null,
+    });
+  });
+});
+
+describe("book depth for Book at the time (#593)", () => {
+  it("returns the depth of an ok reply, null otherwise, never throws", async () => {
+    const depth = { bidsUsd: "2610", asksUsd: "2180" };
+    expect(
+      await bookDepthVia(() => Promise.resolve({ ok: true, bid: "1", ask: "2", at: 1, depth }))(
+        "ANT-USD",
+      ),
+    ).toEqual(depth);
+    expect(
+      await bookDepthVia(() => Promise.resolve({ ok: true, bid: "1", ask: "2", at: 1 }))("ANT-USD"),
+    ).toBeNull();
+    expect(
+      await bookDepthVia(() => Promise.resolve({ ok: false, reason: "timeout" }))("ANT-USD"),
+    ).toBeNull();
+    expect(await bookDepthVia(() => Promise.reject(new Error("x")))("ANT-USD")).toBeNull();
+  });
+});
+
+// DEC-403: Rules giữ news-v6 vì luật mới chỉ áp cho `COMPANY_NEWS_MARKETS`. Với cùng đầu vào, quyết định của market khác giống
+// hệt bản trước #593 (kiểm tất định cũ: loại tài sản, có trong bài, luật BTC / ETH), kể cả tiêu đề đầy từ sản phẩm.
+describe("markets outside COMPANY_NEWS_MARKETS decide exactly as before #593 (DEC-403)", () => {
+  const before = (
+    catalyst: Parameters<typeof coinCheck>[0],
+    c: Parameters<typeof coinCheck>[1],
+    title: string,
+  ): string | null => {
+    if (!catalystRule(catalyst).kinds.includes(c.kind)) return "CATALYST_ASSET_MISMATCH";
+    if (!assetInText(title, null, c, [])) return "ASSET_NOT_IN_TEXT";
+    if (treasuryOnMajorAsset(catalyst, c.market)) return "TREASURY_MAJOR_ASSET";
+    if (etfOnMajorAsset(catalyst, c.market)) return "ETF_MAJOR_ASSET";
+    if (listingOnMajorAsset(catalyst, c.market)) return "LISTING_MAJOR_ASSET";
+    return null;
+  };
+  const markets = [
+    { symbol: "BTC", market: "BTC-USD", kind: "crypto" as const },
+    { symbol: "ETH", market: "ETH-USD", kind: "crypto" as const },
+    { symbol: "SOL", market: "SOL-USD", kind: "crypto" as const },
+    { symbol: "NVDA", market: "NVDA-USD", kind: "stock" as const },
+    { symbol: "MSFT", market: "MSFT-USD", kind: "stock" as const },
+  ];
+  const titles = [
+    "BTC ETF approved by regulator",
+    "ETH exploit drains a protocol; new model of attack",
+    "SOL listing on a major exchange, app and API released",
+    "NVDA beats estimates and launches a new AI model",
+    "MSFT unveils coding agent; regulator opens inquiry",
+    "Anthropic releases a new Claude model; SOL and BTC rally",
+  ];
+  it.each(SIGNAL_CATALYSTS)("catalyst %s: same reason for every market and title", (catalyst) => {
+    for (const c of markets)
+      for (const title of titles)
+        expect(coinCheck(catalyst, c, title, null, [])).toBe(before(catalyst, c, title));
+  });
+  it("the company gate never touches a list without a company market", () => {
+    for (const title of titles)
+      expect(companyGate(title, markets)).toEqual({ kinds: [], sendable: markets, blocked: null });
   });
 });

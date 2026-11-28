@@ -191,6 +191,30 @@ export function useResearchArticles(f: ArticleFilters, versionId: VersionId = nu
   });
 }
 
+/** Số bài của khối "News by market" (#593). */
+export const MARKET_NEWS_PAGE = 20;
+
+/**
+ * #593: bài 7 ngày gần nhất có `market` trong ứng viên (null = mọi market), cho khối "News by market" (bản phác
+ * docs/mockups/us-market màn 04). Key nằm dưới "articles" nên bài mới tới thì làm mới cùng feed.
+ */
+export function useMarketArticles(market: string | null, versionId: VersionId = null) {
+  return useQuery({
+    queryKey: [...KEY, "articles", "market", market, versionId],
+    queryFn: () =>
+      api(
+        "GET",
+        `${RESEARCH_PATHS.articles}?${query(
+          { range: "7d", market },
+          { limit: String(MARKET_NEWS_PAGE), ...ver(versionId) },
+        )}`,
+        researchArticlesPageSchema,
+      ),
+    placeholderData: keepPreviousData,
+    retry,
+  });
+}
+
 export function useResearchTrace(id: string | null, versionId: VersionId = null) {
   return useQuery({
     queryKey: [...KEY, "trace", id, versionId],

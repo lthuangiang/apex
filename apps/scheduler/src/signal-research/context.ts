@@ -56,6 +56,8 @@ export interface ContextSignal {
    * theo bài, như trước); coin khác của sự kiện → `signal_context_coins`. Thiếu = coin chính.
    */
   primary?: boolean;
+  /** #593: độ sâu sổ lệnh lúc quyết định (10 mức mỗi phía, quote ≈ USD); thiếu = không chụp. */
+  book?: { bidsUsd: string; asksUsd: string };
 }
 
 const rowsOf = <T>(r: { rows: T[] }) => r.rows;
@@ -398,5 +400,11 @@ export async function captureSignalContext(
     quote === null ? null : midOf(quote),
     { source: ContextSource.live, ruleVersion: NEWS_RULES.version, whales: true },
   );
-  await insertSignalContext(db, values, s.primary !== false);
+  await insertSignalContext(
+    db,
+    s.book === undefined
+      ? values
+      : { ...values, bookBidsUsd: s.book.bidsUsd, bookAsksUsd: s.book.asksUsd },
+    s.primary !== false,
+  );
 }

@@ -105,7 +105,14 @@ export function combineQuote(input: {
 
 /** Kết quả đọc sổ REST qua marketdata; `timeout` / `unavailable` (NATS chưa nối) do phía lane đặt. */
 export type RestBookResult =
-  | { ok: true; bid: string; ask: string; at: number }
+  | {
+      ok: true;
+      bid: string;
+      ask: string;
+      at: number;
+      /** #593: tổng notional 10 mức mỗi phía; thiếu khi marketdata bản trước không trả. */
+      depth?: { bidsUsd: string; asksUsd: string };
+    }
   | { ok: false; reason: "empty" | "unknown_market" | "error" | "timeout" | "unavailable" };
 
 export interface QuoteDeps {
@@ -310,5 +317,12 @@ export async function requestRestBook(
   if (!r.success) return { ok: false, reason: "error" };
   if (!r.data.ok) return { ok: false, reason: r.data.reason };
   if (r.data.s !== market) return { ok: false, reason: "error" };
-  return { ok: true, bid: r.data.b, ask: r.data.a, at: r.data.at };
+  const { bn, an } = r.data;
+  return {
+    ok: true,
+    bid: r.data.b,
+    ask: r.data.a,
+    at: r.data.at,
+    ...(bn === undefined || an === undefined ? {} : { depth: { bidsUsd: bn, asksUsd: an } }),
+  };
 }
