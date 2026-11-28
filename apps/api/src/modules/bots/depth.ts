@@ -62,7 +62,7 @@ export async function bookDepth(
     });
 }
 
-/** Câu lỗi (câu chữ mới, chờ PM duyệt: `_pendingReview`). */
+/** Câu lỗi (câu chữ PM duyệt 2026-11-28, PR #597). */
 export const depthIssueMessage = (issue: PositionDepthIssue): string =>
   issue.kind === "empty"
     ? `${issue.market} has no orders on one side of the order book. Try again when it trades.`

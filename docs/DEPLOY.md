@@ -642,6 +642,20 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 - Bật / tắt: đặt `US_MARKET_ENABLED=true` / `false` trong `/opt/drift/.env`, rồi `cd /opt/drift && docker compose up -d api`. Compose trên VPS thiếu dòng `US_MARKET_ENABLED: ${US_MARKET_ENABLED:-true}` trong khối `api` thì thêm theo mẫu (thiếu dòng thì api vẫn dùng mặc định `true`).
 - Không migration. Không đổi gì ở engine / scheduler trong #589.
 
+### 2.25 Giới hạn theo sổ lệnh: biến `DEPTH_CAP_MARKETS` (#590, DEC-402 mục 5 và bổ sung 2026-11-28)
+
+| Biến | Service | Ý nghĩa |
+|---|---|---|
+| `DEPTH_CAP_MARKETS` | api + engine (cùng giá trị) | **Mới (#590).** Market áp giới hạn theo sổ lệnh. `default` hoặc không đặt = `ANT-USD`, `vANT_vUSDC`, `vVOO_vUSDC`, `vQQQ_vUSDC`, `vSCHD_vUSDC`, `vSMH_vUSDC`, `vVGT_vUSDC`, `vVYM_vUSDC`, `vBOXX_vUSDC`, `vSTRC_vUSDC`. Chuỗi trống = tắt hẳn. `*` = mọi market (có hỗ trợ, chưa dùng; cần chủ sản phẩm quyết). Hoặc danh sách phân cách dấu phẩy. |
+
+- Trong danh sách, và chỉ khi sổ 10 mức của market đang `Thin` / `Very thin` / rỗng: engine cắt lệnh vào khớp ngay về 25% phía nó ăn, hoặc cho lệnh vào chờ; api từ chối tạo bot / sửa tăng vốn khi tổng vị thế tối đa lớn hơn phía mỏng hơn. Lệnh đóng, reduce-only, SL / TP, Stop và lệnh maker không bao giờ bị cắt hay chờ. Bot paper không áp.
+- Ngoài danh sách: không đọc sổ, không cắt, không kiểm. Thêm request REST chỉ ở bước có lệnh vào khớp ngay của market trong danh sách (engine cache 3 s, api cache 30 s, bucket IP chung).
+- api trả danh sách đang hiệu lực qua `GET /api/v1/features` (`depthCapMarkets`; `["*"]` = mọi market, `[]` = tắt) để web hiện đúng.
+- Mẫu compose truyền `${DEPTH_CAP_MARKETS-default}` (dấu `-`, không phải `:-`): thiếu biến trong `.env` thì dùng danh sách mặc định, đặt trống thì tắt. Compose trên VPS thiếu dòng này thì engine / api vẫn dùng danh sách mặc định.
+- Đổi danh sách hoặc tắt: sửa `DEPTH_CAP_MARKETS` trong `/opt/drift/.env`, rồi `cd /opt/drift && docker compose up -d api engine` (luôn đổi cả hai service cùng lúc).
+- Sau deploy: Decisions "Order reduced" / "Waiting: order book empty" / "Waiting: order book too thin" chỉ được xuất hiện ở bot trên market trong danh sách; log engine `entry held: order book depth unknown` là đọc sổ lỗi (lệnh vào chờ, lệnh đóng vẫn đi).
+- Không migration.
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push image các app đổi (app không đổi được gắn tag mới vào image của tag trước) → PM trả tag (`docs/RELEASE.md`).

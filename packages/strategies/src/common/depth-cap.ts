@@ -148,7 +148,7 @@ export function capEntryOrder(
   };
 }
 
-// ── Câu Decisions (câu chữ mới, chờ PM duyệt: `_pendingReview`) ──────────────────────────────────────────────────
+// ── Câu Decisions (câu chữ PM duyệt 2026-11-28, PR #597) ──────────────────────────────────────────────────
 
 export const DEPTH_REDUCED_DECISION = "Order reduced";
 export const DEPTH_EMPTY_DECISION = "Waiting: order book empty";
