@@ -628,6 +628,20 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
   - `cause: "network"` / `"timeout"` = api không tới được signer qua mTLS (cert client của api, network `secure`).
   - `reason: "gateway"` kèm `cause` (`http_status` + `status`, `schema`, `business` + `businessCode`, `network`, `timeout`): gateway SoDEX từ chối / lỗi khi gọi từ VPS.
 
+### 2.24 US Market + SoDEX Wealth: công tắc `US_MARKET_ENABLED` (#589, DEC-402)
+
+| Biến | Service | Ý nghĩa |
+|---|---|---|
+| `US_MARKET_ENABLED` | api | **Mới (#589).** Công tắc toàn hệ thống của US Market + SoDEX Wealth (banner Strategy Lab, `/markets/us`, Portfolio › My Wealth). api trả `usMarket` trong `GET /api/v1/features`. Mặc định **`true`**. `false` thì `GET /api/v1/markets/us` và `GET /api/v1/wealth/me` trả 404 và web ẩn các phần trên. Giới hạn theo sổ lệnh của bot (DEC-402 mục 5) **không** phụ thuộc công tắc này |
+| `WEALTH_READ_MAX_WEIGHT_PER_MIN` | api | **Mới (#589), tuỳ chọn.** Trần riêng weight / phút cho lời gọi SoDEX Wealth API từ api (bucket `rl:sodex:wealth:<egress>`). Mặc định `400`. Mỗi lời gọi tính 20 (tài liệu SoDEX không liệt kê route Wealth, nên tính như endpoint mặc định) |
+
+- Đọc công khai, chỉ GET: Wealth API `https://mainnet-gw.sodex.dev/api/v1/wealth/...` (danh sách quỹ, `trading-status`, vị thế / PnL / in-flight / sổ cái / mua định kỳ / PnL history theo master wallet của tài khoản), không token, không chữ ký, không lưu DB. Sổ lệnh 10 mức, ticker và symbol qua REST SoDEX sẵn có.
+- Bucket IP chung với giao dịch: Wealth chỉ lấy token khi bucket còn trên 50% (như rewards). Hết ngân sách thì phần đó trả "Not provided" (`/markets/us`) hoặc 429 (`/wealth/me`), không ảnh hưởng lệnh của bot.
+- Cache trong bộ nhớ api: `/markets/us` 30 s (mỗi market một lần đọc sổ lệnh mỗi chu kỳ, không theo số người xem; mỗi chu kỳ khoảng 20 weight REST + 20 × (1 + số quỹ không phải token sổ lệnh) weight Wealth), `/wealth/me` 30 s theo địa chỉ (6 lời gọi Wealth mỗi lần đọc).
+- Log api không có địa chỉ ví: dòng `wealth: read failed` / `us market: read failed` chỉ có phần và lý do.
+- Bật / tắt: đặt `US_MARKET_ENABLED=true` / `false` trong `/opt/drift/.env`, rồi `cd /opt/drift && docker compose up -d api`. Compose trên VPS thiếu dòng `US_MARKET_ENABLED: ${US_MARKET_ENABLED:-true}` trong khối `api` thì thêm theo mẫu (thiếu dòng thì api vẫn dùng mặc định `true`).
+- Không migration. Không đổi gì ở engine / scheduler trong #589.
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push image các app đổi (app không đổi được gắn tag mới vào image của tag trước) → PM trả tag (`docs/RELEASE.md`).

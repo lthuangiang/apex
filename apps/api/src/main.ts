@@ -8,6 +8,7 @@ import {
   RewardsReadClient,
   SignedWriteClient,
   SodexRestClient,
+  WealthReadClient,
 } from "@drift/sodex";
 import { Redis } from "ioredis";
 import { z } from "zod";
@@ -90,6 +91,16 @@ const app = await buildApp({
       maxWeightPerMinute: config.REWARDS_WATCH_MAX_WEIGHT_PER_MIN,
     }),
     signer: httpRewardsSigner(config.SIGNER_URL, loadClientTls(process.env, "SIGNER_CLIENT")),
+  },
+  // #589 / DEC-402: US Market + SoDEX Wealth (mặc định bật). Wealth đọc qua client chỉ đọc, chung bucket IP.
+  usMarket: {
+    enabled: () => config.US_MARKET_ENABLED,
+    wealth: new WealthReadClient({
+      rateLimit,
+      egressKey: config.SODEX_EGRESS_KEY,
+      ipBucket: ipBucket(config.sodex.restWeightPerMinute),
+      maxWeightPerMinute: config.WEALTH_READ_MAX_WEIGHT_PER_MIN,
+    }),
   },
   reco: httpRecoClient(config.RECO_URL),
   // `none`: tab Liquidation map ẩn (IMP-05, DEC-92).

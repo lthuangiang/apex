@@ -73,6 +73,8 @@ export async function startTestEnv(
     rewards?: { enabled: boolean };
     /** #558: báo box mới SoDEX rewards (reader / signer giả). Thiếu = tắt (route 404). */
     rewardsWatch?: AppDeps["rewardsWatch"];
+    /** #589: US Market + SoDEX Wealth (rest / wealth giả). Thiếu = tắt (route 404). */
+    usMarket?: AppDeps["usMarket"];
   } = {},
 ): Promise<TestEnv> {
   const container = await new PostgreSqlContainer(POSTGRES_IMAGE).start();
@@ -161,6 +163,7 @@ export async function startTestEnv(
     ...(options.telegram === undefined ? {} : { telegram: options.telegram }),
     ...(options.oauth === undefined ? {} : { oauth: options.oauth }),
     ...(options.rewardsWatch === undefined ? {} : { rewardsWatch: options.rewardsWatch }),
+    ...(options.usMarket === undefined ? {} : { usMarket: options.usMarket }),
     deskLlm: options.deskLlm ?? null,
     logStream: new Writable({
       write(chunk: Buffer, _enc, done) {
