@@ -4,6 +4,7 @@ import { dec, portfolioResponseSchema, type PortfolioView } from "@drift/shared"
 import { DataTable, MetricCard, PnLValue, Skeleton } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState, type ReactNode } from "react";
 
@@ -13,9 +14,11 @@ import { AskAboutThis } from "@/features/desk/components/ask-about-this";
 import { api } from "@/lib/api";
 import { formatAmount, formatDateTime, formatMoney } from "@/lib/format";
 import { useMarketNames, type MarketNames } from "@/lib/markets";
+import { useFeatures } from "@/lib/queries";
 
 import { AccountsRow, CollateralTable } from "./accounts-row";
 import { Meter, ShareBar } from "./charts";
+import { MyWealthView, useMyWealth } from "./my-wealth";
 
 // Portfolio (artboard "Portfolio" / "M-Portfolio", SCREENS.md mục 9): số dư, vị thế, exposure. Giá thanh lý chỉ
 // hiện khi SoDEX trả; không tự ước tính. Giá theo tick, khối lượng theo lot, tên market / tài sản theo SoDEX
@@ -26,6 +29,9 @@ export const PORTFOLIO_KEY = ["portfolio"] as const;
 type Status = "loading" | "error" | "empty" | "ready";
 type Position = PortfolioView["positions"][number];
 type Tab = "positions" | "spot" | "pending";
+/** Tab cấp trang (#592, bản phác us-market màn 05): Trading = Portfolio như cũ; My Wealth chỉ khi `features.usMarket`. */
+type View = "trading" | "wealth";
+const VIEWS = ["trading", "wealth"] as const;
 
 export function usePortfolio() {
   return useQuery({
@@ -200,7 +206,77 @@ function NotProvided() {
   );
 }
 
+/** Hàng tab Trading / My Wealth; `?tab=wealth` mở thẳng My Wealth (link "Open My Wealth" của `/markets/us`). */
+function ViewTabs({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  const t = useTranslations("myWealth");
+  return (
+    <div
+      role="tablist"
+      aria-label={t("pageTabs.label")}
+      className="flex gap-1 self-start rounded-[14px] border border-border bg-surface p-1"
+    >
+      {VIEWS.map((key) => (
+        <button
+          key={key}
+          id={`portfolio-view-${key}`}
+          type="button"
+          role="tab"
+          aria-selected={view === key}
+          aria-controls="portfolio-view-panel"
+          onClick={() => {
+            onChange(key);
+          }}
+          className={`flex min-h-tap items-center rounded-[10px] px-4 text-[15px] font-bold ${view === key ? "bg-ink text-surface" : "text-ink-2"}`}
+        >
+          {t(`pageTabs.${key}`)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function PortfolioPage() {
+  const param = useSearchParams().get("tab");
+  const [requested, setRequested] = useState<View>(param === "wealth" ? "wealth" : "trading");
+  const wealthOn = useFeatures().data?.usMarket === true;
+  const view: View = wealthOn ? requested : "trading";
+  const wealth = useMyWealth(view === "wealth");
+  const tw = useTranslations("myWealth");
+  const tabs = wealthOn ? (
+    <ViewTabs
+      view={view}
+      onChange={(v) => {
+        setRequested(v);
+        // Giữ `?tab=` để tải lại / chia sẻ link mở đúng tab; không thêm lịch sử.
+        window.history.replaceState(null, "", v === "wealth" ? "?tab=wealth" : "?");
+      }}
+    />
+  ) : null;
+
+  if (view === "wealth") {
+    const readAt = wealth.data?.status === "ok" ? wealth.data.readAt : null;
+    return (
+      <Workspace current="portfolio">
+        <div className="flex flex-col gap-5">
+          <PageHead
+            title={tw("title")}
+            subtitle={tw("subtitle")}
+            updated={
+              readAt === null ? null : { label: (ago) => tw("updated", { time: ago }), at: readAt }
+            }
+          />
+          {tabs}
+          <div id="portfolio-view-panel" role="tabpanel" aria-labelledby="portfolio-view-wealth">
+            <MyWealthView query={wealth} />
+          </div>
+        </div>
+      </Workspace>
+    );
+  }
+  return <TradingView tabs={tabs} />;
+}
+
+function TradingView({ tabs }: { tabs: ReactNode }) {
   const t = useTranslations("portfolio");
   const te = useTranslations("common.errors");
   const names = useMarketNames();
@@ -243,205 +319,218 @@ export function PortfolioPage() {
           }
           action={<AskAboutThis context={{ kind: "portfolio" }} />}
         />
-        {q.isSuccess && pf === null ? <NotConnected message={t("noAccount")} /> : null}
-        <div className="hidden md:block">
-          <SummaryCards pf={pf} status={status} />
-        </div>
-        <MobileHero pf={pf} loading={q.isPending} />
-        <AccountsRow pf={pf} />
+        {tabs}
+        <div
+          className="flex flex-col gap-5"
+          {...(tabs === null
+            ? {}
+            : {
+                id: "portfolio-view-panel",
+                role: "tabpanel",
+                "aria-labelledby": "portfolio-view-trading",
+              })}
+        >
+          {q.isSuccess && pf === null ? <NotConnected message={t("noAccount")} /> : null}
+          <div className="hidden md:block">
+            <SummaryCards pf={pf} status={status} />
+          </div>
+          <MobileHero pf={pf} loading={q.isPending} />
+          <AccountsRow pf={pf} />
 
-        <div className="flex flex-wrap items-start gap-5">
-          <Card title={t("positions")} className="flex-[3_1_620px]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div
-                role="tablist"
-                aria-label={t("tabs.label")}
-                className="flex w-full gap-1 rounded-[14px] bg-surface-2 p-1 md:w-auto"
-              >
-                {(["positions", "spot", "pending"] as const).map((k) => (
-                  <button
-                    key={k}
-                    id={`pf-tab-${k}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={tab === k}
-                    aria-controls={`pf-panel-${k}`}
-                    onClick={() => {
-                      setTab(k);
-                    }}
-                    className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-[10px] px-3 text-[13px] font-bold md:min-h-9 md:flex-none ${tab === k ? "bg-ink text-surface md:bg-surface md:text-ink md:shadow-sm" : "text-ink-2"}`}
-                  >
-                    <span className="md:hidden">
-                      {counts[k] === null
-                        ? t(`mobileTabs.${k}Short`)
-                        : t(`mobileTabs.${k}`, { n: counts[k] })}
-                    </span>
-                    <span className="hidden md:inline">{t(`tabs.${k}`)}</span>
-                    {counts[k] === null ? null : (
-                      <span
-                        className={`hidden rounded-full px-[7px] py-px text-[11px] tabular-nums md:inline ${tab === k ? "bg-accent text-white" : "bg-border text-ink-2"}`}
-                      >
-                        {counts[k]}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-              {tab === "positions" ? (
-                <div className="flex flex-wrap gap-2">
-                  <label className="flex h-10 items-center gap-2 rounded-control border border-border-input px-3">
-                    <span className="sr-only">{t("search")}</span>
-                    <input
-                      type="search"
-                      placeholder={t("search")}
-                      value={search}
-                      onChange={(e) => {
-                        setSearch(e.target.value);
+          <div className="flex flex-wrap items-start gap-5">
+            <Card title={t("positions")} className="flex-[3_1_620px]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div
+                  role="tablist"
+                  aria-label={t("tabs.label")}
+                  className="flex w-full gap-1 rounded-[14px] bg-surface-2 p-1 md:w-auto"
+                >
+                  {(["positions", "spot", "pending"] as const).map((k) => (
+                    <button
+                      key={k}
+                      id={`pf-tab-${k}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={tab === k}
+                      aria-controls={`pf-panel-${k}`}
+                      onClick={() => {
+                        setTab(k);
                       }}
-                      className="w-36 border-0 bg-transparent text-sm outline-none"
-                    />
-                  </label>
-                  <label className="flex h-10 items-center gap-2 rounded-control border border-border-input px-3 text-[13px] text-muted">
-                    {t("filterSide")}
-                    <select
-                      className="border-0 bg-transparent text-sm font-semibold text-ink"
-                      value={side}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === "all" || v === "long" || v === "short") setSide(v);
-                      }}
+                      className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-[10px] px-3 text-[13px] font-bold md:min-h-9 md:flex-none ${tab === k ? "bg-ink text-surface md:bg-surface md:text-ink md:shadow-sm" : "text-ink-2"}`}
                     >
-                      <option value="all">{t("sideAll")}</option>
-                      <option value="long">{t("side.long")}</option>
-                      <option value="short">{t("side.short")}</option>
-                    </select>
-                  </label>
+                      <span className="md:hidden">
+                        {counts[k] === null
+                          ? t(`mobileTabs.${k}Short`)
+                          : t(`mobileTabs.${k}`, { n: counts[k] })}
+                      </span>
+                      <span className="hidden md:inline">{t(`tabs.${k}`)}</span>
+                      {counts[k] === null ? null : (
+                        <span
+                          className={`hidden rounded-full px-[7px] py-px text-[11px] tabular-nums md:inline ${tab === k ? "bg-accent text-white" : "bg-border text-ink-2"}`}
+                        >
+                          {counts[k]}
+                        </span>
+                      )}
+                    </button>
+                  ))}
                 </div>
-              ) : null}
-            </div>
-
-            <div id={`pf-panel-${tab}`} role="tabpanel" aria-labelledby={`pf-tab-${tab}`}>
-              {tab === "positions" ? (
-                <div className="flex flex-col gap-3">
-                  {/* Desktop: bảng. Mobile: mỗi vị thế một thẻ (artboard M-Portfolio). */}
-                  <div className="hidden md:block">
-                    <DataTable
-                      caption={t("tabs.positions")}
-                      label={t("tabs.positions")}
-                      status={status === "ready" && positions.length === 0 ? "empty" : status}
-                      empty={{
-                        title: (pf?.positions.length ?? 0) === 0 ? t("noPositions") : t("noMatch"),
-                      }}
-                      error={{
-                        title: te("generic"),
-                        retryLabel: te("retry"),
-                        onRetry: () => {
-                          void q.refetch();
-                        },
-                      }}
-                      rows={positions}
-                      getRowKey={(p) => p.market}
-                      columns={positionColumns(t, names)}
-                    />
+                {tab === "positions" ? (
+                  <div className="flex flex-wrap gap-2">
+                    <label className="flex h-10 items-center gap-2 rounded-control border border-border-input px-3">
+                      <span className="sr-only">{t("search")}</span>
+                      <input
+                        type="search"
+                        placeholder={t("search")}
+                        value={search}
+                        onChange={(e) => {
+                          setSearch(e.target.value);
+                        }}
+                        className="w-36 border-0 bg-transparent text-sm outline-none"
+                      />
+                    </label>
+                    <label className="flex h-10 items-center gap-2 rounded-control border border-border-input px-3 text-[13px] text-muted">
+                      {t("filterSide")}
+                      <select
+                        className="border-0 bg-transparent text-sm font-semibold text-ink"
+                        value={side}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "all" || v === "long" || v === "short") setSide(v);
+                        }}
+                      >
+                        <option value="all">{t("sideAll")}</option>
+                        <option value="long">{t("side.long")}</option>
+                        <option value="short">{t("side.short")}</option>
+                      </select>
+                    </label>
                   </div>
-                  <ul className="m-0 flex list-none flex-col gap-3 p-0 md:hidden">
-                    {positions.length === 0 ? (
-                      <li className="rounded-tile bg-surface-2 p-5 text-center text-sm font-bold">
-                        {(pf?.positions.length ?? 0) === 0 ? t("noPositions") : t("noMatch")}
-                      </li>
-                    ) : (
-                      positions.map((p) => <PositionCard key={p.market} p={p} names={names} />)
+                ) : null}
+              </div>
+
+              <div id={`pf-panel-${tab}`} role="tabpanel" aria-labelledby={`pf-tab-${tab}`}>
+                {tab === "positions" ? (
+                  <div className="flex flex-col gap-3">
+                    {/* Desktop: bảng. Mobile: mỗi vị thế một thẻ (artboard M-Portfolio). */}
+                    <div className="hidden md:block">
+                      <DataTable
+                        caption={t("tabs.positions")}
+                        label={t("tabs.positions")}
+                        status={status === "ready" && positions.length === 0 ? "empty" : status}
+                        empty={{
+                          title:
+                            (pf?.positions.length ?? 0) === 0 ? t("noPositions") : t("noMatch"),
+                        }}
+                        error={{
+                          title: te("generic"),
+                          retryLabel: te("retry"),
+                          onRetry: () => {
+                            void q.refetch();
+                          },
+                        }}
+                        rows={positions}
+                        getRowKey={(p) => p.market}
+                        columns={positionColumns(t, names)}
+                      />
+                    </div>
+                    <ul className="m-0 flex list-none flex-col gap-3 p-0 md:hidden">
+                      {positions.length === 0 ? (
+                        <li className="rounded-tile bg-surface-2 p-5 text-center text-sm font-bold">
+                          {(pf?.positions.length ?? 0) === 0 ? t("noPositions") : t("noMatch")}
+                        </li>
+                      ) : (
+                        positions.map((p) => <PositionCard key={p.market} p={p} names={names} />)
+                      )}
+                    </ul>
+                    <p className="m-0 text-xs text-muted">{t("liqNote")}</p>
+                  </div>
+                ) : null}
+
+                {tab === "spot" ? (
+                  <div className="flex flex-col gap-3">
+                    {pf?.accounts.perps == null ? null : (
+                      <h3 className="m-0 text-sm font-extrabold">{t("balancesSpot")}</h3>
                     )}
-                  </ul>
-                  <p className="m-0 text-xs text-muted">{t("liqNote")}</p>
-                </div>
-              ) : null}
+                    <DataTable
+                      caption={t("tabs.spot")}
+                      label={t("tabs.spot")}
+                      status={
+                        status === "ready" && (pf?.holdings.length ?? 0) === 0 ? "empty" : status
+                      }
+                      empty={{ title: t("noHoldings") }}
+                      error={{ title: te("generic") }}
+                      rows={pf?.holdings ?? []}
+                      getRowKey={(h) => h.coin}
+                      columns={[
+                        {
+                          key: "asset",
+                          header: t("balances.asset"),
+                          cell: (h) => <strong>{names.asset(h.coin)}</strong>,
+                        },
+                        {
+                          key: "total",
+                          header: t("balances.total"),
+                          numeric: true,
+                          cell: (h) => <Amount value={h.total} />,
+                        },
+                        {
+                          key: "available",
+                          header: t("balances.available"),
+                          numeric: true,
+                          cell: (h) => <Amount value={h.available} />,
+                        },
+                        {
+                          key: "inOrders",
+                          header: t("balances.inOrders"),
+                          numeric: true,
+                          cell: (h) => <Amount value={h.inOrders} />,
+                        },
+                        {
+                          key: "value",
+                          header: t("balances.value"),
+                          numeric: true,
+                          cell: (h) =>
+                            h.value === null ? (
+                              <NotProvided />
+                            ) : (
+                              <strong>{formatMoney(h.value)}</strong>
+                            ),
+                        },
+                      ]}
+                    />
+                    {pf?.accounts.perps == null ||
+                    pf.accounts.perps.collateral.length === 0 ? null : (
+                      <>
+                        <h3 className="m-0 text-sm font-extrabold">{t("balancesPerps")}</h3>
+                        <CollateralTable pf={pf} />
+                      </>
+                    )}
+                  </div>
+                ) : null}
 
-              {tab === "spot" ? (
-                <div className="flex flex-col gap-3">
-                  {pf?.accounts.perps == null ? null : (
-                    <h3 className="m-0 text-sm font-extrabold">{t("balancesSpot")}</h3>
-                  )}
-                  <DataTable
-                    caption={t("tabs.spot")}
-                    label={t("tabs.spot")}
-                    status={
-                      status === "ready" && (pf?.holdings.length ?? 0) === 0 ? "empty" : status
-                    }
-                    empty={{ title: t("noHoldings") }}
-                    error={{ title: te("generic") }}
-                    rows={pf?.holdings ?? []}
-                    getRowKey={(h) => h.coin}
-                    columns={[
-                      {
-                        key: "asset",
-                        header: t("balances.asset"),
-                        cell: (h) => <strong>{names.asset(h.coin)}</strong>,
-                      },
-                      {
-                        key: "total",
-                        header: t("balances.total"),
-                        numeric: true,
-                        cell: (h) => <Amount value={h.total} />,
-                      },
-                      {
-                        key: "available",
-                        header: t("balances.available"),
-                        numeric: true,
-                        cell: (h) => <Amount value={h.available} />,
-                      },
-                      {
-                        key: "inOrders",
-                        header: t("balances.inOrders"),
-                        numeric: true,
-                        cell: (h) => <Amount value={h.inOrders} />,
-                      },
-                      {
-                        key: "value",
-                        header: t("balances.value"),
-                        numeric: true,
-                        cell: (h) =>
-                          h.value === null ? (
-                            <NotProvided />
-                          ) : (
-                            <strong>{formatMoney(h.value)}</strong>
-                          ),
-                      },
-                    ]}
-                  />
-                  {pf?.accounts.perps == null ||
-                  pf.accounts.perps.collateral.length === 0 ? null : (
-                    <>
-                      <h3 className="m-0 text-sm font-extrabold">{t("balancesPerps")}</h3>
-                      <CollateralTable pf={pf} />
-                    </>
-                  )}
-                </div>
-              ) : null}
+                {tab === "pending" ? (
+                  <div className="flex flex-col items-center gap-2.5 rounded-[16px] bg-surface-2 px-5 py-9 text-center">
+                    <strong className="text-[15px]">
+                      {pf === null || pf.pendingOrders.count === 0
+                        ? t("noPending")
+                        : t("pending", {
+                            n: pf.pendingOrders.count,
+                            amount: formatMoney(pf.pendingOrders.lockedQuote) ?? "",
+                          })}
+                    </strong>
+                    <span className="max-w-[420px] text-[13px] text-ink-2">{t("pendingNote")}</span>
+                    <Link
+                      href="/orders"
+                      className="flex min-h-tap items-center rounded-control bg-accent-tint px-[18px] text-sm font-bold text-accent-ink no-underline"
+                    >
+                      {t("openOrders")}
+                    </Link>
+                  </div>
+                ) : null}
+              </div>
+            </Card>
 
-              {tab === "pending" ? (
-                <div className="flex flex-col items-center gap-2.5 rounded-[16px] bg-surface-2 px-5 py-9 text-center">
-                  <strong className="text-[15px]">
-                    {pf === null || pf.pendingOrders.count === 0
-                      ? t("noPending")
-                      : t("pending", {
-                          n: pf.pendingOrders.count,
-                          amount: formatMoney(pf.pendingOrders.lockedQuote) ?? "",
-                        })}
-                  </strong>
-                  <span className="max-w-[420px] text-[13px] text-ink-2">{t("pendingNote")}</span>
-                  <Link
-                    href="/orders"
-                    className="flex min-h-tap items-center rounded-control bg-accent-tint px-[18px] text-sm font-bold text-accent-ink no-underline"
-                  >
-                    {t("openOrders")}
-                  </Link>
-                </div>
-              ) : null}
-            </div>
-          </Card>
-
-          <Exposure pf={pf} names={names} />
+            <Exposure pf={pf} names={names} />
+          </div>
         </div>
       </div>
     </Workspace>
