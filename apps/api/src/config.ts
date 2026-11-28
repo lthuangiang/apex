@@ -77,6 +77,14 @@ const envSchema = z.object({
   REWARDS_WATCH_MAX_WEIGHT_PER_MIN: z.coerce.number().int().positive().default(120),
   /** #558: origin gateway rewards cho server (trống = mainnet; client chỉ nhận https). */
   SODEX_REWARDS_GATEWAY: z.string().default(""),
+  /**
+   * #589 / DEC-402 mục 9: US Market + SoDEX Wealth (banner Strategy Lab, `/markets/us`, Portfolio › My Wealth). Mặc định
+   * BẬT; tắt thì `/api/v1/markets/us`, `/api/v1/wealth/me` trả 404 và `/api/v1/features.usMarket` = false. Giới hạn theo
+   * sổ lệnh của bot (DEC-402 mục 5) không phụ thuộc công tắc này.
+   */
+  US_MARKET_ENABLED: z.stringbool().default(true),
+  /** #589: trần riêng weight / phút của lời gọi Wealth API từ api (bucket `rl:sodex:wealth:<egress>`; mỗi lời gọi 20). */
+  WEALTH_READ_MAX_WEIGHT_PER_MIN: z.coerce.number().int().positive().default(400),
   /** Notifications v2: kênh Telegram (DEC-170). Tắt thì mọi route `/api/v1/telegram/*` trả 404. */
   TELEGRAM_ENABLED: z.stringbool().default(false),
   /** Morning brief qua Telegram (N4): chỉ chạy khi TELEGRAM_ENABLED cũng bật. */

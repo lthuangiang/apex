@@ -21,6 +21,7 @@ import {
   markPriceSchema,
   orderbookSchema,
   perpsAccountStateSchema,
+  tickerSchema,
   positionSchema,
   restOrderSchema,
   userFundingSchema,
@@ -32,6 +33,7 @@ import {
   type PerpsAccountState,
   type Position,
   type RestOrder,
+  type Ticker,
   type UserFunding,
   type UserTrade,
 } from "./history-schemas";
@@ -269,6 +271,16 @@ export class SodexRestClient {
       `/${engine}/markets/${encodeURIComponent(symbol)}/orderbook?limit=${String(limit)}`,
       RestWeight.marketInfo,
       orderbookSchema,
+    );
+  }
+
+  /** Ticker của mọi market một engine (weight 2), hoặc một market khi có `symbol`. */
+  getTickers(engine: Engine, symbol?: string): Promise<Ticker[]> {
+    const q = symbol === undefined ? "" : `?symbol=${encodeURIComponent(symbol)}`;
+    return this.#get(
+      `/${engine}/markets/tickers${q}`,
+      RestWeight.marketInfo,
+      z.array(tickerSchema),
     );
   }
 

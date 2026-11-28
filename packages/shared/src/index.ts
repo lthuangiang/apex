@@ -61,3 +61,5 @@ export * from "./signal-research/market-state";
 export * from "./stats/day-bootstrap";
 export * from "./sodex-rewards";
 export * from "./api/rewards-watch";
+export * from "./sodex-wealth";
+export * from "./api/us-market";

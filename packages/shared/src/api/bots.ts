@@ -62,6 +62,11 @@ export const featuresSchema = z.object({
    * `REWARDS_ENABLED` của api (mặc định bật, DEC-397 bổ sung), hoặc role team. Thiếu trường = false (an toàn).
    */
   sodexRewards: z.boolean().default(false),
+  /**
+   * #589 / DEC-402: US Market + SoDEX Wealth (banner Strategy Lab, `/markets/us`, Portfolio › My Wealth). Công tắc toàn
+   * hệ thống `US_MARKET_ENABLED` của api (mặc định bật). Thiếu trường = false (an toàn).
+   */
+  usMarket: z.boolean().default(false),
   /** Builder fee hiệu lực theo chiến lược của user (DEC-159), phần mười bp; thiếu key = mặc định. */
   builderFees: z.record(z.string(), z.number().int()).default({}),
   /** Thẻ builder fee Market Making; null khi chưa đăng nhập. */
