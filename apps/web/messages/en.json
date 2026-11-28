@@ -2913,12 +2913,7 @@
     "signalAnalysis.research.trace.costUnknown",
     "signalAnalysis.research.context.funnelCountsShort",
     "signalAnalysis.research.trace.countsShort",
-    "signalAnalysis.research.live.batch",
-    "notifications.types.wealth_request_settled",
-    "notifications.types.wealth_recurring_issue",
-    "notifications.panel.wealth",
-    "settings.notifications.what.rows.wealth",
-    "myWealth.alerts"
+    "signalAnalysis.research.live.batch"
   ],
   "beta": {
     "label": "Beta",
