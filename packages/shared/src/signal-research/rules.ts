@@ -94,6 +94,16 @@ export const SignalReason = {
   etfMajorAsset: "ETF_MAJOR_ASSET",
   /** news-v5 (#506): listing trên BTC hoặc ETH không bao giờ giao dịch. */
   listingMajorAsset: "LISTING_MAJOR_ASSET",
+  /**
+   * news-v7 (#593, DEC-402 mục 6): tin sản phẩm / model / công cụ của một công ty trong `COMPANY_NEWS_MARKETS` (Anthropic →
+   * ANT-USD): được đọc nhưng không giao dịch ("Product, not company value"). Bỏ trước Claude khi bài không còn ứng viên khác.
+   */
+  productNews: "PRODUCT_NEWS",
+  /**
+   * news-v7 (#593): tiêu đề không cho thấy tin công ty (vốn, định giá, pháp lý, doanh thu, đối tác lớn) của market trong
+   * `COMPANY_NEWS_MARKETS`, cũng không rõ là tin sản phẩm (hoặc tiêu đề không nêu tên công ty): không giao dịch market đó.
+   */
+  notCompanyNews: "NOT_COMPANY_NEWS",
   // filter
   sameStory: "SAME_STORY",
   /** Câu chuyện chưa vào lệnh nhưng bài đầu tiên đã quá `retryWindowMinutes`: gộp, không vào lệnh. */
@@ -205,11 +215,16 @@ export const SR_WATCH_REST = {
  * v6 so với v5 (#530, DEC-393): một sự kiện tin nêu nhiều coin mở lệnh cho mọi coin ngay ở bài đầu và
  * chia cỡ lệnh (`eventMaxCoins`, `sameEventWindowHours`, `SAME_EVENT`, `BELOW_MIN_ORDER_SIZE` cho lệnh giấy), cùng prompt
  * `news-classifier-v7` (reader trả thêm các coin khác của sự kiện).
+ *
+ * v7 so với v6 (#593, DEC-402 mục 6): tin về công ty Anthropic gắn với `ANT-USD` (`COMPANY_NEWS_MARKETS`); chỉ tin công
+ * ty (vốn, định giá, gọi vốn, pháp lý, doanh thu, đối tác lớn) được giao dịch, tin sản phẩm / model / công cụ được đọc nhưng
+ * không giao dịch (`PRODUCT_NEWS`), tin không rõ cũng không giao dịch (`NOT_COMPANY_NEWS`). Phân loại tất định theo tiêu đề
+ * (`companyNewsKindOf`), không đổi prompt (reader vẫn `news-classifier-v7`). Market khác không đổi luật.
  */
 export const NEWS_RULES = {
-  version: "news-v6",
+  version: "news-v7",
   /** Số version (API hiện dạng số). */
-  versionNumber: 6,
+  versionNumber: 7,
   lane: "news",
   /** Bảng loại tin → chiều + giữ tối đa. Chiều do loại tin quyết định, Claude chỉ gọi tên loại tin và tài sản. */
   catalysts: {
@@ -273,6 +288,11 @@ export const NEWS_RULES = {
    * một sàn không làm giá đổi. Coin khác vẫn giữ. Delisting không nằm trong luật này.
    */
   listingExcludedMarkets: ["BTC-USD", "ETH-USD"],
+  /**
+   * news-v7 (#593): market mà lane chụp độ sâu sổ lệnh (10 mức mỗi phía, DEC-402 mục 4) lúc quyết định, lưu cùng snapshot
+   * Context ("Book at the time"). Chỉ ghi, không đổi quyết định.
+   */
+  bookDepthMarkets: ["ANT-USD"],
   /** Cỡ lệnh paper cố định (USDC). */
   sizeUsdc: "500",
   /** TP / SL = bội số của biến động thường gặp trong khoảng giữ tối đa. */
@@ -386,7 +406,7 @@ export const SOSO_OFFICIAL_CATEGORY = 7;
  * sản chỉ mở rộng phạm vi, không đổi cách giao dịch một tín hiệu, nên không reset cổng. Ghi vào detail của event
  * normalize / understand và cột `asset_map_version` của lệnh giấy để truy được.
  */
-export const NEWS_ASSET_MAP_VERSION = "assets-2026-11-24a";
+export const NEWS_ASSET_MAP_VERSION = "assets-2026-11-28a";
 
 /**
  * Market cổ phiếu trên SoDEX (cổ phiếu niêm yết, ETF cổ phiếu, cổ phiếu pre-IPO): kind `stock`, nhãn "outside market
@@ -400,6 +420,8 @@ export const STOCK_MARKET_SET: ReadonlySet<string> = new Set([
   "AAPL-USD",
   "AMD-USD",
   "AMZN-USD",
+  // #593 (DEC-402): Anthropic (công ty chưa niêm yết). Ở đây để tag coin "ANT" (crypto khác) không bao giờ rơi vào market này.
+  "ANT-USD",
   "COIN-USD",
   "CRCL-USD",
   "CRWD-USD",
@@ -445,6 +467,7 @@ export const STOCK_MARKET_SET: ReadonlySet<string> = new Set([
 export const STOCK_SYMBOL_ALIASES: Readonly<Record<string, string>> = {
   GOOG: "GOOGL-USD",
   SPACEX: "SPCX-USD",
+  ANTHROPIC: "ANT-USD",
 };
 
 /**
@@ -456,6 +479,7 @@ export const STOCK_SYMBOL_ALIASES: Readonly<Record<string, string>> = {
 export const STOCK_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = {
   "AAPL-USD": ["Apple"],
   "AMZN-USD": ["Amazon"],
+  "ANT-USD": ["Anthropic"],
   "COIN-USD": ["Coinbase"],
   "CRWD-USD": ["CrowdStrike"],
   "CRWV-USD": ["CoreWeave"],
@@ -495,6 +519,15 @@ export const STOCK_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = 
 export const COIN_NAME_ALIASES: Readonly<Record<string, readonly string[]>> = {
   "BTC-USD": ["Bitcoin"],
   "ETH-USD": ["Ethereum", "Ether"],
+};
+
+/**
+ * #593 (DEC-402 mục 6): market của một công ty mà lane chỉ giao dịch tin CÔNG TY (`companyNewsKindOf`), và tên công ty để
+ * nhận ra bài nêu công ty khi SoSoValue không gắn tag (ứng viên theo tên trong bài, `textCandidatesOf`). Tên khớp như tên
+ * thương hiệu một từ (viết hoa chữ đầu). Thêm market = đổi `NEWS_ASSET_MAP_VERSION` và `NEWS_RULES.version`.
+ */
+export const COMPANY_NEWS_MARKETS: Readonly<Record<string, readonly string[]>> = {
+  "ANT-USD": ["Anthropic"],
 };
 
 export const SIGNAL_CATALYSTS = Object.keys(NEWS_RULES.catalysts) as SignalCatalyst[];

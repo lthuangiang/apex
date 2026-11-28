@@ -26,7 +26,7 @@ async function article(
     `insert into signal_articles (id, source, title, published_at, collected_at, matched_currencies, candidates, content_hash, status,
        classified_at, claude_calls, claude_input_tokens, claude_cache_write_tokens, claude_cache_read_tokens, claude_output_tokens,
        claude_model, claude_prompt_version, rule_version)
-     values ($1, 'Reuters', $1, $2, $2, '[]', '[]', $1, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'news-v6')`,
+     values ($1, 'Reuters', $1, $2, $2, '[]', '[]', $1, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'news-v7')`,
     [
       id,
       at(collected),

@@ -46,7 +46,7 @@ async function snapshot(articleId: string, decidedAt: string, c: Ctx) {
        h1_agreeing_addresses, h1_opposing_addresses,
        h2_status, h2_funding_rate, h2_funding_time, h2_percentile, h2_samples, h2_payer, h2_interval_hours,
        h3_status, h3_moved_pct, h3_typical_move_pct, volume_vs_24h, range_breakout)
-     values (gen_random_uuid(), $1, 'ETH-USD', 'long', $2, $3, $7, 'news-v6',
+     values (gen_random_uuid(), $1, 'ETH-USD', 'long', $2, $3, $7, 'news-v7',
        $4, 12, true, $8, $9, 2, 0, 1400000, $2::timestamptz - interval '39 minutes', $10, $11,
        $5, 0.0001, $2::timestamptz - interval '2 hours', 56, 90, 'long', 8,
        $6, 0.2, 0.6, 1.8, 'none')`,
@@ -85,7 +85,7 @@ async function bulk(
        exit_price, exit_reason, exited_at, exit_fee, result_usdc, result_pct, random_pct, rule_version, classifier_version)
      select gen_random_uuid(), 'news', 'live', $1, $2 || '-' || g, 'ETH-USD', 'ETH', 'etf_approved', 'long', 500, 0.15, 3400, 3400,
        0.01, 0.05, 0.25, 1, 1.6, 0.8, 3454, 3372, t + interval '3 days', t, t, t, 'medium', '[]', false, 'book', 'closed', 3450,
-       'take_profit', t + interval '30 minutes', 0.25, r * 5, r, 0, 'news-v6', $3
+       'take_profit', t + interval '30 minutes', 0.25, r * 5, r, 0, 'news-v7', $3
      from (select g, $4::timestamptz + (g * interval '7 hours') as t, ($5::numeric + ((g % 5) - 2) * 0.1) as r
              from generate_series(1, $6::int) g) s`,
     [versionId, prefix, CLS, from, centre, n],
@@ -102,7 +102,7 @@ async function bulk(
 async function event(articleId: string, stage: string, outcome: string, versionId?: string) {
   await env.pool.query(
     `insert into signal_events (id, article_id, stage, outcome, detail, rule_version, version_id, at)
-     values (gen_random_uuid(), $1, $2, $3, $4, 'news-v6', $5, $6)`,
+     values (gen_random_uuid(), $1, $2, $3, $4, 'news-v7', $5, $6)`,
     [
       articleId,
       stage,
@@ -122,7 +122,7 @@ async function article(id: string) {
        status, classification, claude_prompt_version, rule_version)
      values ($1, 'Reuters', $2, 'Body', $3, $3, '[{"symbol":"ETH","name":"Ethereum"}]',
        '[{"symbol":"ETH","market":"ETH-USD","kind":"crypto"}]', $4, 'classified',
-       '{"catalyst":"etf_approved","market":"ETH-USD","relevance":"direct","promotional":false}', $5, 'news-v6')`,
+       '{"catalyst":"etf_approved","market":"ETH-USD","relevance":"direct","promotional":false}', $5, 'news-v7')`,
     [id, `Title ${id}`, ago(60), `hash-${id}`, CLS],
   );
 }
@@ -420,7 +420,7 @@ describe("funnel step 4 counts in totals mode (#358, refs #343)", () => {
     await env.pool.query(
       `insert into signal_articles (id, source, title, content, published_at, collected_at, matched_currencies, candidates, content_hash,
          status, classification, claude_prompt_version, rule_version)
-       values ($1, 'Reuters', $2, 'Body', $3, $3, '[]', '[]', $4, 'classified', null, $5, 'news-v6')`,
+       values ($1, 'Reuters', $2, 'Body', $3, $3, '[]', '[]', $4, 'classified', null, $5, 'news-v7')`,
       [id, `Title ${id}`, ago(minAgo), `hash-${id}`, CLS],
     );
   }
@@ -510,7 +510,7 @@ describe("context-v1 and context-v2 stay apart for H1, H2 / H3 merge (#353, revi
     await env.pool.query(
       `insert into signal_articles (id, source, title, content, published_at, collected_at, matched_currencies, candidates, content_hash,
          status, classification, claude_prompt_version, rule_version)
-       values ('fc-v1', 'Reuters', 'Title fc-v1', 'Body', $1, $1, '[]', '[]', 'hash-fc-v1', 'classified', null, $2, 'news-v6')`,
+       values ('fc-v1', 'Reuters', 'Title fc-v1', 'Body', $1, $1, '[]', '[]', 'hash-fc-v1', 'classified', null, $2, 'news-v7')`,
       [ago(30), CLS],
     );
     await snapshot("fc-v1", ago(29), v1("yes"));

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { isoDateTimeSchema } from "../schemas";
+import { decimalStringSchema, isoDateTimeSchema } from "../schemas";
 import {
   CONTEXT_COMPARE_STATUSES,
   CONTEXT_SOURCES,
@@ -118,6 +118,11 @@ export const RESEARCH_DROP_REASONS = [
    * bỏ ở Filter, không vào lệnh (câu chuyện đã có thì vẫn gộp `sameStory` / thử lại như cũ).
    */
   "sameEvent",
+  /**
+   * #593 (news-v7, DEC-402 mục 6): tin sản phẩm / model / công cụ của công ty có market riêng (Anthropic → ANT-USD,
+   * `PRODUCT_NEWS`): đọc nhưng không giao dịch ("Product, not company value").
+   */
+  "productNews",
 ] as const;
 export const RESEARCH_NEWS_TYPES = [
   "hack",
@@ -930,6 +935,13 @@ export const researchClaudeUsageSchema = z.object({
  * Một bài trong feed. Chỉ bài của version quy tắc hiện tại, KHÔNG có bài backlog (lưu thô, cũ hơn mốc dưới của Collect,
  * không bao giờ vào phễu; tổng kết đếm riêng). `stage` = bước cuối bài tới được; bài bị loại thì là bước loại nó.
  */
+/** #593: độ sâu sổ lệnh lúc quyết định (tổng notional 10 mức mỗi phía, quote ≈ USD). */
+export const researchBookDepthSchema = z.object({
+  bidsUsd: decimalStringSchema,
+  asksUsd: decimalStringSchema,
+});
+export type ResearchBookDepth = z.infer<typeof researchBookDepthSchema>;
+
 export const researchArticleSchema = z.object({
   id: z.string().min(1),
   /** Tin flash không có tiêu đề: null, web hiện `excerpt`. */
@@ -985,6 +997,11 @@ export const researchArticleSchema = z.object({
    * Thiếu = như trước (một lệnh, dùng `asset`).
    */
   tradedAssets: z.array(z.string()).optional(),
+  /**
+   * #593 (news-v7): độ sâu sổ lệnh lúc quyết định ("Book at the time"): tổng notional 10 mức giá mỗi phía của market bài
+   * gắn (chỉ `NEWS_RULES.bookDepthMarkets`), từ snapshot Context. Thiếu / null = không chụp ("–").
+   */
+  book: researchBookDepthSchema.nullable().optional(),
 });
 
 export const researchArticlesPageSchema = z.object({
@@ -998,6 +1015,11 @@ export const researchArticlesPageSchema = z.object({
 
 export const researchArticlesQuerySchema = z.object({
   range: z.enum(RESEARCH_RANGES).default("1d"),
+  /** #593: chỉ bài có market này trong ứng viên sau Normalize (tab market của Signal Research). */
+  market: z
+    .string()
+    .regex(/^[A-Z0-9]+-USD$/)
+    .optional(),
   show: z.enum(RESEARCH_ARTICLE_SHOWS).default("all"),
   stage: stage.optional(),
   reason: z.enum(RESEARCH_DROP_REASONS).optional(),

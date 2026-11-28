@@ -32,7 +32,7 @@ async function article(a: Art) {
   await env.pool.query(
     `insert into signal_articles (id, source, title, content, published_at, collected_at, matched_currencies, candidates, content_hash,
        status, rule_version, claude_started_at, claude_done_at)
-     values ($1, 'Reuters', $1, 'Body', $2::timestamptz - ($3 || ' milliseconds')::interval, $2, '[]', '[]', $1, $4, 'news-v6',
+     values ($1, 'Reuters', $1, 'Body', $2::timestamptz - ($3 || ' milliseconds')::interval, $2, '[]', '[]', $1, $4, 'news-v7',
        $5, $6)`,
     [
       a.id,
@@ -55,7 +55,7 @@ async function decided(
 ) {
   await env.pool.query(
     `insert into signal_events (id, article_id, stage, outcome, rule_version, at, decided_clock_at)
-     values (gen_random_uuid(), $1, $2, 'pass', 'news-v6', $3, $4)`,
+     values (gen_random_uuid(), $1, $2, 'pass', 'news-v7', $3, $4)`,
     [articleId, stage, at(collected), at(collected, claudeMs + ms)],
   );
 }
@@ -69,7 +69,7 @@ async function trade(articleId: string, collected: number, ms: number, label = "
        rule_version, decided_clock_at, opened_clock_at)
      values (gen_random_uuid(), 'news', $1, $2, 'ETH-USD', 'ETH', 'etf_approved', 'long', 500, 0.15, 3400, 3400,
        0.01, 0.05, 0.25, 1, 1.6, 0.8, 3454, 3372, $3::timestamptz + interval '3 days', $3, $3, $3, 'medium', '[]', false, 'book',
-       'open', 'news-v6', $4, $5)`,
+       'open', 'news-v7', $4, $5)`,
     [label, articleId, at(collected), at(collected, 60_000), at(collected, 60_000 + ms)],
   );
 }

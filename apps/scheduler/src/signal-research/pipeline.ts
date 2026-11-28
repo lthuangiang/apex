@@ -17,9 +17,12 @@ import {
   candidatesOf,
   catalystRule,
   closeResult,
+  companyNewsKindOf,
+  CompanyNewsKind,
   costCheck,
   dec,
   eventTooOld,
+  isCompanyNewsMarket,
   isUsMarketOpen,
   levelAtLeast,
   levelOf,
@@ -47,6 +50,7 @@ import {
   storyStartOf,
   storyTooOld,
   stripHtml,
+  textCandidatesOf,
   TradeDirection,
   etfOnMajorAsset,
   listingOnMajorAsset,
@@ -174,6 +178,11 @@ export interface PipelineDeps {
   captureContext?:
     ((db: Db, s: ContextSignal, decidedAt: number, quote: Quote | null) => Promise<void>) | null;
   /**
+   * #593: độ sâu sổ lệnh (10 mức mỗi phía) của market trong `NEWS_RULES.bookDepthMarkets`, chụp cùng snapshot Context
+   * ("Book at the time"). Thiếu / null = không chụp. Chỉ ghi, không bao giờ đổi quyết định.
+   */
+  bookDepth?: (market: string) => Promise<{ bidsUsd: string; asksUsd: string } | null>;
+  /**
    * #419 PR 4: ghi tín hiệu dùng chung cho bot `news_signal` mainnet (`news_signals`) và phát chuông NATS. Thiếu / null =
    * tắt (`SIGNAL_NEWS_PUBLISH_ENABLED` không bật). Chỉ ghi, không bao giờ đổi quyết định của research versions.
    */
@@ -271,7 +280,43 @@ function coinCheck(
   if (etfOnMajorAsset(catalyst, c.market)) return SignalReason.etfMajorAsset;
   // news-v5 (#506): tin listing trên BTC / ETH không giao dịch.
   if (listingOnMajorAsset(catalyst, c.market)) return SignalReason.listingMajorAsset;
+  // news-v7 (#593): market công ty (ANT-USD) chỉ giao dịch tin công ty. Bài sản phẩm / không rõ đã bị bỏ khỏi ứng viên
+  // trước Claude (`companyGate`); kiểm lại ở đây để không bao giờ lọt.
+  if (isCompanyNewsMarket(c.market)) {
+    const kind = companyNewsKindOf(title, c.market);
+    if (kind === CompanyNewsKind.product) return SignalReason.productNews;
+    if (kind !== CompanyNewsKind.company) return SignalReason.notCompanyNews;
+  }
   return null;
+}
+
+/** #593: market lane chụp độ sâu sổ lệnh lúc quyết định. */
+const BOOK_DEPTH_MARKETS: ReadonlySet<string> = new Set(NEWS_RULES.bookDepthMarkets);
+
+/**
+ * news-v7 (#593, DEC-402 mục 6): loại tin (theo tiêu đề) của mỗi market công ty trong ứng viên; market không phải tin công
+ * ty bị bỏ khỏi danh sách gửi Claude (bài chỉ còn market đó thì bỏ trước Claude). Market khác không đổi.
+ */
+export function companyGate(
+  title: string | null,
+  candidates: readonly Candidate[],
+): {
+  kinds: { market: string; kind: CompanyNewsKind }[];
+  sendable: Candidate[];
+  blocked: SignalReason | null;
+} {
+  const kinds = candidates
+    .filter((x) => isCompanyNewsMarket(x.market))
+    .map((x) => ({ market: x.market, kind: companyNewsKindOf(title, x.market) }));
+  const off = new Set(kinds.filter((k) => k.kind !== CompanyNewsKind.company).map((k) => k.market));
+  const sendable = candidates.filter((x) => !off.has(x.market));
+  const blocked =
+    off.size === 0 || sendable.length > 0
+      ? null
+      : kinds.some((k) => k.kind === CompanyNewsKind.product)
+        ? SignalReason.productNews
+        : SignalReason.notCompanyNews;
+  return { kinds, sendable, blocked };
 }
 
 /**
@@ -535,6 +580,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       reason: SignalReason,
       classification: Record<string, unknown> | null,
       storyId: string | null = null,
+      extra: Record<string, unknown> = {},
     ) => {
       await db.transaction(async (tx) => {
         await tx
@@ -553,7 +599,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
             stage: SignalStage.understand,
             outcome: SignalOutcome.drop,
             reason,
-            detail: { ...classification, assetMapVersion: NEWS_ASSET_MAP_VERSION },
+            detail: { ...classification, ...extra, assetMapVersion: NEWS_ASSET_MAP_VERSION },
             at: now,
           },
         ]);
@@ -568,6 +614,17 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       await drop(SignalReason.classifierLate, null);
       continue;
     }
+    const parsed = candidateList.safeParse(a.candidates);
+    const allCandidates: Candidate[] = parsed.success ? parsed.data : [];
+    // news-v7 (#593): tin sản phẩm / không rõ của market công ty (ANT-USD) không bao giờ giao dịch; bài chỉ có market đó
+    // thì bỏ ngay, không gọi Claude ("read but not traded").
+    const gate = companyGate(a.title, allCandidates);
+    const companyInfo = gate.kinds.length === 0 ? {} : { companyNews: gate.kinds };
+    if (gate.blocked !== null) {
+      await drop(gate.blocked, null, null, companyInfo);
+      continue;
+    }
+    const candidates = gate.sendable;
     const left = cfg.claudeMaxCallsPerCycle - calls;
     if (left <= 0) continue; // chờ chu kỳ sau (FIFO)
     if (weightedInput(used) >= cfg.claudeDailyInputBudget) {
@@ -575,8 +632,6 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       await markSource(db, "claude", now, "daily_budget");
       continue;
     }
-    const parsed = candidateList.safeParse(a.candidates);
-    const candidates: Candidate[] = parsed.success ? parsed.data : [];
     // #375: đọc lại đồng hồ quanh lần classify (`now` là giờ bắt đầu chu kỳ, dùng chung cả chu kỳ).
     const claudeStartedAt = deps.now();
     const out = await deps.classifier.classify(
@@ -614,6 +669,7 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
       ...c,
       ruleVersion: NEWS_RULES.version,
       ...(small ? { smallTreasury: true } : {}),
+      ...companyInfo,
     };
     const candidate = candidates.find((x) => x.market === c.market);
     // Kiểm cấp bài (một lần cho cả bài, theo market chính như trước).
@@ -863,6 +919,10 @@ async function captureContexts(
     for (const s of group) {
       try {
         const q = await ctx.quote(s.candidate.market);
+        const book =
+          deps.bookDepth !== undefined && BOOK_DEPTH_MARKETS.has(s.candidate.market)
+            ? await deps.bookDepth(s.candidate.market)
+            : null;
         await capture(
           deps.db,
           {
@@ -871,6 +931,7 @@ async function captureContexts(
             direction: catalystRule(s.catalyst).direction,
             storyStartAt: storyStartAt ?? s.publishedAt,
             primary: s.primary,
+            ...(book === null ? {} : { book }),
           },
           ctx.now,
           typeof q === "string" ? null : q,
@@ -938,7 +999,14 @@ async function normalizeCollected(
   );
   for (const a of rows) {
     const m = matchedList.safeParse(a.matchedCurrencies);
-    const candidates = candidatesOf(m.success ? m.data : [], universe);
+    // #593: thêm market công ty (ANT-USD) khi bài nêu tên công ty mà SoSoValue không gắn tag; trùng thì giữ bản từ tag.
+    const tagged = candidatesOf(m.success ? m.data : [], universe);
+    const candidates = [
+      ...tagged,
+      ...textCandidatesOf(a.title, stripHtml(a.content ?? ""), universe).filter(
+        (x) => !tagged.some((y) => y.market === x.market),
+      ),
+    ].sort((x, y) => x.market.localeCompare(y.market));
     const dupOf = firstByHash.get(a.contentHash);
     let reason: SignalReason | null = null;
     if (now - a.publishedAt.getTime() > NEWS_RULES.maxArticleAgeHours * HOUR_MS)

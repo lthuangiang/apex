@@ -463,6 +463,13 @@
       "when": 1795701227524,
       "tag": "0065_rewards_watch_weekly",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1795844593604,
+      "tag": "0066_sr_context_book_depth",
+      "breakpoints": true
     }
   ]
 }

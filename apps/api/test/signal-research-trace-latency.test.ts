@@ -20,7 +20,7 @@ async function article(id: string, claudeDoneMs: number | null) {
     `insert into signal_articles (id, source, title, content, published_at, collected_at, matched_currencies, candidates, content_hash,
        status, rule_version, claude_started_at, claude_done_at)
      values ($1, 'Reuters', $1, 'Body', $2::timestamptz - interval '4 minutes', $2, '[{"symbol":"ETH","name":"Ethereum"}]',
-       '[{"symbol":"ETH","market":"ETH-USD","kind":"crypto"}]', $1, 'classified', 'news-v6', $3, $4)`,
+       '[{"symbol":"ETH","market":"ETH-USD","kind":"crypto"}]', $1, 'classified', 'news-v7', $3, $4)`,
     [
       id,
       at(30),
@@ -40,7 +40,7 @@ async function event(
 ) {
   await env.pool.query(
     `insert into signal_events (id, article_id, stage, outcome, reason, detail, trade_id, rule_version, at, decided_clock_at)
-     values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'news-v6', $7, $8)`,
+     values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'news-v7', $7, $8)`,
     [
       articleId,
       stage,
@@ -62,7 +62,7 @@ async function trade(articleId: string, decidedMs: number, openedMs: number): Pr
        rule_version, decided_clock_at, opened_clock_at)
      values (gen_random_uuid(), 'news', 'live', $1, 'ETH-USD', 'ETH', 'etf_approved', 'long', 500, 0.15, 3400, 3400,
        0.01, 0.05, 0.25, 1, 1.6, 0.8, 3454, 3372, $2::timestamptz + interval '3 days', $2, $2, $2, 'medium', '[]', false, 'book',
-       'open', 'news-v6', $3, $4) returning id`,
+       'open', 'news-v7', $3, $4) returning id`,
     [articleId, at(30), at(30, decidedMs), at(30, openedMs)],
   );
   const id = r.rows[0]?.id;

@@ -1,4 +1,4 @@
-import { srBookRequestSchema, type SrBookReply } from "@drift/shared";
+import { sideNotional, srBookRequestSchema, type SrBookReply } from "@drift/shared";
 
 // #507 (DEC-384): trả lời NATS request `sr.book.request` của lane research. Lane không gọi SoDEX (DEC-322):
 // marketdata đọc sổ lệnh REST một lần cho market perps đang giao dịch và trả giá mua / bán tốt nhất. Kết quả giữ ngắn
@@ -26,7 +26,16 @@ export function srBookResponder(deps: SrBookDeps): (raw: string) => Promise<SrBo
       const bid = b.bids[0]?.[0];
       const ask = b.asks[0]?.[0];
       if (bid === undefined || ask === undefined) return { ok: false, reason: "empty" };
-      return { ok: true, s: market, b: bid, a: ask, at: deps.now() };
+      // #593: kèm độ sâu 10 mức mỗi phía ("Book at the time" của lane); cùng một lần đọc, không tốn thêm hạn mức.
+      return {
+        ok: true,
+        s: market,
+        b: bid,
+        a: ask,
+        at: deps.now(),
+        bn: sideNotional(b.bids),
+        an: sideNotional(b.asks),
+      };
     } catch {
       return { ok: false, reason: "error" };
     }

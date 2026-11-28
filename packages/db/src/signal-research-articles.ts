@@ -9,6 +9,7 @@ import {
   type ResearchArticle,
   type ResearchArticlesPage,
   type ResearchArticlesQuery,
+  type ResearchBookDepth,
   type ResearchArticleTrace,
   type ResearchNewArticles,
   type ResearchNewArticlesQuery,
@@ -354,7 +355,15 @@ function articleItem(
     ...(s.traded_markets !== null && s.traded_markets.length >= 2
       ? { tradedAssets: s.traded_markets }
       : {}),
+    book: bookOf(context),
   };
+}
+
+/** #593: "Book at the time" từ snapshot Context; thiếu một phía (không chụp / không đọc được sổ) → null. */
+function bookOf(context: typeof signalContexts.$inferSelect | undefined): ResearchBookDepth | null {
+  if (context === undefined || context.bookBidsUsd === null || context.bookAsksUsd === null)
+    return null;
+  return { bidsUsd: decOut(context.bookBidsUsd), asksUsd: decOut(context.bookAsksUsd) };
 }
 
 // ── Feed ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -399,6 +408,11 @@ export async function loadSignalResearchArticles(
   if (query.show === "claude") filters.push(sql`sent_to_claude`);
   if (query.stage !== undefined) filters.push(sql`stage = ${query.stage}`);
   if (query.reason !== undefined) filters.push(sql`reason = ${query.reason}`);
+  // #593: tab market (ứng viên sau Normalize có market này).
+  if (query.market !== undefined)
+    filters.push(
+      sql`id in (select m.id from signal_articles m where jsonb_typeof(m.candidates) = 'array' and m.candidates @> ${JSON.stringify([{ market: query.market }])}::jsonb)`,
+    );
   const where = filters.length === 0 ? sql`true` : sql.join(filters, sql` and `);
 
   const counts = await q.execute<{ total: string | number; n_all: string | number }>(

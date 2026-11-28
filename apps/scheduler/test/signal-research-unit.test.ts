@@ -453,9 +453,9 @@ describe("classifier answer", () => {
 });
 
 describe("classifier prompt news-classifier-v7 (#530)", () => {
-  it("ships with rules news-v6 (event split)", () => {
+  it("ships with rules news-v7 (company news, #593) on the same reader", () => {
     expect(NEWS_CLASSIFIER.promptVersion).toBe("news-classifier-v7");
-    expect(NEWS_RULES.version).toBe("news-v6");
+    expect(NEWS_RULES.version).toBe("news-v7");
   });
   it("one event about several coins: market first, the others in other_markets; never for recaps", () => {
     expect(CLASSIFIER_SYSTEM).toContain(
