@@ -1,15 +1,7 @@
 "use client";
 
-import {
-  dec,
-  ErrorCode,
-  WEALTH_BUSY_REASON,
-  wealthMeResponseSchema,
-  type WealthHolding,
-  type WealthMeResponse,
-} from "@drift/shared";
+import { dec, type WealthHolding, type WealthMeResponse } from "@drift/shared";
 import { DataTable, Skeleton } from "@drift/ui";
-import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
@@ -17,8 +9,7 @@ import { NotConnected } from "@/components/not-connected";
 import { Card } from "@/components/workspace";
 // Cùng URL "Open SoDEX Wealth ↗" và cùng query key với dải "Your SoDEX Wealth" của `/markets/us` (#591): một lần đọc.
 import { SODEX_WEALTH_URL } from "@/features/us-market/links";
-import { WEALTH_ME_KEY } from "@/features/us-market/queries";
-import { api, ApiError } from "@/lib/api";
+import { isWealthBusy, useWealthMe } from "@/features/us-market/queries";
 import { formatAmount, formatDateTime, formatMoney } from "@/lib/format";
 
 // Portfolio › My Wealth (#592, DEC-402, bản phác `docs/mockups/us-market` màn 05): CHỈ ĐỌC những gì SoDEX Wealth trả
@@ -30,26 +21,10 @@ import { formatAmount, formatDateTime, formatMoney } from "@/lib/format";
 type WealthOk = Extract<WealthMeResponse, { status: "ok" }>;
 type Activity = Extract<WealthOk["activity"], { status: "ok" }>["items"][number];
 
-export function useMyWealth(enabled: boolean) {
-  return useQuery({
-    queryKey: WEALTH_ME_KEY,
-    queryFn: () => api("GET", "/api/v1/wealth/me", wealthMeResponseSchema),
-    // api cache 90 s theo địa chỉ: đọc lại sớm hơn chỉ nhận lại bản cache.
-    staleTime: 60_000,
-    refetchInterval: 90_000,
-    // Busy (429) không thử lại ngay: lần đọc kế tiếp theo `refetchInterval` hoặc nút thử lại.
-    retry: (count, error) => !isBusy(error) && count < 1,
-    enabled,
-  });
-}
+/** Cùng hook với dải "Your SoDEX Wealth" của US Market (#588): một key, một nhịp đọc. */
+export const useMyWealth = (enabled: boolean) => useWealthMe(enabled);
 
-export function isBusy(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    error.code === ErrorCode.rateLimited &&
-    error.details.reason === WEALTH_BUSY_REASON
-  );
-}
+export const isBusy = isWealthBusy;
 
 /** "$1,234.56"; `signed` thêm + / −. null → null (người gọi hiện "Not provided"). */
 export function usd(value: string | null, signed = false): string | null {
