@@ -8,11 +8,13 @@ import {
   US_MARKET_ANTHROPIC,
   US_MARKET_CACHE_MS,
   WEALTH_ACTIVITY_LIMIT,
+  WEALTH_BUSY_REASON,
   type UsMarketEngine,
   type UsMarketRow,
   type UsMarketsResponse,
   type WealthFund,
   type WealthFundRow,
+  type WealthMeInclude,
   type WealthMeResponse,
 } from "@drift/shared";
 import {
@@ -63,12 +65,49 @@ export interface UsMarketDeps {
   wealthCacheMs?: number;
 }
 
-/** Cache vị thế Wealth theo địa chỉ (DEC-402: ngắn, không lưu). */
-export const WEALTH_ME_CACHE_MS = 30_000;
-/** Số địa chỉ tối đa giữ trong cache; vượt thì bỏ mục cũ nhất. */
+/**
+ * Cache vị thế Wealth theo địa chỉ (DEC-402: ngắn, không lưu). 90 s (#592: 60–120 s): trần riêng 400 weight / phút, mỗi
+ * lượt mặc định 4 lời gọi × 20, nên cache ngắn hơn sẽ ăn hết ngân sách khi vài người cùng mở.
+ */
+export const WEALTH_ME_CACHE_MS = 90_000;
+/** Số địa chỉ tối đa giữ trong mỗi cache (phần chính, mua định kỳ, PnL history); vượt thì bỏ mục cũ nhất. */
 const WEALTH_ME_CACHE_MAX = 2000;
+/** Không có `retryAfterMs` từ bucket thì báo chờ chừng này. */
+const WEALTH_BUSY_DEFAULT_RETRY_MS = 30_000;
 
 type Settled<T> = { ok: true; value: T } | { ok: false };
+
+type WealthOk = Extract<WealthMeResponse, { status: "ok" }>;
+type WealthBase = Omit<WealthOk, "status" | "recurringBuys" | "pnlHistory">;
+type WealthRecurring = NonNullable<WealthOk["recurringBuys"]>;
+type WealthHistory = NonNullable<WealthOk["pnlHistory"]>;
+
+/** Cache theo địa chỉ, gộp lời gọi đang chạy; lỗi (kể cả busy) không cache. Vượt `max` mục thì bỏ mục cũ nhất. */
+function addressCache<T>(ttlMs: number, max: number, now: () => number) {
+  const entries = new Map<string, { value: T; expiresAt: number }>();
+  const inflight = new Map<string, Promise<T>>();
+  return (key: string, load: () => Promise<T>): Promise<T> => {
+    const hit = entries.get(key);
+    if (hit !== undefined && hit.expiresAt > now()) return Promise.resolve(hit.value);
+    const pending = inflight.get(key);
+    if (pending !== undefined) return pending;
+    const promise = load()
+      .then((value) => {
+        entries.delete(key);
+        entries.set(key, { value, expiresAt: now() + ttlMs });
+        if (entries.size > max) {
+          const oldest = entries.keys().next();
+          if (oldest.done !== true) entries.delete(oldest.value);
+        }
+        return value;
+      })
+      .finally(() => {
+        inflight.delete(key);
+      });
+    inflight.set(key, promise);
+    return promise;
+  };
+}
 
 function errorCodeOf(error: unknown): string {
   return error instanceof AppError ? error.code : "unknown";
@@ -76,7 +115,22 @@ function errorCodeOf(error: unknown): string {
 
 export interface UsMarketService {
   markets(): Promise<UsMarketsResponse>;
-  wealthMe(userId: string): Promise<WealthMeResponse>;
+  /** `include`: phần đọc thêm (#592); mặc định không đọc `recurring-buys` / `pnl-history`. */
+  wealthMe(userId: string, include?: readonly WealthMeInclude[]): Promise<WealthMeResponse>;
+}
+
+/** Hết ngân sách weight của chính DeskLabs (#592): 429 kèm `retryAfterMs`, không cache. */
+function busyError(results: readonly WealthReadResult<unknown>[]): AppError | null {
+  const waits = results.flatMap((r) =>
+    r.kind !== "ok" && r.reason === "budget"
+      ? [r.retryAfterMs ?? WEALTH_BUSY_DEFAULT_RETRY_MS]
+      : [],
+  );
+  if (waits.length === 0) return null;
+  return new AppError(ErrorCode.rateLimited, "SoDEX Wealth is busy. Try again shortly.", {
+    reason: WEALTH_BUSY_REASON,
+    retryAfterMs: Math.max(...waits),
+  });
 }
 
 export function createUsMarketService(deps: UsMarketDeps): UsMarketService {
@@ -84,8 +138,10 @@ export function createUsMarketService(deps: UsMarketDeps): UsMarketService {
   const marketsCache = new TtlCache<UsMarketsResponse>(ttl, () => deps.now().getTime());
   const fundsCache = new TtlCache<WealthReadResult<WealthFund[]>>(ttl, () => deps.now().getTime());
   const meTtl = deps.wealthCacheMs ?? WEALTH_ME_CACHE_MS;
-  const meCache = new Map<string, { value: WealthMeResponse; expiresAt: number }>();
-  const meInflight = new Map<string, Promise<WealthMeResponse>>();
+  const clock = () => deps.now().getTime();
+  const baseCache = addressCache<WealthBase>(meTtl, WEALTH_ME_CACHE_MAX, clock);
+  const recurringCache = addressCache<WealthRecurring>(meTtl, WEALTH_ME_CACHE_MAX, clock);
+  const historyCache = addressCache<WealthHistory>(meTtl, WEALTH_ME_CACHE_MAX, clock);
 
   const funds = () =>
     fundsCache.get("all", async () => {
@@ -243,29 +299,31 @@ export function createUsMarketService(deps: UsMarketDeps): UsMarketService {
     return account?.address ?? null;
   }
 
-  async function loadMe(address: string): Promise<WealthMeResponse> {
+  function warnFailed(parts: Record<string, WealthReadResult<unknown>>): void {
+    const failed = Object.entries(parts)
+      .filter(([, r]) => r.kind !== "ok")
+      .map(([part, r]) => `${part}:${r.kind === "ok" ? "" : r.reason}`);
+    if (failed.length > 0) deps.log.warn({ parts: failed }, "wealth: read failed");
+  }
+
+  /** Phần chính: 4 lời gọi Wealth theo địa chỉ (pnl, positions, in-flight, fund-details) + danh sách quỹ dùng chung. */
+  async function loadBase(address: string): Promise<WealthBase> {
     const readAt = deps.now();
-    const [pnl, positions, inFlight, details, recurring, history, fundList] = await Promise.all([
+    const [pnl, positions, inFlight, details, fundList] = await Promise.all([
       deps.wealth.getPnl(address),
       deps.wealth.getPositions(address),
       deps.wealth.getInFlight(address),
       deps.wealth.getFundDetails(address),
-      deps.wealth.getRecurringBuys(address),
-      deps.wealth.getPnlHistory(address, { interval: "1d", range: "1M" }),
       funds(),
     ]);
-    const failed = Object.entries({ positions, inFlight, details, recurring, history })
-      .filter(([, r]) => r.kind !== "ok")
-      .map(([part, r]) => `${part}:${r.kind === "ok" ? "" : r.reason}`);
-    if (failed.length > 0) deps.log.warn({ parts: failed }, "wealth: read failed");
-    if (pnl.kind !== "ok") {
-      deps.log.warn({ part: "pnl", reason: pnl.reason }, "wealth: read failed");
-      if (pnl.reason === "budget")
-        throw new AppError(ErrorCode.rateLimited, "SoDEX is busy. Try again shortly.");
+    warnFailed({ pnl, positions, inFlight, details });
+    // Hết ngân sách ở bất kỳ phần nào: trạng thái busy riêng (không hiện "Not provided" cho phần đó).
+    const busy = busyError([pnl, positions, inFlight, details]);
+    if (busy !== null) throw busy;
+    if (pnl.kind !== "ok")
       throw new AppError(ErrorCode.sodexUnavailable, "SoDEX Wealth is not available right now.", {
         reason: pnl.reason,
       });
-    }
 
     const fundById = new Map(
       fundList.kind === "ok" ? fundList.data.map((f) => [f.fundId, f] as const) : [],
@@ -277,7 +335,6 @@ export function createUsMarketService(deps: UsMarketDeps): UsMarketService {
       fundById.get(fundId)?.name ?? posById.get(fundId)?.name ?? null;
     const p = pnl.data;
     return {
-      status: "ok",
       readAt: readAt.toISOString(),
       summary: {
         currency: p.currency,
@@ -345,62 +402,79 @@ export function createUsMarketService(deps: UsMarketDeps): UsMarketService {
                 proceeds: e.proceeds,
               })),
             },
-      recurringBuys:
-        recurring.kind !== "ok"
-          ? { status: "not_provided" }
-          : {
-              status: "ok",
-              items: recurring.data.plans.map((plan) => ({
-                planIndex: plan.planIndex,
-                fundId: plan.fundId,
-                name: plan.fundId === null ? null : nameOf(plan.fundId),
-                amount: plan.amount,
-                planType: plan.planType,
-                status: plan.status,
-                nextScheduledAt: plan.nextScheduledAt,
-                successfulExecutionCount: plan.successfulExecutionCount,
-                totalBuyAmount: plan.totalBuyAmount,
-                avgCost: plan.avgCost,
-              })),
-            },
-      pnlHistory:
-        history.kind !== "ok"
-          ? { status: "not_provided" }
-          : {
-              status: "ok",
-              items: history.data.points.map((pt) => ({
-                ts: pt.ts,
-                pnl: pt.pnl,
-                totalValue: pt.totalValue,
-              })),
-            },
     };
   }
 
-  async function wealthMe(userId: string): Promise<WealthMeResponse> {
+  /** Tên quỹ cho phần thêm: danh sách quỹ dùng chung (đã cache), không gọi thêm theo địa chỉ. */
+  async function fundNames(): Promise<Map<string, string>> {
+    const fundList = await funds();
+    return new Map(
+      fundList.kind === "ok" ? fundList.data.map((f) => [f.fundId, f.name] as const) : [],
+    );
+  }
+
+  async function loadRecurringBuys(address: string): Promise<WealthRecurring> {
+    const [recurring, names] = await Promise.all([
+      deps.wealth.getRecurringBuys(address),
+      fundNames(),
+    ]);
+    warnFailed({ recurring });
+    const busy = busyError([recurring]);
+    if (busy !== null) throw busy;
+    if (recurring.kind !== "ok") return { status: "not_provided" };
+    return {
+      status: "ok",
+      items: recurring.data.plans.map((plan) => ({
+        planIndex: plan.planIndex,
+        fundId: plan.fundId,
+        name: plan.fundId === null ? null : (names.get(plan.fundId) ?? null),
+        amount: plan.amount,
+        planType: plan.planType,
+        status: plan.status,
+        nextScheduledAt: plan.nextScheduledAt,
+        successfulExecutionCount: plan.successfulExecutionCount,
+        totalBuyAmount: plan.totalBuyAmount,
+        avgCost: plan.avgCost,
+      })),
+    };
+  }
+
+  async function loadPnlHistory(address: string): Promise<WealthHistory> {
+    const history = await deps.wealth.getPnlHistory(address, { interval: "1d", range: "1M" });
+    warnFailed({ history });
+    const busy = busyError([history]);
+    if (busy !== null) throw busy;
+    if (history.kind !== "ok") return { status: "not_provided" };
+    return {
+      status: "ok",
+      items: history.data.points.map((pt) => ({
+        ts: pt.ts,
+        pnl: pt.pnl,
+        totalValue: pt.totalValue,
+      })),
+    };
+  }
+
+  async function wealthMe(
+    userId: string,
+    include: readonly WealthMeInclude[] = [],
+  ): Promise<WealthMeResponse> {
     const address = await connectedAddress(userId);
     if (address === null) return { status: "not_connected" };
     const key = address.toLowerCase();
-    const nowMs = deps.now().getTime();
-    const hit = meCache.get(key);
-    if (hit !== undefined && hit.expiresAt > nowMs) return hit.value;
-    const pending = meInflight.get(key);
-    if (pending !== undefined) return pending;
-    const promise = loadMe(key)
-      .then((value) => {
-        meCache.delete(key);
-        meCache.set(key, { value, expiresAt: deps.now().getTime() + meTtl });
-        if (meCache.size > WEALTH_ME_CACHE_MAX) {
-          const oldest = meCache.keys().next();
-          if (oldest.done !== true) meCache.delete(oldest.value);
-        }
-        return value;
-      })
-      .finally(() => {
-        meInflight.delete(key);
-      });
-    meInflight.set(key, promise);
-    return promise;
+    const wantRecurring = include.includes("recurringBuys");
+    const wantHistory = include.includes("pnlHistory");
+    const [base, recurringBuys, pnlHistory] = await Promise.all([
+      baseCache(key, () => loadBase(key)),
+      wantRecurring ? recurringCache(key, () => loadRecurringBuys(key)) : undefined,
+      wantHistory ? historyCache(key, () => loadPnlHistory(key)) : undefined,
+    ]);
+    return {
+      status: "ok",
+      ...base,
+      ...(recurringBuys === undefined ? {} : { recurringBuys }),
+      ...(pnlHistory === undefined ? {} : { pnlHistory }),
+    };
   }
 
   return {
