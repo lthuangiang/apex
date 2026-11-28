@@ -1,6 +1,7 @@
-import { AppError, ErrorCode } from "@drift/shared";
+import { AppError, ErrorCode, wealthMeQuerySchema } from "@drift/shared";
 import type { FastifyInstance } from "fastify";
 
+import { parseOrThrow } from "../../lib/http";
 import { requireAuth } from "../../plugins/session";
 
 import type { UsMarketService } from "./service";
@@ -25,9 +26,11 @@ export function registerUsMarketRoutes(app: FastifyInstance, options: UsMarketRo
   });
 
   // Theo master wallet của tài khoản đang đăng nhập (sodex_accounts connected); không nhận địa chỉ từ ngoài.
+  // `?include=recurringBuys,pnlHistory` mới đọc hai phần đó (#592). Hết ngân sách weight → 429 kèm `retryAfterMs`.
   app.get("/api/v1/wealth/me", async (request) => {
     ensureEnabled();
     const auth = requireAuth(request);
-    return options.service.wealthMe(auth.userId);
+    const q = parseOrThrow(wealthMeQuerySchema, request.query);
+    return options.service.wealthMe(auth.userId, q.include);
   });
 }
