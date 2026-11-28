@@ -127,6 +127,10 @@ services:
       REWARDS_WATCH_ENABLED: ${REWARDS_WATCH_ENABLED:-false}
       # #558 / DEC-398: aud được phép của JWT rewards (chỉ api); trống = từ chối mọi token (DEPLOY 2.23).
       REWARDS_JWT_AUD_ALLOW: ${REWARDS_JWT_AUD_ALLOW:-}
+      # #594 / DEC-404: cảnh báo SoDEX Wealth; cùng giá trị cho api và scheduler. Mặc định tắt, team vẫn dùng được (DEPLOY 2.26).
+      WEALTH_WATCH_ENABLED: ${WEALTH_WATCH_ENABLED:-false}
+      # #589 / #594: trần Wealth chung (weight / phút); cùng giá trị cho api và scheduler (DEPLOY 2.24, 2.26).
+      WEALTH_READ_MAX_WEIGHT_PER_MIN: ${WEALTH_READ_MAX_WEIGHT_PER_MIN:-400}
     depends_on:
       <<: *app-deps
       signer: { condition: service_healthy }
@@ -241,6 +245,11 @@ services:
       # #558: chu kỳ đọc mỗi user (phút, 5–60) và trần weight / phút riêng của rewards (DEPLOY 2.23).
       REWARDS_WATCH_INTERVAL_MIN: ${REWARDS_WATCH_INTERVAL_MIN:-15}
       REWARDS_WATCH_MAX_WEIGHT_PER_MIN: ${REWARDS_WATCH_MAX_WEIGHT_PER_MIN:-120}
+      # #594 / DEC-404: cảnh báo SoDEX Wealth; cùng giá trị với api. Mặc định tắt (job chỉ đọc cho team). Chu kỳ 5–60 phút,
+      # trần Wealth chung với api, job chỉ lấy khi còn trên 50% (DEPLOY 2.26).
+      WEALTH_WATCH_ENABLED: ${WEALTH_WATCH_ENABLED:-false}
+      WEALTH_WATCH_INTERVAL_MIN: ${WEALTH_WATCH_INTERVAL_MIN:-10}
+      WEALTH_READ_MAX_WEIGHT_PER_MIN: ${WEALTH_READ_MAX_WEIGHT_PER_MIN:-400}
       # #558: mTLS tới signer để giải mã phiên rewards. Dùng chung cert của api (DEC-398): volume cert prod không có
       # ca.key nên không cấp lẻ scheduler.crt được; khi tạo lại toàn bộ cert (DEPLOY 2.4.1) thì chuyển sang scheduler.crt.
       SIGNER_URL: https://signer:8090

@@ -47,8 +47,11 @@
 | `daily` → **Morning brief** (Desk AI, 08:00 giờ địa phương, DEC-165) | tắt | tắt | **bật sẵn**, tắt được | không |
 | `fills` | tắt | tắt | tắt | không |
 | `copyTrading` | bật | — | tắt, user tự bật (DEC-170 thay DEC-163 §11 cho Telegram) | không |
+| `wealth` → **SoDEX Wealth** (#594, DEC-404) | bật | tắt | bật (khi đã kết nối) | không |
 
 Nhóm `copyTrading` gồm `leader_big_move`, `leader_position` (DEC-209) và tin của bot copy tiền thật `copy_bot_opened`, `copy_bot_skipped` (DEC-212): mỗi lệnh mở khớp một tin (chống trùng theo `dedupeKey`), Skipped tối đa 1 tin / bot / market / 10 phút; tin Telegram ghi "Your copy bot", không tên bot, không địa chỉ ví.
+
+Nhóm `wealth` (#594, DEC-404) gồm `wealth_request_settled` (một yêu cầu nạp / subscribe / redeem / mua định kỳ trên SoDEX Wealth chuyển sang `completed` / `failed` / `rejected` / `cancelled`) và `wealth_recurring_issue` (một kỳ mua định kỳ của plan ACTIVE bị bỏ qua / lỗi). Chỉ có khi người dùng bật "Alerts" ở Portfolio › My Wealth và dùng được tính năng (`WEALTH_WATCH_ENABLED` hoặc role team, US Market bật); nhóm chỉ hiện trong Settings với người đó. Tin ghi tên quỹ, loại, trạng thái và số tiền đúng như SoDEX trả; không % lợi nhuận, không lời khuyên; nút "Open My Wealth" (`/portfolio?tab=wealth`). Lượt đầu chỉ đặt mốc (không báo lịch sử cũ); chống trùng theo `dedupeKey` (`wf:` / `wx:` + khoá đã băm + trạng thái).
 
 Morning brief do Desk AI viết theo luật fact (DEC-164/165). Khi LLM tắt hoặc lỗi thì gửi câu mẫu cố định. Mọi con số trong brief phải khớp một fact (luật DEC-165), không thì dùng câu mẫu.
 

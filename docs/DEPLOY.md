@@ -657,6 +657,20 @@ Không có biến mới cho `api` hay `marketdata` từ v2.12.0 (đã grep zod e
 - Sau deploy: Decisions "Order reduced" / "Waiting: order book empty" / "Waiting: order book too thin" chỉ được xuất hiện ở bot trên market trong danh sách; log engine `entry held: order book depth unknown` là đọc sổ lỗi (lệnh vào chờ, lệnh đóng vẫn đi).
 - Không migration.
 
+### 2.26 Cảnh báo SoDEX Wealth: cờ `WEALTH_WATCH_ENABLED` và migration `0067_wealth_watch` (#594, DEC-404)
+
+| Biến | Service | Ý nghĩa |
+|---|---|---|
+| `WEALTH_WATCH_ENABLED` | api + scheduler (cùng giá trị) | **Mới (#594).** Công tắc hệ thống của cảnh báo SoDEX Wealth (công tắc "Alerts" ở Portfolio › My Wealth, nhóm thông báo `wealth`). Mặc định **`false`**: user thường không thấy công tắc (`/api/v1/features.wealthAlerts` = false, route `/api/v1/wealth/watch` trả 404, nhóm không có trong Settings), **role team vẫn dùng được** và job scheduler chỉ đọc cho user role team. `true` = mọi user (khi `US_MARKET_ENABLED` cũng bật) |
+| `WEALTH_WATCH_INTERVAL_MIN` | scheduler | **Mới (#594), tuỳ chọn.** Chu kỳ đọc mỗi user, phút, `5`–`60`, mặc định `10`. Sai giá trị thì dùng `10` và log một dòng warn `WEALTH_WATCH_INTERVAL_MIN invalid` lúc khởi động |
+| `WEALTH_READ_MAX_WEIGHT_PER_MIN` | api + scheduler (cùng giá trị) | Đã có ở api (#589, mục 2.24). Scheduler đọc cùng biến để job và `/wealth/me` dùng **chung một trần** (bucket `rl:sodex:wealth:<egress>`). Job chỉ lấy token khi trần còn **trên 50%** (dành phần còn lại cho người đang xem) và khi bucket IP chung còn trên 50% |
+
+- **Đọc gì:** dữ liệu Wealth công khai theo master wallet của user đã bật (không token, không chữ ký, allowlist GET): `users/{a}/fund-details` mỗi lượt; `users/{a}/recurring-buys?status=active` chỉ khi user có plan (hoặc fund-details có dòng mua định kỳ; chưa có plan thì kiểm lại tối đa mỗi ngày một lần); `users/{a}/recurring-buys/{p}/executions` cho từng plan ACTIVE; `funds` (tên quỹ) chỉ khi có tin cần gửi, cache 30 phút. Mỗi lượt một user: 20 + (20 nếu có plan) + 20 × số plan ACTIVE weight (giả định 20 / lời gọi chưa đo). Hết ngân sách thì dời sang lượt sau (tick 30 s), không tính lỗi. Lỗi khác lùi user đó (chu kỳ × 2^lần, tối đa 6 giờ). `recurring-buys` trả `code -1` = không có kế hoạch (không tính lỗi).
+- **Lưu gì:** bảng `wealth_watch`, mỗi user một dòng: khoá đã băm của từng dòng SoDEX + trạng thái đã thấy, cờ "có plan", lịch đọc. Không vị thế, không số tiền, không địa chỉ. Xoá khi user tắt, ngắt SoDEX, xoá tài khoản (và job tự xoá dòng nếu tài khoản SoDEX không còn kết nối).
+- **Log:** giá trị SoDEX lạ (trạng thái fund-details, trạng thái / `reasonCode` của kỳ mua) không báo, chỉ log `wealth watch: unknown SoDEX value, not alerted` với `field` + `value` + `userId` (không địa chỉ ví). Mỗi giờ một dòng `wealth watch cycle` (chỉ số đếm). Trước khi bật cho mọi user: chủ sản phẩm bật "Alerts" bằng tài khoản team của mình, tạo / đợi một yêu cầu Wealth và một kỳ mua định kỳ, rồi xem log này để chốt các giá trị **[confirm]** ở `packages/shared/src/api/wealth-watch.ts` (`WEALTH_EXECUTION_ALERT_STATUSES`, `WEALTH_EXECUTION_REASONS`).
+- **Migration `0067_wealth_watch`:** chỉ thêm bảng; bản api / scheduler trước không đọc bảng này, nên migrate trước hoặc rollback không cần làm gì.
+- **Bật cho mọi user:** đặt `WEALTH_WATCH_ENABLED=true` trong `/opt/drift/.env`, rồi `cd /opt/drift && docker compose up -d api scheduler` (luôn đổi cả hai). Compose trên VPS thiếu các dòng `WEALTH_WATCH_*` / `WEALTH_READ_MAX_WEIGHT_PER_MIN` trong khối `api` và `scheduler` thì thêm theo mẫu `deploy/server/docker-compose.yml` (thiếu dòng thì dùng mặc định: tắt, 10 phút, 400).
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push image các app đổi (app không đổi được gắn tag mới vào image của tag trước) → PM trả tag (`docs/RELEASE.md`).
