@@ -115,6 +115,8 @@ export const SETTINGS_GROUP_ORDER: readonly NotificationGroup[] = [
   "daily",
   "fills",
   "copyTrading",
+  // #594: chỉ hiện khi api trả nhóm này (user dùng được cảnh báo SoDEX Wealth).
+  "wealth",
   // Chỉ role team thấy (API chỉ trả nhóm này cho team, DEC-184).
   "teamOps",
 ];

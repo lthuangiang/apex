@@ -8,6 +8,9 @@ import {
   rewardsDrawWonDataSchema,
   rewardsWeekPointsDataSchema,
   rewardsWeekSnapshotDataSchema,
+  formatWealthAmount,
+  wealthRecurringIssueDataSchema,
+  wealthRequestSettledDataSchema,
 } from "@drift/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -256,6 +259,47 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
               : total === null
                 ? t("panel.rewards.rank", { rank })
                 : t("panel.rewards.rankOf", { rank, total }),
+        };
+      }
+      // SoDEX Wealth (#594, DEC-404): tên quỹ, loại, trạng thái, số tiền đúng như SoDEX trả. Sai dạng → câu chung.
+      case "wealth_request_settled": {
+        const d = wealthRequestSettledDataSchema.safeParse(n.data);
+        if (!d.success) return { title: t("types.wealth_request_settled"), body: null };
+        const x = d.data;
+        const fund = x.fundName ?? x.fundId;
+        const amount =
+          x.what === "redeem" ? formatWealthAmount(x.shares) : formatWealthAmount(x.cost);
+        return {
+          title: t(`panel.wealth.settled.${x.status}`, {
+            what: t(`panel.wealth.what.${x.what}`),
+            fund,
+          }),
+          body: [
+            ...(amount === null
+              ? []
+              : [
+                  x.what === "redeem"
+                    ? t("panel.wealth.shares", { shares: amount })
+                    : t("panel.wealth.usd", { amount }),
+                ]),
+            t("panel.wealth.source"),
+          ].join(" · "),
+        };
+      }
+      case "wealth_recurring_issue": {
+        const d = wealthRecurringIssueDataSchema.safeParse(n.data);
+        if (!d.success) return { title: t("types.wealth_recurring_issue"), body: null };
+        const x = d.data;
+        const amount = formatWealthAmount(x.amount);
+        return {
+          title: t(`panel.wealth.recurring.${x.status}`, {
+            fund: x.fundName ?? x.fundId ?? t("panel.wealth.aFund"),
+          }),
+          body: [
+            t("panel.wealth.scheduled", { date: x.scheduledDate }),
+            ...(amount === null ? [] : [t("panel.wealth.usd", { amount })]),
+            t("panel.wealth.source"),
+          ].join(" · "),
         };
       }
       case "copy_bot_skipped": {

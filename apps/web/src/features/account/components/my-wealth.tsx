@@ -21,6 +21,8 @@ import { WEALTH_ME_KEY } from "@/features/us-market/queries";
 import { api, ApiError } from "@/lib/api";
 import { formatAmount, formatDateTime, formatMoney } from "@/lib/format";
 
+import { WealthAlertsCard } from "./wealth-alerts";
+
 // Portfolio › My Wealth (#592, DEC-402, bản phác `docs/mockups/us-market` màn 05): CHỈ ĐỌC những gì SoDEX Wealth trả
 // cho master wallet của tài khoản (`GET /api/v1/wealth/me`, mặc định không đọc recurring-buys / pnl-history).
 // Quy tắc 1: không có nút nạp / rút / chuyển. Quy tắc 8: trường null hiện "Not provided", không bao giờ "0"; ví không
@@ -444,7 +446,8 @@ export function MyWealthView({ query }: { query: ReturnType<typeof useMyWealth> 
         <div className="flex min-w-0 flex-[1.6_1_480px] flex-col">
           <EmptyWealth />
         </div>
-        <div className="flex min-w-0 flex-[1_1_300px] flex-col">
+        <div className="flex min-w-0 flex-[1_1_300px] flex-col gap-5">
+          <WealthAlertsCard />
           <CanDo />
         </div>
       </div>
@@ -458,6 +461,7 @@ export function MyWealthView({ query }: { query: ReturnType<typeof useMyWealth> 
           <ActivityTable w={w} />
         </div>
         <div className="flex min-w-0 flex-[1_1_300px] flex-col gap-5">
+          <WealthAlertsCard />
           <CanDo />
         </div>
       </div>

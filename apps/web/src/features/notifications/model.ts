@@ -139,6 +139,10 @@ export function targetOf(n: Pick<NotificationItem, "type" | "data">, aiDesk: boo
     case "rewards_week_snapshot":
     case "rewards_week_points":
       return "/rewards";
+    // SoDEX Wealth (#594): Portfolio › My Wealth.
+    case "wealth_request_settled":
+    case "wealth_recurring_issue":
+      return "/portfolio?tab=wealth";
   }
 }
 
