@@ -1,4 +1,4 @@
-import { dec, Decimal, mul, Strategy, sum } from "@drift/shared";
+import { copyMarkets, dec, Decimal, mul, Strategy, sum } from "@drift/shared";
 
 import { safetyOffsetPct } from "./common/dca-math";
 import { gridPrices } from "./common/grid";
@@ -357,11 +357,8 @@ export function copyLowestLeverage(c: Readonly<Record<string, unknown>>): number
   return levs.length === 0 ? base : Math.min(...levs);
 }
 
-/** Market của bot copy: `markets` (DEC-163), hoặc `market` của config cũ. */
-export function copyMarkets(c: Readonly<Record<string, unknown>>): string[] {
-  if (Array.isArray(c.markets)) return c.markets.filter((m): m is string => typeof m === "string");
-  return typeof c.market === "string" ? [c.market] : [];
-}
+/** Market của bot copy (`markets`, DEC-163, hoặc `market` của config cũ). Định nghĩa ở `@drift/shared`. */
+export { copyMarkets };
 
 /**
  * Vốn của bot theo cấu hình (cột Capital ở Strategy Lab; tin "Bot started" gửi team, DEC-191). TWAP

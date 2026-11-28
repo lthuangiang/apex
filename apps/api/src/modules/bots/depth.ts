@@ -1,17 +1,20 @@
-import { AppError, dec, ErrorCode } from "@drift/shared";
-import type { SodexRestClient } from "@drift/sodex";
 import {
-  DEPTH_CAP_LEVELS,
+  AppError,
+  dec,
+  DEPTH_LEVELS,
+  ErrorCode,
   inDepthCapScope,
-  parseDepthCapMarkets,
-  type DepthCapScope,
   maxPositionsOf,
+  parseDepthCapMarkets,
   positionDepthIssue,
   raisedPositions,
-  type BookTop,
+  sideNotional,
+  type DepthCapScope,
   type MaxPosition,
   type PositionDepthIssue,
-} from "@drift/strategies";
+} from "@drift/shared";
+import type { SodexRestClient } from "@drift/sodex";
+import type { BookTop } from "@drift/strategies";
 
 import { TtlCache } from "../chart/service";
 
@@ -43,15 +46,16 @@ export async function bookDepth(
   }
   return cache
     .get(`${engine}:${market}`, DEPTH_CHECK_CACHE_MS, deps.now().getTime(), async () => {
-      const b = await deps.rest.getOrderbook(engine, market, DEPTH_CAP_LEVELS);
-      const bids = b.bids.slice(0, DEPTH_CAP_LEVELS);
-      const asks = b.asks.slice(0, DEPTH_CAP_LEVELS);
-      const [bid] = bids;
-      const [ask] = asks;
+      const b = await deps.rest.getOrderbook(engine, market, DEPTH_LEVELS);
+      const [bid] = b.bids;
+      const [ask] = b.asks;
       if (bid === undefined || ask === undefined) return null;
-      const notional = (levels: readonly (readonly [string, string])[]) =>
-        levels.reduce((sum, [p, q]) => sum.add(dec(p).mul(q)), dec("0")).toString();
-      return { bid: bid[0], ask: ask[0], bidNotional: notional(bids), askNotional: notional(asks) };
+      return {
+        bid: bid[0],
+        ask: ask[0],
+        bidNotional: sideNotional(b.bids),
+        askNotional: sideNotional(b.asks),
+      };
     })
     .catch((error: unknown) => {
       if (error instanceof AppError && error.code === ErrorCode.rateLimited) throw error;

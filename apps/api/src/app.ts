@@ -1,6 +1,6 @@
 import type { Db } from "@drift/db";
 import type { BotApi } from "@drift/runtime";
-import { parseDepthCapMarkets, type DepthCapScope } from "@drift/strategies";
+import { parseDepthCapMarkets, type DepthCapScope } from "@drift/shared";
 import { fastifyCookie as cookie } from "@fastify/cookie";
 import Fastify, { type FastifyInstance } from "fastify";
 
