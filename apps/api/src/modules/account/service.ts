@@ -109,6 +109,8 @@ export interface AccountDeps extends TwoFactorDeps {
    * Không thấy thì nhóm thông báo `rewards` không có trong Settings và không đổi được. Thiếu = không thấy.
    */
   rewardsVisible?: (userId: string) => Promise<boolean>;
+  /** #594: user có dùng được cảnh báo SoDEX Wealth không (cùng điều kiện với /features.wealthAlerts). */
+  wealthVisible?: (userId: string) => Promise<boolean>;
 }
 
 /**
@@ -660,6 +662,7 @@ export async function notificationSettingsOf(deps: AccountDeps, userId: string) 
     .limit(1);
   const team = u?.role === UserRole.team;
   const rewards = (await deps.rewardsVisible?.(userId)) === true;
+  const wealth = (await deps.wealthVisible?.(userId)) === true;
   return {
     // Nhóm hệ thống không có trong bảng Settings (DEC-183); nhóm `teamOps` chỉ hiện với role team (DEC-184); nhóm
     // `rewards` chỉ hiện với user thấy SoDEX rewards (#558, cùng điều kiện với /features.sodexRewards).
@@ -667,6 +670,8 @@ export async function notificationSettingsOf(deps: AccountDeps, userId: string) 
       .filter((group) => !SYSTEM_GROUPS.includes(group))
       .filter((group) => team || !TEAM_ONLY_GROUPS.includes(group))
       .filter((group) => rewards || group !== "rewards")
+      // #594: nhóm `wealth` chỉ với user dùng được cảnh báo SoDEX Wealth.
+      .filter((group) => wealth || group !== "wealth")
       .map((group) => {
         const alwaysOn = ALWAYS_ON_GROUPS.includes(group);
         const val = (c: NotificationChannel) =>
@@ -700,6 +705,8 @@ export async function setNotification(
     await requireTeam(deps.db, userId, "These notifications are for the DeskLabs team only.");
   if (group === "rewards" && (await deps.rewardsVisible?.(userId)) !== true)
     throw new AppError(ErrorCode.forbidden, "SoDEX rewards notifications are not available yet.");
+  if (group === "wealth" && (await deps.wealthVisible?.(userId)) !== true)
+    throw new AppError(ErrorCode.forbidden, "SoDEX Wealth notifications are not available yet.");
   if (TELEGRAM_ONLY_GROUPS.includes(group) && channel !== "telegram")
     throw new AppError(
       ErrorCode.validationFailed,

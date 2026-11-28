@@ -50,6 +50,8 @@ import {
   type UsMarketRest,
   type WealthReader,
 } from "./modules/us-market/service";
+import { registerWealthWatchRoutes } from "./modules/wealth-watch/routes";
+import { wealthAlertsVisibleTo, type WealthWatchSwitches } from "./modules/wealth-watch/visibility";
 import { registerPlainDecimals } from "./plugins/plain-decimals";
 import { registerRateLimit, type RateLimiter } from "./plugins/rate-limit";
 import { registerSession } from "./plugins/session";
@@ -135,6 +137,8 @@ export interface AppDeps {
    * `/api/v1/markets/us` và `/api/v1/wealth/me` trả 404, `/features.usMarket` = false. `rest` thiếu = `sodex.rest`.
    */
   usMarket?: { enabled: () => boolean; wealth: WealthReader; rest?: UsMarketRest };
+  /** #594 / DEC-404: `WEALTH_WATCH_ENABLED` (cảnh báo SoDEX Wealth). Thiếu = tắt (team vẫn dùng được khi US Market bật). */
+  wealthWatchEnabled?: () => boolean;
   /**
    * #590 (DEC-402 bổ sung 2026-11-28): market áp giới hạn theo sổ lệnh lúc tạo / sửa bot (`DEPTH_CAP_MARKETS`). Thiếu =
    * danh sách mặc định. Trả về web qua `/features.depthCapMarkets`.
@@ -187,6 +191,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerDataRoutes(app, { db: deps.db, now });
   // Tính năng của người đang đăng nhập: bot khối lượng do admin bật ở Users (DEC-80). Chưa đăng nhập → tắt.
   const depthCapMarkets = deps.depthCapMarkets ?? parseDepthCapMarkets(undefined);
+  const wealthSwitches: WealthWatchSwitches = {
+    usMarket: deps.usMarket?.enabled ?? (() => false),
+    enabled: deps.wealthWatchEnabled ?? (() => false),
+  };
   app.get("/api/v1/features", async (request) => {
     const on = request.auth === null ? false : await volumeBotsOn(deps.db, request.auth.userId);
     const desk = request.auth === null ? false : await aiDeskOn(deps.db, request.auth.userId);
@@ -215,6 +223,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       ),
       // #589 / DEC-402 mục 9: công tắc toàn hệ thống `US_MARKET_ENABLED`.
       usMarket: deps.usMarket?.enabled() ?? false,
+      // #594 / DEC-404: công tắc "Alerts" ở My Wealth (US Market bật và `WEALTH_WATCH_ENABLED` hoặc role team).
+      wealthAlerts: await wealthAlertsVisibleTo(
+        deps.db,
+        wealthSwitches,
+        request.auth === null ? null : request.auth.userId,
+      ),
       // #590: market đang áp giới hạn theo sổ lệnh (`DEPTH_CAP_MARKETS`); `["*"]` = mọi market, `[]` = tắt.
       depthCapMarkets: depthCapMarkets.all ? ["*"] : [...depthCapMarkets.markets],
       builderFees,
@@ -272,6 +286,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     builderExempt: deps.sodex.builderExempt,
     // #558: nhóm thông báo SoDEX rewards chỉ với user thấy Rewards (cùng điều kiện với /features.sodexRewards).
     rewardsVisible: (userId: string) => rewardsVisibleTo(deps.db, deps.rewardsEnabled, userId),
+    // #594: nhóm thông báo SoDEX Wealth chỉ với user dùng được cảnh báo Wealth (cùng điều kiện với /features).
+    wealthVisible: (userId: string) => wealthAlertsVisibleTo(deps.db, wealthSwitches, userId),
   };
   registerAccountRoutes(app, accountDeps);
   const recoDeps = { db: deps.db, reco: deps.reco, rest: deps.sodex.rest, now };
@@ -351,6 +367,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       },
     }),
   });
+  registerWealthWatchRoutes(app, { db: deps.db, now, switches: wealthSwitches });
   const rw = deps.rewardsWatch;
   registerRewardsWatchRoutes(app, {
     enabled: rw?.enabled ?? (() => false),

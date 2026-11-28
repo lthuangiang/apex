@@ -35,3 +35,14 @@ describe("US_MARKET_ENABLED", () => {
     ).toBe(100);
   });
 });
+
+// #594 / DEC-404 mục 1: `WEALTH_WATCH_ENABLED` mặc định TẮT.
+describe("WEALTH_WATCH_ENABLED", () => {
+  it("is off by default and parses true / false", () => {
+    expect(loadApiConfig(env).WEALTH_WATCH_ENABLED).toBe(false);
+    expect(loadApiConfig({ ...env, WEALTH_WATCH_ENABLED: "true" }).WEALTH_WATCH_ENABLED).toBe(true);
+    expect(loadApiConfig({ ...env, WEALTH_WATCH_ENABLED: "false" }).WEALTH_WATCH_ENABLED).toBe(
+      false,
+    );
+  });
+});

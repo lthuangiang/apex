@@ -75,6 +75,8 @@ export async function startTestEnv(
     rewardsWatch?: AppDeps["rewardsWatch"];
     /** #589: US Market + SoDEX Wealth (rest / wealth giả). Thiếu = tắt (route 404). */
     usMarket?: AppDeps["usMarket"];
+    /** #594: `WEALTH_WATCH_ENABLED`. Thiếu = tắt (team vẫn dùng được khi US Market bật). */
+    wealthWatchEnabled?: () => boolean;
   } = {},
 ): Promise<TestEnv> {
   const container = await new PostgreSqlContainer(POSTGRES_IMAGE).start();
@@ -164,6 +166,9 @@ export async function startTestEnv(
     ...(options.oauth === undefined ? {} : { oauth: options.oauth }),
     ...(options.rewardsWatch === undefined ? {} : { rewardsWatch: options.rewardsWatch }),
     ...(options.usMarket === undefined ? {} : { usMarket: options.usMarket }),
+    ...(options.wealthWatchEnabled === undefined
+      ? {}
+      : { wealthWatchEnabled: options.wealthWatchEnabled }),
     deskLlm: options.deskLlm ?? null,
     logStream: new Writable({
       write(chunk: Buffer, _enc, done) {

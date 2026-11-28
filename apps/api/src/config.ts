@@ -89,6 +89,12 @@ const envSchema = z.object({
    * Engine đọc cùng biến; đặt cùng một giá trị cho hai service.
    */
   DEPTH_CAP_MARKETS: z.string().optional(),
+  /**
+   * #594 / DEC-404: cảnh báo SoDEX Wealth (công tắc "Alerts" ở My Wealth, nhóm thông báo `wealth`). Mặc định TẮT: chưa
+   * thấy giá trị enum trên dữ liệu thật; tắt thì user thường không thấy công tắc, role team vẫn dùng được để thử. Cùng
+   * giá trị với scheduler.
+   */
+  WEALTH_WATCH_ENABLED: z.stringbool().default(false),
   /** #589: trần riêng weight / phút của lời gọi Wealth API từ api (bucket `rl:sodex:wealth:<egress>`; mỗi lời gọi 20). */
   WEALTH_READ_MAX_WEIGHT_PER_MIN: z.coerce.number().int().positive().default(400),
   /** Notifications v2: kênh Telegram (DEC-170). Tắt thì mọi route `/api/v1/telegram/*` trả 404. */
