@@ -78,6 +78,19 @@ export const orderbookSchema = z.object({
 });
 export type Orderbook = z.infer<typeof orderbookSchema>;
 
+/**
+ * Ticker phiên gần nhất (`/{engine}/markets/tickers`, weight 2; đối chiếu response mainnet ngày 2026-11-28). `closeTime`
+ * (ms) là mốc cuối của phiên: khi market không khớp lâu, phiên cũ còn nguyên (US Market, DEC-402 mục 3).
+ */
+export const tickerSchema = z.object({
+  symbol: z.string(),
+  lastPx: decimal.nullish(),
+  quoteVolume: decimal.nullish(),
+  volume: decimal.nullish(),
+  closeTime: z.number().int().nullish(),
+});
+export type Ticker = z.infer<typeof tickerSchema>;
+
 export const markPriceSchema = z.object({
   symbol: z.string(),
   markPrice: decimal,

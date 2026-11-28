@@ -146,3 +146,28 @@ describe("readDriftApproval", () => {
     });
   });
 });
+
+describe("getTickers (#589)", () => {
+  it("parses the mainnet ticker shape and queries one symbol", async () => {
+    const fetchImpl = vi.fn<FetchLike>(() =>
+      Promise.resolve(
+        new Response(
+          '{"code":0,"timestamp":1,"data":[{"symbol":"vVOO_vUSDC","lastPx":"662.06","lastSz":"0.015","volume":"0.015","quoteVolume":"9.9309","askPx":"0","bidPx":"0","openTime":1795472532107,"closeTime":1795558932107}]}',
+        ),
+      ),
+    );
+    const tickers = await client(fetchImpl).getTickers("spot", "vVOO_vUSDC");
+    expect(tickers).toEqual([
+      {
+        symbol: "vVOO_vUSDC",
+        lastPx: "662.06",
+        quoteVolume: "9.9309",
+        volume: "0.015",
+        closeTime: 1795558932107,
+      },
+    ]);
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+      "https://mainnet-gw.sodex.dev/api/v1/spot/markets/tickers?symbol=vVOO_vUSDC",
+    );
+  });
+});
