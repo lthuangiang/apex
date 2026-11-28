@@ -29,7 +29,7 @@ interface Pending {
 
 const state = vi.hoisted(() => ({
   wealthAlerts: true,
-  get: { status: "off", lastCheckedAt: null, delayed: false } as unknown,
+  get: { status: "off", lastCheckedAt: null, delayed: false },
   getError: null as Error | null,
   calls: [] as Call[],
   pending: [] as Pending[],

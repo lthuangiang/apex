@@ -26,8 +26,8 @@ import { parseOrThrow } from "../../lib/http";
 import { idempotent } from "../../lib/idempotency";
 import { clearSessionCookie, requireAuth } from "../../plugins/session";
 import { removeRewardsWatch } from "../rewards-watch/service";
-import { removeWealthWatch } from "../wealth-watch/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
+import { removeWealthWatch } from "../wealth-watch/service";
 
 // Settings › Trading defaults / Profile (SCREENS.md mục 8.5, DEC-42): tuỳ chọn hiển thị, xuất CSV, xoá tài khoản.
 // Xoá tài khoản cần 2FA, mọi bot đã dừng và SoDEX đã Disconnect (key của DRIFT đã bị xoá phía SoDEX).

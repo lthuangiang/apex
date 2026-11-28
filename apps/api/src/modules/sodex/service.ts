@@ -50,9 +50,9 @@ import { z } from "zod";
 import { AuditAction, audit } from "../../lib/audit";
 import { markSideEffect } from "../../lib/idempotency";
 import { removeRewardsWatch } from "../rewards-watch/service";
-import { removeWealthWatch } from "../wealth-watch/service";
 import { iso } from "../security/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
+import { removeWealthWatch } from "../wealth-watch/service";
 
 // Kết nối SoDEX bằng hai chữ ký master wallet (DEC-25, SODEX.md mục 5.2):
 //   1. UserSignedAddPermissionedAPIKeyAction: key DRIFT do signer sinh, mặt nạ 14.

@@ -28,14 +28,13 @@ function wrapper({ children }: { children: ReactNode }) {
   );
 }
 
-const item = (type: NotificationItem["type"], data: Record<string, unknown>): NotificationItem =>
-  ({
-    id: "00000000-0000-4000-8000-000000000001",
-    type,
-    data,
-    createdAt: "2026-11-28T08:00:00.000Z",
-    readAt: null,
-  }) as NotificationItem;
+const item = (type: NotificationItem["type"], data: Record<string, unknown>): NotificationItem => ({
+  id: "00000000-0000-4000-8000-000000000001",
+  type,
+  data,
+  createdAt: "2026-11-28T08:00:00.000Z",
+  readAt: null,
+});
 
 describe("SoDEX Wealth bell entries", () => {
   const { result } = renderHook(() => useNotificationText(), { wrapper });
