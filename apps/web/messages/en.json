@@ -10579,7 +10579,8 @@
       "thinTitle": "Thin order book.",
       "thinBody": "Large market orders move the price here. A new bot's total position can't be larger than the thinner side of the book, and a market order that opens a position is capped at 25% of the side it takes. Orders that close a position are never held back.",
       "strategiesTitle": "Strategies for these markets",
-      "chip": "{strategy} · {market}"
+      "chip": "{strategy} · {market}",
+      "newsSignal": "News Signal"
     },
     "book": {
       "trading": "Trading",

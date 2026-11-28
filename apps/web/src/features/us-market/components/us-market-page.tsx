@@ -263,7 +263,8 @@ function AnthropicCard({ data, now }: { data: UsMarketsResponse; now: number }) 
           <li key={`${c.strategy}:${c.symbol}`}>
             <Link href={chipHref(c)} className={BTN}>
               {t("chip", {
-                strategy: tn(`${c.strategy}.name`),
+                // Bot news tên "News Signal" ở bản phác màn 02 (tên chiến lược trong form là của trang Signal Research).
+                strategy: c.strategy === "news_signal" ? t("newsSignal") : tn(`${c.strategy}.name`),
                 market: shortMarketLabel(c.symbol),
               })}
             </Link>

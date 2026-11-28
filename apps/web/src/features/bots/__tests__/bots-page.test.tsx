@@ -15,10 +15,12 @@ import { BotsPage } from "../components/bots-page";
 const tab = vi.hoisted(() => ({ value: "catalog" }));
 const flags = vi.hoisted<{
   adaptiveDca: boolean;
+  usMarket: boolean;
   builderFees: Record<string, number>;
   mmFee: unknown;
 }>(() => ({
   adaptiveDca: false,
+  usMarket: false,
   builderFees: {},
   mmFee: null,
 }));
@@ -61,6 +63,7 @@ vi.mock("@/lib/api", () => ({
         volumeFarm: true,
         aiDesk: false,
         adaptiveDca: flags.adaptiveDca,
+        usMarket: flags.usMarket,
         builderFees: flags.builderFees,
         mmFee: flags.mmFee,
       });
@@ -82,6 +85,7 @@ const show = () =>
 
 afterEach(() => {
   flags.adaptiveDca = false;
+  flags.usMarket = false;
   flags.builderFees = {};
   flags.mmFee = null;
   list.items = [];
@@ -222,5 +226,52 @@ describe("Signal Research news bots in the bot list (#472)", () => {
     expect(row).toHaveTextContent("Signal Research");
     expect(row).not.toHaveTextContent("createBot.strategies");
     expect(row).not.toHaveTextContent(/(^|\s)· Signal Research/);
+  });
+});
+
+describe("US Market (DEC-402, #591)", () => {
+  const cardOf = (name: string) => {
+    const card = screen.getByRole("heading", { level: 2, name }).closest("li");
+    if (card === null) throw new Error(`no ${name} card`);
+    return within(card);
+  };
+
+  it("shows the banner to /markets/us and Trades chips when the switch is on; tabs unchanged", async () => {
+    flags.usMarket = true;
+    tab.value = "catalog";
+    show();
+    const banner = await screen.findByRole("region", {
+      name: "Anthropic markets: vANT and ANT-USD",
+    });
+    expect(within(banner).getByText("NEW ON SODEX")).toBeInTheDocument();
+    expect(within(banner).getByRole("link", { name: "See US Market" })).toHaveAttribute(
+      "href",
+      "/markets/us",
+    );
+    expect(screen.getAllByRole("tab").map((t) => t.textContent.replace(/\d+$/, ""))).toEqual([
+      "My bots",
+      "Strategy catalog",
+    ]);
+    expect(cardOf("Futures Grid").getByText("Trades ANT-USD")).toBeInTheDocument();
+    expect(cardOf("Futures DCA").getByText("Trades ANT-USD")).toBeInTheDocument();
+    expect(cardOf("Spot DCA").getByText("Trades vANT")).toBeInTheDocument();
+    expect(cardOf("Spot Grid").getByText("Trades vANT")).toBeInTheDocument();
+    expect(cardOf("Funding Arbitrage").queryByText(/^Trades /)).not.toBeInTheDocument();
+  });
+
+  it("hides the banner and the Trades chips when the switch is off", async () => {
+    tab.value = "catalog";
+    show();
+    await screen.findAllByText(/^SoPoints are SoDEX’s rewards/);
+    expect(screen.queryByRole("link", { name: "See US Market" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Trades /)).not.toBeInTheDocument();
+  });
+
+  it("writes the spot builder fee as on sells, perps without it", async () => {
+    tab.value = "catalog";
+    show();
+    await screen.findAllByText(/^SoPoints are SoDEX’s rewards/);
+    expect(cardOf("Spot Grid").getByText("Builder fee 0.01% on sells")).toBeInTheDocument();
+    expect(cardOf("Futures Grid").getByText("Builder fee 0.01%")).toBeInTheDocument();
   });
 });
