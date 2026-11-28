@@ -83,6 +83,17 @@ describe("CSP for WalletConnect", () => {
   });
 });
 
+describe("CSP for SoDEX rewards (#601 / DEC-405)", () => {
+  it("opens connect-src to the rewards gateway and exactly the lottery host", async () => {
+    const { buildCsp } = await import("../../../proxy");
+    const csp = buildCsp("n", false, false, "https://gw.example", "https://lottery.example");
+    const connect = csp.split("; ").find((d) => d.startsWith("connect-src")) ?? "";
+    expect(connect).toContain("https://gw.example");
+    expect(connect).toContain("https://lottery.example");
+    expect(buildCsp("n", false, false)).toContain("https://mainnet-lottery.sodex.dev");
+  });
+});
+
 describe("assetlinks.json", () => {
   const sha = Array.from({ length: 32 }, (_, i) => i.toString(16).padStart(2, "0")).join(":");
 

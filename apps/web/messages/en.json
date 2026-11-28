@@ -2807,6 +2807,9 @@
     }
   },
   "_pendingReview": [
+    "rewards.card.weekSpot",
+    "rewards.card.weekPerps",
+    "rewards.card.nextBox",
     "signalAnalysis.filters.botKeys",
     "signalAnalysis.research.trace",
     "signalAnalysis.research.sources.names.claude",
@@ -10350,6 +10353,9 @@
       "toClaim": "Blind Boxes to claim",
       "backpack": "Boxes in backpack",
       "thisWeek": "This week",
+      "weekSpot": "Spot {amount}",
+      "weekPerps": "Perps {amount}",
+      "nextBox": "Trade {amount} more to unlock your next Blind Box",
       "open": "Open Rewards",
       "job": {
         "opening": "{count, plural, one {Opening # box…} other {Opening # boxes…}}",
