@@ -520,6 +520,7 @@ function NewsBoxes() {
           <li>{tr.rich("notCounted.etf", { b })}</li>
           <li>{tr.rich("notCounted.treasury", { b })}</li>
           <li>{tr.rich("notCounted.listing", { b })}</li>
+          <li>{tr.rich("notCounted.product", { b })}</li>
         </ul>
       </section>
       <section aria-labelledby="hiw-reader" className={`${box} border-border bg-surface-2`}>

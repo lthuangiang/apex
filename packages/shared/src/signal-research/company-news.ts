@@ -1,5 +1,5 @@
-import { AssetKind, COMPANY_NEWS_MARKETS } from "./rules";
 import { mentionsAsset, type AssetAlias, type Candidate } from "./logic";
+import { AssetKind, COMPANY_NEWS_MARKETS } from "./rules";
 
 // news-v7 (#593, DEC-402 mục 6): tin về một công ty trong `COMPANY_NEWS_MARKETS` (Anthropic → ANT-USD). Chỉ tin CÔNG TY
 // (vốn, định giá, gọi vốn, pháp lý, doanh thu, đối tác lớn) được giao dịch; tin sản phẩm / model / công cụ được đọc nhưng

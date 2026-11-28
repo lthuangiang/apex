@@ -22,6 +22,7 @@ import { BotsLabelsProvider } from "./bots-labels-context";
 import { HowItWorksDrawer, HowItWorksProvider, type HowTab } from "./how-it-works";
 import { IsItWorking } from "./is-it-working";
 import { LABELS_ID } from "./labels";
+import { MarketNews } from "./market-news";
 import {
   BOT_KEY,
   linkTarget,
@@ -109,6 +110,8 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
     writeStored(BOT_KEY, id);
   }, []);
   const [editor, setEditor] = useState(false);
+  // #593: "Set up News Signal on ANT-USD" mở editor với market chọn sẵn; nút ở Mainnet mở như cũ (null).
+  const [editorMarkets, setEditorMarkets] = useState<readonly string[] | null>(null);
   const mainnetError = useMainnetErrorText();
   const botList = newsBots.data?.items ?? [];
   const selectedBot = pickBot(botList, botId);
@@ -194,6 +197,15 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
             rulesHistory={v.rulesHistory}
             cycleMinutes={v.cycleMinutes}
           />
+          <MarketNews
+            tz={ctx.tz}
+            versionId={versionId}
+            onSetUp={() => {
+              setMode("mainnet");
+              setEditorMarkets(["ANT-USD"]);
+              setEditor(true);
+            }}
+          />
           {mainnet ? null : (
             <IsItWorking
               v={v}
@@ -262,6 +274,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
             onBot={setBotId}
             onHow={setHow}
             onStartFromVersion={() => {
+              setEditorMarkets(null);
               setEditor(true);
             }}
           />
@@ -298,6 +311,7 @@ export function ResearchTab({ ctx }: { ctx: PageCtx }) {
           <NewsBotEditor
             from={picked}
             versions={items}
+            {...(editorMarkets === null ? {} : { presetMarkets: editorMarkets })}
             onClose={() => {
               setEditor(false);
             }}

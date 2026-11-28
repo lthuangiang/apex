@@ -14,11 +14,12 @@ import {
   weightedInput,
 } from "../src/signal-research/classifier";
 import {
+  bookDepthVia,
   disabledReason,
   parseSignalEnv,
   signalResearchEnvSchema,
 } from "../src/signal-research/index";
-import { collectFloor } from "../src/signal-research/pipeline";
+import { collectFloor, companyGate } from "../src/signal-research/pipeline";
 import {
   combineQuote,
   LiveBooks,
@@ -268,6 +269,43 @@ describe("quotes from stored market data only", () => {
           Promise.resolve({ reply: JSON.stringify({ ok: false, reason: "empty" }) }),
         ),
       ).toEqual({ ok: false, reason: "empty" });
+      // #593: độ sâu 10 mức mỗi phía khi marketdata trả; thiếu một phía thì không có `depth`.
+      const deep = JSON.stringify({
+        ok: true,
+        s: "ANT-USD",
+        b: "1",
+        a: "2",
+        at: 5,
+        bn: "2610",
+        an: "2180.5",
+      });
+      expect(await requestRestBook("ANT-USD", () => Promise.resolve({ reply: deep }))).toEqual({
+        ok: true,
+        bid: "1",
+        ask: "2",
+        at: 5,
+        depth: { bidsUsd: "2610", asksUsd: "2180.5" },
+      });
+      const half = JSON.stringify({ ok: true, s: "ANT-USD", b: "1", a: "2", at: 5, bn: "1" });
+      expect(await requestRestBook("ANT-USD", () => Promise.resolve({ reply: half }))).toEqual({
+        ok: true,
+        bid: "1",
+        ask: "2",
+        at: 5,
+      });
+      const bad = JSON.stringify({
+        ok: true,
+        s: "ANT-USD",
+        b: "1",
+        a: "2",
+        at: 5,
+        bn: "-1",
+        an: "1",
+      });
+      expect(await requestRestBook("ANT-USD", () => Promise.resolve({ reply: bad }))).toEqual({
+        ok: false,
+        reason: "error",
+      });
       expect(await requestRestBook("TRX-USD", () => Promise.reject(new Error("x")))).toEqual({
         ok: false,
         reason: "error",
@@ -1016,5 +1054,61 @@ describe("no SoDEX write path", () => {
         ]).toContain(i);
     }
     expect(src).not.toMatch(/HttpGateway|SignedWriteClient|SodexRestClient|sodex\.dev/);
+  });
+});
+
+// #593 (news-v7): market công ty (ANT-USD) chỉ giao dịch tin công ty; tiêu đề là câu mẫu tự viết.
+describe("company gate before Claude (#593)", () => {
+  const ant = { symbol: "ANT", market: "ANT-USD", kind: "stock" as const };
+  const sol = { symbol: "SOL", market: "SOL-USD", kind: "crypto" as const };
+
+  it("company news keeps ANT-USD for Claude", () => {
+    expect(companyGate("Regulator opens inquiry into Anthropic", [ant])).toEqual({
+      kinds: [{ market: "ANT-USD", kind: "company" }],
+      sendable: [ant],
+      blocked: null,
+    });
+  });
+
+  it("product news with only ANT-USD is dropped before Claude as PRODUCT_NEWS", () => {
+    expect(companyGate("Anthropic releases a new Claude model", [ant])).toEqual({
+      kinds: [{ market: "ANT-USD", kind: "product" }],
+      sendable: [],
+      blocked: "PRODUCT_NEWS",
+    });
+  });
+
+  it("unclear headline with only ANT-USD is dropped as NOT_COMPANY_NEWS", () => {
+    expect(companyGate("AI labs race to hire", [ant]).blocked).toBe("NOT_COMPANY_NEWS");
+    expect(companyGate(null, [ant]).blocked).toBe("NOT_COMPANY_NEWS");
+  });
+
+  it("other markets are untouched: ANT-USD leaves the list, the article still goes to Claude", () => {
+    expect(
+      companyGate("Solana protocol drained; Anthropic tool found the bug", [ant, sol]),
+    ).toEqual({ kinds: [{ market: "ANT-USD", kind: "product" }], sendable: [sol], blocked: null });
+    expect(companyGate("Solana protocol drained", [sol])).toEqual({
+      kinds: [],
+      sendable: [sol],
+      blocked: null,
+    });
+  });
+});
+
+describe("book depth for Book at the time (#593)", () => {
+  it("returns the depth of an ok reply, null otherwise, never throws", async () => {
+    const depth = { bidsUsd: "2610", asksUsd: "2180" };
+    expect(
+      await bookDepthVia(() => Promise.resolve({ ok: true, bid: "1", ask: "2", at: 1, depth }))(
+        "ANT-USD",
+      ),
+    ).toEqual(depth);
+    expect(
+      await bookDepthVia(() => Promise.resolve({ ok: true, bid: "1", ask: "2", at: 1 }))("ANT-USD"),
+    ).toBeNull();
+    expect(
+      await bookDepthVia(() => Promise.resolve({ ok: false, reason: "timeout" }))("ANT-USD"),
+    ).toBeNull();
+    expect(await bookDepthVia(() => Promise.reject(new Error("x")))("ANT-USD")).toBeNull();
   });
 });

@@ -25,8 +25,14 @@ export const srBookReplySchema = z.discriminatedUnion("ok", [
      * #593: tổng notional 10 mức giá phía mua / bán (`sideNotional`, DEC-402 mục 4), chuỗi thập phân. Thiếu = marketdata bản
      * trước (lane không có "Book at the time", vẫn có giá).
      */
-    bn: z.string().regex(/^\d+(\.\d+)?$/).optional(),
-    an: z.string().regex(/^\d+(\.\d+)?$/).optional(),
+    bn: z
+      .string()
+      .regex(/^\d+(\.\d+)?$/)
+      .optional(),
+    an: z
+      .string()
+      .regex(/^\d+(\.\d+)?$/)
+      .optional(),
   }),
   z.object({
     ok: z.literal(false),

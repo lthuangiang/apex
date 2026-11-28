@@ -516,12 +516,24 @@ describe("signal research articles feed and trace (#291)", () => {
       "limit=500",
       "cursor=not-a-cursor",
       `cursor=${tampered}`,
+      // #593: tab market chỉ nhận tên market SoDEX.
+      "market=ant-usd",
+      "market=ANT",
     ]) {
       const r = await team.request("GET", `${base}/articles?${qs}`);
       expect(r.statusCode).toBe(400);
       expect(errorResponseSchema.parse(r.json()).error.code).toBe("VALIDATION_FAILED");
     }
     expect((await team.request("GET", `${base}/summary?range=90d`)).statusCode).toBe(400);
+  });
+
+  it("#593: market filter keeps only articles with that candidate; the in-range count stays the same", async () => {
+    const all = await feed("range=1d&limit=100");
+    const none = await feed("range=1d&limit=100&market=ZZZ-USD");
+    expect(none.items).toEqual([]);
+    expect(none.total).toBe(0);
+    expect(none.totalInRange).toBe(all.totalInRange);
+    for (const x of all.items) expect(x.book ?? null).toBeNull();
   });
 
   it("lists the last day newest first, without backlog; 7 days adds older ones, older rules included (#413)", async () => {

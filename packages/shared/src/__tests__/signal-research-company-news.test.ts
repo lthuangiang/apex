@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  assetInText,
-  companyNewsKindOf,
-  isCompanyNewsMarket,
-  textCandidatesOf,
-} from "../index";
+import { assetInText, companyNewsKindOf, isCompanyNewsMarket, textCandidatesOf } from "../index";
 import {
   COMPANY_NEWS_MARKETS,
   NEWS_ASSET_MAP_VERSION,

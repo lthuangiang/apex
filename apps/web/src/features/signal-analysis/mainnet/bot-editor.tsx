@@ -22,8 +22,11 @@ export function NewsBotEditor({
   versions,
   onClose,
   onStarted,
+  presetMarkets,
 }: {
   from: ResearchVersion;
+  /** #593: market chọn sẵn ("Set up News Signal on ANT-USD"); thiếu = như version gốc. */
+  presetMarkets?: readonly string[];
   versions: readonly ResearchVersion[];
   onClose: () => void;
   /** Bot đã tạo (kể cả khi Start chưa qua): trang chọn bot đó. */
@@ -69,7 +72,11 @@ export function NewsBotEditor({
 
   return (
     <VersionSheet
-      mode={{ kind: "bot", from: source }}
+      mode={
+        presetMarkets === undefined
+          ? { kind: "bot", from: source }
+          : { kind: "bot", from: source, markets: presetMarkets }
+      }
       next={0}
       running={0}
       maxRunning={1}

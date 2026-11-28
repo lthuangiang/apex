@@ -341,7 +341,9 @@ export function createSignalResearch(input: {
           log,
           config: pipelineConfig(input.env),
           sosoLimiter,
-          ...(input.requestBook === undefined ? {} : { bookDepth: bookDepthVia(input.requestBook) }),
+          ...(input.requestBook === undefined
+            ? {}
+            : { bookDepth: bookDepthVia(input.requestBook) }),
           onTradeOpened: () => {
             watcher.invalidate();
           },

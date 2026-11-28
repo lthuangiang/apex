@@ -200,7 +200,10 @@ async function noViolations() {
 
 const funnel = () => screen.getByRole("region", { name: /From headline to trade/ });
 const verdict = () => within(funnel()).getByRole("status");
-const lastPath = (part: string) => [...state.paths].reverse().find((p) => p.includes(part)) ?? "";
+// #593: khối "News by market" cũng gọi `/articles?` (không có `show=`); feed luôn gửi `show=`.
+const isMarketNews = (p: string) => p.includes("/articles?") && !p.includes("show=");
+const lastPath = (part: string) =>
+  [...state.paths].reverse().find((p) => p.includes(part) && !isMarketNews(p)) ?? "";
 const card = (title: string) =>
   within(funnel()).getByRole("button", { name: new RegExp(title.replace(/[$.]/g, "\\$&")) });
 

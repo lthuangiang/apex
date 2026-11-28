@@ -276,7 +276,12 @@ export type SheetMode =
   | { kind: "new"; from: ResearchVersion | null }
   | { kind: "rules"; of: ResearchVersion }
   /** #421: "Start bot from a version" — cùng editor, thêm các ô của bot mainnet. */
-  | { kind: "bot"; from: ResearchVersion };
+  | {
+      kind: "bot";
+      from: ResearchVersion;
+      /** #593: chọn sẵn "Only these markets" (nút "Set up News Signal on ANT-USD"); thiếu = như version gốc. */
+      markets?: readonly string[];
+    };
 
 /** Phần riêng của chế độ bot mainnet (#421). */
 export interface BotSheet {
@@ -341,6 +346,9 @@ export function VersionSheet({
           {
             ...draftOf(source?.config ?? baselineVersionConfig(), ""),
             opposite: OppositeNewsPolicy.keep,
+            ...(mode.markets === undefined || mode.markets.length === 0
+              ? {}
+              : { mode: AssetMode.only, markets: [...mode.markets] }),
           }
         : draftOf(source?.config ?? baselineVersionConfig(), ""),
   );
