@@ -201,6 +201,8 @@ export type WealthInFlight = z.infer<typeof wealthInFlightSchema>;
 /** `GET /users/{address}/fund-details`: sổ cái của ví, mới nhất trước. Trường chưa xác định bị bỏ (khác "0"). */
 export const wealthFundEntrySchema = z.object({
   fundId: z.string(),
+  /** Định danh dòng phía SoDEX, "khi có" (tài liệu: optional). #594 dùng làm khoá chống trùng; thiếu thì tự dựng khoá. */
+  entryId: optStr,
   kind: z.string(),
   status: z.string(),
   transactionType: optStr,

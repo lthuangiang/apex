@@ -93,6 +93,11 @@ export interface WealthReadClientOptions {
   ipBucket: BucketSpec;
   /** Trần riêng của Wealth (weight / phút, `rl:sodex:wealth:<egress>`). Thiếu = không có trần riêng. */
   maxWeightPerMinute?: number | undefined;
+  /**
+   * #594: phần trần riêng (0–1) để dành cho người đang xem `/wealth/me`. Job cảnh báo ở scheduler đặt 0.5: chỉ lấy token
+   * khi trần Wealth chung còn trên 50%. Thiếu = 0 (api).
+   */
+  capReserve?: number | undefined;
   fetch?: WealthFetch;
   timeoutMs?: number;
 }
@@ -133,7 +138,16 @@ export class WealthReadClient {
       reserve: Math.floor(options.ipBucket.capacity * WEALTH_IDLE_RESERVE),
     };
     const cap = options.maxWeightPerMinute;
-    this.#capBucket = cap === undefined ? null : { capacity: cap, refill: cap, intervalMs: 60_000 };
+    const capReserve = Math.min(Math.max(options.capReserve ?? 0, 0), 1);
+    this.#capBucket =
+      cap === undefined
+        ? null
+        : {
+            capacity: cap,
+            refill: cap,
+            intervalMs: 60_000,
+            ...(capReserve > 0 ? { reserve: Math.floor(cap * capReserve) } : {}),
+          };
     this.#fetch = options.fetch ?? ((input, init) => fetch(input, init));
     this.#timeoutMs = options.timeoutMs ?? WEALTH_READ_TIMEOUT_MS;
   }

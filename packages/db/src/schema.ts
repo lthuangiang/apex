@@ -1087,6 +1087,40 @@ export const rewardsWatch = pgTable(
   ],
 );
 
+/**
+ * Cảnh báo SoDEX Wealth (#594, DEC-404): người dùng đã bật "Alerts" ở Portfolio › My Wealth. Mỗi user một dòng.
+ * Scheduler đọc dữ liệu Wealth công khai theo master wallet (không token). Chỉ lưu khoá chống trùng ĐÃ BĂM của từng dòng
+ * SoDEX kèm trạng thái đã thấy; không lưu vị thế, số tiền hay địa chỉ. Tắt công tắc, ngắt SoDEX, xoá tài khoản: xoá dòng.
+ */
+export const wealthWatch = pgTable(
+  "wealth_watch",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id),
+    sodexAccountId: uuid("sodex_account_id")
+      .notNull()
+      .references(() => sodexAccounts.id),
+    /** Lượt đầu chỉ đặt mốc (ghi trạng thái hiện có), không báo lịch sử cũ. */
+    baselinePending: boolean("baseline_pending").notNull().default(true),
+    /** fund-details: khoá đã băm (24 hex) → trạng thái SoDEX đã thấy. */
+    fundMarks: jsonb("fund_marks").$type<Record<string, string>>().notNull().default({}),
+    /** Kỳ mua định kỳ: khoá đã băm (plan + ngày lịch) → trạng thái đã thấy. */
+    execMarks: jsonb("exec_marks").$type<Record<string, string>>().notNull().default({}),
+    /** User từng có kế hoạch mua định kỳ (thì mới đọc `recurring-buys` mỗi lượt). */
+    hasPlans: boolean("has_plans").notNull().default(false),
+    /** Lần đọc `recurring-buys` gần nhất (user chưa có plan thì đọc lại tối đa mỗi ngày một lần). */
+    plansCheckedAt: tstz("plans_checked_at"),
+    nextCheckAt: tstz("next_check_at").notNull().defaultNow(),
+    lastCheckedAt: tstz("last_checked_at"),
+    consecutiveErrors: integer("consecutive_errors").notNull().default(0),
+    /** Chỉ mã lỗi (không body, không địa chỉ). */
+    lastErrorCode: text("last_error_code"),
+    ...timestamps,
+  },
+  (t) => [index("wealth_watch_next_check_idx").on(t.nextCheckAt)],
+);
+
 /** Số dư tài khoản builder của DRIFT theo ngày và engine (đối soát builder revenue). */
 export const builderBalanceSnapshots = pgTable(
   "builder_balance_snapshots",

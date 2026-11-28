@@ -64,3 +64,4 @@ export * from "./sodex-rewards";
 export * from "./api/rewards-watch";
 export * from "./sodex-wealth";
 export * from "./api/us-market";
+export * from "./api/wealth-watch";

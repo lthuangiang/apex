@@ -26,6 +26,7 @@ import {
   RedisRateLimitStore,
   RewardsReadClient,
   SodexRestClient,
+  WealthReadClient,
 } from "@drift/sodex";
 import { connect, RequestError, TimeoutError, type NatsConnection } from "@nats-io/transport-node";
 import { count, eq } from "drizzle-orm";
@@ -65,6 +66,8 @@ import { requestRestBook } from "./signal-research/prices";
 import { runSnapshotRetention } from "./snapshot-retention";
 import { checkNewMarkets, outboxEmitter, redisSeenStore } from "./sr-new-markets";
 import { redisIncidentReadStore, teamIncidentRunner } from "./team-incidents";
+import { parseWealthWatchInterval } from "./wealth-watch/interval";
+import { runWealthWatchTick, type WealthWatchJobDeps } from "./wealth-watch/job";
 
 // scheduler: một bản active (leader lease). Hiện có job market stats hằng ngày; các job lịch khác
 // (recurring buy, reset daily loss, nhắc key hết hạn) thêm ở phase của chúng.
@@ -112,6 +115,21 @@ const env = z
     REWARDS_WATCH_MAX_WEIGHT_PER_MIN: z.coerce.number().int().positive().default(120).catch(120),
     /** #558: origin gateway rewards (trống = mainnet; client chỉ nhận https). */
     SODEX_REWARDS_GATEWAY: z.string().default(""),
+    /**
+     * #594 / DEC-404: cảnh báo SoDEX Wealth. Mặc định tắt: job chỉ đọc cho user role team (thử bằng ví thật). Cùng giá
+     * trị với api.
+     */
+    WEALTH_WATCH_ENABLED: z
+      .enum(["true", "false"])
+      .default("false")
+      .catch("false")
+      .transform((v) => v === "true"),
+    // #594: `WEALTH_WATCH_INTERVAL_MIN` (phút, 5–60) đọc riêng qua `parseWealthWatchInterval` để log warn khi sai.
+    /**
+     * #594: trần Wealth chung (weight / phút, bucket `rl:sodex:wealth:<egress>`). Đặt CÙNG giá trị với api để job và
+     * `/wealth/me` dùng chung một trần; job chỉ lấy khi trần còn trên 50%.
+     */
+    WEALTH_READ_MAX_WEIGHT_PER_MIN: z.coerce.number().int().positive().default(400).catch(400),
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "scheduler" } });
@@ -121,6 +139,13 @@ if (rewardsInterval.invalid !== null)
   log.warn(
     { received: rewardsInterval.invalid.received, using: rewardsInterval.minutes },
     "REWARDS_WATCH_INTERVAL_MIN invalid (expected an integer 1-60), using default",
+  );
+// #594: chu kỳ đọc mỗi user của job cảnh báo SoDEX Wealth (phút, 5–60, mặc định 10). Sai giá trị thì dùng mặc định.
+const wealthInterval = parseWealthWatchInterval(process.env.WEALTH_WATCH_INTERVAL_MIN);
+if (wealthInterval.invalid !== null)
+  log.warn(
+    { received: wealthInterval.invalid.received, using: wealthInterval.minutes },
+    "WEALTH_WATCH_INTERVAL_MIN invalid (expected an integer 5-60), using default",
   );
 // #558 (DEC-398): cert mTLS của scheduler cho signer (giải mã phiên rewards). Thiếu cert (prod chưa tạo lại cert) thì
 // job rewards tắt, log một lần, scheduler vẫn chạy mọi việc khác.
@@ -497,6 +522,50 @@ async function rewardsTick() {
   }
 }
 let rewardsTimer: ReturnType<typeof setInterval> | null = null;
+// #594 (DEC-404): job cảnh báo SoDEX Wealth. Luôn chạy; công tắc `WEALTH_WATCH_ENABLED` tắt thì chỉ đọc cho role team.
+// Dữ liệu công khai, không token; dùng chung trần Wealth với api, dự trữ 50% cho người đang xem.
+const WEALTH_TICK_MS = 30_000;
+const wealthJob: WealthWatchJobDeps = {
+  db,
+  now: () => new Date(),
+  log: log.child({ job: "wealth-watch" }),
+  reader: new WealthReadClient({
+    rateLimit: new RedisRateLimitStore(redis),
+    egressKey: env.SODEX_EGRESS_KEY,
+    ipBucket: ipBucket(loadSodexConfig(process.env).restWeightPerMinute),
+    maxWeightPerMinute: env.WEALTH_READ_MAX_WEIGHT_PER_MIN,
+    capReserve: 0.5,
+  }),
+  enabled: env.WEALTH_WATCH_ENABLED,
+  intervalMs: wealthInterval.minutes * 60_000,
+  batch: 20,
+};
+let wealthRunning = false;
+let wealthLastSummary = 0;
+const wealthTotals = { checked: 0, baselined: 0, notified: 0, removed: 0, errors: 0, stops: 0 };
+async function wealthTick() {
+  if (wealthRunning) return;
+  wealthRunning = true;
+  try {
+    const r = await runWealthWatchTick(wealthJob);
+    wealthTotals.checked += r.checked;
+    wealthTotals.baselined += r.baselined;
+    wealthTotals.notified += r.notified;
+    wealthTotals.removed += r.removed;
+    wealthTotals.errors += r.errors;
+    if (r.stopped !== null) wealthTotals.stops += 1;
+    // Mỗi giờ một dòng tổng (chỉ số đếm, không user, không địa chỉ).
+    if (Date.now() - wealthLastSummary >= 3_600_000) {
+      log.info({ ...wealthTotals, enabled: env.WEALTH_WATCH_ENABLED }, "wealth watch cycle");
+      wealthLastSummary = Date.now();
+      for (const k of Object.keys(wealthTotals) as (keyof typeof wealthTotals)[])
+        wealthTotals[k] = 0;
+    }
+  } finally {
+    wealthRunning = false;
+  }
+}
+let wealthTimer: ReturnType<typeof setInterval> | null = null;
 let signalTimer: ReturnType<typeof setInterval> | null = null;
 let watchTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -547,6 +616,11 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
           log.error({ err: error }, "rewards watch tick failed");
         });
       }, REWARDS_TICK_MS);
+    wealthTimer = setInterval(() => {
+      void wealthTick().catch((error: unknown) => {
+        log.error({ err: error }, "wealth watch tick failed");
+      });
+    }, WEALTH_TICK_MS);
     riskTimer = setInterval(() => {
       // Theo dõi MCP (DEC-225): mỗi phút, cửa sổ 5 phút.
       void checkMcpAlerts(db, mcpAlertStore, Date.now())
@@ -636,6 +710,8 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
     if (riskTimer !== null) clearInterval(riskTimer);
     if (rewardsTimer !== null) clearInterval(rewardsTimer);
     rewardsTimer = null;
+    if (wealthTimer !== null) clearInterval(wealthTimer);
+    wealthTimer = null;
     timer = null;
     riskTimer = null;
   },
