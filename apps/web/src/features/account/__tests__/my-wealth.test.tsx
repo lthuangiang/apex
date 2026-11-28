@@ -18,11 +18,18 @@ import { PortfolioPage } from "../components/portfolio-page";
 
 type Reply = { kind: "ok"; body: unknown } | { kind: "error"; error: Error } | { kind: "pending" };
 
-const state = vi.hoisted(() => ({
+interface State {
+  usMarket: boolean;
+  tab: string | null;
+  wealth: Reply;
+  calls: string[];
+}
+
+const state = vi.hoisted((): State => ({
   usMarket: true,
-  tab: "wealth" as string | null,
-  wealth: { kind: "pending" } as Reply,
-  calls: [] as string[],
+  tab: "wealth",
+  wealth: { kind: "pending" },
+  calls: [],
 }));
 
 vi.mock("next/link", () => ({
@@ -87,7 +94,11 @@ vi.mock("../components/accounts-row", () => ({
 }));
 
 /** DataTable có hai vùng cùng tên (khung DataRegion và khung cuộn), như các bảng Portfolio sẵn có: lấy khung ngoài. */
-const table = (name: string) => screen.getAllByRole("region", { name })[0] as HTMLElement;
+function table(name: string): HTMLElement {
+  const [outer] = screen.getAllByRole("region", { name });
+  if (outer === undefined) throw new Error(`no region ${name}`);
+  return outer;
+}
 
 type Ok = Extract<WealthMeResponse, { status: "ok" }>;
 
@@ -318,7 +329,7 @@ describe("Portfolio › My Wealth (#592)", () => {
 
     // Quy tắc 1: không có nút / link nạp, rút, chuyển.
     const actions = [...screen.queryAllByRole("button"), ...screen.queryAllByRole("link")].map(
-      (el) => el.textContent ?? "",
+      (el) => el.textContent,
     );
     for (const text of actions)
       expect(text).not.toMatch(/deposit|withdraw|transfer|invest|redeem|move/i);

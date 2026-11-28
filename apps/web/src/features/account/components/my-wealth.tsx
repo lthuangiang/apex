@@ -8,7 +8,7 @@ import {
   type WealthHolding,
   type WealthMeResponse,
 } from "@drift/shared";
-import { DataTable, PnLValue, Skeleton } from "@drift/ui";
+import { DataTable, Skeleton } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
@@ -196,7 +196,7 @@ function OpenSodex() {
 
 function fundTypeLabel(t: ReturnType<typeof useTranslations>, h: WealthHolding): string | null {
   // Theo tài liệu SoDEX: `escrow_vault`, `bridged_vault`, `clob`. Chỉ đặt nhãn cho loại vault; loại khác không đoán nhãn.
-  return h.fundType !== null && h.fundType.endsWith("vault") ? t("holdings.type.vault") : null;
+  return h.fundType?.endsWith("vault") === true ? t("holdings.type.vault") : null;
 }
 
 function Holdings({ w }: { w: WealthOk }) {
