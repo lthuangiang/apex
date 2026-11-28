@@ -27,3 +27,4 @@ export * from "./rest/history-schemas";
 export * from "./ws/market-stream";
 export * from "./debug";
 export * from "./rewards/read-client";
+export * from "./wealth/read-client";

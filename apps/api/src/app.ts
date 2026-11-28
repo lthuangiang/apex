@@ -43,6 +43,12 @@ import { registerSodexRoutes } from "./modules/sodex/routes";
 import type { SodexDeps } from "./modules/sodex/service";
 import { registerSodexDebuggerRoutes } from "./modules/sodex-debugger/routes";
 import { registerTelegramRoutes } from "./modules/telegram/routes";
+import { registerUsMarketRoutes } from "./modules/us-market/routes";
+import {
+  createUsMarketService,
+  type UsMarketRest,
+  type WealthReader,
+} from "./modules/us-market/service";
 import { registerPlainDecimals } from "./plugins/plain-decimals";
 import { registerRateLimit, type RateLimiter } from "./plugins/rate-limit";
 import { registerSession } from "./plugins/session";
@@ -68,6 +74,10 @@ export const REDACT_PATHS = [
   "*.token",
   "*.accessToken",
 ];
+
+/** Wealth reader khi tính năng tắt: mọi lời gọi trả `not_provided` (route đã 404 trước đó). */
+const notProvided = () =>
+  Promise.resolve({ kind: "not_provided" as const, reason: "network" as const });
 
 export interface AppDeps {
   /** OAuth cho MCP (DEC-215). Thiếu = issuer mặc định, introspect tắt. */
@@ -119,6 +129,11 @@ export interface AppDeps {
     RewardsWatchDeps,
     "audAllow" | "reader" | "signer"
   >;
+  /**
+   * #589 / DEC-402: US Market + SoDEX Wealth. `enabled` = `US_MARKET_ENABLED` (mặc định bật ở config). Không truyền = tắt:
+   * `/api/v1/markets/us` và `/api/v1/wealth/me` trả 404, `/features.usMarket` = false. `rest` thiếu = `sodex.rest`.
+   */
+  usMarket?: { enabled: () => boolean; wealth: WealthReader; rest?: UsMarketRest };
   rateLimiter: RateLimiter;
   /** Nhà cung cấp bản đồ thanh lý (IMP-05). Không có / null: tab Liquidation map ẩn. */
   liquidations?: LiquidationProvider | null;
@@ -191,6 +206,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
         deps.rewardsEnabled,
         request.auth === null ? null : request.auth.userId,
       ),
+      // #589 / DEC-402 mục 9: công tắc toàn hệ thống `US_MARKET_ENABLED`.
+      usMarket: deps.usMarket?.enabled() ?? false,
       builderFees,
       mmFee,
     };
@@ -298,6 +315,30 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     oauth: oauthDeps,
     introspectSecret: oauth.introspectSecret,
     resources: { user: `${mcpBase}/mcp`, team: `${mcpBase}/team/mcp` },
+  });
+  const um = deps.usMarket;
+  registerUsMarketRoutes(app, {
+    enabled: um?.enabled ?? (() => false),
+    service: createUsMarketService({
+      db: deps.db,
+      now,
+      rest: um?.rest ?? deps.sodex.rest,
+      wealth: um?.wealth ?? {
+        getFunds: notProvided,
+        getTradingStatus: notProvided,
+        getPositions: notProvided,
+        getPnl: notProvided,
+        getInFlight: notProvided,
+        getFundDetails: notProvided,
+        getRecurringBuys: notProvided,
+        getPnlHistory: notProvided,
+      },
+      log: {
+        warn: (obj, msg) => {
+          app.log.warn(obj, msg);
+        },
+      },
+    }),
   });
   const rw = deps.rewardsWatch;
   registerRewardsWatchRoutes(app, {

@@ -10,8 +10,8 @@ Not financial advice. Past results are not a forecast.
 
 ## Kỹ thuật
 
-Chưa có thay đổi.
+- **US Market + SoDEX Wealth, phần api (#589, chưa merge):** client chỉ đọc SoDEX Wealth (allowlist GET, chung bucket IP, ưu tiên thấp), zod cho Wealth API, quy tắc độ sâu sổ lệnh ở `packages/shared` (`Thin` < 10.000 USD, `Very thin` < 1.000 USD theo phía mỏng hơn), `GET /api/v1/markets/us`, `GET /api/v1/wealth/me`, `features.usMarket` (DEC-402).
 
 **Migration (chạy khi deploy):** không có.
 
-**Biến môi trường mới:** không có.
+**Biến môi trường mới:** `US_MARKET_ENABLED` (api, mặc định `true`), `WEALTH_READ_MAX_WEIGHT_PER_MIN` (api, mặc định `400`, tuỳ chọn); xem `docs/DEPLOY.md` mục 2.24.
