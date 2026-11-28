@@ -6,8 +6,10 @@ import {
   depthCapLabel,
   depthReducedWhy,
   depthWaitWhy,
+  inDepthCapScope,
   isEntryCandidate,
   maxPositionsOf,
+  parseDepthCapMarkets,
   positionDepthIssue,
   raisedPositions,
 } from "../common/depth-cap";
@@ -227,5 +229,39 @@ describe("max position against the thinner side", () => {
     expect(raisedPositions(before, [{ ...p, notional: "4000" }])).toEqual([]);
     expect(raisedPositions(before, [{ ...p, notional: "5000.01" }])).toHaveLength(1);
     expect(raisedPositions(before, [{ ...p, market: "BTC-USD" }])).toHaveLength(1);
+  });
+});
+
+describe("DEPTH_CAP_MARKETS", () => {
+  it("defaults to Anthropic and the 8 fund token pairs", () => {
+    const d = parseDepthCapMarkets(undefined);
+    expect(d.all).toBe(false);
+    expect(d.markets).toEqual([
+      "ANT-USD",
+      "vANT_vUSDC",
+      "vVOO_vUSDC",
+      "vQQQ_vUSDC",
+      "vSCHD_vUSDC",
+      "vSMH_vUSDC",
+      "vVGT_vUSDC",
+      "vVYM_vUSDC",
+      "vBOXX_vUSDC",
+      "vSTRC_vUSDC",
+    ]);
+    expect(parseDepthCapMarkets("default")).toEqual(d);
+    expect(inDepthCapScope(d, "ANT-USD")).toBe(true);
+    expect(inDepthCapScope(d, "BTC-USD")).toBe(false);
+  });
+
+  it("empty turns it off, * means every market, otherwise a comma list", () => {
+    expect(parseDepthCapMarkets("")).toEqual({ all: false, markets: [] });
+    expect(parseDepthCapMarkets("  ")).toEqual({ all: false, markets: [] });
+    expect(inDepthCapScope(parseDepthCapMarkets(""), "ANT-USD")).toBe(false);
+    expect(parseDepthCapMarkets("*")).toEqual({ all: true, markets: [] });
+    expect(inDepthCapScope(parseDepthCapMarkets("*"), "BTC-USD")).toBe(true);
+    expect(parseDepthCapMarkets(" ANT-USD, ,SOL-USD,ANT-USD ")).toEqual({
+      all: false,
+      markets: ["ANT-USD", "SOL-USD"],
+    });
   });
 });

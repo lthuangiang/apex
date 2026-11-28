@@ -24,6 +24,10 @@ export * from "./paper";
 export { safetyOffsetPct } from "./common/dca-math";
 export {
   capEntryOrder,
+  DEFAULT_DEPTH_CAP_MARKETS,
+  inDepthCapScope,
+  parseDepthCapMarkets,
+  type DepthCapScope,
   depthCapApplies,
   depthCapLabel,
   depthReducedWhy,

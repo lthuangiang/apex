@@ -33,6 +33,7 @@ import type { MmOrderContext } from "@drift/shared/mm-quote";
 import type { SignedWriteClient, SodexRestClient } from "@drift/sodex";
 import {
   clOrdId,
+  parseDepthCapMarkets,
   runBacktest,
   seededRandom,
   spotGrid,
@@ -12552,6 +12553,10 @@ describe("news_signal engine A: signal path (#419)", { timeout: 120_000 }, () =>
 
 describe("order book depth caps (DEC-402 (5), #590)", () => {
   useCleanDb("depth_caps_590");
+  // Mỗi test một bot: bot của test trước không được chạy tiếp trên cổng giả của test sau.
+  afterEach(async () => {
+    await db.update(bots).set({ state: "stopped" });
+  });
   type Book = { bid: string; ask: string; bidNotional: string; askNotional: string } | null;
   const dca = {
     strategy: "futures_dca",
@@ -12615,6 +12620,57 @@ describe("order book depth caps (DEC-402 (5), #590)", () => {
     expect(lines.map((x) => x.why)).toEqual([
       "ANT-USD: buy size cut from 1 to 0.5. An order that fills at once can take at most 25% of the top 10 ask levels (50 of 200 USD).",
     ]);
+    await e.stop();
+  });
+
+  it("never reads the book for a market outside DEPTH_CAP_MARKETS, even a thin one", async () => {
+    const gw = new FakeGateway();
+    await seedBot("running", {
+      ...dca,
+      market: "SOL-USD",
+      config: { ...dca.config, market: "SOL-USD" },
+    });
+    let reads = 0;
+    const e = depthEngine(gw, "depth-outside", () => {
+      reads += 1;
+      return Promise.resolve({ bid: "99", ask: "100", bidNotional: "10", askNotional: "10" });
+    });
+    const sent = () => gw.received.filter((o) => o.market === "SOL-USD" && o.tag.endsWith(":base"));
+    for (let i = 0; i < 20 && sent().length === 0; i += 1) {
+      clock += 1_000;
+      await e.tick();
+      await e.onPrice("SOL-USD", "100", clock);
+      if (sent().length === 0) await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(sent()).toEqual([expect.objectContaining({ quantity: "1" })]);
+    expect(reads).toBe(0);
+    await e.stop();
+  });
+
+  it("is off when DEPTH_CAP_MARKETS is empty", async () => {
+    const gw = new FakeGateway();
+    await seedBot("running", dca);
+    let reads = 0;
+    const e = new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId: "depth-off",
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      orderbook: () => {
+        reads += 1;
+        return Promise.resolve(null);
+      },
+      depthCapMarkets: parseDepthCapMarkets(""),
+    });
+    await run(e, gw, () => base(gw).length > 0);
+    expect(base(gw)).toEqual([expect.objectContaining({ quantity: "1" })]);
+    expect(reads).toBe(0);
     await e.stop();
   });
 

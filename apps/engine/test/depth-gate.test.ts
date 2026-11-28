@@ -23,6 +23,7 @@ const o = (x: Partial<OrderIntent> = {}): OrderIntent => ({
   ...x,
 });
 const place = (order: OrderIntent): StrategyAction => ({ type: "place", order });
+const all = () => true;
 const first = <T>(xs: readonly T[]): T => {
   const [x] = xs;
   if (x === undefined) throw new Error("empty");
@@ -44,6 +45,7 @@ function plan(
     opens: opensPosition,
     books: new Map(Object.entries(opts.books ?? { "perps:ANT-USD": thin })),
     rules: { "ANT-USD": rules, vANT_vUSDC: rules },
+    inScope: () => true,
     accounting: opts.accounting ?? false,
   });
 }
@@ -55,16 +57,44 @@ describe("which orders need the book", () => {
       place(o({ tag: "grid:1:buy", type: "limit", price: "95", timeInForce: "GTC" })),
       place(o({ tag: "tp", reduceOnly: true, side: "sell" })),
     ];
-    expect(depthNeeds(actions, () => "0", opensPosition)).toEqual([
+    expect(depthNeeds(actions, () => "0", opensPosition, all)).toEqual([
       { market: "ANT-USD", engine: "perps" },
     ]);
   });
 
   it("not an opposite-side order that only reduces the position", () => {
     // Long 20: a 10 sell (not reduce-only) only reduces.
-    expect(depthNeeds([place(o({ side: "sell" }))], () => "20", opensPosition)).toEqual([]);
+    expect(depthNeeds([place(o({ side: "sell" }))], () => "20", opensPosition, all)).toEqual([]);
     // Flat: the same sell opens a short.
-    expect(depthNeeds([place(o({ side: "sell" }))], () => "0", opensPosition)).toHaveLength(1);
+    expect(depthNeeds([place(o({ side: "sell" }))], () => "0", opensPosition, all)).toHaveLength(1);
+  });
+});
+
+describe("DEPTH_CAP_MARKETS", () => {
+  it("never reads the book or caps a market outside the list", () => {
+    const onlyAnt = (m: string) => m === "ANT-USD";
+    const btc = [place(o({ market: "BTC-USD", quantity: "1000" }))];
+    expect(depthNeeds(btc, () => "0", opensPosition, onlyAnt)).toEqual([]);
+    expect(
+      planDepth({
+        actions: btc,
+        positionOf: () => "0",
+        opens: opensPosition,
+        books: new Map(),
+        rules: { "BTC-USD": rules },
+        inScope: onlyAnt,
+        accounting: false,
+      }),
+    ).toEqual({ kind: "pass", clear: [] });
+    // Turned off (empty list): nothing is in scope.
+    expect(
+      depthNeeds(
+        [place(o())],
+        () => "0",
+        opensPosition,
+        () => false,
+      ),
+    ).toEqual([]);
   });
 });
 

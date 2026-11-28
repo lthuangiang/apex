@@ -22,6 +22,47 @@ export const ENTRY_DEPTH_SHARE = "0.25";
 export type DepthCapLabel = "deep" | "thin" | "very_thin" | "empty";
 
 /**
+ * Market áp giới hạn theo sổ lệnh trong bản đầu (DEC-402 bổ sung 2026-11-28): Anthropic (perps + spot) và 8 cặp token quỹ.
+ * Ghi đè bằng `DEPTH_CAP_MARKETS` (engine + api). Market ngoài danh sách: không đọc sổ, không cắt, không kiểm lúc tạo / sửa.
+ */
+export const DEFAULT_DEPTH_CAP_MARKETS: readonly string[] = [
+  "ANT-USD",
+  "vANT_vUSDC",
+  "vVOO_vUSDC",
+  "vQQQ_vUSDC",
+  "vSCHD_vUSDC",
+  "vSMH_vUSDC",
+  "vVGT_vUSDC",
+  "vVYM_vUSDC",
+  "vBOXX_vUSDC",
+  "vSTRC_vUSDC",
+];
+
+/** Phạm vi giới hạn theo sổ: `all` = mọi market (`*`, có hỗ trợ nhưng chưa dùng), hoặc danh sách market. */
+export interface DepthCapScope {
+  all: boolean;
+  markets: readonly string[];
+}
+
+/**
+ * Đọc `DEPTH_CAP_MARKETS`: thiếu biến hoặc `default` → danh sách mặc định; chuỗi trống → tắt hẳn; `*` → mọi market; còn
+ * lại là danh sách phân cách dấu phẩy (bỏ khoảng trắng, bỏ mục trống).
+ */
+export function parseDepthCapMarkets(raw: string | undefined): DepthCapScope {
+  if (raw === undefined || raw.trim() === "default")
+    return { all: false, markets: [...DEFAULT_DEPTH_CAP_MARKETS] };
+  const items = raw
+    .split(",")
+    .map((x) => x.trim())
+    .filter((x) => x !== "");
+  if (items.includes("*")) return { all: true, markets: [] };
+  return { all: false, markets: [...new Set(items)] };
+}
+
+export const inDepthCapScope = (scope: DepthCapScope, market: string): boolean =>
+  scope.all || scope.markets.includes(market);
+
+/**
  * Nhãn độ sâu của market theo sổ 10 mức. `null` = một phía không có lệnh nào (engine `orderbook()` trả null khi một
  * phía rỗng), hoặc notional một phía bằng 0.
  */

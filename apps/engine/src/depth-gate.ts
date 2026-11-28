@@ -42,6 +42,7 @@ function classify(
   actions: readonly StrategyAction[],
   positionOf: (market: string, engine: "spot" | "perps") => string | null,
   opens: Opens,
+  inScope: (market: string) => boolean,
 ): { entries: OrderIntent[]; exits: OrderIntent[] } {
   const reducing = new Map<string, string>();
   const entries: OrderIntent[] = [];
@@ -52,21 +53,24 @@ function classify(
     const key = `${o.market}:${o.side}`;
     const before = reducing.get(key) ?? "0";
     const opening = opens(o, positionOf(o.market, o.engine), before);
-    if (opening && isEntryCandidate(o)) entries.push(o);
-    else if (!opening || o.reduceOnly || o.stop !== undefined) exits.push(o);
+    // Market ngoài `DEPTH_CAP_MARKETS` (DEC-402 bổ sung 2026-11-28): lệnh vào không bị xét, không cần đọc sổ.
+    if (opening && isEntryCandidate(o)) {
+      if (inScope(o.market)) entries.push(o);
+    } else if (!opening || o.reduceOnly || o.stop !== undefined) exits.push(o);
     reducing.set(key, dec(before).add(o.quantity).toString());
   }
   return { entries, exits };
 }
 
-/** Sổ cần đọc cho bước này: mỗi market có lệnh VÀO khớp ngay. */
+/** Sổ cần đọc cho bước này: mỗi market trong phạm vi có lệnh VÀO khớp ngay. Ngoài phạm vi: rỗng, không đọc sổ. */
 export function depthNeeds(
   actions: readonly StrategyAction[],
   positionOf: (market: string, engine: "spot" | "perps") => string | null,
   opens: Opens,
+  inScope: (market: string) => boolean,
 ): { market: string; engine: "spot" | "perps" }[] {
   const seen = new Map<string, { market: string; engine: "spot" | "perps" }>();
-  for (const o of classify(actions, positionOf, opens).entries)
+  for (const o of classify(actions, positionOf, opens, inScope).entries)
     seen.set(depthKey(o), { market: o.market, engine: o.engine });
   return [...seen.values()];
 }
@@ -106,10 +110,12 @@ export function planDepth(input: {
   opens: Opens;
   books: ReadonlyMap<string, DepthRead>;
   rules: Readonly<Record<string, MarketRules>>;
+  /** Market trong `DEPTH_CAP_MARKETS`. */
+  inScope: (market: string) => boolean;
   /** Sự kiện là fill / ack / reject / kết thúc lệnh / positionSync: không bao giờ giữ cả bước. */
   accounting: boolean;
 }): DepthPlan {
-  const { entries, exits } = classify(input.actions, input.positionOf, input.opens);
+  const { entries, exits } = classify(input.actions, input.positionOf, input.opens, input.inScope);
   if (entries.length === 0) return { kind: "pass", clear: [] };
   const reduced = new Map<string, Extract<EntryCapResult, { kind: "reduce" }>>();
   const waits: DepthWait[] = [];

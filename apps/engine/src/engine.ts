@@ -92,6 +92,9 @@ import {
   type DecisionPayload,
   type Ledger,
   type BookTop,
+  type DepthCapScope,
+  inDepthCapScope,
+  parseDepthCapMarkets,
   type MarketRules,
   type MarketSnapshot,
   type StepContext,
@@ -647,6 +650,11 @@ export interface EngineDeps {
    * được. Không truyền thì Volume Farm chỉ dùng nến (tín hiệu chạy chế độ chỉ-nến như apex).
    */
   orderbook?: (market: string, engine?: "spot" | "perps") => Promise<BookTop | null>;
+  /**
+   * Market áp giới hạn theo sổ lệnh (`DEPTH_CAP_MARKETS`, DEC-402 bổ sung 2026-11-28). Thiếu = danh sách mặc định
+   * (`DEFAULT_DEPTH_CAP_MARKETS`). Ngoài danh sách: không đọc sổ, không cắt.
+   */
+  depthCapMarkets?: DepthCapScope;
   /** Cổng mô phỏng cho bot paper (DEC-105). Không truyền thì engine không nạp bot paper nào. */
   paper?: PaperGateway;
   /** Đồng hồ đơn điệu cho hạn lease (mặc định `performance.now`); khác `now` (giờ nghiệp vụ, test cố định). */
@@ -1106,6 +1114,7 @@ export class Engine {
   readonly #depthLoads = new Map<string, Promise<void>>();
   /** Có nguồn sổ lệnh thật (`deps.orderbook`); không có (test, công cụ) thì cổng độ sâu không chạy. */
   readonly #depthSource: boolean;
+  readonly #depthScope: DepthCapScope;
   readonly #openChecks = new Map<string, number>();
   /** Lần thử lại gần nhất cho lệnh đã bỏ cuộc mà chiến lược chưa được báo kết thúc (`TickSnapshot.gaveUp`). */
   readonly #gaveUpRetryAt = new Map<string, number>();
@@ -1219,12 +1228,15 @@ export class Engine {
 
   constructor(deps: EngineDeps) {
     this.#depthSource = deps.orderbook !== undefined;
+    this.#depthScope = deps.depthCapMarkets ?? parseDepthCapMarkets(undefined);
+
     this.#d = {
       now: () => Date.now(),
       leaseTtlMs: 15_000,
       shards: ENGINE_SHARDS,
       feeCheckMs: 60_000,
       orderbook: () => Promise.resolve(null),
+      depthCapMarkets: parseDepthCapMarkets(undefined),
       tickWaitMs: Number.POSITIVE_INFINITY,
       lookupBudget: Number.POSITIVE_INFINITY,
       clockConcurrency: 1,
@@ -3946,9 +3958,11 @@ export class Engine {
     // hoặc trần dưới min size thì chờ. Lệnh đóng / reduce-only / stop / Stop và lệnh maker không bao giờ bị cắt hay chờ.
     // Sổ chưa có trong cache: đọc rồi chạy lại cả bước (không có await nào giữa bước và lúc gán `r.state`).
     let depthStripped: DepthWait[] = [];
-    if (!r.paper && this.#depthSource) {
+    const depthScope = this.#depthScope;
+    if (!r.paper && this.#depthSource && (depthScope.all || depthScope.markets.length > 0)) {
       const posOf = (m: string, e: "spot" | "perps") => positionOf(prev, m, e);
-      const needs = depthNeeds(actions, posOf, opensPosition);
+      const inScope = (m: string) => inDepthCapScope(depthScope, m);
+      const needs = depthNeeds(actions, posOf, opensPosition, inScope);
       if (needs.length > 0) {
         const missing = needs.filter((n) => !this.#depthFresh(depthKey(n), event.at));
         if (missing.length > 0 && !depthWarm) {
@@ -3965,6 +3979,7 @@ export class Engine {
           opens: opensPosition,
           books,
           rules: r.ctx.rules,
+          inScope,
           accounting,
         });
         for (const m of plan.clear)
